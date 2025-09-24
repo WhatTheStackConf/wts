@@ -12,7 +12,7 @@ export const Layout = (props: LayoutProps) => {
     <>
       <Title>{props.title}</Title>
       <Meta name="description" content={props.description} />
-      <main>{props.children}</main>
+      <main class="font-sans">{props.children}</main>
     </>
   );
 };

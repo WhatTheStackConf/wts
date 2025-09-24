@@ -1,0 +1,67 @@
+@import "tailwindcss";
+@import url(https://fonts.googleapis.com/css?family=Jura);
+@plugin "@tailwindcss/typography";
+@plugin "daisyui" {
+    themes: night --default;
+}
+
+@font-face {
+    font-family: "StarzoomShavian";
+    src: url("/fonts/starzoom-shavian.regular.ttf") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "StarZoomShavian";
+    src: url("/fonts/starzoom-shavian.italic.ttf") format("truetype");
+    font-weight: normal;
+    font-style: italic;
+    font-display: swap;
+}
+
+@theme {
+    /* Dark colors */
+    --color-dark-50: oklch(0.85 0.05 270);
+    --color-dark-100: oklch(0.75 0.1 270);
+    --color-dark-200: oklch(0.65 0.15 270);
+    --color-dark-300: oklch(0.55 0.2 270);
+    --color-dark-400: oklch(0.45 0.15 270);
+    --color-dark-500: oklch(0.35 0.1 270);
+    --color-dark-600: oklch(0.25 0.08 270);
+    --color-dark-700: oklch(0.2 0.06 270);
+    --color-dark-800: oklch(0.15 0.04 270);
+    --color-dark-900: oklch(0.1 0.02 270);
+    --color-dark-950: oklch(0.05 0.01 270);
+
+    /* Secondary colors */
+    --color-secondary-50: oklch(0.97 0.05 85);
+    --color-secondary-100: oklch(0.95 0.1 85);
+    --color-secondary-200: oklch(0.9 0.15 85);
+    --color-secondary-300: oklch(0.85 0.2 85);
+    --color-secondary-400: oklch(0.8 0.25 85);
+    --color-secondary-500: oklch(0.75 0.3 85);
+    --color-secondary-600: oklch(0.65 0.25 85);
+    --color-secondary-700: oklch(0.55 0.2 85);
+    --color-secondary-800: oklch(0.45 0.15 85);
+    --color-secondary-900: oklch(0.35 0.1 85);
+    --color-secondary-950: oklch(0.25 0.05 85);
+
+    /* Primary colors */
+    --color-primary-50: oklch(0.97 0.05 330);
+    --color-primary-100: oklch(0.95 0.1 330);
+    --color-primary-200: oklch(0.9 0.15 330);
+    --color-primary-300: oklch(0.85 0.2 330);
+    --color-primary-400: oklch(0.8 0.25 330);
+    --color-primary-500: oklch(0.7 0.3 330);
+    --color-primary-600: oklch(0.6 0.25 330);
+    --color-primary-700: oklch(0.5 0.2 330);
+    --color-primary-800: oklch(0.4 0.15 330);
+    --color-primary-900: oklch(0.3 0.1 330);
+    --color-primary-950: oklch(0.2 0.05 330);
+
+    /* Font families */
+    --font-sans: "Jura";
+    --font-star: "StarzoomShavian";
+}
