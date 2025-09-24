@@ -1,8 +1,45 @@
 @import "tailwindcss";
 @import url(https://fonts.googleapis.com/css?family=Jura);
+
 @plugin "@tailwindcss/typography";
+
 @plugin "daisyui" {
-    themes: night --default;
+    themes: wts --default;
+}
+
+@plugin "daisyui/theme" {
+    name: "wts";
+    default: true;
+    prefersdark: true;
+    color-scheme: "dark";
+    --color-base-100: oklch(0.15 0.04 270);
+    --color-base-200: oklch(0.1 0.02 270);
+    --color-base-300: oklch(0.05 0.01 270);
+    --color-base-content: oklch(98% 0 0);
+    --color-primary: oklch(0.6 0.25 330);
+    --color-primary-content: oklch(93% 0.034 272.788);
+    --color-secondary: oklch(0.65 0.25 85);
+    --color-secondary-content: oklch(94% 0.028 342.258);
+    --color-accent: oklch(77% 0.152 181.912);
+    --color-accent-content: oklch(38% 0.063 188.416);
+    --color-neutral: oklch(0.25 0.08 270);
+    --color-neutral-content: oklch(92% 0.004 286.32);
+    --color-info: oklch(74% 0.16 232.661);
+    --color-info-content: oklch(29% 0.066 243.157);
+    --color-success: oklch(76% 0.177 163.223);
+    --color-success-content: oklch(37% 0.077 168.94);
+    --color-warning: oklch(82% 0.189 84.429);
+    --color-warning-content: oklch(41% 0.112 45.904);
+    --color-error: oklch(71% 0.194 13.428);
+    --color-error-content: oklch(27% 0.105 12.094);
+    --radius-selector: 2rem;
+    --radius-field: 0.25rem;
+    --radius-box: 0rem;
+    --size-selector: 0.3125rem;
+    --size-field: 0.3125rem;
+    --border: 2px;
+    --depth: 1;
+    --noise: 0;
 }
 
 @font-face {
@@ -64,4 +101,10 @@
     /* Font families */
     --font-sans: "Jura";
     --font-star: "StarzoomShavian";
+}
+
+main {
+    background: url("/bg.png") center center no-repeat;
+    background-size: cover;
+    min-height: 100vh;
 }
