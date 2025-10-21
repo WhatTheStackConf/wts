@@ -18,7 +18,7 @@ export default function Tickets() {
       title="Tickets - WhatTheStack 2026"
       description="Get your tickets for WhatTheStack 2026 conference"
     >
-      <div class="container mx-auto px-4 py-16 relative">
+      <div class="container mx-auto relative">
         <div class="absolute inset-0 scanline z-10"></div>
         <div class="max-w-4xl mx-auto text-center relative z-20">
           <h1 class="text-4xl md:text-5xl font-star font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-secondary-300 mb-4 neon-glow fade-in">

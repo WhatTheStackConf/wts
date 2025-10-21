@@ -1,4 +1,5 @@
 import { Layout } from "../layouts/Layout";
+import CodeBackground from "../components/CodeBackground";
 
 export default function Home() {
   return (
@@ -6,7 +7,8 @@ export default function Home() {
       title="WhatTheStack 2026 - Blade Runner Theme"
       description="WhatTheStack 2026 - A futuristic developer conference"
     >
-      <div class="container mx-auto px-4 py-16 text-center relative">
+      <div class="w-full h-full px-4 py-16 text-center relative">
+        <CodeBackground />
         <div class="absolute inset-0 scanline z-10"></div>
         <div class="max-w-4xl mx-auto relative z-20">
           <h1 class="text-5xl md:text-7xl font-star font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-secondary-300 mb-6 neon-glow fade-in">
@@ -61,7 +63,7 @@ export default function Home() {
           <div class="mb-12 fade-in-delay-4">
             <a
               href="/tickets"
-              class="btn btn-primary text-xl px-8 py-4 font-star tracking-wider text-base-100 hover:bg-primary-600 transition-all duration-300 transform hover:scale-105 shadow-lg shadow-primary-500/30 neon-glow hover-pulse"
+              class="btn btn-primary text-xl px-8 py-4 font-star tracking-wider text-secondary-400 hover:bg-primary-600 transition-all duration-300 transform hover:scale-105 shadow-lg shadow-primary-500/30 hover-pulse"
             >
               SECURE YOUR PASS
             </a>

@@ -390,18 +390,77 @@ main {
 
 /* Lottie neon glow effect */
 .lottie-neon-glow svg {
-    filter: drop-shadow(0 0 1px currentColor) drop-shadow(0 0 3px currentColor)
-        drop-shadow(0 0 5px currentColor);
-    animation: lottie-neon-pulse 4s infinite alternate;
+    filter: drop-shadow(0 0 1px currentColor) drop-shadow(0 0 2px currentColor)
+        drop-shadow(0 0 3px currentColor);
+    animation:
+        lottie-neon-pulse 2s infinite alternate,
+        lottie-neon-color-shift 6s infinite,
+        lottie-neon-glitch 8s infinite linear;
 }
 
 @keyframes lottie-neon-pulse {
     0% {
         filter: drop-shadow(0 0 1px currentColor)
-            drop-shadow(0 0 3px currentColor) drop-shadow(0 0 5px currentColor);
+            drop-shadow(0 0 2px currentColor) drop-shadow(0 0 3px currentColor);
     }
     100% {
-        filter: drop-shadow(0 0 1px currentColor)
-            drop-shadow(0 0 3px currentColor) drop-shadow(0 0 5px currentColor);
+        filter: drop-shadow(0 0 2px currentColor)
+            drop-shadow(0 0 4px currentColor) drop-shadow(0 0 6px currentColor);
     }
+}
+
+@keyframes lottie-neon-glitch {
+    0%,
+    92%,
+    100% {
+        filter: drop-shadow(0 0 1px currentColor)
+            drop-shadow(0 0 2px currentColor) drop-shadow(0 0 3px currentColor);
+    }
+    93% {
+        filter: drop-shadow(0 0 3px currentColor)
+            drop-shadow(0 0 5px currentColor) drop-shadow(0 0 6px currentColor);
+    }
+    94% {
+        filter: drop-shadow(0 0 2px currentColor)
+            drop-shadow(0 0 4px currentColor) drop-shadow(0 0 5px currentColor);
+        transform: translateX(-1px);
+    }
+    95% {
+        filter: drop-shadow(0 0 4px currentColor)
+            drop-shadow(0 0 6px currentColor) drop-shadow(0 0 8px currentColor);
+    }
+    96% {
+        filter: drop-shadow(0 0 2px currentColor)
+            drop-shadow(0 0 3px currentColor) drop-shadow(0 0 5px currentColor);
+        transform: translateX(1px);
+    }
+}
+
+@keyframes lottie-neon-color-shift {
+    0% {
+        color: oklch(0.6 0.25 330); /* --color-primary */
+    }
+    33% {
+        color: oklch(0.65 0.25 85); /* --color-secondary */
+    }
+    66% {
+        color: oklch(0.7 0.3 330); /* --color-primary-500 */
+    }
+    100% {
+        color: oklch(0.65 0.25 85); /* --color-secondary */
+    }
+}
+
+/* Horizontal code scroll animation */
+@keyframes scroll-horizontal {
+    0% {
+        transform: translateX(100vw);
+    }
+    100% {
+        transform: translateX(-100%);
+    }
+}
+
+.animate-scroll-horizontal {
+    animation: scroll-horizontal linear infinite;
 }
