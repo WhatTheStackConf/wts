@@ -15,7 +15,7 @@ export const Layout = (props: LayoutProps) => {
       <Title>{props.title}</Title>
       <Meta name="description" content={props.description} />
       <main class="font-sans relative">
-        <div class="absolute z-20 w-full h-screen top-0 left-0 bg-base-300/95"></div>
+        <div class="absolute z-20 w-full min-h-screen h-full top-0 left-0 bg-base-300/85"></div>
         <div class="relative z-25">{props.children}</div>
       </main>
     </>

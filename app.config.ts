@@ -4,5 +4,14 @@ import solidSvg from "vite-plugin-solid-svg";
 export default defineConfig({
   vite: {
     plugins: [solidSvg()],
+    build: {
+      rollupOptions: {
+        external: ['fsevents', '../pkg'],
+      },
+    },
+    ssr: {
+      noExternal: ['fsevents'],
+      external: ['../pkg'],
+    },
   },
 });

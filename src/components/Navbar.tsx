@@ -1,18 +1,51 @@
 import Logo from "../assets/images/LogoSolo.svg";
+import { createSignal } from "solid-js";
+import { Lottie } from "./Lottie";
+import Animation from "../assets/animations/WTS.json";
+import { CyberpunkText } from "./CyberpunkText";
+import { MultiLineCyberpunkText } from "./MultiLineCyberpunkText";
 
 export const Navbar = () => {
+  const [lottieData] = createSignal(Animation);
+
+  // Calculate delay for second line (length of first line * typing speed + some buffer)
+  const firstLineLength = "WhatTheStack?".length;
+  const typingSpeed = 150;
+  const bufferTime = 500; // Extra time before second line starts
+  const calculatedDelay = firstLineLength * typingSpeed + bufferTime;
+
   return (
     <div class="navbar bg-base-200 border-b border-primary-700 shadow-xl relative z-26">
       <div class="navbar-start flex items-start justify-start">
         <a class="h-16 flex items-center justify-center w-auto" href="/">
-          <Logo class="h-16 mr-3 w-auto" {...({} as any)} />
+          {lottieData() ? (
+            <div class="h-16 w-16 mr-3">
+              <Lottie
+                animationData={lottieData()}
+                loop={false}
+                autoplay={true}
+                hasNeonGlow={true}
+                style={{ width: "100%", height: "100%" }}
+                className="text-primary-500"
+              />
+            </div>
+          ) : (
+            <Logo class="h-16 mr-3 w-auto" {...({} as any)} />
+          )}
           <div>
-            <h1 class="font-star italic text-2xl text-secondary-300">
-              What<span class="text-primary-500">The</span>Stack?
-            </h1>
-            <h2 class="text-primary-500 tracking-[0.4em] font-star text-3xl text-center">
-              2 0 2 6
-            </h2>
+            <div class="flex flex-col">
+              <h1 class="font-star italic text-2xl leading-tight">
+                <MultiLineCyberpunkText
+                  firstLineText="WhatTheStack"
+                  secondLineText="2026"
+                  hasGlow={true}
+                  className="inline"
+                  delay={0}
+                  tracking="tracking-[0.8em]"
+                  trackingYear="tracking-[0.7em]"
+                />
+              </h1>
+            </div>
           </div>
         </a>
       </div>

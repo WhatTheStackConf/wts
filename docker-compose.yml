@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  webapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - pocketbase
+    environment:
+      - POCKETBASE_URL=http://pocketbase:8090
+    restart: unless-stopped
+
+  pocketbase:
+    build:
+      context: ./pocketbase
+      dockerfile: Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      - PB_SUPERUSER_EMAIL=${POCKETBASE_SUPERUSER_EMAIL}
+      - PB_SUPERUSER_PASSWORD=${POCKETBASE_SUPERUSER_PASSWORD}
+    volumes:
+      # Persistent storage for PocketBase data
+      - pocketbase_data:/pb/pb_data
+    restart: unless-stopped
+
+volumes:
+  pocketbase_data:
+    # This ensures data persistence between deployments

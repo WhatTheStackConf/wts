@@ -103,8 +103,305 @@
     --font-star: "StarzoomShavian";
 }
 
+/* Blade Runner Theme Animations */
+/* Neon glow effect */
+.neon-glow {
+    text-shadow:
+        0 0 5px currentColor,
+        0 0 10px currentColor,
+        0 0 20px currentColor;
+    animation: neon-pulse 2s infinite alternate;
+}
+
+@keyframes neon-pulse {
+    0% {
+        text-shadow:
+            0 0 5px currentColor,
+            0 0 10px currentColor,
+            0 0 20px currentColor;
+    }
+    100% {
+        text-shadow:
+            0 0 10px currentColor,
+            0 0 20px currentColor,
+            0 0 30px currentColor,
+            0 0 40px currentColor;
+    }
+}
+
+/* Scanning line effect for backgrounds */
+.scanline {
+    position: relative;
+    overflow: hidden;
+}
+.scanline::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(0, 255, 255, 0.05) 50%,
+        transparent 100%
+    );
+    background-size: 100% 4px;
+    animation: scan 5s linear infinite;
+    pointer-events: none;
+    z-index: 30;
+}
+@keyframes scan {
+    0% {
+        transform: translateY(-100%);
+    }
+    100% {
+        transform: translateY(100%);
+    }
+}
+
+/* Grid scan effect */
+.grid-scan {
+    position: relative;
+}
+.grid-scan::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+        linear-gradient(rgba(0, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 30px 30px;
+    pointer-events: none;
+    z-index: 20;
+    animation: grid-move 10s linear infinite;
+}
+@keyframes grid-move {
+    0% {
+        background-position: 0 0;
+    }
+    100% {
+        background-position: 30px 30px;
+    }
+}
+
+/* Fade-in animations */
+.fade-in {
+    animation: fadeIn 1s ease-in forwards;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in-delay-1 {
+    animation: fadeIn 1s ease-in 0.2s forwards;
+    opacity: 0;
+}
+
+.fade-in-delay-2 {
+    animation: fadeIn 1s ease-in 0.4s forwards;
+    opacity: 0;
+}
+
+.fade-in-delay-3 {
+    animation: fadeIn 1s ease-in 0.6s forwards;
+    opacity: 0;
+}
+
+.fade-in-delay-4 {
+    animation: fadeIn 1s ease-in 0.8s forwards;
+    opacity: 0;
+}
+
+/* Hover pulse effect */
+.hover-pulse {
+    transition:
+        transform 0.3s ease,
+        box-shadow 0.3s ease;
+}
+.hover-pulse:hover {
+    transform: scale(1.03);
+    box-shadow: 0 0 15px currentColor;
+}
+
 main {
     background: url("/bg.png") center center no-repeat;
     background-size: cover;
     min-height: 100vh;
+}
+
+/* View Transitions API styles */
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+    z-index: 1;
+}
+
+::view-transition-new(root) {
+    z-index: 2147483646; /* MAX_SAFE_INTEGER - 1 */
+}
+
+/* Add your custom transition animations here */
+.view-transition-container {
+    view-transition-name: page-transition;
+}
+
+/* Fallback animations for browsers that don't support View Transitions */
+main {
+    background: url("/bg.png") center center no-repeat;
+    background-size: cover;
+    min-height: 100vh;
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+/* Cyberpunk glitch effect */
+@keyframes subtle-glitch {
+    0%,
+    90% {
+        transform: translateX(0);
+        clip-path: inset(0 0 0 0);
+    }
+    92% {
+        transform: translateX(-1px);
+        clip-path: inset(0 45px 0 0);
+    }
+    94% {
+        transform: translateX(1px);
+        clip-path: inset(0 0 0 45px);
+    }
+    96% {
+        transform: translateX(0);
+        clip-path: inset(0 30px 0 0);
+    }
+    98% {
+        transform: translateX(0);
+        clip-path: inset(0 0 0 30px);
+    }
+    100% {
+        transform: translateX(0);
+        clip-path: inset(0 0 0 0);
+    }
+}
+
+@keyframes subtle-glitch-2 {
+    0%,
+    90% {
+        transform: translateX(0);
+        clip-path: inset(0 0 0 0);
+    }
+    93% {
+        transform: translateX(2px);
+        clip-path: inset(0 0 40px 0);
+    }
+    96% {
+        transform: translateX(-2px);
+        clip-path: inset(0 50px 0 0);
+    }
+    98% {
+        transform: translateX(0);
+        clip-path: inset(0 0 0 40px);
+    }
+    100% {
+        transform: translateX(0);
+        clip-path: inset(0 0 0 0);
+    }
+}
+
+.animate-subtle-glitch {
+    animation: subtle-glitch 6s infinite;
+    position: relative;
+    display: inline-block;
+}
+
+.animate-subtle-glitch::before,
+.animate-subtle-glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.3;
+}
+
+.animate-subtle-glitch::before {
+    animation: subtle-glitch 5s infinite;
+    color: #00fffc;
+    mix-blend-mode: screen;
+    clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
+}
+
+.animate-subtle-glitch::after {
+    animation: subtle-glitch-2 7s infinite reverse;
+    color: #fc00ff;
+    mix-blend-mode: screen;
+    clip-path: polygon(0 60%, 100% 60%, 100% 100%, 0 100%);
+}
+
+/* Neon glow effect */
+.neon-glow {
+    text-shadow:
+        0 0 5px currentColor,
+        0 0 10px currentColor,
+        0 0 15px currentColor,
+        0 0 20px currentColor;
+}
+
+.neon-glow-subtle {
+    text-shadow:
+        0 0 2px #00fffc,
+        0 0 4px currentColor,
+        0 0 6px currentColor;
+}
+
+/* Lottie neon glow effect */
+.lottie-neon-glow svg {
+    filter: drop-shadow(0 0 1px currentColor) drop-shadow(0 0 3px currentColor)
+        drop-shadow(0 0 5px currentColor);
+    animation: lottie-neon-pulse 4s infinite alternate;
+}
+
+@keyframes lottie-neon-pulse {
+    0% {
+        filter: drop-shadow(0 0 1px currentColor)
+            drop-shadow(0 0 3px currentColor) drop-shadow(0 0 5px currentColor);
+    }
+    100% {
+        filter: drop-shadow(0 0 1px currentColor)
+            drop-shadow(0 0 3px currentColor) drop-shadow(0 0 5px currentColor);
+    }
 }
