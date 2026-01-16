@@ -10,11 +10,13 @@ interface MultiLineCyberpunkTextProps {
   trackingYear?: string;
 }
 
-export const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
+const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
   const [displayText, setDisplayText] = createSignal("");
   const [typingIndicator, setTypingIndicator] = createSignal(true);
   const [showEffect, setShowEffect] = createSignal(false);
   const [isTypingFirst, setIsTypingFirst] = createSignal(true); // true for typing first text, false for second text
+
+  const shouldAnimate = sessionStorage.getItem("shouldAnimate") !== "false";
 
   onMount(() => {
     // Delay before typing starts
@@ -86,55 +88,91 @@ export const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
   };
 
   return (
-    <div class={`flex flex-col ${props.className} relative`}>
-      <div>
-        {isTypingFirst() ? (
-          <span class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}>
-            {renderWhatTheStackText()}
-            {typingIndicator() && (
-              <span class="ml-0.5 inline-block w-1 h-6 bg-primary-500 align-middle animate-pulse"></span>
+    <>
+      <Show when={shouldAnimate}>
+        <div class={`flex flex-col ${props.className} relative`}>
+          <div>
+            {isTypingFirst() ? (
+              <span
+                class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}
+              >
+                {renderWhatTheStackText()}
+                {typingIndicator() && (
+                  <span class="ml-0.5 inline-block w-1 h-6 bg-primary-500 align-middle animate-pulse"></span>
+                )}
+              </span>
+            ) : (
+              <span
+                class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}
+              >
+                <span class="text-secondary-300">What</span>
+                <span class="text-primary-500">The</span>
+                <span class="text-secondary-300">Stack</span>
+              </span>
             )}
-          </span>
-        ) : (
-          <span class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}>
-            <span class="text-secondary-300">What</span>
-            <span class="text-primary-500">The</span>
-            <span class="text-secondary-300">Stack</span>
-          </span>
-        )}
-      </div>
-      <div class="mt-2">
-        {!isTypingFirst() && (
-          <span class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}>
-            <span
-              class={`text-primary-400 text-2xl ${props.trackingYear || "tracking-[1em]"}`}
-            >
-              {displayText().split("").join(" ")}
-            </span>
-            {typingIndicator() && !isTypingFirst() && (
-              <span class="ml-0.5 inline-block w-1 h-6 bg-primary-500 align-middle animate-pulse"></span>
+          </div>
+          <div class="mt-2">
+            {!isTypingFirst() && (
+              <span
+                class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""} whitespace-nowrap`}
+              >
+                <span
+                  class={`text-primary-400 text-xs md:text-2xl ${props.trackingYear || "tracking-[1em]"}`}
+                >
+                  {displayText().split("").join(" ")}
+                </span>
+                {typingIndicator() && !isTypingFirst() && (
+                  <span class="ml-0.5 inline-block w-1 h-6 bg-primary-500 align-middle animate-pulse"></span>
+                )}
+              </span>
             )}
-          </span>
-        )}
-      </div>
+          </div>
 
-      {/* Subtle glitch effect for the entire text */}
-      <Show when={showEffect()}>
-        <span
-          class={`absolute top-0 left-0 overflow-hidden pointer-events-none opacity-50 flex flex-col`}
-          style={{ color: "#fc00ff" }}
-        >
-          <span class="animate-subtle-glitch" data-text="WhatTheStack">
-            WhatTheStack
-          </span>
-          {/*<span
-            class={`animate-subtle-glitch mt-2 ${props.trackingYear || "tracking-[1em]"}`}
-            data-text="2026"
-          >
-            2 0 2 6
-          </span>*/}
-        </span>
+          {/* Subtle glitch effect for the entire text */}
+          <Show when={showEffect()}>
+            <span
+              class={`absolute top-0 left-0 overflow-hidden pointer-events-none opacity-50 flex flex-col`}
+              style={{ color: "#fc00ff" }}
+            >
+              <span class="animate-subtle-glitch" data-text="WhatTheStack">
+                WhatTheStack
+              </span>
+            </span>
+          </Show>
+        </div>
       </Show>
-    </div>
+      <Show when={!shouldAnimate}>
+        <div class={`flex flex-col ${props.className} relative`}>
+          <div>
+            <span class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}>
+              <span class="text-secondary-300">What</span>
+              <span class="text-primary-500">The</span>
+              <span class="text-secondary-300">Stack</span>
+            </span>
+
+            <div class="mt-2">
+              <span class="relative neon-glow-subtle whitespace-nowrap">
+                <span class="text-primary-400 text-xs md:text-2xl tracking-[0.7em]">
+                  2 0 2 6
+                </span>
+                <span class="ml-0.5 inline-block w-1 h-6 bg-primary-500 align-middle animate-pulse"></span>
+              </span>
+            </div>
+          </div>
+          <Show when={showEffect()}>
+            <span
+              class={`absolute top-0 left-0 overflow-hidden pointer-events-none opacity-50 flex flex-col`}
+              style={{ color: "#fc00ff" }}
+            >
+              <span class="animate-subtle-glitch" data-text="WhatTheStack">
+                WhatTheStack
+              </span>
+            </span>
+          </Show>
+        </div>
+      </Show>
+    </>
   );
 };
+
+export default MultiLineCyberpunkText;

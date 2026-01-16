@@ -1,5 +1,6 @@
-import { onMount, onCleanup } from "solid-js";
-import lottie from "lottie-web";
+import { onMount, onCleanup, createEffect, Show } from "solid-js";
+import lottie, { AnimationItem } from "lottie-web";
+import Logo from "../assets/images/LogoSolo.svg?component-solid";
 
 interface LottieProps {
   animationData: any;
@@ -8,24 +9,27 @@ interface LottieProps {
   renderer?: "svg" | "canvas" | "html";
   style?: any;
   className?: string;
-  hasNeonGlow?: boolean; // Add neon glow effect
+  hasNeonGlow?: boolean;
   onComplete?: () => void;
   onLoopComplete?: () => void;
   onEnterFrame?: (args: any) => void;
   onSegmentStart?: () => void;
 }
 
-export const Lottie = (props: LottieProps) => {
+const Lottie = (props: LottieProps) => {
   let containerRef: HTMLDivElement | undefined;
-  let anim: any;
+  let anim: AnimationItem | undefined;
+
+  const shouldAnimate = sessionStorage.getItem("shouldAnimate") !== "false";
 
   onMount(() => {
-    if (containerRef) {
+    if (containerRef && shouldAnimate) {
       anim = lottie.loadAnimation({
         container: containerRef,
         renderer: props.renderer || "svg",
-        loop: props.loop !== undefined ? props.loop : true,
-        autoplay: props.autoplay !== undefined ? props.autoplay : true,
+        loop: props.loop ?? true,
+        // If shouldAnimate is false, we force autoplay to false initially
+        autoplay: shouldAnimate ?? props.autoplay ?? true,
         animationData: props.animationData,
         rendererSettings: {
           clearCanvas: true,
@@ -34,7 +38,6 @@ export const Lottie = (props: LottieProps) => {
         },
       });
 
-      // Register event handlers if provided
       if (props.onComplete) anim.addEventListener("complete", props.onComplete);
       if (props.onLoopComplete)
         anim.addEventListener("loopComplete", props.onLoopComplete);
@@ -43,19 +46,39 @@ export const Lottie = (props: LottieProps) => {
       if (props.onSegmentStart)
         anim.addEventListener("segmentStart", props.onSegmentStart);
 
-      // Add neon glow effect if requested
       if (props.hasNeonGlow) {
-        // Add the neon glow class to the container
         containerRef.classList.add("lottie-neon-glow");
       }
     }
-
-    onCleanup(() => {
-      if (anim) {
-        anim.destroy();
-      }
-    });
   });
 
-  return <div ref={containerRef} style={props.style} class={props.className} />;
+  // Reactively play/stop based on the shouldAnimate prop
+  createEffect(() => {
+    const active = shouldAnimate ?? true;
+    if (!anim) return;
+
+    if (active) {
+      anim.play();
+    } else {
+      // Go to the last frame and stay there
+      anim.goToAndStop(anim.totalFrames, true);
+    }
+  });
+
+  onCleanup(() => {
+    if (anim) anim.destroy();
+  });
+
+  return (
+    <>
+      <Show when={shouldAnimate}>
+        <div ref={containerRef} style={props.style} class={props.className} />
+      </Show>
+      <Show when={!shouldAnimate}>
+        <Logo class="w-16 h-16 mr-3" />
+      </Show>
+    </>
+  );
 };
+
+export default Lottie;

@@ -3,24 +3,38 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"pnpm pocketbase:start\" \"pnpm start:dev\"",
-    "start:dev": "vinxi dev",
-    "build": "vinxi build",
-    "start": "vinxi start",
-    "version": "vinxi version",
+    "start:dev": "vite dev",
+    "build": "vite build",
+    "start": "vite start",
+    "version": "vite version",
     "pocketbase:download": "bash pocketbase/get-pocketbase.sh",
     "pocketbase:start": "bash pocketbase/start-local.sh",
     "pocketbase:createsuperuser": "bash pocketbase/create-superuser.sh",
     "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "generate:pb-types": "echo 'Manual type definition required. Update src/lib/pocketbase-types.ts based on your PocketBase collections.'"
   },
   "dependencies": {
+    "@iconify-icon/solid": "^3.0.3",
+    "@solid-primitives/storage": "^4.3.3",
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.0",
-    "@solidjs/start": "^1.2.0",
+    "@solidjs/start": "2.0.0-alpha.0",
+    "@solidjs/vite-plugin-nitro-2": "^0.1.0",
+    "@types/spark-md5": "^3.0.5",
+    "dotenv": "^17.2.3",
     "lottie-web": "^5.13.0",
     "pocketbase": "^0.26.2",
+    "prosemirror-commands": "^1.7.1",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.4",
+    "prosemirror-schema-basic": "^1.2.4",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "^1.41.4",
     "solid-js": "^1.9.9",
-    "vinxi": "^0.5.8"
+    "spark-md5": "^3.0.2",
+    "vite": "^7.3.0"
   },
   "engines": {
     "node": ">=22"
@@ -30,9 +44,12 @@
     "@tailwindcss/typography": "^0.5.18",
     "@types/node": "^24.5.2",
     "concurrently": "^9.2.1",
-    "daisyui": "^5.1.14",
+    "daisyui": "^5.5.14",
+    "node-sqlite3": "^0.0.3",
     "postcss": "^8.5.6",
+    "sqlite3": "^5.1.7",
     "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.3",
     "vite-plugin-solid-svg": "^0.8.1"
   }
 }

@@ -1,17 +1,36 @@
 import { Title } from "@solidjs/meta";
 import { Layout } from "../layouts/Layout";
-import { fetchTitoReleases, TitoRelease } from "../lib/tito";
+import { fetchHiEventsReleases, HiEventsRelease } from "../lib/hievents";
 import { createResource, Show, For } from "solid-js";
 
 // Define the fetch function for releases API
-const fetchReleases = async (): Promise<TitoRelease[]> => {
+const fetchReleases = async (): Promise<HiEventsRelease[]> => {
   "use server";
-  const response = await fetchTitoReleases();
-  return response;
+  const apiReleases = await fetchHiEventsReleases();
+
+  // Hardcoded Student Ticket
+  const studentTicket: HiEventsRelease = {
+    id: 999, // Dummy ID
+    title: "Student Ticket",
+    description:
+      "Discounted entry for students. Requires valid student ID card verification.",
+    price: 20,
+    currency: "EUR",
+    is_available: true,
+    sales_start_date: null,
+    sales_end_date: null,
+    quantity_sold: 0,
+    quantity_available: null,
+    purchase_link:
+      "mailto:students@wts.sh?subject=Student%20Ticket%20Verification&body=Hello%2C%0A%0AI%20would%20like%20to%20apply%20for%20a%20student%20ticket%20for%20WhatTheStack%202026.%0A%0AMy%20details%3A%0AName%3A%20%5BYOUR%20NAME%5D%0AUniversity%2FInstitution%3A%20%5BYOUR%20INSTITUTION%5D",
+  };
+
+  // Combine properly - put student ticket last effectively
+  return [...apiReleases, studentTicket];
 };
 
 export default function Tickets() {
-  const [releases] = createResource<TitoRelease[]>(fetchReleases);
+  const [releases] = createResource<HiEventsRelease[]>(fetchReleases);
 
   return (
     <Layout
@@ -20,7 +39,7 @@ export default function Tickets() {
     >
       <div class="container mx-auto relative">
         <div class="absolute inset-0 scanline z-10"></div>
-        <div class="max-w-4xl mx-auto text-center relative z-20">
+        <div class="max-w-7xl mx-auto text-center relative z-20">
           <h1 class="text-4xl md:text-5xl font-star font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-secondary-300 mb-4 neon-glow fade-in">
             Conference Tickets
           </h1>
@@ -49,41 +68,50 @@ export default function Tickets() {
                 </div>
               }
             >
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12 fade-in-delay-2">
+              <div class="flex-wrap md:flex-nowrap flex justify-center gap-8 mb-12 fade-in-delay-2">
                 <For each={releases()}>
                   {(release, index) => (
                     <div
-                      class={`bg-base-200/70 backdrop-blur-sm border border-primary-500/30 rounded-lg p-6 transform transition duration-300 hover:scale-105 hover-pulse grid-scan ${index() === 1 ? "border-2 border-primary-500 relative" : ""}`}
+                      class={`w-full max-w-sm bg-base-200/70 backdrop-blur-sm border border-primary-500/30 rounded-lg p-8 transform transition duration-300 hover:scale-105 hover-pulse grid-scan flex flex-col ${release.title === "Conference entry" ? "border-2 border-primary-500 relative shadow-[0_0_20px_rgba(var(--color-primary-500),0.3)]" : ""}`}
                     >
-                      <Show when={index() === 1}>
-                        <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-primary-500 text-base-100 px-4 py-1 rounded font-star neon-glow">
-                          POPULAR
-                        </div>
-                      </Show>
-                      <h2 class="text-2xl font-star text-primary-500 mb-4">
+                      <h2 class="text-3xl font-star text-primary-500 mb-6">
                         {release.title}
                       </h2>
-                      <div class="text-3xl font-star text-secondary-300 mb-4">
+                      <div class="text-5xl font-star text-secondary-300 mb-6">
                         {release.price !== null ? `€${release.price}` : "FREE"}
                       </div>
-                      <p class="text-secondary-300 mb-4 text-left">
-                        {release.description || "Available for the conference"}
-                      </p>
-                      <ul class="text-secondary-300 space-y-2 mb-6">
-                        <li>✓ Conference talks</li>
-                        <li>✓ Pre-events</li>
-                        <li>✓ After party</li>
-                        <li>✓ Swag</li>
-                        <li>✓ Lunch</li>
-                        <li>✓ Coffee</li>
-                      </ul>
+
+                      {/* Description Area - Flex grow to push button down */}
+                      <div class="flex-grow">
+                        <div
+                          class="text-secondary-300 mb-8 text-left text-lg leading-relaxed"
+                          innerHTML={
+                            release.description ||
+                            "Available for the conference"
+                          }
+                        ></div>
+
+                        <Show when={release.title === "Student Ticket"}>
+                          <div class="text-sm text-secondary-400/80 italic mb-4 text-left border-l-2 border-primary-500 pl-3">
+                            * Requires valid student ID verification via email.
+                            Otherwise identical to regular ticket.
+                          </div>
+                        </Show>
+                      </div>
+
                       <a
-                        href={release.share_url}
-                        target="_blank"
+                        href={release.purchase_link}
+                        target={
+                          release.purchase_link.startsWith("mailto")
+                            ? "_self"
+                            : "_blank"
+                        }
                         rel="noopener noreferrer"
-                        class="btn btn-primary w-full font-star tracking-wider text-base-100 neon-glow hover-pulse"
+                        class="btn btn-primary w-full font-star tracking-wider text-base-100 neon-glow hover-pulse text-xl py-4 h-auto"
                       >
-                        GET TICKET
+                        {release.purchase_link.startsWith("mailto")
+                          ? "APPLY NOW"
+                          : "GET TICKET"}
                       </a>
                     </div>
                   )}

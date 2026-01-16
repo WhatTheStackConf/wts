@@ -1,21 +1,26 @@
 import Logo from "../assets/images/LogoSolo.svg";
-import { createSignal } from "solid-js";
-import { Lottie } from "./Lottie";
+import { createSignal, onMount } from "solid-js";
 import Animation from "../assets/animations/WTS.json";
-import { CyberpunkText } from "./CyberpunkText";
-import { MultiLineCyberpunkText } from "./MultiLineCyberpunkText";
+import { clientOnly } from "@solidjs/start";
+import { Icon } from "@iconify-icon/solid";
+
+const Lottie = clientOnly(() => import("./Lottie"));
+const LoginMenu = clientOnly(() => import("./LoginMenu"));
+const MultiLineCyberpunkText = clientOnly(
+  () => import("./MultiLineCyberpunkText"),
+);
 
 export const Navbar = () => {
   const [lottieData] = createSignal(Animation);
 
-  // Calculate delay for second line (length of first line * typing speed + some buffer)
-  const firstLineLength = "WhatTheStack?".length;
-  const typingSpeed = 150;
-  const bufferTime = 500; // Extra time before second line starts
-  const calculatedDelay = firstLineLength * typingSpeed + bufferTime;
+  onMount(() => {
+    setTimeout(() => {
+      sessionStorage.setItem("shouldAnimate", "false");
+    }, 4000);
+  });
 
   return (
-    <div class="navbar bg-base-200 border-b border-primary-700 shadow-xl relative z-26">
+    <div class="navbar bg-base-200 border-b border-primary-700 shadow-xl relative z-9999">
       <div class="navbar-start flex items-start justify-start">
         <a class="h-16 flex items-center justify-center w-auto" href="/">
           {lottieData() ? (
@@ -24,7 +29,7 @@ export const Navbar = () => {
                 animationData={lottieData()}
                 loop={false}
                 autoplay={true}
-                hasNeonGlow={true}
+                // hasNeonGlow={true}
                 style={{ width: "100%", height: "100%" }}
                 className="text-primary-500"
               />
@@ -34,15 +39,15 @@ export const Navbar = () => {
           )}
           <div>
             <div class="flex flex-col">
-              <h1 class="font-star italic text-2xl leading-tight">
+              <h1 class="font-star italic text-xs md:text-2xl leading-tight">
                 <MultiLineCyberpunkText
                   firstLineText="WhatTheStack"
                   secondLineText="2026"
                   hasGlow={true}
                   className="inline"
                   delay={0}
-                  tracking="tracking-[0.8em]"
-                  trackingYear="tracking-[0.7em]"
+                  tracking="tracking-widest md:tracking-[0.8em]"
+                  trackingYear="tracking-widest md:tracking-[0.7em]"
                 />
               </h1>
             </div>
@@ -58,7 +63,39 @@ export const Navbar = () => {
             <a href="/about">About</a>
           </li>
           <li>
-            <details class="bg-base-200">
+            <button
+              class="uppercase"
+              popovertarget="previous-editions"
+              style="anchor-name:--anchor-1"
+            >
+              Previous editions
+            </button>
+            <ul
+              class="dropdown menu p-2 bg-base-100 shadow-lg w-[200px]"
+              popover
+              id="previous-editions"
+              style="position-anchor:--anchor-1"
+            >
+              <li>
+                <a
+                  href="https://2024.wts.sh"
+                  class="text-center"
+                  target="_blank"
+                >
+                  {`>`} 2024
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://2025.wts.sh"
+                  class="text-center"
+                  target="_blank"
+                >
+                  {`>`} 2025
+                </a>
+              </li>
+            </ul>
+            {/*<details class="bg-base-200 relative">
               <summary>Previous editions</summary>
               <ul class="p-2 bg-base-200 w-full">
                 <li>
@@ -72,12 +109,14 @@ export const Navbar = () => {
                   </a>
                 </li>
               </ul>
-            </details>
+            </details>*/}
           </li>
         </ul>
       </div>
       <div class="navbar-end">
-        <a class="btn btn-ghost btn-lg">Log in</a>
+        <LoginMenu
+          fallback={<Icon icon="eos-icons:three-dots-loading"></Icon>}
+        />
       </div>
     </div>
   );

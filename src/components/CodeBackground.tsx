@@ -2,7 +2,7 @@ import { For, createSignal, onMount } from "solid-js";
 
 const codeSnippets = [
   "function replicant() { return 'More human than human'; }",
-  "const future = new Date(2026, 9, 1); // WhatTheStack date TBD",
+  "const future = new Date(2026, 8, 19); // WhatTheStack date confirmed",
   "if (isReplicant) { console.log('Retire'); } else { console.log('Live free'); }",
   "const neon = 'rgb(255, 0, 255)'; // Cyberpunk pink",
   "for (let i = 0; i < stack.length; i++) { console.log(stack[i]); }",
@@ -17,7 +17,7 @@ const codeSnippets = [
   "const data = { eyes: 'blue', density: 'light' }; // VOIGHT-KAMPFF test",
   "const dystopia = { weather: 'rain', season: 'perpetual night' };",
   "const digitalRain = [...Array(20)].map(() => Math.random());",
-  "const cyberpunk = { city: 'Los Angeles', year: 2049 };",
+  "const cyberpunk = { city: 'Skopje', year: 2049 };",
   "const code = { language: 'Assembly', origin: 'Tyrell Corp' };",
   "const server = { location: 'Off-world colony', security: 'high' };",
   "const stack = { tech: ['Solid.js', 'Node.js', 'WebAssembly'], future: 'bright' };",
@@ -68,7 +68,7 @@ function TypingCode(props: { snippet: string; index: number }) {
 
 export default function CodeBackground() {
   return (
-    <div class="absolute inset-0 overflow-hidden z-5 opacity-25">
+    <div class="absolute inset-0 overflow-hidden z-19">
       {/* Scrolling code lines */}
       <For each={Array.from({ length: 15 })}>
         {(item, i) => {
@@ -92,11 +92,7 @@ export default function CodeBackground() {
                 "animation-delay": `${Math.random() * 5}s`,
               }}
             >
-              {
-                codeSnippets[
-                  Math.floor(Math.random() * codeSnippets.length)
-                ]
-              }
+              {codeSnippets[Math.floor(Math.random() * codeSnippets.length)]}
             </div>
           );
         }}

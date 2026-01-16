@@ -1,5 +1,5 @@
-import { createSignal, createEffect, onCleanup } from 'solid-js';
-import { initPocketBaseClient, getClientPB } from './pocketbase-client-service';
+import { createSignal, createEffect, onCleanup } from "solid-js";
+import pb from "./pocketbase";
 
 // Define types for user authentication
 interface User {
@@ -16,8 +16,6 @@ interface AuthState {
 }
 
 // Initialize PocketBase client
-const clientService = initPocketBaseClient();
-const pb = getClientPB();
 
 // Create authentication store
 const [authState, setAuthState] = createSignal<AuthState>({
@@ -29,7 +27,7 @@ const [authState, setAuthState] = createSignal<AuthState>({
 // Sync auth state with PocketBase auth store
 const unsubscribe = pb.authStore.onChange(() => {
   setAuthState({
-    user: pb.authStore.model as User | null,
+    user: pb.authStore.record as User | null,
     isAuthenticated: pb.authStore.isValid,
     isLoading: false,
   });
@@ -37,44 +35,56 @@ const unsubscribe = pb.authStore.onChange(() => {
 
 // Cleanup subscription on module unload
 onCleanup(() => {
-  if (typeof unsubscribe === 'function') {
+  if (typeof unsubscribe === "function") {
     unsubscribe();
   }
 });
 
 // Authentication functions
 const login = async (email: string, password: string) => {
-  setAuthState(prev => ({ ...prev, isLoading: true }));
+  setAuthState((prev) => ({ ...prev, isLoading: true }));
   try {
-    const authData = await clientService.login(email, password);
+    const authData = await pb
+      .collection("userrs")
+      .authWithPassword(email, password);
     setAuthState({
-      user: authData.record as User,
+      user: authData.record as unknown as User,
       isAuthenticated: authData.record !== null,
       isLoading: false,
     });
     return authData;
   } catch (error) {
-    setAuthState(prev => ({ ...prev, isLoading: false }));
-    console.error('Login error:', error);
+    setAuthState((prev) => ({ ...prev, isLoading: false }));
+    console.error("Login error:", error);
     throw error;
   }
 };
 
-const register = async (email: string, password: string, passwordConfirm: string, name: string) => {
-  setAuthState(prev => ({ ...prev, isLoading: true }));
+const register = async (
+  email: string,
+  password: string,
+  passwordConfirm: string,
+  name: string,
+) => {
+  setAuthState((prev) => ({ ...prev, isLoading: true }));
   try {
-    const userData = await clientService.register(email, password, passwordConfirm, name);
-    setAuthState(prev => ({ ...prev, isLoading: false }));
+    const userData = await pb.collection("userrs").create({
+      email,
+      password,
+      passwordConfirm,
+      name,
+    });
+    setAuthState((prev) => ({ ...prev, isLoading: false }));
     return userData;
   } catch (error) {
-    setAuthState(prev => ({ ...prev, isLoading: false }));
-    console.error('Registration error:', error);
+    setAuthState((prev) => ({ ...prev, isLoading: false }));
+    console.error("Registration error:", error);
     throw error;
   }
 };
 
 const logout = () => {
-  clientService.logout();
+  pb.authStore.clear();
   setAuthState({
     user: null,
     isAuthenticated: false,
@@ -94,19 +104,19 @@ const isLoading = () => authState().isLoading;
 // Refresh user data
 const refreshUser = async () => {
   if (!isAuthenticated()) return null;
-  
+
   try {
     const currentUser = getCurrentUser();
     if (!currentUser) return null;
-    
-    const updatedUser = await pb.collection('users').getOne(currentUser.id);
-    setAuthState(prev => ({
+
+    const updatedUser = await pb.collection("users").getOne(currentUser.id);
+    setAuthState((prev) => ({
       ...prev,
-      user: updatedUser as User,
+      user: updatedUser as unknown as User,
     }));
     return updatedUser;
   } catch (error) {
-    console.error('Error refreshing user:', error);
+    console.error("Error refreshing user:", error);
     logout(); // If we can't refresh the user, log them out
     throw error;
   }

@@ -43,5 +43,5 @@ export default function AlternativelyTyping(props: AlternativelyTypingProps) {
     setTimeout(type, 500);
   });
 
-  return <span class="text-primary-600 font-bold">{currentText()}</span>;
+  return <span class="text-primary-600 font-bold">{currentText() || "\u00A0"}</span>;
 }
