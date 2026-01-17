@@ -6,17 +6,19 @@ services:
       context: .
       dockerfile: Dockerfile
     depends_on:
-      - pocketbase
+      pocketbase:
+        condition: service_healthy
     environment:
       - POCKETBASE_URL=http://pocketbase:8090
+      - PUBLIC_POCKETBASE_URL=${PUBLIC_POCKETBASE_URL:-http://localhost:8090}
     restart: unless-stopped
+    ports:
+      - "3000:3000"
 
   pocketbase:
     build:
       context: ./pocketbase
       dockerfile: Dockerfile
-    ports:
-      - "8090:8090"
     environment:
       - PB_SUPERUSER_EMAIL=${POCKETBASE_SUPERUSER_EMAIL}
       - PB_SUPERUSER_PASSWORD=${POCKETBASE_SUPERUSER_PASSWORD}
@@ -24,7 +26,26 @@ services:
       # Persistent storage for PocketBase data
       - pocketbase_data:/pb/pb_data
     restart: unless-stopped
+    ports:
+      - "8090:8090"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8090/api/health",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pocketbase_data:
     # This ensures data persistence between deployments
+
+networks:
+  default:
+    name: wts_network
