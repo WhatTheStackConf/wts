@@ -14,6 +14,11 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --dangerously-allow-all-builds
 
 COPY . .
+
+# Pass PUBLIC_ vars as build args so they are baked into the static build
+ARG VITE_POCKETBASE_URL
+ENV VITE_POCKETBASE_URL=$VITE_POCKETBASE_URL
+
 RUN npm_config_fsevents=false pnpm build
 
 # Stage 3: Runner
