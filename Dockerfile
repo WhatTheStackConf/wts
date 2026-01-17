@@ -11,7 +11,7 @@ RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --dangerously-allow-all-builds
+RUN pnpm install --dangerously-allow-all-builds
 
 COPY . .
 RUN npm_config_fsevents=false pnpm build
