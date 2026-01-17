@@ -12,8 +12,6 @@ services:
       - POCKETBASE_URL=http://pocketbase:8090
       - PUBLIC_POCKETBASE_URL=${PUBLIC_POCKETBASE_URL:-http://localhost:8090}
     restart: unless-stopped
-    ports:
-      - "3000:3000"
 
   pocketbase:
     build:
@@ -26,8 +24,6 @@ services:
       # Persistent storage for PocketBase data
       - pocketbase_data:/pb/pb_data
     restart: unless-stopped
-    ports:
-      - "8090:8090"
     healthcheck:
       test:
         [
