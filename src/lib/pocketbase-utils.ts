@@ -39,10 +39,40 @@ export const loginWithGithub = async (): Promise<AuthData> => {
     const authData: AuthData = await pb.collection("users").authWithOAuth2({
       provider: "github",
     });
+
+    // Extract name from GitHub metadata if user's name is empty
+    const meta = (authData as any).meta;
+    const record = authData.record;
+
+    if (record && !record.name && meta && (meta.name || meta.username)) {
+      const nameToUse = meta.name || meta.username;
+
+      try {
+        await pb.collection("users").update(record.id, {
+          name: nameToUse,
+        });
+        // Update the local record with the new name
+        authData.record.name = nameToUse;
+      } catch (updateError) {
+        console.warn("Failed to auto-update GitHub name:", updateError);
+        // We continue even if update fails, as login was successful
+      }
+    }
+
     return authData;
   } catch (error) {
     console.error("Login with GitHub error:", error);
     throw error;
+  }
+};
+
+export const requestEmailVerification = async (email: string): Promise<boolean> => {
+  try {
+    await pb.collection("users").requestVerification(email);
+    return true;
+  } catch (error) {
+    console.error("Request verification error:", error);
+    return false; // Don't throw to avoid breaking the registration flow if email fails
   }
 };
 

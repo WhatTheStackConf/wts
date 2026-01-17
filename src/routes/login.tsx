@@ -22,7 +22,15 @@ const LoginPage = () => {
     setError("");
 
     try {
-      await auth?.login(email(), password());
+      const data = await auth?.login(email(), password());
+
+      // Enforce email verification
+      if (!data?.record?.verified) {
+        auth?.logout();
+        setError("Please verify your email address before logging in.");
+        return;
+      }
+
       location.href = "/";
     } catch (err: any) {
       console.error("Login error:", err);

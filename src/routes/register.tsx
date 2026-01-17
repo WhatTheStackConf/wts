@@ -28,8 +28,12 @@ const RegisterPage = () => {
 
     try {
       // Import the register function from the auth utils
-      const { register } = await import("~/lib/pocketbase-utils");
+      const { register, requestEmailVerification } = await import("~/lib/pocketbase-utils");
       await register(email(), password(), passwordConfirm(), name());
+
+      // Trigger email verification
+      await requestEmailVerification(email());
+
       setSuccess(true);
     } catch (err: any) {
       console.error("Registration error:", err);
