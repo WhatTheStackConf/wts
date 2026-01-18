@@ -98,6 +98,32 @@
   --color-primary-900: oklch(0.3 0.1 330);
   --color-primary-950: oklch(0.2 0.05 330);
 
+  /* Accent colors */
+  --color-accent-50: oklch(0.97 0.05 180);
+  --color-accent-100: oklch(0.95 0.1 180);
+  --color-accent-200: oklch(0.9 0.15 180);
+  --color-accent-300: oklch(0.85 0.2 180);
+  --color-accent-400: oklch(0.8 0.25 180);
+  --color-accent-500: oklch(0.7 0.3 180);
+  --color-accent-600: oklch(0.6 0.25 180);
+  --color-accent-700: oklch(0.5 0.2 180);
+  --color-accent-800: oklch(0.4 0.15 180);
+  --color-accent-900: oklch(0.3 0.1 180);
+  --color-accent-950: oklch(0.2 0.05 180);
+
+  /* Warning colors */
+  --color-warning-50: oklch(0.97 0.05 95);
+  --color-warning-100: oklch(0.95 0.1 95);
+  --color-warning-200: oklch(0.9 0.15 95);
+  --color-warning-300: oklch(0.85 0.2 95);
+  --color-warning-400: oklch(0.8 0.25 95);
+  --color-warning-500: oklch(0.7 0.3 95);
+  --color-warning-600: oklch(0.6 0.25 95);
+  --color-warning-700: oklch(0.5 0.2 95);
+  --color-warning-800: oklch(0.4 0.15 95);
+  --color-warning-900: oklch(0.3 0.1 95);
+  --color-warning-950: oklch(0.2 0.05 95);
+
   /* Font families */
   --font-sans: "Jura";
   --font-star: "StarzoomShavian";

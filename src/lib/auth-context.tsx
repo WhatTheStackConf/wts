@@ -15,11 +15,14 @@ import {
   loginWithGoogle,
 } from "~/lib/pocketbase-utils";
 
+import { UserRecord } from "~/lib/pocketbase-types";
+
 interface AuthContextType {
   isAuthenticated: () => boolean;
   login: (email: string, password: string) => Promise<any>;
   logout: () => void;
-  record: any;
+  record: UserRecord | null;
+  user: UserRecord | null; // Alias for record
   isLoading: () => boolean;
   githubLogin: () => Promise<any>;
   googleLogin: () => Promise<any>;
@@ -28,19 +31,19 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>();
 
 export const AuthProvider = (props: { children: any }) => {
-  const [record, setRecord] = createSignal<any>(pb.authStore.record);
+  const [record, setRecord] = createSignal<UserRecord | null>(pb.authStore.record as unknown as UserRecord | null);
   const [loading, setLoading] = createSignal(true);
 
   // Check auth status on mount
   onMount(() => {
     setLoading(true);
-    setRecord(pb.authStore.record);
+    setRecord(pb.authStore.record as unknown as UserRecord | null);
     setLoading(false);
   });
 
   // Listen for auth changes
   const unlisten = pb.authStore.onChange(() => {
-    setRecord(pb.authStore.record);
+    setRecord(pb.authStore.record as unknown as UserRecord | null);
   });
 
   // Clean up listener
@@ -52,7 +55,8 @@ export const AuthProvider = (props: { children: any }) => {
     setLoading(true);
     try {
       const userData = await loginUtil(email, password);
-      setRecord(userData.record);
+      // Ensure record matches UserRecord
+      setRecord(userData.record as unknown as UserRecord);
       return userData;
     } finally {
       setLoading(false);
@@ -63,7 +67,7 @@ export const AuthProvider = (props: { children: any }) => {
     setLoading(true);
     try {
       const userData = await loginWithGithub();
-      setRecord(userData.record);
+      setRecord(userData.record as unknown as UserRecord);
       return userData;
     } finally {
       setLoading(false);
@@ -74,7 +78,7 @@ export const AuthProvider = (props: { children: any }) => {
     setLoading(true);
     try {
       const userData = await loginWithGoogle();
-      setRecord(userData.record);
+      setRecord(userData.record as unknown as UserRecord);
       return userData;
     } finally {
       setLoading(false);
@@ -93,6 +97,7 @@ export const AuthProvider = (props: { children: any }) => {
     githubLogin,
     googleLogin,
     record: record(),
+    user: record(), // Expose user alias
     isLoading: loading,
   };
 

@@ -172,3 +172,112 @@ export async function fetchHiEventsReleases(): Promise<HiEventsRelease[]> {
     return [];
   }
 }
+
+export interface HiEventsAttendee {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  locale: string;
+  checked_in_at: string | null;
+  ticket: {
+    id: number;
+    title: string;
+    price: number;
+    currency: string;
+  };
+  public_url: string; // e.g. https://.../locale/check-in/ticket/{uuid}
+  admin_url: string;
+}
+
+export async function fetchHiEventsAttendees(filterEmail?: string): Promise<HiEventsAttendee[]> {
+  "use server";
+  const rawApiUrl = process.env.HIEVENTS_API_URL;
+  const eventId = process.env.HIEVENTS_EVENT_ID;
+
+  if (!rawApiUrl || !eventId) {
+    console.warn("HIEVENTS_API_URL or HIEVENTS_EVENT_ID not set");
+    return [];
+  }
+
+  const apiUrl = getApiBaseUrl(rawApiUrl);
+
+  try {
+    const token = await getAuthToken(rawApiUrl);
+
+    const headers: HeadersInit = {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    };
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    // 1. Fetch products (releases) to get ticket details (title, price)
+    // We reuse the existing logic or function if possible, but for safety in this scope we'll fetch them here or call the exported function.
+    // To avoid circular refs or server-only issues, let's just call fetchHiEventsReleases if it's safe, or re-fetch.
+    // Since fetchHiEventsReleases is exported and "use server", we can call it.
+    const releases = await fetchHiEventsReleases();
+    const productsMap = new Map<number, HiEventsRelease>();
+    releases.forEach(r => productsMap.set(r.id, r));
+
+    // 2. Fetch Attendees
+    const endpoint = `${apiUrl}/events/${eventId}/attendees`;
+
+    // Attempt to filter by email via API to reduce load if supported (hi.events might support ?query= or ?email=)
+    // The user snippet used ?sort_by=email. We will fetch all (default page size might be 25, need to handle pagination if list grows, 
+    // but for now let's assume one page or we just fetch the default).
+    // NOTE: In production with many attendees, we should paginate. 
+    // For this implementation, we will fetch the first page.
+
+    const response = await fetch(endpoint, { headers });
+
+    if (!response.ok) {
+      console.error(
+        `Failed to fetch attendees from hi.events: ${response.status} ${response.statusText}`,
+      );
+      return [];
+    }
+
+    const json = await response.json();
+    const data = json.data || [];
+
+    let attendees: HiEventsAttendee[] = [];
+
+    if (Array.isArray(data)) {
+      attendees = data.map((item: any) => {
+        const product = productsMap.get(item.product_id);
+        // Use public_id or short_id if available for display, otherwise cast id to string
+        const displayId = item.public_id || item.short_id || String(item.id);
+
+        return {
+          id: displayId,
+          first_name: item.first_name,
+          last_name: item.last_name,
+          email: item.email,
+          locale: item.locale,
+          checked_in_at: (item.check_ins && item.check_ins.length > 0) ? item.check_ins[0].created_at : null,
+          ticket: {
+            id: item.product_id,
+            title: product ? product.title : "Unknown Ticket",
+            price: product ? (product.price || 0) : 0,
+            currency: product ? product.currency : "EUR"
+          },
+          public_url: item.public_id ? `${rawApiUrl}/check-in/ticket/${item.public_id}` : "",
+          admin_url: ""
+        };
+      });
+    }
+
+    if (filterEmail) {
+      return attendees.filter(a => a.email.toLowerCase() === filterEmail.toLowerCase());
+    }
+
+    return attendees;
+
+  } catch (error) {
+    console.error("Error fetching attendees from hi.events:", error);
+    return [];
+  }
+}

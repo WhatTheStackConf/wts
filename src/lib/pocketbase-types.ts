@@ -10,7 +10,8 @@ export interface UserRecord extends RecordModel {
   avatar: string;
   created: string;
   updated: string;
-  role?: string;
+  role: "user" | "reviewer" | "admin";
+  verified?: boolean;
 }
 
 // CFP Applicant collection type
@@ -36,6 +37,24 @@ export interface CfpSubmissionRecord extends RecordModel {
   applicant: string; // relation to cfp_applicants collection
   created: string;
   updated: string;
+  status?: "pending" | "accepted" | "rejected";
+}
+
+// CFP Review collection type
+export interface CfpReviewRecord extends RecordModel {
+  id: string;
+  submission: string; // relation to cfp_submissions
+  reviewer: string;   // relation to users
+  score_relevance: number;   // 1-5
+  score_originality: number; // 1-5
+  score_depth: number;       // 1-5
+  score_clarity: number;     // 1-5
+  score_takeaways: number;   // 1-5
+  score_engagement: number;  // 1-5
+  notes?: string;
+  is_llm_suspected: boolean;
+  created: string;
+  updated: string;
 }
 
 // Type for authentication data
@@ -48,7 +67,8 @@ export interface AuthData {
 export type CollectionRecord =
   | UserRecord
   | CfpApplicantRecord
-  | CfpSubmissionRecord;
+  | CfpSubmissionRecord
+  | CfpReviewRecord;
 
 // Type guard functions
 export function isUserRecord(record: CollectionRecord): record is UserRecord {
@@ -68,4 +88,10 @@ export function isCfpSubmissionRecord(
   record: CollectionRecord,
 ): record is CfpSubmissionRecord {
   return (record as any).collectionName === "cfp_submissions";
+}
+
+export function isCfpReviewRecord(
+  record: CollectionRecord,
+): record is CfpReviewRecord {
+  return (record as any).collectionName === "cfp_reviews";
 }

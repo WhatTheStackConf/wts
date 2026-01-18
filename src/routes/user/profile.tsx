@@ -8,6 +8,7 @@ import { Icon } from "@iconify-icon/solid";
 
 import SparkMD5 from "spark-md5";
 import { fetchProposals, loadSubmissionToStore, resetProposalData } from "~/lib/cfp-store";
+import { fetchHiEventsAttendees } from "~/lib/hievents";
 
 const ProfilePage = () => {
   const auth = useAuth();
@@ -23,6 +24,7 @@ const ProfilePage = () => {
   } | null>(null);
 
   const [proposals] = createResource(fetchProposals);
+  const [tickets] = createResource(() => user()?.email, fetchHiEventsAttendees);
 
   const handleEditProposal = (proposal: any) => {
     loadSubmissionToStore(proposal);
@@ -103,7 +105,7 @@ const ProfilePage = () => {
       title="Agent Profile // WhatTheStack"
       description="Manage your digital identity."
     >
-      <div class="min-h-screen pt-32 pb-20 relative overflow-hidden">
+      <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
         {/* Background Elements */}
         <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-primary-900/20 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
         <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-secondary-900/20 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
@@ -111,7 +113,7 @@ const ProfilePage = () => {
         <div class="container mx-auto px-4">
           <div class="max-w-4xl mx-auto">
             {/* Header */}
-            <div class="mb-12 text-center md:text-left">
+            <div class="mb-8 text-center md:text-left">
               <div class="inline-block px-4 py-1 border border-primary-500/30 rounded-full bg-primary-500/10 backdrop-blur-sm mb-4">
                 <span class="text-primary-300 font-mono text-sm tracking-widest uppercase">
                   ACCESS LEVEL: AUTHENTICATED
@@ -252,22 +254,77 @@ const ProfilePage = () => {
 
             {/* Ticket Section Mockup */}
             <div class="mt-8">
-              <div class="glass-panel p-8 rounded-2xl border border-white/10 relative overflow-hidden">
-                <div class="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
-                  <Icon icon="game-icons:ticket" width="120" />
-                </div>
-                <h3 class="text-2xl font-star text-white mb-6">TICKETS</h3>
+              {/* Tickets Section */}
+              <div class="mt-8">
+                <div class="glass-panel p-8 rounded-2xl border border-white/10 relative overflow-hidden">
+                  <div class="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+                    <Icon icon="game-icons:ticket" width="120" />
+                  </div>
+                  <h3 class="text-2xl font-star text-white mb-6">MY TICKETS</h3>
 
-                <div class="p-6 border border-dashed border-white/20 rounded-xl bg-base-300/20 text-center">
-                  <p class="text-secondary-300 font-mono mb-4">
-                    NO ACTIVE TICKETS DETECTED
-                  </p>
-                  <a
-                    href="/tickets"
-                    class="btn btn-outline btn-secondary font-mono"
-                  >
-                    GET TICKETS
-                  </a>
+                  <Show when={tickets.loading}>
+                    <div class="flex justify-center py-8">
+                      <span class="loading loading-bars loading-lg text-secondary"></span>
+                    </div>
+                  </Show>
+
+                  <Show when={!tickets.loading && tickets()?.length === 0}>
+                    <div class="p-6 border border-dashed border-white/20 rounded-xl bg-base-300/20 text-center">
+                      <p class="text-secondary-300 font-mono mb-4">
+                        NO ACTIVE TICKETS FOUND FOR {user()?.email?.toUpperCase()}
+                      </p>
+                      <a
+                        href="/tickets"
+                        class="btn btn-outline btn-secondary font-mono"
+                      >
+                        GET TICKETS
+                      </a>
+                    </div>
+                  </Show>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <For each={tickets()}>
+                      {(attendee) => (
+                        <div class="p-6 bg-base-300/30 border border-white/5 rounded-xl hover:border-secondary-500/50 transition-colors group relative overflow-hidden">
+                          {/* Decorative side bar */}
+                          <div class="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-secondary-400 to-primary-500"></div>
+
+                          <div class="flex justify-between items-start mb-4">
+                            <div>
+                              <h4 class="text-lg font-bold text-white mb-1 group-hover:text-secondary-300 transition-colors">
+                                {attendee.ticket.title}
+                              </h4>
+                              <div class="text-xs font-mono text-white/50 bg-white/5 rounded px-2 py-1 inline-block">
+                                ID: {attendee.id.substring(0, 8)}...
+                              </div>
+                            </div>
+                            <Show when={attendee.public_url}>
+                              <a
+                                href={attendee.public_url}
+                                target="_blank"
+                                class="btn btn-xs btn-outline btn-secondary font-mono"
+                              >
+                                VIEW
+                              </a>
+                            </Show>
+                          </div>
+
+                          <div class="space-y-2 text-sm font-mono text-secondary-300/80">
+                            <div class="flex justify-between">
+                              <span>STATUS:</span>
+                              <span class={attendee.checked_in_at ? "text-success" : "text-warning"}>
+                                {attendee.checked_in_at ? "CHECKED IN" : "CONFIRMED"}
+                              </span>
+                            </div>
+                            <div class="flex justify-between">
+                              <span>PRICE:</span>
+                              <span>{attendee.ticket.price} {attendee.ticket.currency}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </For>
+                  </div>
                 </div>
               </div>
             </div>
