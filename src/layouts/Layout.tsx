@@ -2,6 +2,7 @@ import { JSX } from "solid-js";
 import { Title, Meta, Link } from "@solidjs/meta";
 import { Navbar } from "~/components/Navbar";
 import CodeBackground from "../components/CodeBackground";
+import { Footer } from "~/components/Footer";
 
 interface LayoutProps {
   children: JSX.Element;
@@ -16,7 +17,7 @@ export const Layout = (props: LayoutProps) => {
       <Title>{props.title}</Title>
       <Link rel="icon" href="/favicon.svg" />
       <Meta name="description" content={props.description} />
-      <main class="font-sans relative w-full flex flex-col items-center justify-center py-15">
+      <main class="font-sans relative w-full min-h-screen flex flex-col items-center overflow-x-hidden">
         <CodeBackground />
         <div class="absolute z-24 w-full min-h-screen h-full top-0 left-0 bg-black opacity-[76%]"></div>
 
@@ -26,8 +27,11 @@ export const Layout = (props: LayoutProps) => {
         />
 
         {/* Layer 3: Content */}
-        <div class="relative z-225 max-w-[80%] flex flex-col items-center justify-center">
+        <div class="relative z-225 w-full md:max-w-[80%] flex flex-col items-center justify-center flex-grow py-20">
           {props.children}
+        </div>
+        <div class="w-full relative z-225">
+          <Footer />
         </div>
       </main>
     </>

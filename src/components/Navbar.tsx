@@ -39,7 +39,7 @@ export const Navbar = () => {
       {/* Drawer Content: The actual Navbar */}
       <div class="drawer-content flex flex-col">
         <div class="navbar bg-base-200 border-b border-primary-700 shadow-xl relative">
-          <div class="navbar-start flex items-start justify-start">
+          <div class="navbar-start flex items-center justify-start">
             {/* Mobile Hamburger (Drawer Toggle) */}
             <div class="flex-none lg:hidden">
               <label for="mobile-drawer" aria-label="open sidebar" class="btn btn-square btn-ghost">
@@ -47,9 +47,9 @@ export const Navbar = () => {
               </label>
             </div>
 
-            <a class="h-16 flex items-center justify-center w-auto ml-2 lg:ml-0" href="/">
+            <a class="h-6 lg:h-16 flex items-center justify-center w-auto ml-2 lg:ml-0" href="/">
               {lottieData() ? (
-                <div class="h-16 w-16 mr-3">
+                <div class="h-6 w-6 mr-4 lg:h-16 lg:w-16 lg:mr-3">
                   <Lottie
                     animationData={lottieData()}
                     loop={false}
@@ -59,7 +59,13 @@ export const Navbar = () => {
                   />
                 </div>
               ) : (
-                <Logo class="h-16 mr-3 w-auto" {...({} as any)} />
+                <div class="h-6 w-6 mr-4 lg:h-16 lg:w-16 lg:mr-3 [&>svg]:!w-full [&>svg]:!h-full">
+                  <Logo
+                    class="w-full h-full text-current"
+                    style={{ width: "100%", height: "100%" }}
+                    {...({} as any)}
+                  />
+                </div>
               )}
               <div>
                 <div class="flex flex-col">
@@ -71,7 +77,7 @@ export const Navbar = () => {
                       className="inline"
                       delay={0}
                       tracking="tracking-widest md:tracking-[0.8em]"
-                      trackingYear="tracking-widest md:tracking-[0.7em]"
+                      trackingYear="tracking-[0.5em] md:tracking-[0.7em]"
                     />
                   </h1>
                 </div>

@@ -19,7 +19,7 @@ export default function Home() {
             </h2>
             <div class="text-lg text-secondary-200 font-light leading-relaxed max-w-3xl">
               Meanwhile:
-              <ul class="flex flex-col md:flex-row gap-4 text-xl font-black">
+              <ul class="flex flex-col gap-4 pt-4 text-xl font-black">
                 <li>
                   <a href="/tickets" class="link  text-primary-200">
                     {`>`} Grab a ticket
@@ -31,8 +31,8 @@ export default function Home() {
                   </a>
                 </li>
                 <li>
-                  <a href="/cfp" class="link  text-primary-200">
-                    {`>`} Follow us
+                  <a href="/partnerships" class="link  text-primary-200">
+                    {`>`} Partner with us
                   </a>
                 </li>
               </ul>

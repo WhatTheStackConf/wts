@@ -3,4 +3,5 @@ onlyBuiltDependencies:
   - '@tailwindcss/oxide'
   - esbuild
   - node-sqlite3
+  - sharp
   - sqlite3

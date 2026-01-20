@@ -51,9 +51,7 @@ const Proposal = () => {
     setCfpStore("formData", name, value);
   };
 
-  createEffect(() => { });
-
-
+  createEffect(() => {});
 
   return (
     <CfpStepLayout
@@ -74,7 +72,10 @@ const Proposal = () => {
             <p class="text-sm font-mono text-secondary-300">
               Please note that the time limit for each talk is 35 minutes in
               total (including Q&A). You can decide how you'd like to allocate
-              the time between your talk and Q&A.
+              the time between your talk and Q&A. <br />
+              That said, if your proposal is about a workshop, lighting talk, or
+              any other format that requires a different amount of time, please
+              specify an estimated duration in your proposal.
             </p>
           </div>
         </div>
@@ -90,13 +91,12 @@ const Proposal = () => {
               value={cfpStore.formData.talk_title}
               onInput={handleInputChange}
               placeholder="e.g. Architecting for the..."
-              class={`input input-lg input-bordered w-full bg-base-300/30 border-white/10 focus:border-primary focus:outline-none transition-colors font-bold text-white ${errors().talk_title ? "input-error" : ""
-                }`}
+              class={`input input-lg input-bordered w-full bg-base-300/30 border-white/10 focus:border-primary focus:outline-none transition-colors font-bold text-white ${
+                errors().talk_title ? "input-error" : ""
+              }`}
             />
             <Show when={errors().talk_title}>
-              <span class="text-error text-xs mt-1">
-                {errors().talk_title}
-              </span>
+              <span class="text-error text-xs mt-1">{errors().talk_title}</span>
             </Show>
             <label class="label text-xs text-secondary-300">
               Public if your talk is accepted
@@ -146,8 +146,8 @@ const Proposal = () => {
               placeholder="e.g. I need to plug in my own device, or special audio requirements."
             />
             <label class="label text-xs text-secondary-300">
-              By default, we assume you'll use your own laptop. You can
-              connect to the projector via HDMI or type-c.
+              By default, we assume you'll use your own laptop. You can connect
+              to the projector via HDMI or type-c.
             </label>
           </div>
         </div>

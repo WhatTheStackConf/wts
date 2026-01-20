@@ -37,15 +37,15 @@ export const Hero = () => {
   const attendees = useCountUp(800, 2500);
 
   return (
-    <section>
-      <div class="grid lg:grid-cols-2 gap-10 items-center">
+    <section class="">
+      <div class="grid lg:grid-cols-2 gap-10 items-center px-3 md:px-0">
         <div class="fade-in">
           <div class="inline-block px-3 py-1 bg-dark-800/50 border-l-2 border-secondary-500 text-[16px] tracking-[4px] mb-8 text-secondary-200">
             19TH SEPTEMBER 2026 // SKOPJE, MK
           </div>
 
           <div class="flex gap-2">
-            <h1 class="font-star text-7xl leading-[0.85] uppercase tracking-tighter font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-secondary-300 mb-6 fade-in">
+            <h1 class="font-star text-5xl lg:text-7xl leading-[0.85] uppercase tracking-tighter font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-secondary-300 mb-6 fade-in">
               WHAT THE
               <br />
               STACK _
@@ -100,7 +100,10 @@ export const Hero = () => {
       </div>
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12 mt-20 pt-12 border-t border-white/20 fade-in-delay-2 relative text-center lg:text-left">
         <div class="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-secondary-500/50 to-transparent"></div>
-        <div class="group">
+        <div
+          class="group tooltip cursor-help"
+          data-tip="That's at least 5. Due to the venue change, we can totally do more this time around! "
+        >
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
             Workshops
           </span>
@@ -108,7 +111,10 @@ export const Hero = () => {
             {workshops()}+
           </span>
         </div>
-        <div class="group">
+        <div
+          class="group tooltip cursor-help"
+          data-tip="30 of the regular ones; We have a few new ideas too!"
+        >
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
             Talks
           </span>
@@ -116,7 +122,10 @@ export const Hero = () => {
             {talks()}+
           </span>
         </div>
-        <div class="group">
+        <div
+          class="group tooltip cursor-help"
+          data-tip="New venue - anything is possible. As in, more!"
+        >
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
             Tracks
           </span>
@@ -124,7 +133,10 @@ export const Hero = () => {
             {tracks()}*
           </span>
         </div>
-        <div class="group">
+        <div
+          class="group tooltip cursor-help"
+          data-tip="Based on last year's attendance. But, if we project it, we'll probably break 1000."
+        >
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
             Attendees
           </span>

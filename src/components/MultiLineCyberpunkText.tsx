@@ -90,7 +90,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
   return (
     <>
       <Show when={shouldAnimate}>
-        <div class={`flex flex-col ${props.className} relative`}>
+        <div class={`flex flex-col ${props.className} relative leading-none`}>
           <div>
             {isTypingFirst() ? (
               <span
@@ -98,7 +98,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
               >
                 {renderWhatTheStackText()}
                 {typingIndicator() && (
-                  <span class="ml-0.5 inline-block w-1 h-6 bg-primary-500 align-middle animate-pulse"></span>
+                  <span class="ml-0.5 inline-block w-1 h-3 md:h-6 bg-primary-500 align-middle animate-pulse"></span>
                 )}
               </span>
             ) : (
@@ -111,7 +111,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
               </span>
             )}
           </div>
-          <div class="mt-2">
+          <div class="mt-0 md:mt-2">
             {!isTypingFirst() && (
               <span
                 class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""} whitespace-nowrap`}
@@ -122,7 +122,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
                   {displayText().split("").join(" ")}
                 </span>
                 {typingIndicator() && !isTypingFirst() && (
-                  <span class="ml-0.5 inline-block w-1 h-6 bg-primary-500 align-middle animate-pulse"></span>
+                  <span class="ml-0.5 inline-block w-1 h-3 md:h-6 bg-primary-500 align-middle animate-pulse"></span>
                 )}
               </span>
             )}
@@ -142,7 +142,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
         </div>
       </Show>
       <Show when={!shouldAnimate}>
-        <div class={`flex flex-col ${props.className} relative`}>
+        <div class={`flex flex-col ${props.className} relative leading-none`}>
           <div>
             <span class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}>
               <span class="text-secondary-300">What</span>
@@ -150,12 +150,12 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
               <span class="text-secondary-300">Stack</span>
             </span>
 
-            <div class="mt-2">
+            <div class="mt-0 md:mt-2">
               <span class="relative neon-glow-subtle whitespace-nowrap">
-                <span class="text-primary-400 text-xs md:text-2xl tracking-[0.7em]">
+                <span class={`text-primary-400 text-xs md:text-2xl ${props.trackingYear || "tracking-[0.7em]"}`}>
                   2 0 2 6
                 </span>
-                <span class="ml-0.5 inline-block w-1 h-6 bg-primary-500 align-middle animate-pulse"></span>
+                <span class="ml-0.5 inline-block w-1 h-3 md:h-6 bg-primary-500 align-middle animate-pulse"></span>
               </span>
             </div>
           </div>

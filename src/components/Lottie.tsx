@@ -75,7 +75,7 @@ const Lottie = (props: LottieProps) => {
         <div ref={containerRef} style={props.style} class={props.className} />
       </Show>
       <Show when={!shouldAnimate}>
-        <Logo class="w-16 h-16 mr-3" />
+        <Logo class="w-full h-full" />
       </Show>
     </>
   );

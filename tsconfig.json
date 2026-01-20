@@ -10,10 +10,19 @@
     "allowJs": true,
     "strict": true,
     "noEmit": true,
-    "types": ["vite-plugin-solid-svg/types", "vite/client", "node"],
+    "types": [
+      "vite-plugin-solid-svg/types",
+      "vite/client",
+      "node"
+    ],
     "isolatedModules": true,
     "paths": {
-      "~/*": ["./src/*"],
+      "~/*": [
+        "./src/*"
+      ],
+      ".velite": [
+        "./.velite"
+      ]
     },
   },
 }
