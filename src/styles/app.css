@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import url(https://fonts.googleapis.com/css?family=Jura);
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap");
 
 @plugin "@tailwindcss/typography";
 
@@ -125,7 +125,7 @@
   --color-warning-950: oklch(0.2 0.05 95);
 
   /* Font families */
-  --font-sans: "Jura";
+  --font-sans: "Space Grotesk", sans-serif;
   --font-star: "StarzoomShavian";
 
   --animate-sweep: sweep 10s infinite linear;
@@ -136,28 +136,35 @@
     0% {
       transform: translateX(-50%) rotate(-45deg);
     }
+
     100% {
       transform: translateX(50%) rotate(-45deg);
     }
   }
+
   @keyframes float {
+
     0%,
     100% {
       transform: translateY(0);
     }
+
     50% {
       transform: translateY(-15px);
     }
   }
+
   /* Note: You already have a 'scan' animation, but this one is specific to the line */
   @keyframes scan-line {
     0% {
       top: 0;
       opacity: 0;
     }
+
     50% {
       opacity: 1;
     }
+
     100% {
       top: 100%;
       opacity: 0;
@@ -182,6 +189,7 @@
             0 0 10px currentColor,
             0 0 20px currentColor;*/
   }
+
   100% {
     /*text-shadow:
             0 0 10px currentColor,
@@ -196,6 +204,7 @@
   position: relative;
   overflow: hidden;
 }
+
 .scanline::after {
   content: "";
   position: absolute;
@@ -203,21 +212,21 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    rgba(0, 255, 255, 0.05) 50%,
-    transparent 100%
-  );
+  background: linear-gradient(to bottom,
+      transparent 0%,
+      rgba(0, 255, 255, 0.05) 50%,
+      transparent 100%);
   background-size: 100% 4px;
   animation: scan 5s linear infinite;
   pointer-events: none;
   z-index: 30;
 }
+
 @keyframes scan {
   0% {
     transform: translateY(-100%);
   }
+
   100% {
     transform: translateY(100%);
   }
@@ -227,6 +236,7 @@
 .grid-scan {
   position: relative;
 }
+
 .grid-scan::before {
   content: "";
   position: absolute;
@@ -242,10 +252,12 @@
   z-index: 20;
   animation: grid-move 10s linear infinite;
 }
+
 @keyframes grid-move {
   0% {
     background-position: 0 0;
   }
+
   100% {
     background-position: 30px 30px;
   }
@@ -261,6 +273,7 @@
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -293,6 +306,7 @@
     transform 0.3s ease,
     box-shadow 0.3s ease;
 }
+
 .hover-pulse:hover {
   transform: scale(1.03);
   box-shadow: 0 0 15px currentColor;
@@ -316,7 +330,8 @@ main {
 }
 
 ::view-transition-new(root) {
-  z-index: 2147483646; /* MAX_SAFE_INTEGER - 1 */
+  z-index: 2147483646;
+  /* MAX_SAFE_INTEGER - 1 */
 }
 
 /* Add your custom transition animations here */
@@ -336,6 +351,7 @@ main {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -345,6 +361,7 @@ main {
   from {
     opacity: 1;
   }
+
   to {
     opacity: 0;
   }
@@ -352,27 +369,33 @@ main {
 
 /* Cyberpunk glitch effect */
 @keyframes subtle-glitch {
+
   0%,
   90% {
     transform: translateX(0);
     clip-path: inset(0 0 0 0);
   }
+
   92% {
     transform: translateX(-1px);
     clip-path: inset(0 45px 0 0);
   }
+
   94% {
     transform: translateX(1px);
     clip-path: inset(0 0 0 45px);
   }
+
   96% {
     transform: translateX(0);
     clip-path: inset(0 30px 0 0);
   }
+
   98% {
     transform: translateX(0);
     clip-path: inset(0 0 0 30px);
   }
+
   100% {
     transform: translateX(0);
     clip-path: inset(0 0 0 0);
@@ -380,23 +403,28 @@ main {
 }
 
 @keyframes subtle-glitch-2 {
+
   0%,
   90% {
     transform: translateX(0);
     clip-path: inset(0 0 0 0);
   }
+
   93% {
     transform: translateX(2px);
     clip-path: inset(0 0 40px 0);
   }
+
   96% {
     transform: translateX(-2px);
     clip-path: inset(0 50px 0 0);
   }
+
   98% {
     transform: translateX(0);
     clip-path: inset(0 0 0 40px);
   }
+
   100% {
     transform: translateX(0);
     clip-path: inset(0 0 0 0);
@@ -452,8 +480,7 @@ main {
 
 /* Lottie neon glow effect */
 .lottie-neon-glow svg {
-  filter: drop-shadow(0 0 1px currentColor) drop-shadow(0 0 2px currentColor)
-    drop-shadow(0 0 3px currentColor);
+  filter: drop-shadow(0 0 1px currentColor) drop-shadow(0 0 2px currentColor) drop-shadow(0 0 3px currentColor);
   animation:
     lottie-neon-pulse 2s infinite alternate,
     lottie-neon-color-shift 6s infinite,
@@ -500,16 +527,23 @@ main {
 
 @keyframes lottie-neon-color-shift {
   0% {
-    color: oklch(0.6 0.25 330); /* --color-primary */
+    color: oklch(0.6 0.25 330);
+    /* --color-primary */
   }
+
   33% {
-    color: oklch(0.65 0.25 85); /* --color-secondary */
+    color: oklch(0.65 0.25 85);
+    /* --color-secondary */
   }
+
   66% {
-    color: oklch(0.7 0.3 330); /* --color-primary-500 */
+    color: oklch(0.7 0.3 330);
+    /* --color-primary-500 */
   }
+
   100% {
-    color: oklch(0.65 0.25 85); /* --color-secondary */
+    color: oklch(0.65 0.25 85);
+    /* --color-secondary */
   }
 }
 
@@ -518,6 +552,7 @@ main {
   0% {
     transform: translateX(100vw);
   }
+
   100% {
     transform: translateX(-100%);
   }
@@ -544,14 +579,12 @@ main {
     left: -50%;
     width: 200%;
     height: 200%;
-    background: linear-gradient(
-      45deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.03) 45%,
-      rgba(255, 255, 255, 0.08) 50%,
-      rgba(255, 255, 255, 0.03) 55%,
-      transparent 100%
-    );
+    background: linear-gradient(45deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.03) 45%,
+        rgba(255, 255, 255, 0.08) 50%,
+        rgba(255, 255, 255, 0.03) 55%,
+        transparent 100%);
     transform: rotate(-45deg);
     animation: var(--animate-sweep);
     pointer-events: none;
@@ -573,16 +606,12 @@ main {
 @utility wts-root-bg {
   background-color: var(--color-dark-950);
   background-image:
-    radial-gradient(
-      circle at 20% 30%,
+    radial-gradient(circle at 20% 30%,
       var(--color-dark-800) 0%,
-      transparent 50%
-    ),
-    radial-gradient(
-      circle at 80% 70%,
+      transparent 50%),
+    radial-gradient(circle at 80% 70%,
       var(--color-primary-950) 0%,
-      transparent 50%
-    );
+      transparent 50%);
   min-height: 100vh;
   position: relative;
 }
@@ -593,11 +622,9 @@ main {
     content: "";
     position: absolute;
     inset: 0;
-    background: repeating-linear-gradient(
-      transparent 0%,
-      rgba(0, 0, 0, 0.05) 50%,
-      transparent 100%
-    );
+    background: repeating-linear-gradient(transparent 0%,
+        rgba(0, 0, 0, 0.05) 50%,
+        transparent 100%);
     background-size: 100% 4px;
     pointer-events: none;
     z-index: 10;
@@ -624,8 +651,118 @@ main {
 .ProseMirror p {
   margin-bottom: 0.75rem;
 }
+
 .ProseMirror ul {
   list-style-type: disc;
   padding-left: 1.5rem;
   margin-bottom: 0.75rem;
+}
+
+/* Hologram Button Styles */
+@keyframes glitch-button {
+
+  0%,
+  100% {
+    transform: translateX(0);
+    opacity: 0.3;
+  }
+
+  20% {
+    transform: translateX(-5px);
+    opacity: 0.5;
+  }
+
+  40% {
+    transform: translateX(5px);
+    opacity: 0.7;
+  }
+
+  60% {
+    transform: translateX(-3px);
+    opacity: 0.5;
+  }
+
+  80% {
+    transform: translateX(3px);
+    opacity: 0.3;
+  }
+}
+
+@keyframes scan-button {
+  0% {
+    top: -10%;
+  }
+
+  100% {
+    top: 110%;
+  }
+}
+
+.btn-hologram {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.4s ease;
+
+  /* Initial State */
+  background: color-mix(in oklch, var(--color-primary-500), transparent 90%);
+  border: 2px solid color-mix(in oklch, var(--color-primary-500), transparent 50%);
+  box-shadow: 0 0 15px color-mix(in oklch, var(--color-primary-500), transparent 70%);
+  backdrop-filter: blur(5px);
+  color: #fff;
+}
+
+.btn-hologram:hover {
+  background: color-mix(in oklch, var(--color-primary-500), transparent 80%);
+  border-color: var(--color-primary-400);
+  box-shadow: 0 0 25px color-mix(in oklch, var(--color-primary-500), transparent 50%);
+}
+
+.btn-hologram .text-content {
+  position: relative;
+  display: inline-block;
+  text-shadow: 0 0 8px color-mix(in oklch, var(--color-primary-500), transparent 50%);
+}
+
+.btn-hologram .text-content::before,
+.btn-hologram .text-content::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  filter: blur(1px);
+  transition: all 0.3s ease;
+  pointer-events: none;
+}
+
+.btn-hologram:hover .text-content::before {
+  opacity: 1;
+  color: var(--color-accent-400);
+  animation: glitch-button 2s infinite;
+  transform: translateX(-2px);
+}
+
+.btn-hologram:hover .text-content::after {
+  opacity: 1;
+  color: var(--color-secondary-400);
+  animation: glitch-button 2s infinite reverse;
+  transform: translateX(2px);
+}
+
+.btn-hologram .scan-line {
+  position: absolute;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(to right,
+      transparent,
+      var(--color-accent-400),
+      transparent);
+  top: 0;
+  left: 20px;
+  animation: scan-button 2s linear infinite;
+  filter: blur(1px);
+  opacity: 0.8;
+  pointer-events: none;
 }

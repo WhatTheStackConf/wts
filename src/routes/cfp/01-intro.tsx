@@ -17,6 +17,9 @@ const Intro = () => {
   const [errors, setErrors] = createSignal<Record<string, string>>({});
 
   if (!auth || !auth.record) {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("redirect_url", location.pathname);
+    }
     navigate("/login");
   }
 

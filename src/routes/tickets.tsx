@@ -2,6 +2,7 @@ import { Title } from "@solidjs/meta";
 import { Layout } from "../layouts/Layout";
 import { fetchHiEventsReleases, HiEventsRelease } from "../lib/hievents";
 import { createResource, Show, For } from "solid-js";
+import { HologramButton } from "../components/HologramButton";
 
 // Define the fetch function for releases API
 const fetchReleases = async (): Promise<HiEventsRelease[]> => {
@@ -43,8 +44,8 @@ export default function Tickets() {
           <h1 class="text-4xl md:text-5xl font-star font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-secondary-300 mb-4 neon-glow fade-in">
             Conference Tickets
           </h1>
-          <p class="text-xl text-secondary-300 mb-12 fade-in-delay-1">
-            Secure your place at the future of web development
+          <p class="text-xl  mb-12 fade-in-delay-1">
+            Secure your place at the future of software development
           </p>
 
           <Show
@@ -72,13 +73,20 @@ export default function Tickets() {
                 <For each={releases()}>
                   {(release, index) => (
                     <div
-                      class={`w-full max-w-sm bg-base-200/70 backdrop-blur-sm border border-primary-500/30 rounded-lg p-8 transform transition duration-300 hover:scale-105 hover-pulse grid-scan flex flex-col ${release.title === "Conference entry" ? "border-2 border-primary-500 relative shadow-[0_0_20px_rgba(var(--color-primary-500),0.3)]" : ""}`}
+                      class={`w-full max-w-sm bg-base-200/70 backdrop-blur-sm border border-primary-500/30 rounded-lg p-8 transform transition duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(var(--color-primary-500),0.6)] grid-scan flex flex-col ${release.title === "Conference entry" ? "border-2 border-primary-500 relative shadow-[0_0_20px_rgba(var(--color-primary-500),0.3)]" : ""}`}
                     >
                       <h2 class="text-3xl font-star text-primary-500 mb-6">
                         {release.title}
                       </h2>
-                      <div class="text-5xl font-star text-secondary-300 mb-6">
-                        {release.price !== null ? `€${release.price}` : "FREE"}
+                      <div class="text-5xl font-star mb-6">
+                        {release.price !== null ? (
+                          <>
+                            <span class="font-sans font-bold">€</span>
+                            {release.price}
+                          </>
+                        ) : (
+                          "FREE"
+                        )}
                       </div>
 
                       {/* Description Area - Flex grow to push button down */}
@@ -99,7 +107,7 @@ export default function Tickets() {
                         </Show>
                       </div>
 
-                      <a
+                      <HologramButton
                         href={release.purchase_link}
                         target={
                           release.purchase_link.startsWith("mailto")
@@ -107,12 +115,13 @@ export default function Tickets() {
                             : "_blank"
                         }
                         rel="noopener noreferrer"
-                        class="btn btn-primary w-full font-star tracking-wider text-base-100 neon-glow hover-pulse text-xl py-4 h-auto"
-                      >
-                        {release.purchase_link.startsWith("mailto")
-                          ? "APPLY NOW"
-                          : "GET TICKET"}
-                      </a>
+                        text={
+                          release.purchase_link.startsWith("mailto")
+                            ? "APPLY NOW"
+                            : "GET TICKET"
+                        }
+                        class="w-full text-xl py-4 h-auto neon-glow"
+                      />
                     </div>
                   )}
                 </For>

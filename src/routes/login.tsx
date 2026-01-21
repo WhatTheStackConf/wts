@@ -31,7 +31,13 @@ const LoginPage = () => {
         return;
       }
 
-      location.href = "/";
+      const redirectUrl = localStorage.getItem("redirect_url");
+      if (redirectUrl) {
+        localStorage.removeItem("redirect_url");
+        location.href = redirectUrl;
+      } else {
+        location.href = "/";
+      }
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.message || "Login failed");
@@ -41,7 +47,13 @@ const LoginPage = () => {
   const loginWithGithub = async () => {
     try {
       await auth?.githubLogin();
-      location.href = "/";
+      const redirectUrl = localStorage.getItem("redirect_url");
+      if (redirectUrl) {
+        localStorage.removeItem("redirect_url");
+        location.href = redirectUrl;
+      } else {
+        location.href = "/";
+      }
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.message || "Login failed");

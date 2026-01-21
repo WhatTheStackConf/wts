@@ -1,5 +1,6 @@
 import Logo from "../assets/images/LogoSolo.svg?component-solid";
 import { createSignal, onMount, onCleanup } from "solid-js";
+import { HologramButton } from "./HologramButton";
 
 function useCountUp(target: number, duration: number = 2000) {
   const [count, setCount] = createSignal(0);
@@ -39,8 +40,8 @@ export const Hero = () => {
   return (
     <section class="">
       <div class="grid lg:grid-cols-2 gap-10 items-center px-3 md:px-0">
-        <div class="fade-in">
-          <div class="inline-block px-3 py-1 bg-dark-800/50 border-l-2 border-secondary-500 text-[16px] tracking-[4px] mb-8 text-secondary-200">
+        <div class="fade-in relative z-30">
+          <div class="inline-block font-bold px-3 py-1 bg-dark-800/50 border-l-2 border-secondary-500 text-[16px] tracking-[2px] mb-8 text-secondary-200">
             19TH SEPTEMBER 2026 // SKOPJE, MK
           </div>
 
@@ -57,7 +58,7 @@ export const Hero = () => {
             {`>`}{" "}
             <span class="text-rotate">
               <span>
-                <span class="text-primary-200 font-black">The web</span>
+                <span class="text-primary-200 font-black">The Web</span>
                 <span class="text-secondary-200 font-black">
                   AI & Machine Learning
                 </span>
@@ -68,23 +69,25 @@ export const Hero = () => {
               </span>
             </span>{" "}
             <br />
-            {`>`} With the vibes to match. <br />
-            {`>`} Your favorite conference is back in September!
+            {`>`} With the vibes to match... <br />
+            {`>`} and the amazing dev community as last time!
           </p>
 
           <div class="flex items-center gap-4 sm:gap-6 xl:gap-8">
-            <a
+            <HologramButton
               href="/tickets"
-              class="btn btn-primary rounded-none px-8 py-3 sm:px-12 sm:text-xl xl:px-16 xl:py-4 h-auto min-h-0 text-lg xl:text-2xl font-star [clip-path:polygon(10%_0,100%_0,90%_100%,0_100%)] hover:scale-105 transition-transform shadow-[0_0_20px_rgba(var(--color-primary-500),0.3)]"
+              text="GRAB A TICKET"
+              class="rounded-none px-8 py-3 sm:px-12 sm:text-xl xl:px-16 xl:py-4 h-auto min-h-0 text-lg xl:text-2xl transition-transform"
+            />
+            <div
+              class="flex flex-col tooltip cursor-help"
+              data-tip="No early birds, nothing like that. Same price from start to finish :)"
             >
-              GRAB A TICKET
-            </a>
-            <div class="flex flex-col">
               <span class="text-[10px] sm:text-xs uppercase tracking-widest text-dark-50">
                 Entry
               </span>
-              <span class="text-2xl sm:text-3xl xl:text-4xl font-bold font-mono text-secondary-300">
-                50 €
+              <span class="text-2xl sm:text-3xl xl:text-4xl font-bold text-secondary-300">
+                <span class="font-sans">€</span>50
               </span>
             </div>
           </div>
@@ -107,7 +110,7 @@ export const Hero = () => {
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
             Workshops
           </span>
-          <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-primary-200 to-secondary-300 group-hover:from-secondary-300 group-hover:via-white group-hover:to-primary-400 transition-all duration-300 font-mono tabular-nums block">
+          <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-secondary-200 to-secondary-400 group-hover:from-white group-hover:via-primary-200 group-hover:to-primary-400 transition-all duration-300 tabular-nums block">
             {workshops()}+
           </span>
         </div>
@@ -118,7 +121,7 @@ export const Hero = () => {
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
             Talks
           </span>
-          <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-primary-200 to-secondary-300 group-hover:from-secondary-300 group-hover:via-white group-hover:to-primary-400 transition-all duration-300 font-mono tabular-nums block">
+          <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-secondary-200 to-secondary-400 group-hover:from-white group-hover:via-primary-200 group-hover:to-primary-400 transition-all duration-300 tabular-nums block">
             {talks()}+
           </span>
         </div>
@@ -129,8 +132,9 @@ export const Hero = () => {
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
             Tracks
           </span>
-          <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-primary-200 to-secondary-300 group-hover:from-secondary-300 group-hover:via-white group-hover:to-primary-400 transition-all duration-300 font-mono tabular-nums block">
-            {tracks()}*
+          <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-secondary-200 to-secondary-400 group-hover:from-white group-hover:via-primary-200 group-hover:to-primary-400 transition-all duration-300 tabular-nums block">
+            {tracks()}
+            <span class="text-4xl align-super">*</span>
           </span>
         </div>
         <div
@@ -140,7 +144,7 @@ export const Hero = () => {
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
             Attendees
           </span>
-          <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-primary-200 to-secondary-300 group-hover:from-secondary-300 group-hover:via-white group-hover:to-primary-400 transition-all duration-300 font-mono tabular-nums block">
+          <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-secondary-200 to-secondary-400 group-hover:from-white group-hover:via-primary-200 group-hover:to-primary-400 transition-all duration-300 tabular-nums block">
             {attendees()}+
           </span>
         </div>

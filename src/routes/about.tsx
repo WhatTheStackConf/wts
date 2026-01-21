@@ -3,6 +3,7 @@ import AlternativelyTyping from "~/components/AlternativelyTyping";
 import { MDXContent } from "~/components/MDXContent";
 import { pages } from ".velite";
 import { createMemo } from "solid-js";
+import { HologramButton } from "~/components/HologramButton";
 
 export default function About() {
   const page = createMemo(() => pages.find(p => p.slug === "about"));
@@ -68,13 +69,12 @@ export default function About() {
               </span>
             </p>
 
-            <div class="text-center mt-8 fade-in-delay-4">
-              <a
+            <div class="text-center mt-16 fade-in-delay-4 flex justify-center">
+              <HologramButton
                 href="/tickets"
-                class="btn btn-primary px-8 py-3 font-star tracking-wider text-base-100 hover:bg-primary-600 transition-all duration-300 neon-glow hover-pulse text-xl"
-              >
-                Grab your tickets
-              </a>
+                text="Grab your tickets"
+                class="px-8 py-3 text-xl h-auto"
+              />
             </div>
           </div>
         </div>

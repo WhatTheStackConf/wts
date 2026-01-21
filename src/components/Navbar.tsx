@@ -1,5 +1,5 @@
 import Logo from "../assets/images/LogoSolo.svg";
-import { createSignal, onMount, Show } from "solid-js";
+import { createSignal, onMount } from "solid-js";
 import Animation from "../assets/animations/WTS.json";
 import { clientOnly } from "@solidjs/start";
 import { Icon } from "@iconify-icon/solid";
@@ -42,12 +42,19 @@ export const Navbar = () => {
           <div class="navbar-start flex items-center justify-start">
             {/* Mobile Hamburger (Drawer Toggle) */}
             <div class="flex-none lg:hidden">
-              <label for="mobile-drawer" aria-label="open sidebar" class="btn btn-square btn-ghost">
+              <label
+                for="mobile-drawer"
+                aria-label="open sidebar"
+                class="btn btn-square btn-ghost"
+              >
                 <Icon icon="ph:list-bold" class="text-2xl text-primary-500" />
               </label>
             </div>
 
-            <a class="h-6 lg:h-16 flex items-center justify-center w-auto ml-2 lg:ml-0" href="/">
+            <a
+              class="h-6 lg:h-16 flex items-center justify-center w-auto ml-2 lg:ml-0"
+              href="/"
+            >
               {lottieData() ? (
                 <div class="h-6 w-6 mr-4 lg:h-16 lg:w-16 lg:mr-3">
                   <Lottie
@@ -87,17 +94,24 @@ export const Navbar = () => {
 
           {/* Desktop Menu */}
           <div class="navbar-center hidden lg:flex">
-            <ul class="menu menu-lg menu-horizontal px-1 font-black uppercase text-primary-200 underline">
+            <ul class="menu menu-lg menu-horizontal px-1 font-black uppercase text-primary-200">
               {/* Admin Link */}
               {mounted() && auth?.user?.role === "admin" && (
                 <li>
-                  <a href="/admin" class="text-red-500 hover:text-red-400">Admin</a>
+                  <a href="/admin" class="text-red-500 hover:text-red-400">
+                    Admin
+                  </a>
                 </li>
               )}
               {/* Reviewer Link */}
               {mounted() && auth?.user?.role === "reviewer" && (
                 <li>
-                  <a href="/reviewer" class="text-secondary-500 hover:text-secondary-400">Reviewer</a>
+                  <a
+                    href="/reviewer"
+                    class="text-secondary-500 hover:text-secondary-400"
+                  >
+                    Reviewer
+                  </a>
                 </li>
               )}
               <li>
@@ -120,8 +134,24 @@ export const Navbar = () => {
                   id="previous-editions"
                   style="position-anchor:--anchor-1"
                 >
-                  <li><a href="https://2024.wts.sh" class="text-center" target="_blank">{`>`} 2024</a></li>
-                  <li><a href="https://2025.wts.sh" class="text-center" target="_blank">{`>`} 2025</a></li>
+                  <li>
+                    <a
+                      href="https://2024.wts.sh"
+                      class="text-center"
+                      target="_blank"
+                    >
+                      {`>`} 2024
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="https://2025.wts.sh"
+                      class="text-center"
+                      target="_blank"
+                    >
+                      {`>`} 2025
+                    </a>
+                  </li>
                 </ul>
               </li>
             </ul>
@@ -137,30 +167,76 @@ export const Navbar = () => {
 
       {/* Drawer Side (Mobile Menu) */}
       <div class="drawer-side z-[10000]">
-        <label for="mobile-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+        <label
+          for="mobile-drawer"
+          aria-label="close sidebar"
+          class="drawer-overlay"
+        ></label>
         <div class="menu p-4 w-80 min-h-full bg-base-100/95 backdrop-blur-xl border-r border-white/10 text-primary-200">
           {/* Mobile Menu Content */}
           <div class="mb-8 px-4 pt-4">
-            <h2 class="font-star text-2xl text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-white uppercase">Menu</h2>
+            <h2 class="font-star text-2xl text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-white uppercase">
+              Menu
+            </h2>
           </div>
 
           <ul class="space-y-2 font-bold uppercase text-lg">
             {mounted() && auth?.user?.role === "admin" && (
-              <li><a href="/admin" onClick={closeDrawer} class="text-red-500 hover:bg-red-500/10">Admin Dashboard</a></li>
+              <li>
+                <a
+                  href="/admin"
+                  onClick={closeDrawer}
+                  class="text-red-500 hover:bg-red-500/10"
+                >
+                  Admin Dashboard
+                </a>
+              </li>
             )}
             {mounted() && auth?.user?.role === "reviewer" && (
-              <li><a href="/reviewer" onClick={closeDrawer} class="text-secondary-500 hover:bg-secondary-500/10">Reviewer Portal</a></li>
+              <li>
+                <a
+                  href="/reviewer"
+                  onClick={closeDrawer}
+                  class="text-secondary-500 hover:bg-secondary-500/10"
+                >
+                  Reviewer Portal
+                </a>
+              </li>
             )}
 
-            <li><a href="/tickets" onClick={closeDrawer}>Grab a ticket!</a></li>
-            <li><a href="/about" onClick={closeDrawer}>About</a></li>
+            <li>
+              <a href="/tickets" onClick={closeDrawer}>
+                Grab a ticket!
+              </a>
+            </li>
+            <li>
+              <a href="/about" onClick={closeDrawer}>
+                About
+              </a>
+            </li>
 
             <li>
               <details open>
                 <summary>Previous Editions</summary>
                 <ul>
-                  <li><a href="https://2024.wts.sh" target="_blank" onClick={closeDrawer}>2024 Edition</a></li>
-                  <li><a href="https://2025.wts.sh" target="_blank" onClick={closeDrawer}>2025 Edition</a></li>
+                  <li>
+                    <a
+                      href="https://2024.wts.sh"
+                      target="_blank"
+                      onClick={closeDrawer}
+                    >
+                      2024 Edition
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="https://2025.wts.sh"
+                      target="_blank"
+                      onClick={closeDrawer}
+                    >
+                      2025 Edition
+                    </a>
+                  </li>
                 </ul>
               </details>
             </li>

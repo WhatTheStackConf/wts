@@ -122,7 +122,7 @@ export const Footer = () => {
       </div>
 
       <div class="w-full text-center mt-10 relative z-10 border-t border-white/5 pt-8">
-        <p class="text-xs text-base-content/40 font-mono">
+        <p class="text-xs w-full text-center text-base-content/40 font-mono">
           © 2026 WhatTheStack?. CC | BY-NC-SA | CodePub LLC
         </p>
       </div>

@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { Show, createSignal } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 // import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
@@ -12,9 +12,13 @@ import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
 const Confirmation = () => {
   const auth = useAuth();
   const navigate = useNavigate();
+  const [errors, setErrors] = createSignal<string[]>([]);
   const [cfpStore] = useCfpStore();
 
   if (!auth || !auth.record) {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("redirect_url", location.pathname);
+    }
     navigate("/login");
   }
   if (!isCfpOpen()) {
@@ -22,18 +26,39 @@ const Confirmation = () => {
   }
 
   const handleSubmit = async () => {
+    setErrors([]);
     try {
       await submitProposal();
       // Show the modal
       (document.getElementById("confirmation_modal") as HTMLDialogElement).showModal();
     } catch (error: any) {
       console.error("Submission Error:", error);
-      alert("Submission failed. Please try again.");
+
+      const errorMessages: string[] = [];
+
+      // Handle PocketBase ClientResponseError
+      if (error.response?.data) {
+        const data = error.response.data;
+        Object.keys(data).forEach((key) => {
+          const fieldError = data[key];
+          if (fieldError?.message) {
+            errorMessages.push(`Field '${key}': ${fieldError.message}`);
+          }
+        });
+      }
+
+      if (errorMessages.length === 0) {
+        errorMessages.push(error.message || "Submission failed. Please try again.");
+      }
+
+      setErrors(errorMessages);
     }
   };
 
   const handleModalClose = () => {
-    navigate("/");
+    // Navigate to the start of the CFP to allow another submission
+    // The store is already reset by submitProposal
+    navigate("/cfp/01-intro");
   };
 
   const SummarySection = (props: {
@@ -76,6 +101,8 @@ const Confirmation = () => {
             {cfpStore.formData.id
               ? "Your changes have been successfully updated. You can continue to edit your proposal until the CFP closes."
               : "Thanks for throwing your hat in the ring! We've sent a confirmation email to your inbox."}
+            <br /><br />
+            Do you want to submit another talk?
           </p>
           <div class="modal-action">
             <form method="dialog">
@@ -83,7 +110,7 @@ const Confirmation = () => {
                 class="btn btn-primary font-mono"
                 onClick={handleModalClose}
               >
-                AWESOME, THANKS
+                SUBMIT ANOTHER / RETURN
               </button>
             </form>
           </div>
@@ -97,6 +124,19 @@ const Confirmation = () => {
         Check everything one last time. Our review process is anonymized.
       </p>
 
+      <Show when={errors().length > 0}>
+        <div class="mb-8 p-4 bg-error/10 border border-error/20 rounded-xl">
+          <h3 class="text-error font-bold font-mono mb-2 flex items-center gap-2">
+            <Icon icon="material-symbols:error-outline" />
+            Submission Failed
+          </h3>
+          <ul class="list-disc list-inside text-sm text-error/80 font-mono">
+            {errors().map((err) => (
+              <li>{err}</li>
+            ))}
+          </ul>
+        </div>
+      </Show>
       <div class="grid grid-cols-1 gap-4">
         <SummarySection title="SPEAKER INFO" step={2}>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-y-2 text-sm font-mono text-secondary-300">
@@ -143,8 +183,8 @@ const Confirmation = () => {
           <div class="flex items-center gap-3">
             <div
               class={`badge badge-lg font-mono ${cfpStore.formData.company_cover_expenses === "Yes"
-                  ? "badge-success text-base-100"
-                  : "badge-warning text-base-100"
+                ? "badge-success text-base-100"
+                : "badge-warning text-base-100"
                 }`}
             >
               Company covers travel: {cfpStore.formData.company_cover_expenses}
@@ -198,7 +238,7 @@ const Confirmation = () => {
           />
         </button>
       </div>
-    </CfpStepLayout>
+    </CfpStepLayout >
   );
 };
 
