@@ -31,6 +31,103 @@ function useCountUp(target: number, duration: number = 2000) {
   return count;
 }
 
+type DisplayState = "logo" | "glitch-to-video" | "video" | "glitch-to-logo";
+
+const GlassPanel = () => {
+  const [displayState, setDisplayState] = createSignal<DisplayState>("logo");
+  const [videoLoaded, setVideoLoaded] = createSignal(false);
+  let videoRef: HTMLVideoElement | undefined;
+  let timeoutId: ReturnType<typeof setTimeout>;
+
+  const getRandomDelay = () => Math.floor(Math.random() * 40000) + 10000; // 10-50 seconds
+
+  const startVideoTransition = () => {
+    setDisplayState("glitch-to-video");
+
+    // Start loading video if not loaded
+    if (videoRef && !videoLoaded()) {
+      videoRef.load();
+    }
+
+    timeoutId = setTimeout(() => {
+      setDisplayState("video");
+      if (videoRef) {
+        videoRef.currentTime = 0;
+        videoRef.playbackRate = 0.3; // Extra slow for ambient effect
+        videoRef.play().catch(() => {
+          // If autoplay fails, go back to logo
+          startLogoTransition();
+        });
+      }
+    }, 400); // Match glitch animation duration
+  };
+
+  const startLogoTransition = () => {
+    setDisplayState("glitch-to-logo");
+
+    timeoutId = setTimeout(() => {
+      setDisplayState("logo");
+      // Schedule next video after random delay
+      timeoutId = setTimeout(startVideoTransition, getRandomDelay());
+    }, 400);
+  };
+
+  const handleVideoEnded = () => {
+    startLogoTransition();
+  };
+
+  const handleVideoLoaded = () => {
+    setVideoLoaded(true);
+  };
+
+  onMount(() => {
+    // Initial delay before first video (3 seconds)
+    timeoutId = setTimeout(startVideoTransition, 3000);
+  });
+
+  onCleanup(() => {
+    clearTimeout(timeoutId);
+  });
+
+  const isGlitching = () =>
+    displayState() === "glitch-to-video" || displayState() === "glitch-to-logo";
+  const showLogo = () =>
+    displayState() === "logo" || displayState() === "glitch-to-logo";
+  const showVideo = () =>
+    displayState() === "video" || displayState() === "glitch-to-video" || displayState() === "glitch-to-logo";
+
+  return (
+    <div
+      class={`relative min-h-[300px] lg:min-h-0 lg:h-full fade-in-delay-1 z-20 rounded-[40px] overflow-hidden ${isGlitching() ? "screen-glitch" : ""}`}
+    >
+      {/* Video layer - below the glass panel */}
+      <video
+        ref={videoRef}
+        class={`w-full h-full object-cover absolute inset-0 rounded-[40px] transition-opacity duration-200 grayscale-[30%] ${showVideo() ? "opacity-60" : "opacity-0 pointer-events-none"}`}
+        muted
+        playsinline
+        preload="none"
+        onEnded={handleVideoEnded}
+        onCanPlayThrough={handleVideoLoaded}
+      >
+        <source src="/wts-square-web.webm" type="video/webm" />
+      </video>
+
+      {/* Glass panel overlay - lighter blur when video is playing */}
+      <div class={`${showVideo() ? "glass-panel-light" : "glass-panel"} glass-sweep rounded-[40px] flex items-center justify-center absolute inset-0 group`}>
+        <div class="absolute w-full h-0.5 bg-secondary-400/20 animate-scan pointer-events-none" />
+
+        {/* Logo - hidden during video playback */}
+        <div
+          class={`w-auto h-full animate-float flex items-center justify-center p-4 filter drop-shadow-[0_0_15px_rgba(46,200,254,0.4)] transition-opacity duration-200 ${showLogo() ? "opacity-90" : "opacity-0 pointer-events-none"}`}
+        >
+          <Logo class="w-full h-full" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const Hero = () => {
   const workshops = useCountUp(5, 1500);
   const talks = useCountUp(30, 1800);
@@ -94,12 +191,7 @@ export const Hero = () => {
         </div>
 
         {/* The Visual Glass Panel */}
-        <div class="glass-panel glass-sweep rounded-[40px] flex items-center justify-center relative group h-full fade-in-delay-1 z-20">
-          <div class="absolute w-full h-0.5 bg-secondary-400/20 animate-scan pointer-events-none" />
-          <div class="w-auto h-full animate-float flex items-center justify-center p-4 opacity-90 filter drop-shadow-[0_0_15px_rgba(46,200,254,0.4)]">
-            <Logo class="w-full h-full" />
-          </div>
-        </div>
+        <GlassPanel />
       </div>
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12 mt-20 pt-12 border-t border-white/20 fade-in-delay-2 relative text-center lg:text-left">
         <div class="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-secondary-500/50 to-transparent"></div>
