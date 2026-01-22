@@ -1,8 +1,8 @@
-import PocketBase from 'pocketbase';
+import PocketBase from "pocketbase";
 
 /**
  * Server-side PocketBase service for superuser/admin operations
- * 
+ *
  * This service is designed to run only on the server-side and handles
  * operations that require superuser privileges. It should never be used
  * in client-side code.
@@ -13,11 +13,13 @@ class PocketBaseAdminService {
 
   constructor() {
     // Ensure this service is only initialized on the server
-    if (typeof window !== 'undefined') {
-      throw new Error('PocketBaseAdminService should only be used on the server-side');
+    if (typeof window !== "undefined") {
+      throw new Error(
+        "PocketBaseAdminService should only be used on the server-side",
+      );
     }
-    
-    const pocketBaseURL = process.env.POCKETBASE_URL || 'http://localhost:8090';
+
+    const pocketBaseURL = process.env.POCKETBASE_URL || "http://localhost:8090";
     this.pb = new PocketBase(pocketBaseURL);
   }
 
@@ -29,15 +31,15 @@ class PocketBaseAdminService {
     if (this.initialized) return;
 
     try {
-      const email = process.env.POCKETBASE_SUPERUSER_EMAIL || 'admin@wts.rs';
-      const password = process.env.POCKETBASE_SUPERUSER_PASSWORD || 'supersecret';
+      const email = process.env.POCKETBASE_SUPERUSER_EMAIL || "admin@wts.rs";
+      const password =
+        process.env.POCKETBASE_SUPERUSER_PASSWORD || "supersecret";
 
       // Authenticate as superuser
       await this.pb.admins.authWithPassword(email, password);
       this.initialized = true;
-      console.log('PocketBase admin service initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize PocketBase admin service:', error);
+      console.error("Failed to initialize PocketBase admin service:", error);
       throw error;
     }
   }
@@ -48,7 +50,9 @@ class PocketBaseAdminService {
    */
   getInstance(): PocketBase {
     if (!this.initialized) {
-      throw new Error('Admin service not initialized. Call initializeAdmin() first.');
+      throw new Error(
+        "Admin service not initialized. Call initializeAdmin() first.",
+      );
     }
     return this.pb;
   }
@@ -105,10 +109,15 @@ class PocketBaseAdminService {
   async fetchAllRecords(collectionName: string, options?: any) {
     if (!this.initialized) await this.initializeAdmin();
     try {
-      const records = await this.pb.collection(collectionName).getFullList(options);
+      const records = await this.pb
+        .collection(collectionName)
+        .getFullList(options);
       return records;
     } catch (error) {
-      console.error(`Error fetching all records from ${collectionName}:`, error);
+      console.error(
+        `Error fetching all records from ${collectionName}:`,
+        error,
+      );
       throw error;
     }
   }
@@ -120,7 +129,9 @@ class PocketBaseAdminService {
   async fetchRecordById(collectionName: string, id: string, options?: any) {
     if (!this.initialized) await this.initializeAdmin();
     try {
-      const record = await this.pb.collection(collectionName).getOne(id, options);
+      const record = await this.pb
+        .collection(collectionName)
+        .getOne(id, options);
       return record;
     } catch (error) {
       console.error(`Error fetching record from ${collectionName}:`, error);
@@ -132,14 +143,16 @@ class PocketBaseAdminService {
    * Perform raw database queries using superuser privileges
    * This method allows for complex operations that may not be possible through the standard API
    */
-  async rawDatabaseOperation<T>(operation: (db: any) => Promise<T>): Promise<T> {
+  async rawDatabaseOperation<T>(
+    operation: (db: any) => Promise<T>,
+  ): Promise<T> {
     if (!this.initialized) await this.initializeAdmin();
     try {
       // Access the internal db instance (this may be implementation-specific to PocketBase)
       // For custom operations that bypass standard collection methods
       return await operation(this.pb);
     } catch (error) {
-      console.error('Error executing raw database operation:', error);
+      console.error("Error executing raw database operation:", error);
       throw error;
     }
   }
@@ -153,12 +166,17 @@ class PocketBaseAdminService {
       // Process as individual operations since PocketBase doesn't have a built-in batch create
       const results = [];
       for (const record of records) {
-        const createdRecord = await this.pb.collection(collectionName).create(record);
+        const createdRecord = await this.pb
+          .collection(collectionName)
+          .create(record);
         results.push(createdRecord);
       }
       return results;
     } catch (error) {
-      console.error(`Error batch creating records in ${collectionName}:`, error);
+      console.error(
+        `Error batch creating records in ${collectionName}:`,
+        error,
+      );
       throw error;
     }
   }

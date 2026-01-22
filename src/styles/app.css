@@ -131,6 +131,7 @@
   --animate-sweep: sweep 10s infinite linear;
   --animate-float: float 6s ease-in-out infinite;
   --animate-scan: scan 4s linear infinite;
+  --animate-scan-glitch: scan-glitch 15s linear infinite;
 
   @keyframes sweep {
     0% {
@@ -167,6 +168,94 @@
 
     100% {
       top: 100%;
+      opacity: 0;
+    }
+  }
+
+  @keyframes scan-glitch {
+    0% {
+      top: -10%;
+      opacity: 0;
+    }
+
+    5% {
+      top: 0%;
+      opacity: 0.8;
+    }
+
+    15% {
+      top: 15%;
+      opacity: 0;
+      /* disappear */
+    }
+
+    20% {
+      top: 20%;
+      opacity: 0;
+    }
+
+    25% {
+      top: 25%;
+      opacity: 0.9;
+      /* reappear */
+    }
+
+    27% {
+      top: 25%;
+      opacity: 0.2;
+    }
+
+    35% {
+      top: 35%;
+      opacity: 0.6;
+    }
+
+    40% {
+      top: 40%;
+      opacity: 0;
+      /* disappear */
+    }
+
+    50% {
+      top: 50%;
+      opacity: 0;
+    }
+
+    55% {
+      top: 55%;
+      opacity: 0.8;
+      /* reappear */
+    }
+
+    60% {
+      top: 60%;
+      opacity: 0.1;
+    }
+
+    70% {
+      top: 70%;
+      opacity: 0.7;
+    }
+
+    75% {
+      top: 75%;
+      opacity: 0;
+      /* disappear */
+    }
+
+    85% {
+      top: 85%;
+      opacity: 0;
+    }
+
+    90% {
+      top: 90%;
+      opacity: 0.9;
+      /* quick flash */
+    }
+
+    100% {
+      top: 110%;
       opacity: 0;
     }
   }

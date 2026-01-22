@@ -1,132 +1,264 @@
+import {
+  createSignal,
+  createEffect,
+  onMount,
+  onCleanup,
+  Show,
+  Switch,
+  Match,
+} from "solid-js";
 import Logo from "../assets/images/LogoSolo.svg?component-solid";
-import { createSignal, onMount, onCleanup } from "solid-js";
 import { HologramButton } from "./HologramButton";
+
+// --- Sub-components ---
+
+const HeroLogo = (props: { show: boolean }) => (
+  <div
+    class={`w-auto h-full animate-float flex items-center justify-center p-4 filter drop-shadow-[0_0_15px_rgba(46,200,254,0.4)] transition-opacity duration-300 ${props.show ? "opacity-90" : "opacity-0"}`}
+  >
+    <Logo class="w-full h-full" />
+  </div>
+);
+
+const HeroGlitch = (props: {
+  active: boolean;
+  width: number;
+  height: number;
+}) => {
+  let canvasRef: HTMLCanvasElement | undefined;
+  let animationId: number;
+
+  const drawNoise = () => {
+    if (typeof window === "undefined") return;
+    if (!canvasRef || !props.active) return;
+    const ctx = canvasRef.getContext("2d");
+    if (!ctx) return;
+
+    const w = canvasRef.width;
+    const h = canvasRef.height;
+    const imageData = ctx.createImageData(w, h);
+    const data = imageData.data;
+
+    // Generate noise with occasional horizontal scanline artifacts
+    const scanlineY = Math.random() < 0.3 ? Math.floor(Math.random() * h) : -1;
+    const scanlineHeight = Math.floor(Math.random() * 8) + 2;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const pixelIndex = i / 4;
+      const y = Math.floor(pixelIndex / w);
+      const isScanline =
+        scanlineY >= 0 && y >= scanlineY && y < scanlineY + scanlineHeight;
+
+      if (isScanline) {
+        const shift = Math.random() < 0.5 ? 255 : 0;
+        data[i] = shift;
+        data[i + 1] = Math.random() * 100;
+        data[i + 2] = 255 - shift;
+        data[i + 3] = 200;
+      } else {
+        const noise = Math.random() * 255;
+        data[i] = noise * (0.9 + Math.random() * 0.2);
+        data[i + 1] = noise * (0.85 + Math.random() * 0.15);
+        data[i + 2] = noise * (1 + Math.random() * 0.1);
+        data[i + 3] = 180 + Math.random() * 75;
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+    animationId = requestAnimationFrame(drawNoise);
+  };
+
+  createEffect(() => {
+    if (typeof window === "undefined") return;
+    if (props.active) {
+      drawNoise();
+    } else {
+      cancelAnimationFrame(animationId);
+    }
+  });
+
+  onCleanup(() => {
+    if (typeof window !== "undefined") {
+      cancelAnimationFrame(animationId);
+    }
+  });
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={120}
+      height={80}
+      class={`absolute inset-0 w-full h-full pointer-events-none transition-opacity duration-75 ${props.active ? "opacity-100 z-50" : "opacity-0 z-0"}`}
+      style={{ "image-rendering": "pixelated" }}
+    />
+  );
+};
+
+const HeroVideo = (props: {
+  active: boolean;
+  onEnded: () => void;
+  onLoaded: () => void;
+}) => {
+  let videoRef: HTMLVideoElement | undefined;
+
+  onMount(() => {
+    if (videoRef) {
+      videoRef.load();
+    }
+  });
+
+  createEffect(() => {
+    if (props.active && videoRef) {
+      videoRef.currentTime = 0;
+      videoRef.playbackRate = 0.4;
+      videoRef.play().catch((e) => console.error("Video play failed", e));
+    }
+  });
+
+  return (
+    <video
+      ref={videoRef}
+      class={`w-full h-full object-cover absolute inset-0 rounded-[40px] transition-opacity duration-200 grayscale-[30%] ${props.active ? "opacity-80 z-10" : "opacity-0 z-0"}`}
+      muted
+      playsinline
+      preload="auto"
+      onEnded={props.onEnded}
+      onCanPlayThrough={() => {
+        props.onLoaded();
+      }}
+    >
+      <source src="/wts-square-web.webm" type="video/webm" />
+    </video>
+  );
+};
+
+// --- Main Controller Component ---
+
+type DisplayState = "LOGO" | "GLITCH_IN" | "VIDEO" | "GLITCH_OUT";
+
+const GlassPanelController = () => {
+  const [state, setState] = createSignal<DisplayState>("LOGO");
+  const [videoLoaded, setVideoLoaded] = createSignal(false);
+  let timer: ReturnType<typeof setTimeout>;
+
+  // Random delay between 3s and 15s
+  const getRandomDelay = () => Math.floor(Math.random() * 12000) + 3000;
+
+  // State Transition Logic
+  const startGlitchSequence = () => {
+    setState("GLITCH_IN");
+    // Glitch runs for 800ms, then switches to video
+    timer = setTimeout(() => {
+      setState("VIDEO");
+    }, 800);
+  };
+
+  const handleVideoEnded = () => {
+    setState("GLITCH_OUT");
+    // Glitch runs for 800ms, then switches to logo
+    timer = setTimeout(() => {
+      setState("LOGO");
+      scheduleNextRun();
+    }, 800);
+  };
+
+  const scheduleNextRun = () => {
+    const delay = getRandomDelay();
+    timer = setTimeout(() => {
+      startGlitchSequence();
+    }, delay);
+  };
+
+  // Watch for video load to trigger the FIRST run
+  createEffect(() => {
+    if (videoLoaded()) {
+      // First run: wait 3s then start
+      timer = setTimeout(() => {
+        startGlitchSequence();
+      }, 3000);
+    }
+  });
+
+  // Fallback: If video doesn't report loaded within 5s, start anyway
+  onMount(() => {
+    const fallbackTimer = setTimeout(() => {
+      if (!videoLoaded()) {
+        console.warn("Video load timeout - forcing start");
+        setVideoLoaded(true);
+      }
+    }, 5000);
+    onCleanup(() => clearTimeout(fallbackTimer));
+  });
+
+  onCleanup(() => clearTimeout(timer));
+
+  return (
+    <div class="relative min-h-[300px] lg:min-h-0 lg:h-full fade-in-delay-1 z-20 rounded-[40px] overflow-hidden">
+      {/* Background/Base Layer: Video */}
+      <HeroVideo
+        active={state() === "VIDEO"}
+        onEnded={handleVideoEnded}
+        onLoaded={() => setVideoLoaded(true)}
+      />
+
+      {/* Middle Layer: Glass Panel (Always visible, contents change) */}
+      <div
+        class="glass-panel glass-sweep rounded-[40px] flex items-center justify-center absolute inset-0 group z-20"
+        style={{ "backdrop-filter": "blur(7px) saturate(180%)" }}
+      >
+        {/* CRT Edge Blur */}
+        <div
+          class="absolute inset-0 z-10 pointer-events-none rounded-[40px]"
+          style={{
+            "backdrop-filter": "blur(12px)",
+            "mask-image":
+              "linear-gradient(to right, black, transparent 15%, transparent 85%, black), linear-gradient(to bottom, black, transparent 15%, transparent 85%, black)",
+            "mask-composite": "add",
+            "-webkit-mask-composite": "source-over",
+          }}
+        />
+
+        <div class="absolute w-full h-0.5 bg-secondary-400/20 animate-scan-glitch pointer-events-none" />
+
+        {/* Logo lives inside the glass panel */}
+        <HeroLogo show={state() === "LOGO"} />
+      </div>
+
+      {/* Top Layer: Glitch Overlay */}
+      {/* Active during GLITCH_IN (Logo->Video) and GLITCH_OUT (Video->Logo) */}
+      <HeroGlitch
+        active={state() === "GLITCH_IN" || state() === "GLITCH_OUT"}
+        width={400}
+        height={400}
+      />
+    </div>
+  );
+};
 
 function useCountUp(target: number, duration: number = 2000) {
   const [count, setCount] = createSignal(0);
 
   onMount(() => {
+    // onMount is client-only usually, but let's be safe
+    if (typeof window === "undefined") return;
+
     let startTimestamp: number | null = null;
     let animationFrame: number;
 
     const step = (timestamp: number) => {
       if (!startTimestamp) startTimestamp = timestamp;
       const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-
-      // Ease out quart
       const ease = 1 - Math.pow(1 - progress, 4);
-
       setCount(Math.floor(ease * target));
-
       if (progress < 1) {
         animationFrame = requestAnimationFrame(step);
       }
     };
-
     animationFrame = requestAnimationFrame(step);
-
     onCleanup(() => cancelAnimationFrame(animationFrame));
   });
 
   return count;
 }
-
-type DisplayState = "logo" | "glitch-to-video" | "video" | "glitch-to-logo";
-
-const GlassPanel = () => {
-  const [displayState, setDisplayState] = createSignal<DisplayState>("logo");
-  const [videoLoaded, setVideoLoaded] = createSignal(false);
-  let videoRef: HTMLVideoElement | undefined;
-  let timeoutId: ReturnType<typeof setTimeout>;
-
-  const getRandomDelay = () => Math.floor(Math.random() * 40000) + 10000; // 10-50 seconds
-
-  const startVideoTransition = () => {
-    setDisplayState("glitch-to-video");
-
-    // Start loading video if not loaded
-    if (videoRef && !videoLoaded()) {
-      videoRef.load();
-    }
-
-    timeoutId = setTimeout(() => {
-      setDisplayState("video");
-      if (videoRef) {
-        videoRef.currentTime = 0;
-        videoRef.playbackRate = 0.3; // Extra slow for ambient effect
-        videoRef.play().catch(() => {
-          // If autoplay fails, go back to logo
-          startLogoTransition();
-        });
-      }
-    }, 400); // Match glitch animation duration
-  };
-
-  const startLogoTransition = () => {
-    setDisplayState("glitch-to-logo");
-
-    timeoutId = setTimeout(() => {
-      setDisplayState("logo");
-      // Schedule next video after random delay
-      timeoutId = setTimeout(startVideoTransition, getRandomDelay());
-    }, 400);
-  };
-
-  const handleVideoEnded = () => {
-    startLogoTransition();
-  };
-
-  const handleVideoLoaded = () => {
-    setVideoLoaded(true);
-  };
-
-  onMount(() => {
-    // Initial delay before first video (3 seconds)
-    timeoutId = setTimeout(startVideoTransition, 3000);
-  });
-
-  onCleanup(() => {
-    clearTimeout(timeoutId);
-  });
-
-  const isGlitching = () =>
-    displayState() === "glitch-to-video" || displayState() === "glitch-to-logo";
-  const showLogo = () =>
-    displayState() === "logo" || displayState() === "glitch-to-logo";
-  const showVideo = () =>
-    displayState() === "video" || displayState() === "glitch-to-video" || displayState() === "glitch-to-logo";
-
-  return (
-    <div
-      class={`relative min-h-[300px] lg:min-h-0 lg:h-full fade-in-delay-1 z-20 rounded-[40px] overflow-hidden ${isGlitching() ? "screen-glitch" : ""}`}
-    >
-      {/* Video layer - below the glass panel */}
-      <video
-        ref={videoRef}
-        class={`w-full h-full object-cover absolute inset-0 rounded-[40px] transition-opacity duration-200 grayscale-[30%] ${showVideo() ? "opacity-60" : "opacity-0 pointer-events-none"}`}
-        muted
-        playsinline
-        preload="none"
-        onEnded={handleVideoEnded}
-        onCanPlayThrough={handleVideoLoaded}
-      >
-        <source src="/wts-square-web.webm" type="video/webm" />
-      </video>
-
-      {/* Glass panel overlay - lighter blur when video is playing */}
-      <div class={`${showVideo() ? "glass-panel-light" : "glass-panel"} glass-sweep rounded-[40px] flex items-center justify-center absolute inset-0 group`}>
-        <div class="absolute w-full h-0.5 bg-secondary-400/20 animate-scan pointer-events-none" />
-
-        {/* Logo - hidden during video playback */}
-        <div
-          class={`w-auto h-full animate-float flex items-center justify-center p-4 filter drop-shadow-[0_0_15px_rgba(46,200,254,0.4)] transition-opacity duration-200 ${showLogo() ? "opacity-90" : "opacity-0 pointer-events-none"}`}
-        >
-          <Logo class="w-full h-full" />
-        </div>
-      </div>
-    </div>
-  );
-};
 
 export const Hero = () => {
   const workshops = useCountUp(5, 1500);
@@ -191,7 +323,7 @@ export const Hero = () => {
         </div>
 
         {/* The Visual Glass Panel */}
-        <GlassPanel />
+        <GlassPanelController />
       </div>
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12 mt-20 pt-12 border-t border-white/20 fade-in-delay-2 relative text-center lg:text-left">
         <div class="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-secondary-500/50 to-transparent"></div>

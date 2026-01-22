@@ -126,17 +126,26 @@ export const loadSubmissionToStore = (submission: any) => {
     full_name: submission.full_name || pb.authStore.record?.name || "",
     affiliation: submission.affiliation || applicant.affiliation || "",
     short_bio: submission.bio || applicant.bio || "",
-    social_handles: socialHandlesArray.length > 0 ? socialHandlesArray : (applicant.social_handles || []),
-    preferred_contact: submission.preferred_contact_method || applicant.preferred_contact_method || "",
+    social_handles:
+      socialHandlesArray.length > 0
+        ? socialHandlesArray
+        : applicant.social_handles || [],
+    preferred_contact:
+      submission.preferred_contact_method ||
+      applicant.preferred_contact_method ||
+      "",
     talk_title: submission.session_title || submission.talk_title || "",
     abstract: submission.abstract || "",
     key_takeaways: submission.key_takeaways || "",
     technical_requirements: submission.technical_requirements || "",
-    previous_presentation: meta.previous_presentation || submission.previous_presentation || "",
+    previous_presentation:
+      meta.previous_presentation || submission.previous_presentation || "",
     description: submission.description || meta.description || "",
-    company_cover_expenses: meta.company_cover_expenses || submission.company_cover_expenses || "",
+    company_cover_expenses:
+      meta.company_cover_expenses || submission.company_cover_expenses || "",
     additional_info: meta.additional_info || submission.additional_info || "",
-    applicant_id: submission.applicant || submission.applicant_id || applicant.id || "",
+    applicant_id:
+      submission.applicant || submission.applicant_id || applicant.id || "",
     previous_talks: applicant.previous_talks || submission.previous_talks || "",
     organizer_notes: meta.organizer_notes || submission.organizer_notes || "",
   });
@@ -214,8 +223,6 @@ export const fetchProposals = async () => {
       sort: "-created",
       expand: "applicant",
     });
-
-    console.log(res);
 
     return res;
   } catch (error) {

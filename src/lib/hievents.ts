@@ -57,7 +57,6 @@ async function getAuthToken(baseUrl: string): Promise<string | null> {
   const apiUrl = getApiBaseUrl(baseUrl);
 
   try {
-    console.log(`Authenticating with hi.events at ${apiUrl}/auth/login...`);
     const response = await fetch(`${apiUrl}/auth/login`, {
       method: "POST",
       headers: {
@@ -76,7 +75,7 @@ async function getAuthToken(baseUrl: string): Promise<string | null> {
       try {
         const errData = await response.text();
         console.error("Error response:", errData);
-      } catch (e) { }
+      } catch (e) {}
       return null;
     }
 
@@ -190,7 +189,9 @@ export interface HiEventsAttendee {
   admin_url: string;
 }
 
-export async function fetchHiEventsAttendees(filterEmail?: string): Promise<HiEventsAttendee[]> {
+export async function fetchHiEventsAttendees(
+  filterEmail?: string,
+): Promise<HiEventsAttendee[]> {
   "use server";
   const rawApiUrl = process.env.HIEVENTS_API_URL;
   const eventId = process.env.HIEVENTS_EVENT_ID;
@@ -220,15 +221,15 @@ export async function fetchHiEventsAttendees(filterEmail?: string): Promise<HiEv
     // Since fetchHiEventsReleases is exported and "use server", we can call it.
     const releases = await fetchHiEventsReleases();
     const productsMap = new Map<number, HiEventsRelease>();
-    releases.forEach(r => productsMap.set(r.id, r));
+    releases.forEach((r) => productsMap.set(r.id, r));
 
     // 2. Fetch Attendees
     const endpoint = `${apiUrl}/events/${eventId}/attendees`;
 
     // Attempt to filter by email via API to reduce load if supported (hi.events might support ?query= or ?email=)
-    // The user snippet used ?sort_by=email. We will fetch all (default page size might be 25, need to handle pagination if list grows, 
+    // The user snippet used ?sort_by=email. We will fetch all (default page size might be 25, need to handle pagination if list grows,
     // but for now let's assume one page or we just fetch the default).
-    // NOTE: In production with many attendees, we should paginate. 
+    // NOTE: In production with many attendees, we should paginate.
     // For this implementation, we will fetch the first page.
 
     const response = await fetch(endpoint, { headers });
@@ -257,25 +258,31 @@ export async function fetchHiEventsAttendees(filterEmail?: string): Promise<HiEv
           last_name: item.last_name,
           email: item.email,
           locale: item.locale,
-          checked_in_at: (item.check_ins && item.check_ins.length > 0) ? item.check_ins[0].created_at : null,
+          checked_in_at:
+            item.check_ins && item.check_ins.length > 0
+              ? item.check_ins[0].created_at
+              : null,
           ticket: {
             id: item.product_id,
             title: product ? product.title : "Unknown Ticket",
-            price: product ? (product.price || 0) : 0,
-            currency: product ? product.currency : "EUR"
+            price: product ? product.price || 0 : 0,
+            currency: product ? product.currency : "EUR",
           },
-          public_url: item.public_id ? `${rawApiUrl}/check-in/ticket/${item.public_id}` : "",
-          admin_url: ""
+          public_url: item.public_id
+            ? `${rawApiUrl}/check-in/ticket/${item.public_id}`
+            : "",
+          admin_url: "",
         };
       });
     }
 
     if (filterEmail) {
-      return attendees.filter(a => a.email.toLowerCase() === filterEmail.toLowerCase());
+      return attendees.filter(
+        (a) => a.email.toLowerCase() === filterEmail.toLowerCase(),
+      );
     }
 
     return attendees;
-
   } catch (error) {
     console.error("Error fetching attendees from hi.events:", error);
     return [];
