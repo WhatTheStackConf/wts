@@ -131,10 +131,10 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
           {/* Subtle glitch effect for the entire text */}
           <Show when={showEffect()}>
             <span
-              class={`absolute top-0 left-0 overflow-hidden pointer-events-none opacity-50 flex flex-col`}
+              class={`absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-50`}
               style={{ color: "#fc00ff" }}
             >
-              <span class="animate-subtle-glitch" data-text="WhatTheStack">
+              <span class="animate-subtle-glitch block" data-text="WhatTheStack">
                 WhatTheStack
               </span>
             </span>
