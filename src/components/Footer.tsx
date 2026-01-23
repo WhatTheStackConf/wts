@@ -62,9 +62,18 @@ export const Footer = () => {
               <Icon icon="mdi:youtube" />
             </a>
           </div>
-          {/*<p class="text-sm text-base-content/60 mt-2">
-                        Follow us for the latest updates.
-                    </p>*/}
+
+          <div class="mt-2">
+            <button
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent("wts:open-newsletter"))
+              }
+              class="btn btn-outline btn-sm btn-primary gap-2"
+            >
+              <Icon icon="mdi:email-outline" />
+              Subscribe to Newsletter
+            </button>
+          </div>
         </nav>
 
         {/* Organizers */}
