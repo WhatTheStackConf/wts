@@ -225,54 +225,54 @@ const NewsletterPopup = () => {
                         </div>
 
                         <form onSubmit={handleSubscribe} class="flex flex-col gap-4">
-                            <div class="form-control">
-                                <input
-                                    type="text"
-                                    placeholder="Your Name (Optional)"
-                                    class="input input-bordered bg-base-200/50 focus:bg-base-200 w-full"
-                                    value={name()}
-                                    onInput={(e) => setName(e.currentTarget.value)}
-                                />
-                            </div>
-
-                            <div class="form-control">
-                                <input
-                                    type="email"
-                                    placeholder="your@email.com"
-                                    class="input input-bordered bg-base-200/50 focus:bg-base-200 w-full"
-                                    value={email()}
-                                    onInput={(e) => setEmail(e.currentTarget.value)}
-                                    required
-                                />
-                            </div>
-
-
-
                             {/* Turnstile Container */}
                             <div ref={containerRef} class="flex justify-center min-h-[65px] mb-4"></div>
 
-                            <Show when={error()}>
-                                <div class="text-error text-xs text-center">
-                                    {error()}
+                            <Show when={!!turnstileToken()}>
+                                <div class="form-control">
+                                    <input
+                                        type="text"
+                                        placeholder="Your Name (Optional)"
+                                        class="input input-bordered bg-base-200/50 focus:bg-base-200 w-full"
+                                        value={name()}
+                                        onInput={(e) => setName(e.currentTarget.value)}
+                                    />
                                 </div>
-                            </Show>
 
-                            <button
-                                type="submit"
-                                class="btn btn-primary w-full shadow-lg shadow-primary-500/20"
-                                disabled={loading()}
-                            >
-                                {loading() ? (
-                                    <span class="loading loading-spinner loading-sm"></span>
-                                ) : (
-                                    <>
-                                        Subscribe <Icon icon="mdi:arrow-right" />
-                                    </>
-                                )}
-                            </button>
-                            <p class="text-[10px] text-center text-base-content/40 mt-2">
-                                We use Listmonk for our newsletter. Unsubscribe at any time.
-                            </p>
+                                <div class="form-control">
+                                    <input
+                                        type="email"
+                                        placeholder="your@email.com"
+                                        class="input input-bordered bg-base-200/50 focus:bg-base-200 w-full"
+                                        value={email()}
+                                        onInput={(e) => setEmail(e.currentTarget.value)}
+                                        required
+                                    />
+                                </div>
+
+                                <Show when={error()}>
+                                    <div class="text-error text-xs text-center">
+                                        {error()}
+                                    </div>
+                                </Show>
+
+                                <button
+                                    type="submit"
+                                    class="btn btn-primary w-full shadow-lg shadow-primary-500/20"
+                                    disabled={loading()}
+                                >
+                                    {loading() ? (
+                                        <span class="loading loading-spinner loading-sm"></span>
+                                    ) : (
+                                        <>
+                                            Subscribe <Icon icon="mdi:arrow-right" />
+                                        </>
+                                    )}
+                                </button>
+                                <p class="text-[10px] text-center text-base-content/40 mt-2">
+                                    We use Listmonk for our newsletter. Unsubscribe at any time.
+                                </p>
+                            </Show>
                         </form>
                     </Show>
                 </div>
