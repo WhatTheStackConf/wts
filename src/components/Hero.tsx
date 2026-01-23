@@ -117,7 +117,7 @@ const HeroVideo = (props: {
   return (
     <video
       ref={videoRef}
-      class={`w-full h-full object-cover absolute inset-0 rounded-[40px] transition-opacity duration-200 grayscale-[30%] ${props.active ? "opacity-80 z-10" : "opacity-0 z-0"}`}
+      class={`w-full h-full object-cover absolute inset-0 rounded-[40px] transition-opacity duration-200 grayscale-[10%] ${props.active ? "opacity-[95%] z-10" : "opacity-0 z-0"}`}
       muted
       playsinline
       preload="auto"
@@ -203,13 +203,13 @@ const GlassPanelController = () => {
       {/* Middle Layer: Glass Panel (Always visible, contents change) */}
       <div
         class="glass-panel glass-sweep rounded-[40px] flex items-center justify-center absolute inset-0 group z-20"
-        style={{ "backdrop-filter": "blur(7px) saturate(180%)" }}
+        style={{ "backdrop-filter": "blur(3px) saturate(180%)" }}
       >
         {/* CRT Edge Blur */}
         <div
           class="absolute inset-0 z-10 pointer-events-none rounded-[40px]"
           style={{
-            "backdrop-filter": "blur(12px)",
+            "backdrop-filter": "blur(6px)",
             "mask-image":
               "linear-gradient(to right, black, transparent 15%, transparent 85%, black), linear-gradient(to bottom, black, transparent 15%, transparent 85%, black)",
             "mask-composite": "add",

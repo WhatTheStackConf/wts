@@ -279,3 +279,33 @@ export const getCfpSubmissionsByApplicant = async (
     throw error;
   }
 };
+
+
+export const requestPasswordReset = async (email: string): Promise<boolean> => {
+  try {
+    await pb.collection("users").requestPasswordReset(email);
+    return true;
+  } catch (error) {
+    console.error("Request password reset error:", error);
+    // throw error; // Optionally re-throw if you want to show specific errors
+    return false;
+  }
+};
+
+export const confirmPasswordReset = async (
+  token: string,
+  password: string,
+  passwordConfirm: string
+): Promise<boolean> => {
+  try {
+    await pb.collection("users").confirmPasswordReset(
+      token,
+      password,
+      passwordConfirm
+    );
+    return true;
+  } catch (error) {
+    console.error("Confirm password reset error:", error);
+    throw error;
+  }
+};

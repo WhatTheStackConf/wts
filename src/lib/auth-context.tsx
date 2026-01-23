@@ -37,13 +37,31 @@ export const AuthProvider = (props: { children: any }) => {
   // Check auth status on mount
   onMount(() => {
     setLoading(true);
-    setRecord(pb.authStore.record as unknown as UserRecord | null);
+    const currentRecord = pb.authStore.record as unknown as UserRecord | null;
+
+    // Enforce verification
+    if (currentRecord && !currentRecord.verified) {
+      pb.authStore.clear();
+      setRecord(null);
+    } else {
+      setRecord(currentRecord);
+    }
+
     setLoading(false);
   });
 
   // Listen for auth changes
   const unlisten = pb.authStore.onChange(() => {
-    setRecord(pb.authStore.record as unknown as UserRecord | null);
+    const currentRecord = pb.authStore.record as unknown as UserRecord | null;
+
+    // Enforce verification
+    if (currentRecord && !currentRecord.verified) {
+      // We don't call clear() here to avoid infinite loops if the change was triggered by clear()
+      // But we set the local state to null effectively treating them as logged out
+      setRecord(null);
+    } else {
+      setRecord(currentRecord);
+    }
   });
 
   // Clean up listener
@@ -56,7 +74,16 @@ export const AuthProvider = (props: { children: any }) => {
     try {
       const userData = await loginUtil(email, password);
       // Ensure record matches UserRecord
-      setRecord(userData.record as unknown as UserRecord);
+      const userRecord = userData.record as unknown as UserRecord;
+
+      // Enforce verification
+      if (!userRecord.verified) {
+        logoutUtil();
+        setRecord(null);
+        throw new Error("Please verify your email address before logging in.");
+      }
+
+      setRecord(userRecord);
       return userData;
     } finally {
       setLoading(false);
@@ -67,7 +94,16 @@ export const AuthProvider = (props: { children: any }) => {
     setLoading(true);
     try {
       const userData = await loginWithGithub();
-      setRecord(userData.record as unknown as UserRecord);
+      const userRecord = userData.record as unknown as UserRecord;
+
+      // Enforce verification for GitHub users too (though usually auto-verified)
+      if (!userRecord.verified) {
+        logoutUtil();
+        setRecord(null);
+        throw new Error("Please verify your email address before logging in.");
+      }
+
+      setRecord(userRecord);
       return userData;
     } finally {
       setLoading(false);
@@ -78,7 +114,16 @@ export const AuthProvider = (props: { children: any }) => {
     setLoading(true);
     try {
       const userData = await loginWithGoogle();
-      setRecord(userData.record as unknown as UserRecord);
+      const userRecord = userData.record as unknown as UserRecord;
+
+      // Enforce verification for Google users
+      if (!userRecord.verified) {
+        logoutUtil();
+        setRecord(null);
+        throw new Error("Please verify your email address before logging in.");
+      }
+
+      setRecord(userRecord);
       return userData;
     } finally {
       setLoading(false);
@@ -91,7 +136,12 @@ export const AuthProvider = (props: { children: any }) => {
   };
 
   const value: AuthContextType = {
-    isAuthenticated: () => pb.authStore.isValid,
+    // isAuthenticated checks validity AND verification status
+    isAuthenticated: () => {
+      const valid = pb.authStore.isValid;
+      const r = record();
+      return valid && !!r && !!r.verified;
+    },
     login,
     logout,
     githubLogin,

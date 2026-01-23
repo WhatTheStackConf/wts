@@ -1,5 +1,5 @@
 import { createSignal, Show } from "solid-js";
-import { Navigate } from "@solidjs/router";
+import { Navigate, useNavigate } from "@solidjs/router";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
 
@@ -10,7 +10,9 @@ const RegisterPage = () => {
   const [name, setName] = createSignal("");
   const [error, setError] = createSignal("");
   const [success, setSuccess] = createSignal(false);
+  const [loading, setLoading] = createSignal(false);
   const auth = useAuth();
+  const navigate = useNavigate();
 
   // If already logged in, redirect to the home page
   if (auth && auth.record) {
@@ -19,6 +21,9 @@ const RegisterPage = () => {
 
   const handleRegister = async (e: Event) => {
     e.preventDefault();
+    if (loading()) return;
+
+    setLoading(true);
     setError("");
 
     if (password() !== passwordConfirm()) {
@@ -38,10 +43,17 @@ const RegisterPage = () => {
     } catch (err: any) {
       console.error("Registration error:", err);
       setError(err.message || "Registration failed");
+    } finally {
+      setLoading(false);
     }
   };
 
   if (success()) {
+    // Auto-redirect to login after 3 seconds
+    setTimeout(() => {
+      navigate("/login");
+    }, 3000);
+
     return (
       <Layout
         title="Registration Successful"
@@ -54,8 +66,11 @@ const RegisterPage = () => {
               Your account has been created. You can now log in with your
               credentials.
             </p>
+            <p class="mb-6 text-sm text-base-content/70">
+              Redirecting to login in 3 seconds...
+            </p>
             <a href="/login" class="btn btn-primary">
-              Go to Login
+              Go to Login Now
             </a>
           </div>
         </div>
@@ -142,8 +157,19 @@ const RegisterPage = () => {
               </div>
             </Show>
 
-            <button type="submit" class="btn btn-primary w-full">
-              Create Account
+            <button
+              type="submit"
+              class="btn btn-primary w-full"
+              disabled={loading()}
+            >
+              {loading() ? (
+                <>
+                  <span class="loading loading-spinner"></span>
+                  Creating Account...
+                </>
+              ) : (
+                "Create Account"
+              )}
             </button>
           </form>
 

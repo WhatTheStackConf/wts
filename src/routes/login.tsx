@@ -9,6 +9,8 @@ const LoginPage = () => {
   const [email, setEmail] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [error, setError] = createSignal("");
+  const [showResendVerification, setShowResendVerification] = createSignal(false);
+  const [resendSuccess, setResendSuccess] = createSignal(false);
   const auth = useAuth();
   const navigate = useNavigate();
 
@@ -24,13 +26,6 @@ const LoginPage = () => {
     try {
       const data = await auth?.login(email(), password());
 
-      // Enforce email verification
-      if (!data?.record?.verified) {
-        auth?.logout();
-        setError("Please verify your email address before logging in.");
-        return;
-      }
-
       const redirectUrl = localStorage.getItem("redirect_url");
       if (redirectUrl) {
         localStorage.removeItem("redirect_url");
@@ -40,7 +35,28 @@ const LoginPage = () => {
       }
     } catch (err: any) {
       console.error("Login error:", err);
-      setError(err.message || "Login failed");
+      const errorMessage = err.message || "Login failed";
+      setError(errorMessage);
+
+      // Check if the error is verification related
+      if (errorMessage.includes("verify your email")) {
+        setShowResendVerification(true);
+      }
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!email()) return;
+    try {
+      // Dynamic import to avoid issues if utils not loaded
+      const { requestEmailVerification } = await import("~/lib/pocketbase-utils");
+      await requestEmailVerification(email());
+      setResendSuccess(true);
+      setError(""); // Clear the error to reduce visual noise
+    } catch (err) {
+      console.error("Resend error:", err);
+      // We don't necessarily want to show an error here to prevent enumeration listing if possible,
+      // but provided the user just tried to log in, it's fine.
     }
   };
 
@@ -140,6 +156,31 @@ const LoginPage = () => {
               </button>
             </div>
           </form>
+
+          <div class="mt-2 text-right">
+            <a href="/forgot-password" class="text-sm link link-secondary">
+              Forgot Password?
+            </a>
+          </div>
+
+          <Show when={showResendVerification()}>
+            <div class="mt-4 p-4 bg-base-200 rounded-lg text-center">
+              <p class="text-sm mb-3">Diidn't receive the verification email?</p>
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                class="btn btn-outline btn-secondary btn-sm w-full"
+                disabled={resendSuccess()}
+              >
+                {resendSuccess() ? "Email Sent!" : "Resend Verification Email"}
+              </button>
+              <Show when={resendSuccess()}>
+                <p class="text-xs text-success mt-2">
+                  Please check your inbox (and spam folder).
+                </p>
+              </Show>
+            </div>
+          </Show>
 
           <div class="mt-6 text-center">
             <p class="text-sm text-base-content/70">
