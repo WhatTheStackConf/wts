@@ -76,6 +76,16 @@ export const requestEmailVerification = async (email: string): Promise<boolean> 
   }
 };
 
+export const confirmVerification = async (token: string): Promise<boolean> => {
+  try {
+    await pb.collection("users").confirmVerification(token);
+    return true;
+  } catch (error) {
+    console.error("Confirm verification error:", error);
+    throw error;
+  }
+};
+
 export const loginWithGoogle = async (): Promise<AuthData> => {
   try {
     const authData: AuthData = await pb.collection("users").authWithOAuth2({

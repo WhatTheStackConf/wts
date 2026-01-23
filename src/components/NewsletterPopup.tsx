@@ -11,12 +11,22 @@ const NewsletterPopup = () => {
     const [error, setError] = createSignal("");
     const [turnstileToken, setTurnstileToken] = createSignal("");
     const [turnstileReady, setTurnstileReady] = createSignal(false);
+    let containerRef: HTMLDivElement | undefined;
+
+    // Prevent double rendering
+    let renderedWidgetId: string | null = null;
 
     const LIST_ID = import.meta.env.VITE_LISTMONK_LIST_ID;
     const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
     const LISTMONK_URL = "https://listmonk.wts.sh";
 
     onMount(() => {
+        console.log("[Newsletter] Config:", {
+            hasListId: !!LIST_ID,
+            hasSiteKey: !!SITE_KEY,
+            turnstileLoaded: !!(window as any).turnstile
+        });
+
         // Check if already subscribed or dismissed
         const dismissed = localStorage.getItem("wts_newsletter_dismissed");
         if (!dismissed) {
@@ -31,18 +41,34 @@ const NewsletterPopup = () => {
         window.addEventListener("wts:open-newsletter", handleOpen);
 
         // Check if Turnstile is already loaded
-        if ((window as any).turnstile) {
-            setTurnstileReady(true);
+        const checkTurnstile = () => {
+            if ((window as any).turnstile) {
+                setTurnstileReady(true);
+                return true;
+            }
+            return false;
+        };
+
+        if (!checkTurnstile()) {
+            // Poll for a bit just in case
+            const interval = setInterval(() => {
+                if (checkTurnstile()) clearInterval(interval);
+            }, 100);
+            setTimeout(() => clearInterval(interval), 5000);
         }
 
         // Inject Turnstile script
         if (SITE_KEY && !document.getElementById("turnstile-script")) {
+            console.log("[Newsletter] Injecting Turnstile script...");
             const script = document.createElement("script");
             script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
             script.id = "turnstile-script";
             script.async = true;
             script.defer = true;
-            script.onload = () => setTurnstileReady(true);
+            script.onload = () => {
+                console.log("[Newsletter] Turnstile script loaded");
+                setTurnstileReady(true);
+            };
             document.head.appendChild(script);
         }
 
@@ -53,25 +79,40 @@ const NewsletterPopup = () => {
 
     // Render Turnstile when visible and ready
     createEffect(() => {
-        if (isVisible() && !success() && SITE_KEY && turnstileReady() && (window as any).turnstile) {
-            // Tiny delay to ensure DOM is ready and container exists
+        if (!isVisible()) {
+            renderedWidgetId = null;
+            return;
+        }
+
+        if (isVisible() && !success() && SITE_KEY && turnstileReady() && (window as any).turnstile && containerRef) {
+            if (renderedWidgetId) return; // Prevent duplicates
+
+            console.log("[Newsletter] Attempting to render Turnstile...");
+            // Tiny delay to ensure DOM is ready
             setTimeout(() => {
                 try {
-                    // Clear previous instances if any to avoid duplicates
-                    const container = document.getElementById("turnstile-widget");
-                    if (container) {
-                        container.innerHTML = "";
-                        (window as any).turnstile.render("#turnstile-widget", {
+                    if (containerRef && !renderedWidgetId) {
+                        // Clear to be safe
+                        containerRef.innerHTML = "";
+
+                        renderedWidgetId = (window as any).turnstile.render(containerRef, {
                             sitekey: SITE_KEY,
-                            callback: (token: string) => setTurnstileToken(token),
+                            callback: (token: string) => {
+                                console.log("[Newsletter] Verified");
+                                setTurnstileToken(token);
+                            },
                             "expired-callback": () => setTurnstileToken(""),
+                            "error-callback": () => console.error("[Newsletter] Turnstile Error"),
                             theme: "dark",
                         });
+                        console.log("[Newsletter] Rendered with ID:", renderedWidgetId);
                     }
                 } catch (e) {
                     console.error("Turnstile render error", e);
                 }
             }, 100);
+        } else if (isVisible() && !SITE_KEY) {
+            console.error("[Newsletter] VITE_TURNSTILE_SITE_KEY is missing! Widget cannot render.");
         }
     });
 
@@ -208,7 +249,7 @@ const NewsletterPopup = () => {
 
 
                             {/* Turnstile Container */}
-                            <div id="turnstile-widget" class="flex justify-center min-h-[65px] mb-4"></div>
+                            <div ref={containerRef} class="flex justify-center min-h-[65px] mb-4"></div>
 
                             <Show when={error()}>
                                 <div class="text-error text-xs text-center">
