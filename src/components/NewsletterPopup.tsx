@@ -10,6 +10,7 @@ const NewsletterPopup = () => {
     const [success, setSuccess] = createSignal(false);
     const [error, setError] = createSignal("");
     const [turnstileToken, setTurnstileToken] = createSignal("");
+    const [turnstileReady, setTurnstileReady] = createSignal(false);
 
     const LIST_ID = import.meta.env.VITE_LISTMONK_LIST_ID;
     const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
@@ -29,6 +30,11 @@ const NewsletterPopup = () => {
         const handleOpen = () => setIsVisible(true);
         window.addEventListener("wts:open-newsletter", handleOpen);
 
+        // Check if Turnstile is already loaded
+        if ((window as any).turnstile) {
+            setTurnstileReady(true);
+        }
+
         // Inject Turnstile script
         if (SITE_KEY && !document.getElementById("turnstile-script")) {
             const script = document.createElement("script");
@@ -36,6 +42,7 @@ const NewsletterPopup = () => {
             script.id = "turnstile-script";
             script.async = true;
             script.defer = true;
+            script.onload = () => setTurnstileReady(true);
             document.head.appendChild(script);
         }
 
@@ -44,19 +51,23 @@ const NewsletterPopup = () => {
         });
     });
 
-    // Render Turnstile when visible
-    // Render Turnstile when visible
+    // Render Turnstile when visible and ready
     createEffect(() => {
-        if (isVisible() && !success() && SITE_KEY && (window as any).turnstile) {
-            // Tiny delay to ensure DOM is ready
+        if (isVisible() && !success() && SITE_KEY && turnstileReady() && (window as any).turnstile) {
+            // Tiny delay to ensure DOM is ready and container exists
             setTimeout(() => {
                 try {
-                    (window as any).turnstile.render("#turnstile-widget", {
-                        sitekey: SITE_KEY,
-                        callback: (token: string) => setTurnstileToken(token),
-                        "expired-callback": () => setTurnstileToken(""),
-                        theme: "dark",
-                    });
+                    // Clear previous instances if any to avoid duplicates
+                    const container = document.getElementById("turnstile-widget");
+                    if (container) {
+                        container.innerHTML = "";
+                        (window as any).turnstile.render("#turnstile-widget", {
+                            sitekey: SITE_KEY,
+                            callback: (token: string) => setTurnstileToken(token),
+                            "expired-callback": () => setTurnstileToken(""),
+                            theme: "dark",
+                        });
+                    }
                 } catch (e) {
                     console.error("Turnstile render error", e);
                 }
