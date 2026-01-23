@@ -27,14 +27,7 @@ const NewsletterPopup = () => {
             turnstileLoaded: !!(window as any).turnstile
         });
 
-        // Check if already subscribed or dismissed
-        const dismissed = localStorage.getItem("wts_newsletter_dismissed");
-        if (!dismissed) {
-            // Show after a delay
-            setTimeout(() => {
-                setIsVisible(true);
-            }, 5000);
-        }
+
 
         // Listen for manual trigger
         const handleOpen = () => setIsVisible(true);
