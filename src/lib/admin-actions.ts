@@ -1,11 +1,13 @@
 // API endpoint for admin operations
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
+import { requireAdmin } from "~/lib/admin-security";
 
 // Define a server function for admin operations
 export const adminCreateEvent = async (eventData: any) => {
   "use server";
 
   try {
+    await requireAdmin();
     const adminService = getAdminPB();
     const result = await adminService.createRecord("events", eventData);
     return { success: true, data: result };
@@ -19,6 +21,7 @@ export const adminUpdateEvent = async (id: string, eventData: any) => {
   "use server";
 
   try {
+    await requireAdmin();
     const adminService = getAdminPB();
     const result = await adminService.updateRecord("events", id, eventData);
     return { success: true, data: result };
@@ -32,6 +35,7 @@ export const adminDeleteEvent = async (id: string) => {
   "use server";
 
   try {
+    await requireAdmin();
     const adminService = getAdminPB();
     const result = await adminService.deleteRecord("events", id);
     return { success: true, data: result };
@@ -45,6 +49,7 @@ export const adminFetchAllEvents = async () => {
   "use server";
 
   try {
+    await requireAdmin();
     const adminService = getAdminPB();
     const result = await adminService.fetchAllRecords("events");
     return { success: true, data: result };
@@ -59,6 +64,7 @@ export const adminFetchAllUsers = async () => {
   "use server";
 
   try {
+    await requireAdmin();
     const adminService = getAdminPB();
     const result = await adminService.fetchAllRecords("users", { sort: "-created" });
     return { success: true, data: result };
@@ -72,6 +78,7 @@ export const adminUpdateUser = async (id: string, userData: any) => {
   "use server";
 
   try {
+    await requireAdmin();
     const adminService = getAdminPB();
     const result = await adminService.updateRecord("users", id, userData);
     return { success: true, data: result };
@@ -85,6 +92,7 @@ export const adminDeleteUser = async (id: string) => {
   "use server";
 
   try {
+    await requireAdmin();
     const adminService = getAdminPB();
     const result = await adminService.deleteRecord("users", id);
     return { success: true, data: result };
@@ -99,6 +107,7 @@ export const adminFetchLeaderboardData = async () => {
   "use server";
 
   try {
+    await requireAdmin();
     const adminService = getAdminPB();
 
     // 1. Fetch EVERYTHING (using admin service)
