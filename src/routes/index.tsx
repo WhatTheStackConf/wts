@@ -35,6 +35,11 @@ export default function Home() {
                     {`>`} Partner with us
                   </a>
                 </li>
+                <li>
+                  <a href="https://www.youtube.com/@WhatTheStackConference" target="_blank" rel="noopener noreferrer" class="link  text-primary-200">
+                    {`>`} Watch previous year's talks
+                  </a>
+                </li>
               </ul>
             </div>
           </div>
