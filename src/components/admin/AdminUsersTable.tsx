@@ -3,7 +3,7 @@ import { useNavigate } from "@solidjs/router";
 import { Icon } from "@iconify-icon/solid";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
-import { adminFetchAllUsers, adminUpdateUser } from "~/lib/admin-actions";
+import { adminFetchAllUsers, adminUpdateUser, adminDeleteUser } from "~/lib/admin-actions";
 import { UserRecord } from "~/lib/pocketbase-types";
 import { getGravatarUrl } from "~/lib/gravatar";
 
@@ -17,10 +17,12 @@ export default function AdminUsersTable() {
     const [users, { refetch }] = createResource(async () => {
         const res = await adminFetchAllUsers();
         if (res.success) {
-            return res.data as UserRecord[];
+            return res.data as (UserRecord & { isApplicant?: boolean })[];
         }
         return [];
     });
+
+    const [selectedUser, setSelectedUser] = createSignal<(UserRecord & { isApplicant?: boolean }) | null>(null);
 
     const [updating, setUpdating] = createSignal<string | null>(null);
 
@@ -53,6 +55,25 @@ export default function AdminUsersTable() {
             }
         } catch (e) {
             console.error(e);
+        } finally {
+            setUpdating(null);
+        }
+    };
+
+    const handleDeleteUser = async (userId: string, userName: string) => {
+        if (!confirm(`Are you sure you want to PERMANENTLY delete user "${userName || 'Unknown'}"? This cannot be undone.`)) return;
+
+        setUpdating(userId);
+        try {
+            const res = await adminDeleteUser(userId);
+            if (res.success) {
+                await refetch();
+            } else {
+                alert("Failed to delete user: " + res.error);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("An unknown error occurred");
         } finally {
             setUpdating(null);
         }
@@ -107,7 +128,7 @@ export default function AdminUsersTable() {
                                                     user.role === 'reviewer' ? 'bg-secondary-500/20 text-secondary-300' :
                                                         'bg-white/10 text-gray-400'
                                                     }`}>
-                                                    {user.role.toUpperCase()}
+                                                    {(user.role || 'user').toUpperCase()}
                                                 </div>
                                                 <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-900 rounded-box w-52 border border-white/10 text-white">
                                                     <For each={ROLES}>
@@ -138,7 +159,17 @@ export default function AdminUsersTable() {
                                                 >
                                                     <Icon icon={user.verified ? "ph:check-bold" : "ph:x-bold"} />
                                                 </button>
-                                                <button class="btn btn-ghost btn-xs text-gray-400 hover:text-white" disabled>
+                                                <button
+                                                    class="btn btn-sm btn-circle bg-error-500/20 text-error-400 hover:bg-error-500 hover:text-white border-none"
+                                                    onClick={() => handleDeleteUser(user.id, user.name)}
+                                                    disabled={updating() === user.id}
+                                                >
+                                                    <Icon icon="ph:trash-bold" />
+                                                </button>
+                                                <button
+                                                    class="btn btn-ghost btn-xs text-gray-400 hover:text-white"
+                                                    onClick={() => setSelectedUser(user)}
+                                                >
                                                     Details
                                                 </button>
                                             </div>
@@ -182,7 +213,14 @@ export default function AdminUsersTable() {
                                                             </div>
                                                         </div>
                                                         <div>
-                                                            <div class="font-bold text-white">{user.name || "Unknown"}</div>
+                                                            <div class="font-bold text-white flex items-center gap-2">
+                                                                {user.name || "Unknown"}
+                                                                <Show when={user.isApplicant}>
+                                                                    <div class="tooltip" data-tip="Applicant Profile">
+                                                                        <Icon icon="ph:microphone-stage-bold" class="text-primary-400" />
+                                                                    </div>
+                                                                </Show>
+                                                            </div>
                                                             <div class="text-xs opacity-50 font-mono">{user.email}</div>
                                                         </div>
                                                     </div>
@@ -193,7 +231,7 @@ export default function AdminUsersTable() {
                                                             user.role === 'reviewer' ? 'bg-secondary-500/20 text-secondary-300' :
                                                                 'bg-white/10 text-gray-400'
                                                             }`}>
-                                                            {user.role.toUpperCase()}
+                                                            {(user.role || 'user').toUpperCase()}
                                                         </div>
                                                         <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-900 rounded-box w-52 border border-white/10 text-white">
                                                             <For each={ROLES}>
@@ -216,17 +254,31 @@ export default function AdminUsersTable() {
                                                         class={`btn btn-xs btn-circle ${user.verified ? 'btn-success text-white' : 'btn-ghost text-gray-500'}`}
                                                         onClick={() => handleToggleVerification(user.id, !!user.verified)}
                                                         disabled={updating() === user.id}
+                                                        title={user.verified ? "Verified" : "Unverified"}
                                                     >
                                                         <Icon icon={user.verified ? "ph:check-bold" : "ph:x-bold"} />
                                                     </button>
                                                 </td>
                                                 <td class="text-center font-mono text-xs opacity-50">
-                                                    {new Date(user.created).toLocaleDateString()}
+                                                    {new Date(user.created).toISOString().split('T')[0]}
                                                 </td>
                                                 <td class="text-center">
-                                                    <button class="btn btn-ghost btn-xs text-gray-400 hover:text-white" disabled>
-                                                        Details
-                                                    </button>
+                                                    <div class="flex items-center justify-center gap-2">
+                                                        <button
+                                                            class="btn btn-ghost btn-xs text-gray-400 hover:text-white"
+                                                            onClick={() => setSelectedUser(user)}
+                                                        >
+                                                            Details
+                                                        </button>
+                                                        <button
+                                                            class="btn btn-xs btn-circle bg-error-500/20 text-error-400 hover:bg-error-500 hover:text-white border-none transition-colors"
+                                                            onClick={() => handleDeleteUser(user.id, user.name)}
+                                                            disabled={updating() === user.id}
+                                                            title="Delete User"
+                                                        >
+                                                            <Icon icon="ph:trash-bold" />
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         )}
@@ -239,6 +291,73 @@ export default function AdminUsersTable() {
 
             </div>
             {/* Added closing div back */}
+            {/* User Details Modal */}
+            <Show when={selectedUser()}>
+                <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedUser(null)}></div>
+                    <div class="bg-base-900 border border-white/10 p-0 rounded-2xl relative z-10 max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div class="p-6 border-b border-white/10 bg-white/5 flex justify-between items-center">
+                            <h3 class="text-xl font-bold text-white">User Details</h3>
+                            <button onClick={() => setSelectedUser(null)} class="btn btn-circle btn-ghost btn-sm">
+                                <Icon icon="ph:x-bold" />
+                            </button>
+                        </div>
+                        <div class="p-6 space-y-6">
+                            <div class="flex items-center gap-4">
+                                <div class="avatar">
+                                    <div class="w-20 rounded-full ring-2 ring-white/10">
+                                        <img
+                                            src={getGravatarUrl(selectedUser()?.email || "")}
+                                            alt={selectedUser()?.name || "User"}
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 class="text-lg font-bold text-white flex items-center gap-2">
+                                        {selectedUser()?.name || "Unknown"}
+                                        <Show when={selectedUser()?.isApplicant}>
+                                            <span class="badge badge-primary badge-sm gap-1">
+                                                <Icon icon="ph:microphone-stage-bold" />
+                                                APPLICANT
+                                            </span>
+                                        </Show>
+                                    </h4>
+                                    <p class="text-secondary-300 font-mono text-sm">{selectedUser()?.email}</p>
+                                    <p class="text-xs text-gray-500 font-mono mt-1">{selectedUser()?.id}</p>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                                    <div class="text-xs text-gray-400 uppercase font-bold mb-1">Role</div>
+                                    <div class="font-mono text-white">{(selectedUser()?.role || "user").toUpperCase()}</div>
+                                </div>
+                                <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                                    <div class="text-xs text-gray-400 uppercase font-bold mb-1">Status</div>
+                                    <div class={`font-mono font-bold ${selectedUser()?.verified ? 'text-success' : 'text-warning'}`}>
+                                        {selectedUser()?.verified ? "VERIFIED" : "UNVERIFIED"}
+                                    </div>
+                                </div>
+                                <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                                    <div class="text-xs text-gray-400 uppercase font-bold mb-1">Joined</div>
+                                    <div class="font-mono text-white">
+                                        {selectedUser()?.created ? new Date(selectedUser()!.created).toISOString().split('T')[0] : 'N/A'}
+                                    </div>
+                                </div>
+                                <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                                    <div class="text-xs text-gray-400 uppercase font-bold mb-1">Last Updated</div>
+                                    <div class="font-mono text-white">
+                                        {selectedUser()?.updated ? new Date(selectedUser()!.updated).toISOString().split('T')[0] : 'N/A'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-4 bg-black/20 border-t border-white/5 flex justify-end">
+                            <button class="btn btn-ghost" onClick={() => setSelectedUser(null)}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            </Show>
         </Layout>
     );
 }

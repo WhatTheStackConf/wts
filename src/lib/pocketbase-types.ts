@@ -38,6 +38,7 @@ export interface CfpSubmissionRecord extends RecordModel {
   created: string;
   updated: string;
   status?: "pending" | "accepted" | "rejected";
+  meta?: any; // JSON field containing expenses, notes, etc.
 }
 
 // CFP Review collection type

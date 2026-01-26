@@ -168,31 +168,80 @@ export default function ReviewPage() {
                                         <div class="badge badge-outline border-white/20 text-white/60 font-mono">
                                             {submission().format || "Talk"}
                                         </div>
-                                        {isAdmin() && (
-                                            <div class={`badge ${submission().status === 'accepted' ? 'badge-success' : 'badge-ghost'}`}>
-                                                {submission().status}
-                                            </div>
-                                        )}
                                     </div>
 
                                     {/* Abstract Section */}
                                     <div class="mb-8">
                                         <h3 class="text-xs font-bold text-secondary-400 uppercase tracking-widest mb-3">Abstract</h3>
-                                        <div class="prose prose-invert max-w-none prose-p:text-gray-300 prose-p:leading-relaxed">
-                                            <p class="whitespace-pre-wrap">{submission().abstract}</p>
-                                        </div>
+                                        <div
+                                            class="prose prose-invert max-w-none prose-p:text-gray-300 prose-p:leading-relaxed"
+                                            innerHTML={submission().abstract}
+                                        ></div>
                                     </div>
 
                                     <div class="divider border-white/10"></div>
 
-                                    {/* Description Section */}
-                                    <div>
-                                        <h3 class="text-xs font-bold text-secondary-400 uppercase tracking-widest mb-3">Full Description</h3>
+                                    {/* Key Takeaways Section */}
+                                    <div class="mb-8">
+                                        <h3 class="text-xs font-bold text-secondary-400 uppercase tracking-widest mb-3">Key Takeaways</h3>
                                         <div
                                             class="prose prose-invert max-w-none prose-p:text-gray-300 prose-headings:text-white"
-                                            innerHTML={submission().description}
+                                            innerHTML={submission().key_takeaways}
                                         ></div>
                                     </div>
+
+                                    {/* Technical Requirements Section */}
+                                    <Show when={submission().technical_requirements}>
+                                        <div class="mb-8">
+                                            <h3 class="text-xs font-bold text-secondary-400 uppercase tracking-widest mb-3">Technical Requirements</h3>
+                                            <div class="prose prose-invert max-w-none prose-p:text-gray-300">
+                                                <p class="whitespace-pre-wrap">{submission().technical_requirements}</p>
+                                            </div>
+                                        </div>
+                                    </Show>
+
+                                    {/* Logistics & Meta Section */}
+                                    <Show when={isAdmin()}>
+                                        <div class="mb-8 p-6 bg-white/5 rounded-xl border border-white/5 space-y-4">
+                                            <h3 class="text-xs font-bold text-primary-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                                <Icon icon="ph:info-bold" /> Logistics & Meta
+                                            </h3>
+
+                                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <div class="text-xs text-gray-500 uppercase font-bold mb-1">Covers Expenses?</div>
+                                                    <div class={`badge ${submission().meta?.company_cover_expenses === 'Yes' ? 'badge-success text-white' : 'badge-warning text-white'} font-mono`}>
+                                                        {submission().meta?.company_cover_expenses || "N/A"}
+                                                    </div>
+                                                </div>
+
+                                                <Show when={submission().meta?.previous_presentation}>
+                                                    <div>
+                                                        <div class="text-xs text-gray-500 uppercase font-bold mb-1">Previous Presentation</div>
+                                                        <a href={submission().meta?.previous_presentation} target="_blank" rel="noopener noreferrer" class="link link-primary text-sm truncate block max-w-xs">
+                                                            {submission().meta?.previous_presentation}
+                                                        </a>
+                                                    </div>
+                                                </Show>
+                                            </div>
+
+                                            <Show when={submission().meta?.additional_info}>
+                                                <div class="pt-2">
+                                                    <div class="text-xs text-gray-500 uppercase font-bold mb-1">Additional Info</div>
+                                                    <p class="text-sm text-gray-300 italic">"{submission().meta?.additional_info}"</p>
+                                                </div>
+                                            </Show>
+
+                                            <Show when={submission().meta?.organizer_notes}>
+                                                <div class="pt-2 border-t border-white/10 mt-2">
+                                                    <div class="text-xs text-secondary-400 uppercase font-bold mb-1">Notes to Organizer (Admin Only)</div>
+                                                    <p class="text-sm text-secondary-200 font-mono bg-secondary-900/20 p-2 rounded border border-secondary-500/20">
+                                                        {submission().meta?.organizer_notes}
+                                                    </p>
+                                                </div>
+                                            </Show>
+                                        </div>
+                                    </Show>
 
                                     {/* Notes Section */}
                                     <Show when={submission().notes}>

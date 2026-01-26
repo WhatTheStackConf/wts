@@ -66,8 +66,23 @@ export const adminFetchAllUsers = async () => {
   try {
     await requireAdmin();
     const adminService = getAdminPB();
-    const result = await adminService.fetchAllRecords("users", { sort: "-created" });
-    return { success: true, data: result };
+
+    // Fetch users and applicants in parallel
+    const [users, applicants] = await Promise.all([
+      adminService.fetchAllRecords("users", { sort: "-created" }),
+      adminService.fetchAllRecords("cfp_applicants", { fields: "user" })
+    ]);
+
+    // Create a set of user IDs that are applicants
+    const applicantUserIds = new Set(applicants.map((a: any) => a.user));
+
+    // Enhance user objects with isApplicant flag
+    const enhancedUsers = users.map((user: any) => ({
+      ...user,
+      isApplicant: applicantUserIds.has(user.id)
+    }));
+
+    return { success: true, data: enhancedUsers };
   } catch (error) {
     console.error("Admin fetch all users error:", error);
     return { success: false, error: (error as Error).message };
