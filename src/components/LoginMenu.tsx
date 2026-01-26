@@ -19,16 +19,16 @@ const LoginMenu = () => {
   };
 
   const getDisplayName = () => {
-    const name = pb.authStore.model?.name;
+    const name = pb.authStore.record?.name;
     if (name) {
       return name.split(" ")[0]; // First name only
     }
-    return pb.authStore.model?.email?.split("@")[0] || "Agent";
+    return pb.authStore.record?.email?.split("@")[0] || "Agent";
   };
 
   const getInitials = () => {
-    const name = pb.authStore.model?.name;
-    const email = pb.authStore.model?.email;
+    const name = pb.authStore.record?.name;
+    const email = pb.authStore.record?.email;
     if (name) {
       return name.charAt(0).toUpperCase();
     }
@@ -55,7 +55,9 @@ const LoginMenu = () => {
               when={!imgError()}
               fallback={
                 <div class="bg-primary-900 text-primary-100 rounded-full w-8 border border-primary-500/50 flex items-center justify-center">
-                  <span class="text-xs font-bold font-star">{getInitials()}</span>
+                  <span class="text-xs font-bold font-star">
+                    {getInitials()}
+                  </span>
                 </div>
               }
             >

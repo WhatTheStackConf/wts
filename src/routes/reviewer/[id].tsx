@@ -34,60 +34,46 @@ export default function ReviewPage() {
     const isAdmin = () => auth?.user?.role === "admin";
     const isReviewer = () => auth?.user?.role === "reviewer";
 
-    const fetchSubmission = async (id: string) => {
-        // Admin sees applicant info
-        const expand = isAdmin() ? "applicant.user" : undefined;
-        const record = await pb.collection("cfp_submissions").getOne(id, { expand });
-        return record;
+    const fetchSubmissionData = async (id: string) => {
+        const { fetchReviewerSubmissionDetail } = await import("~/lib/reviewer-actions");
+        return await fetchReviewerSubmissionDetail(id);
     };
 
-    const fetchReviews = async (submissionId: string) => {
-        if (!auth?.user?.id) return;
-
-        if (isAdmin()) {
-            // Admin fetches ALL reviews
-            // We expand 'reviewer' to show who reviewed it
-            try {
-                const records = await pb.collection("cfp_reviews").getFullList({
-                    filter: `submission = "${submissionId}"`,
-                    expand: "reviewer"
-                });
-                setAllReviews(records as unknown as CfpReviewRecord[]);
-            } catch (e) {
-                console.error(e);
-            }
-        } else {
-            // Reviewer fetches only their own
-            try {
-                const records = await pb.collection("cfp_reviews").getFullList({
-                    filter: `submission = "${submissionId}" && reviewer = "${auth.user.id}"`
-                });
-                if (records.length > 0) {
-                    const r = records[0] as unknown as CfpReviewRecord;
-                    setMyReview(r);
-                    // Populate form
-                    const newScores: any = {};
-                    CRITERIA.forEach(c => newScores[c.id] = (r as any)[c.id]);
-                    setScores(newScores);
-                    setNotes(r.notes || "");
-                    setIsLlm(r.is_llm_suspected);
-                } else {
-                    // Init defaults
-                    const newScores: any = {};
-                    CRITERIA.forEach(c => newScores[c.id] = 1);
-                    setScores(newScores);
-                }
-            } catch { }
-        }
+    const handleSaveReview = async (data: any) => {
+        const { submitReview } = await import("~/lib/reviewer-actions");
+        return await submitReview(data);
     };
 
     createEffect(async () => {
         if (auth.isAuthenticated() && params.id) {
             setLoading(true);
             try {
-                const sub = await fetchSubmission(params.id);
-                setSubmission(sub);
-                await fetchReviews(params.id);
+                const res = await fetchSubmissionData(params.id);
+                if (res.success && res.data) {
+                    setSubmission(res.data.submission);
+
+                    if (res.data.userRole === "admin") {
+                        setAllReviews(res.data.reviews || []);
+                    } else {
+                        // Reviewer mode - find my review
+                        // The server returns only MY review in reviews array for non-admins
+                        if (res.data.reviews && res.data.reviews.length > 0) {
+                            const r = res.data.reviews[0];
+                            setMyReview(r);
+                            // Populate form
+                            const newScores: any = {};
+                            CRITERIA.forEach(c => newScores[c.id] = (r as any)[c.id]);
+                            setScores(newScores);
+                            setNotes(r.notes || "");
+                            setIsLlm(r.is_llm_suspected);
+                        } else {
+                            // Init defaults
+                            const newScores: any = {};
+                            CRITERIA.forEach(c => newScores[c.id] = 1);
+                            setScores(newScores);
+                        }
+                    }
+                }
             } catch (e) {
                 console.error(e);
             } finally {
@@ -113,20 +99,26 @@ export default function ReviewPage() {
         setSaving(true);
         try {
             const data = {
+                id: myReview()?.id, // Optional, undefined if new
                 submission: params.id,
-                reviewer: auth.user!.id,
+                // reviewer set by server action
                 ...scores(),
                 notes: notes(),
                 is_llm_suspected: isLlm()
             };
 
-            if (myReview()) {
-                await pb.collection("cfp_reviews").update(myReview()!.id, data);
+            const res = await handleSaveReview(data);
+
+            if (res.success) {
+                if (!myReview()) {
+                    // If it was a create, update local state with returned record
+                    setMyReview(res.data as unknown as CfpReviewRecord);
+                }
+                alert("Review saved!");
             } else {
-                const res = await pb.collection("cfp_reviews").create(data);
-                setMyReview(res as unknown as CfpReviewRecord);
+                alert("Error saving review: " + res.error);
             }
-            alert("Review saved!");
+
         } catch (e) {
             alert("Error saving review");
             console.error(e);

@@ -75,7 +75,7 @@ async function getAuthToken(baseUrl: string): Promise<string | null> {
       try {
         const errData = await response.text();
         console.error("Error response:", errData);
-      } catch (e) {}
+      } catch (e) { }
       return null;
     }
 
@@ -193,6 +193,36 @@ export async function fetchHiEventsAttendees(
   filterEmail?: string,
 ): Promise<HiEventsAttendee[]> {
   "use server";
+  // If we are filtering by email (user checking their own ticket), we skip admin check
+  // But wait, the user asked to ensure "tickets fetch" is admin only.
+  // Looking at usage in admin/tickets.tsx, it calls it without args.
+  // Looking at possible user-facing usage?
+  // Let's check if filterEmail is used for non-admins.
+  // Actually, for safety, if no filterEmail is provided (fetching ALL), we MUST require admin.
+  // If filterEmail is provided, we should probably check if it matches the current user?
+  // For now, let's enforce admin if no filterEmail, or maybe just enforce admin for this function
+  // and make a separate one for users if needed.
+  // Given the context "can you take a look at the tickets fetch too, to ensure that's an admin only thing?",
+  // implying the list view.
+
+  // Security Check:
+  // 1. If no filterEmail (fetching all), require ADMIN.
+  // 2. If filterEmail is present, require AUTH and ensure the email matches the logged-in user OR user is ADMIN.
+
+  const { requireAuth } = await import("~/lib/admin-security");
+  const user = await requireAuth();
+
+  if (!filterEmail) {
+    if (user.role !== 'admin') {
+      throw new Error("Unauthorized: Admin access required to view all attendees");
+    }
+  } else {
+    // If filtering by email, prevent users from fishing for other people's tickets
+    if (user.email !== filterEmail && user.role !== 'admin') {
+      throw new Error("Unauthorized: You can only view your own tickets");
+    }
+  }
+
   const rawApiUrl = process.env.HIEVENTS_API_URL;
   const eventId = process.env.HIEVENTS_EVENT_ID;
 

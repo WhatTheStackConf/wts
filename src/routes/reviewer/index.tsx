@@ -16,19 +16,12 @@ const ReviewerDashboard = () => {
     // For now, we fetch all submissions as the requirement says "Every submission is anonymized"
     // We will anonymize them in the UI or fetch logic.
     const fetchSubmissions = async () => {
-        try {
-            // If admin, we expand applicant to see details. If reviewer, we do NOT.
-            const isAdmin = auth?.user?.role === "admin";
-
-            const records = await pb.collection("cfp_submissions").getFullList({
-                sort: '-created',
-                expand: isAdmin ? "applicant" : undefined,
-            });
-            return records;
-        } catch (e) {
-            console.error("Error fetching submissions:", e);
-            return []; // Return empty array on error
+        const { fetchReviewerSubmissions } = await import("~/lib/reviewer-actions");
+        const res = await fetchReviewerSubmissions();
+        if (res.success) {
+            return res.data;
         }
+        return [];
     };
 
     const [submissions] = createResource(fetchSubmissions);

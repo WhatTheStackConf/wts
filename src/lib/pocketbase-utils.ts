@@ -6,6 +6,7 @@ import {
   CollectionRecord,
 } from "./pocketbase-types";
 import pb from "./pocketbase";
+import { setAuthCookie, clearAuthCookie } from "./auth-cookie";
 
 // Initialize PocketBase client instance
 
@@ -27,6 +28,10 @@ export const login = async (
     const authData: AuthData = await pb
       .collection("users")
       .authWithPassword(email, password);
+
+    // Sync cookie for server actions
+    setAuthCookie(authData.token, authData.record);
+
     return authData;
   } catch (error) {
     console.error("Login error:", error);
@@ -58,6 +63,10 @@ export const loginWithGithub = async (): Promise<AuthData> => {
         // We continue even if update fails, as login was successful
       }
     }
+
+
+    // Sync cookie for server actions
+    setAuthCookie(authData.token, authData.record);
 
     return authData;
   } catch (error) {
@@ -91,6 +100,10 @@ export const loginWithGoogle = async (): Promise<AuthData> => {
     const authData: AuthData = await pb.collection("users").authWithOAuth2({
       provider: "google",
     });
+
+    // Sync cookie for server actions
+    setAuthCookie(authData.token, authData.record);
+
     return authData;
   } catch (error) {
     console.error("Login with Google error:", error);
@@ -111,6 +124,9 @@ export const register = async (
       passwordConfirm,
       name,
     });
+
+    // Auto login after register if implicit login is not disabled
+    // If you do auto-login, you might need to handle cookie here if PB returns token
     return userData;
   } catch (error) {
     console.error("Registration error:", error);
@@ -120,6 +136,7 @@ export const register = async (
 
 export const logout = () => {
   pb.authStore.clear();
+  clearAuthCookie();
   // Optionally navigate to home or login page
 };
 
