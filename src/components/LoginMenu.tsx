@@ -63,7 +63,7 @@ const LoginMenu = () => {
             >
               <div class="w-8 h-8 rounded-full overflow-hidden border border-primary-500/50 shadow-[0_0_10px_rgba(var(--color-primary-500),0.3)]">
                 <img
-                  src={getGravatarUrl(pb.authStore.model?.email || "")}
+                  src={getGravatarUrl(pb.authStore.record?.email || "")}
                   alt="Avatar"
                   onError={() => setImgError(true)}
                 />
