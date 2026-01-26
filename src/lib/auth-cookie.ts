@@ -1,8 +1,4 @@
-/**
- * Helper to set/remove the pb_auth cookie for server-side access.
- * This is needed because standard PocketBase SDK defaults to localStorage,
- * which isn't sent to Server Actions.
- */
+import pb from "./pocketbase";
 
 export function loadAuthCookie() {
     if (typeof document === 'undefined') return;
@@ -17,25 +13,20 @@ export function loadAuthCookie() {
 export function setAuthCookie(token: string, model: any) {
     if (typeof document === 'undefined') return;
 
-    // Create a cookie string that PocketBase's loadFromCookie can parse
-    // format usually expected: pb_auth={token:...; model:...} (serialized)
-    // But simply setting the token might be enough if we manually re-construct?
-    // Actually, pb.authStore.exportToCookie() is the best way if available.
+    // Use the SDK's built-in export to ensure compatibility with loadFromCookie
+    // We must ensure the store has the token/model we want to save
+    // (It should, as this is called after login)
 
-    // However, we are likely using the SDK instance. 
-    // Let's rely on the SDK's built-in export if possible, or construct it manually.
+    // Note: We use Lax instead of Strict to allow cookies on top-level navigation from external sites
+    const cookieStr = pb.authStore.exportToCookie({
+        httpOnly: false,
+        secure: location.protocol === 'https:',
+        sameSite: 'Lax',
+        // Set a long max age (default is session)
+        expires: new Date(Date.now() + 34560000 * 1000)
+    });
 
-    // Standard PB cookie format:
-    // pb_auth=TOKEN
-    // OR JSON encoded: {"token":"...","model":{...}}
-
-    // For simplicity and compatibility with loadFromCookie:
-    // The SDK expects the value to be the JSON string of { token, model }
-
-    const val = JSON.stringify({ token, model });
-    const secure = location.protocol === 'https:' ? '; Secure' : '';
-
-    document.cookie = `pb_auth=${encodeURIComponent(val)}; Path=/; SameSite=Strict${secure}; Max-Age=34560000`; // 400 days
+    document.cookie = cookieStr;
 }
 
 export function clearAuthCookie() {

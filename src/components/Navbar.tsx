@@ -240,6 +240,29 @@ export const Navbar = () => {
                 </ul>
               </details>
             </li>
+            {mounted() && auth?.isAuthenticated() && (
+              <>
+                <div class="divider border-white/10 my-2"></div>
+                <li>
+                  <a href="/user/profile" onClick={closeDrawer} class="text-primary-300">
+                    Profile
+                  </a>
+                </li>
+                <li>
+                  <button onClick={() => { auth.logout(); closeDrawer(); window.location.href = "/"; }} class="text-error hover:bg-error/10">
+                    Logout
+                  </button>
+                </li>
+              </>
+            )}
+
+            {mounted() && !auth?.isAuthenticated() && (
+              <li>
+                <a href="/login" onClick={closeDrawer} class="text-primary-300">
+                  Log in
+                </a>
+              </li>
+            )}
           </ul>
 
           <div class="mt-auto px-4 py-8 text-xs text-secondary-500/50 font-mono text-center">
