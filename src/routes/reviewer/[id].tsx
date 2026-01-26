@@ -217,10 +217,10 @@ export default function ReviewPage() {
 
                                                 <Show when={submission().meta?.previous_presentation}>
                                                     <div>
-                                                        <div class="text-xs text-gray-500 uppercase font-bold mb-1">Previous Presentation</div>
-                                                        <a href={submission().meta?.previous_presentation} target="_blank" rel="noopener noreferrer" class="link link-primary text-sm truncate block max-w-xs">
+                                                        <div class="text-xs text-gray-500 uppercase font-bold mb-1">Previous Presentations</div>
+                                                        <p class="text-sm text-gray-300 whitespace-pre-wrap break-words">
                                                             {submission().meta?.previous_presentation}
-                                                        </a>
+                                                        </p>
                                                     </div>
                                                 </Show>
                                             </div>

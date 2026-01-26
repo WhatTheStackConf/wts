@@ -23,6 +23,7 @@ export default function AdminUsersTable() {
     });
 
     const [selectedUser, setSelectedUser] = createSignal<(UserRecord & { isApplicant?: boolean }) | null>(null);
+    const [deleteId, setDeleteId] = createSignal<{ id: string, name: string } | null>(null);
 
     const [updating, setUpdating] = createSignal<string | null>(null);
 
@@ -60,14 +61,20 @@ export default function AdminUsersTable() {
         }
     };
 
-    const handleDeleteUser = async (userId: string, userName: string) => {
-        if (!confirm(`Are you sure you want to PERMANENTLY delete user "${userName || 'Unknown'}"? This cannot be undone.`)) return;
+    const handleDeleteClick = (userId: string, userName: string) => {
+        setDeleteId({ id: userId, name: userName });
+    };
 
-        setUpdating(userId);
+    const handleConfirmDelete = async () => {
+        const target = deleteId();
+        if (!target) return;
+
+        setUpdating(target.id);
         try {
-            const res = await adminDeleteUser(userId);
+            const res = await adminDeleteUser(target.id);
             if (res.success) {
                 await refetch();
+                setDeleteId(null);
             } else {
                 alert("Failed to delete user: " + res.error);
             }
@@ -161,7 +168,7 @@ export default function AdminUsersTable() {
                                                 </button>
                                                 <button
                                                     class="btn btn-sm btn-circle bg-error-500/20 text-error-400 hover:bg-error-500 hover:text-white border-none"
-                                                    onClick={() => handleDeleteUser(user.id, user.name)}
+                                                    onClick={() => handleDeleteClick(user.id, user.name)}
                                                     disabled={updating() === user.id}
                                                 >
                                                     <Icon icon="ph:trash-bold" />
@@ -272,7 +279,7 @@ export default function AdminUsersTable() {
                                                         </button>
                                                         <button
                                                             class="btn btn-xs btn-circle bg-error-500/20 text-error-400 hover:bg-error-500 hover:text-white border-none transition-colors"
-                                                            onClick={() => handleDeleteUser(user.id, user.name)}
+                                                            onClick={() => handleDeleteClick(user.id, user.name)}
                                                             disabled={updating() === user.id}
                                                             title="Delete User"
                                                         >
@@ -354,6 +361,38 @@ export default function AdminUsersTable() {
                         </div>
                         <div class="p-4 bg-black/20 border-t border-white/5 flex justify-end">
                             <button class="btn btn-ghost" onClick={() => setSelectedUser(null)}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            </Show>
+
+            {/* Delete Confirmation Modal */}
+            <Show when={deleteId()}>
+                <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => !updating() && setDeleteId(null)}></div>
+                    <div class="relative bg-base-100 border border-white/10 rounded-2xl shadow-2xl p-6 max-w-sm w-full animate-scale-in">
+                        <div class="flex items-center gap-3 mb-2 text-error">
+                            <Icon icon="ph:warning-circle-bold" class="text-2xl" />
+                            <h3 class="text-xl font-bold text-white">Delete User?</h3>
+                        </div>
+                        <p class="text-gray-400 mb-6 leading-relaxed">
+                            Are you sure you want to PERMANENTLY delete <span class="text-white font-bold">{deleteId()?.name || "this user"}</span>? This action cannot be undone.
+                        </p>
+                        <div class="flex justify-end gap-3">
+                            <button
+                                class="btn btn-ghost hover:bg-white/5"
+                                onClick={() => setDeleteId(null)}
+                                disabled={!!updating()}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                class="btn btn-error shadow-lg shadow-error/20"
+                                onClick={handleConfirmDelete}
+                                disabled={!!updating()}
+                            >
+                                {updating() === deleteId()?.id ? <span class="loading loading-spinner"></span> : "Delete Forever"}
+                            </button>
                         </div>
                     </div>
                 </div>
