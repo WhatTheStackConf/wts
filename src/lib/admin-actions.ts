@@ -176,3 +176,16 @@ export const adminFetchLeaderboardData = async () => {
     return { success: false, error: (error as Error).message };
   }
 };
+
+export const deleteSubmission = async (id: string) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminPB = getAdminPB();
+    await adminPB.deleteRecord("cfp_submissions", id);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Delete submission error:", error);
+    return { success: false, error: error.message };
+  }
+};

@@ -30,10 +30,62 @@ const ForgotPasswordPage = () => {
         }
     };
 
-    if (success()) {
-        return (
-            <Layout title="Reset Password" description="Request a password reset">
-                <div class="container mx-auto px-4 py-8">
+    return (
+        <Layout title="Reset Password" description="Request a password reset">
+            <div class="container mx-auto px-4 py-8">
+                <Show when={success()} fallback={
+                    <div class="max-w-md mx-auto bg-base-100 rounded-lg shadow-xl p-6">
+                        <h1 class="text-2xl font-bold text-center mb-6">Reset Password</h1>
+                        <p class="text-sm text-secondary-300 text-center mb-6">
+                            Enter your email address and we'll send you a link to reset your password.
+                        </p>
+
+                        <form onSubmit={handleSubmit}>
+                            <div class="mb-4">
+                                <label for="email" class="block text-sm font-medium mb-1">
+                                    Email Address
+                                </label>
+                                <input
+                                    type="email"
+                                    id="email"
+                                    name="email"
+                                    value={email()}
+                                    onInput={(e) => setEmail(e.currentTarget.value)}
+                                    class="input input-bordered w-full"
+                                    required
+                                    placeholder="you@example.com"
+                                />
+                            </div>
+
+                            <Show when={error()}>
+                                <div class="mb-4 p-3 bg-error text-error-content rounded-lg">
+                                    {error()}
+                                </div>
+                            </Show>
+
+                            <button
+                                type="submit"
+                                class="btn btn-primary w-full"
+                                disabled={loading()}
+                            >
+                                {loading() ? (
+                                    <>
+                                        <span class="loading loading-spinner"></span>
+                                        Sending...
+                                    </>
+                                ) : (
+                                    "Send Reset Link"
+                                )}
+                            </button>
+                        </form>
+
+                        <div class="mt-6 text-center">
+                            <a href="/login" class="link link-secondary text-sm">
+                                Back to Login
+                            </a>
+                        </div>
+                    </div>
+                }>
                     <div class="max-w-md mx-auto bg-base-100 rounded-lg shadow-xl p-6 text-center">
                         <div class="mb-4 text-success flex justify-center">
                             <Icon icon="mdi:email-check" width="64" />
@@ -46,65 +98,7 @@ const ForgotPasswordPage = () => {
                             Return to Login
                         </a>
                     </div>
-                </div>
-            </Layout>
-        );
-    }
-
-    return (
-        <Layout title="Reset Password" description="Request a password reset">
-            <div class="container mx-auto px-4 py-8">
-                <div class="max-w-md mx-auto bg-base-100 rounded-lg shadow-xl p-6">
-                    <h1 class="text-2xl font-bold text-center mb-6">Reset Password</h1>
-                    <p class="text-sm text-secondary-300 text-center mb-6">
-                        Enter your email address and we'll send you a link to reset your password.
-                    </p>
-
-                    <form onSubmit={handleSubmit}>
-                        <div class="mb-4">
-                            <label for="email" class="block text-sm font-medium mb-1">
-                                Email Address
-                            </label>
-                            <input
-                                type="email"
-                                id="email"
-                                name="email"
-                                value={email()}
-                                onInput={(e) => setEmail(e.currentTarget.value)}
-                                class="input input-bordered w-full"
-                                required
-                                placeholder="you@example.com"
-                            />
-                        </div>
-
-                        <Show when={error()}>
-                            <div class="mb-4 p-3 bg-error text-error-content rounded-lg">
-                                {error()}
-                            </div>
-                        </Show>
-
-                        <button
-                            type="submit"
-                            class="btn btn-primary w-full"
-                            disabled={loading()}
-                        >
-                            {loading() ? (
-                                <>
-                                    <span class="loading loading-spinner"></span>
-                                    Sending...
-                                </>
-                            ) : (
-                                "Send Reset Link"
-                            )}
-                        </button>
-                    </form>
-
-                    <div class="mt-6 text-center">
-                        <a href="/login" class="link link-secondary text-sm">
-                            Back to Login
-                        </a>
-                    </div>
-                </div>
+                </Show>
             </div>
         </Layout>
     );

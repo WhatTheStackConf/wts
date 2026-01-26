@@ -77,6 +77,7 @@ export default function AdminTickets() {
                     </div>
 
                     <div class="glass-panel rounded-2xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
+
                         {/* Toolbar */}
                         <div class="p-4 border-b border-white/10 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white/5">
                             <div class="relative w-full sm:w-96">
@@ -94,7 +95,65 @@ export default function AdminTickets() {
                             </div>
                         </div>
 
-                        <div class="overflow-x-auto">
+                        {/* Mobile Card View */}
+                        <div class="md:hidden space-y-4 p-4">
+                            <For each={filteredAttendees()}>
+                                {(attendee) => (
+                                    <div class="bg-white/5 rounded-xl p-4 border border-white/10 space-y-3">
+                                        <div class="flex items-start justify-between">
+                                            <div class="flex items-center gap-3">
+                                                <div class="avatar">
+                                                    <div class="w-10 rounded-full ring-1 ring-white/10">
+                                                        <img
+                                                            src={getGravatarUrl(attendee.email)}
+                                                            alt={attendee.first_name || "Attendee"}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div class="font-bold text-white">{attendee.first_name} {attendee.last_name}</div>
+                                                    <div class="text-xs opacity-50 font-mono text-accent-300">{attendee.email}</div>
+                                                </div>
+                                            </div>
+                                            <div class="badge badge-outline text-xs border-white/20 text-gray-300">
+                                                {attendee.ticket?.title || "Unknown Ticket"}
+                                            </div>
+                                        </div>
+
+                                        <div class="flex items-center justify-between pt-3 border-t border-white/5">
+                                            <div class="text-sm font-mono">
+                                                {attendee.ticket?.price > 0
+                                                    ? `${attendee.ticket.currency} ${attendee.ticket.price}`
+                                                    : <span class="text-success text-xs">FREE</span>
+                                                }
+                                            </div>
+
+                                            <div class="flex items-center gap-2">
+                                                <Show when={attendee.checked_in_at} fallback={
+                                                    <span class="badge badge-ghost badge-sm text-gray-500">Not Checked In</span>
+                                                }>
+                                                    <span class="badge badge-success badge-sm gap-1 pl-1 pr-2">
+                                                        <Icon icon="ph:check-bold" /> Checked In
+                                                    </span>
+                                                </Show>
+
+                                                <a
+                                                    href={attendee.public_url || "#"}
+                                                    target="_blank"
+                                                    class={`btn btn-ghost btn-xs text-gray-400 hover:text-white ${!attendee.public_url ? 'btn-disabled opacity-20' : ''}`}
+                                                    title="View Public Ticket"
+                                                >
+                                                    <Icon icon="ph:qr-code" />
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </For>
+                        </div>
+
+                        {/* Desktop Table View */}
+                        <div class="hidden md:block overflow-x-auto">
                             <table class="table table-lg w-full">
                                 <thead>
                                     <tr class="text-white border-b border-white/10 bg-white/5">
@@ -180,6 +239,7 @@ export default function AdminTickets() {
                         <div class="p-2 border-t border-white/10 bg-white/5 text-center text-xs text-gray-500">
                             Synced from hi.events • {stats().total} records loaded
                         </div>
+
                     </div>
                 </div>
             </div>

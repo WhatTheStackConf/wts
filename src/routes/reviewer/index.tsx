@@ -92,9 +92,9 @@ const ReviewerDashboard = () => {
                                 <div class="grid gap-4">
                                     <For each={submissions()}>
                                         {(submission) => (
-                                            <div class="p-6 bg-white/5 border border-white/5 rounded-xl hover:border-secondary-500/50 hover:bg-white/10 transition-all duration-300 group cursor-pointer" onClick={() => navigate(`/reviewer/${submission.id}`)}>
-                                                <div class="flex flex-col md:flex-row justify-between items-start gap-6">
-                                                    <div class="flex-1">
+                                            <div class="p-4 md:p-6 bg-white/5 border border-white/5 rounded-xl hover:border-secondary-500/50 hover:bg-white/10 transition-all duration-300 group cursor-pointer" onClick={() => navigate(`/reviewer/${submission.id}`)}>
+                                                <div class="flex flex-col md:flex-row justify-between items-start gap-4 md:gap-6">
+                                                    <div class="flex-1 w-full">
                                                         <div class="flex items-center gap-3 mb-2">
                                                             <span class="badge badge-outline border-white/20 text-white/50 font-mono text-xs">ID: {submission.id.substring(0, 8)}</span>
                                                             <span class="text-xs font-mono text-white/40">{new Date(submission.created).toLocaleDateString()}</span>
@@ -108,7 +108,7 @@ const ReviewerDashboard = () => {
                                                         </p>
                                                     </div>
                                                     <button
-                                                        class="btn btn-primary font-mono gap-2 shrink-0 group-hover:scale-105 transition-transform shadow-lg shadow-primary-500/20"
+                                                        class="btn btn-primary font-mono gap-2 shrink-0 w-full md:w-auto group-hover:scale-105 transition-transform shadow-lg shadow-primary-500/20"
                                                     >
                                                         <Icon icon="ph:star-half-bold" />
                                                         EVALUATE

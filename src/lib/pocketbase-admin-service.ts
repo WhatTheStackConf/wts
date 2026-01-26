@@ -27,21 +27,39 @@ class PocketBaseAdminService {
    * Initialize admin service with superuser credentials
    * This should be called before any admin operations
    */
+  /**
+   * Initialize admin service with superuser credentials
+   * This should be called before any admin operations
+   */
+  private initializationPromise: Promise<void> | null = null;
+
   async initializeAdmin() {
     if (this.initialized) return;
 
-    try {
-      const email = process.env.POCKETBASE_SUPERUSER_EMAIL || "admin@wts.rs";
-      const password =
-        process.env.POCKETBASE_SUPERUSER_PASSWORD || "supersecret";
-
-      // Authenticate as superuser
-      await this.pb.admins.authWithPassword(email, password);
-      this.initialized = true;
-    } catch (error) {
-      console.error("Failed to initialize PocketBase admin service:", error);
-      throw error;
+    // If initialization is already in progress, wait for it
+    if (this.initializationPromise) {
+      await this.initializationPromise;
+      return;
     }
+
+    this.initializationPromise = (async () => {
+      try {
+        const email = process.env.POCKETBASE_SUPERUSER_EMAIL || "admin@wts.rs";
+        const password =
+          process.env.POCKETBASE_SUPERUSER_PASSWORD || "supersecret";
+
+        // Authenticate as superuser
+        await this.pb.admins.authWithPassword(email, password);
+        this.initialized = true;
+      } catch (error) {
+        console.error("Failed to initialize PocketBase admin service:", error);
+        throw error;
+      } finally {
+        this.initializationPromise = null;
+      }
+    })();
+
+    await this.initializationPromise;
   }
 
   /**
