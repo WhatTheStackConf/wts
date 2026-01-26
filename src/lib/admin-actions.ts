@@ -93,3 +93,77 @@ export const adminDeleteUser = async (id: string) => {
     return { success: false, error: (error as Error).message };
   }
 };
+
+// Leaderboard Action
+export const adminFetchLeaderboardData = async () => {
+  "use server";
+
+  try {
+    const adminService = getAdminPB();
+
+    // 1. Fetch EVERYTHING (using admin service)
+    const [subs, reviews, votes] = await Promise.all([
+      adminService.fetchAllRecords("cfp_submissions", { expand: "applicant.user", sort: "-created" }),
+      adminService.fetchAllRecords("cfp_reviews"),
+      adminService.fetchAllRecords("cfp_weight_votes")
+    ]);
+
+    // 2. Calculate Global Weights
+    const CRITERIA = [
+      { id: "relevance", label: "Relevance" },
+      { id: "originality", label: "Originality" },
+      { id: "depth", label: "Depth" },
+      { id: "clarity", label: "Clarity" },
+      { id: "takeaways", label: "Takeaways" },
+      { id: "engagement", label: "Engagement" },
+    ];
+
+    const weights: Record<string, number> = {};
+    if (votes.length > 0) {
+      CRITERIA.forEach(c => {
+        const sum = votes.reduce((acc, v) => acc + (v[c.id] || 0), 0);
+        weights[c.id] = sum / votes.length;
+      });
+    } else {
+      // Default weights if no votes yet (all 1)
+      CRITERIA.forEach(c => weights[c.id] = 1);
+    }
+
+    // 3. Process Submissions
+    const scoredSubmissions = subs.map(sub => {
+      const subReviews = reviews.filter((r: any) => r.submission === sub.id);
+
+      if (subReviews.length === 0) {
+        return { ...sub, totalScore: 0, reviewCount: 0 };
+      }
+
+      // Calculate score for each review based on weights
+      const reviewScores = subReviews.map((r: any) => {
+        let rScore = 0;
+        CRITERIA.forEach(c => {
+          const criteriaScore = r[`score_${c.id}`] || 0;
+          rScore += criteriaScore * (weights[c.id] || 1);
+        });
+        return rScore;
+      });
+
+      // Average of all reviews
+      const totalScore = reviewScores.reduce((a, b) => a + b, 0) / subReviews.length;
+
+      return {
+        ...sub,
+        totalScore: totalScore,
+        reviewCount: subReviews.length
+      };
+    });
+
+    // 4. Sort by Score Descending
+    scoredSubmissions.sort((a, b) => b.totalScore - a.totalScore);
+
+    return { success: true, data: scoredSubmissions };
+
+  } catch (error) {
+    console.error("Admin fetch leaderboard error:", error);
+    return { success: false, error: (error as Error).message };
+  }
+};

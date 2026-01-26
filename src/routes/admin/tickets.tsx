@@ -76,7 +76,7 @@ export default function AdminTickets() {
                         </div>
                     </div>
 
-                    <div class="glass-panel rounded-2xl p-1 overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
+                    <div class="glass-panel rounded-2xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
                         {/* Toolbar */}
                         <div class="p-4 border-b border-white/10 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white/5">
                             <div class="relative w-full sm:w-96">

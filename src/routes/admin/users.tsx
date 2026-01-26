@@ -80,7 +80,7 @@ export default function AdminUsers() {
                         </button>
                     </div>
 
-                    <div class="glass-panel rounded-2xl p-1 overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
+                    <div class="glass-panel rounded-2xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
                         <div class="overflow-x-auto">
                             <table class="table table-lg w-full">
                                 <thead>

@@ -1,26 +1,32 @@
-import { createSignal, createEffect, For, Show } from "solid-js";
+import { createSignal, createEffect, For, Show, createResource } from "solid-js";
 import { useAuth } from "~/lib/auth-context";
-import { pb } from "~/lib/pocketbase-utils";
 import { useNavigate } from "@solidjs/router";
 import { Icon } from "@iconify-icon/solid";
 import { Layout } from "~/layouts/Layout";
-
-const CRITERIA = [
-    { id: "relevance", label: "Relevance" },
-    { id: "originality", label: "Originality" },
-    { id: "depth", label: "Depth" },
-    { id: "clarity", label: "Clarity" },
-    { id: "takeaways", label: "Takeaways" },
-    { id: "engagement", label: "Engagement" },
-];
-
+import { adminFetchLeaderboardData } from "~/lib/admin-actions";
 import { getGravatarUrl } from "~/lib/gravatar";
+import { CfpSubmissionRecord } from "~/lib/pocketbase-types";
+
+type LeaderboardItem = CfpSubmissionRecord & {
+    totalScore: number;
+    reviewCount: number;
+    expand?: {
+        applicant?: {
+            email?: string;
+            name?: string;
+            expand?: {
+                user?: {
+                    email?: string;
+                    name?: string;
+                }
+            }
+        }
+    }
+};
 
 export default function AdminProposals() {
     const auth = useAuth();
     const navigate = useNavigate();
-    const [loading, setLoading] = createSignal(true);
-    const [submissions, setSubmissions] = createSignal<any[]>([]);
 
     // Auth Protection
     createEffect(() => {
@@ -33,77 +39,12 @@ export default function AdminProposals() {
         }
     });
 
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            // 1. Fetch EVERYTHING
-            const [subs, reviews, votes] = await Promise.all([
-                pb.collection("cfp_submissions").getFullList({ expand: "applicant.user", sort: "-created" }),
-                pb.collection("cfp_reviews").getFullList(),
-                pb.collection("cfp_weight_votes").getFullList()
-            ]);
-
-            // 2. Calculate Global Weights
-            const weights: Record<string, number> = {};
-            if (votes.length > 0) {
-                CRITERIA.forEach(c => {
-                    const sum = votes.reduce((acc, v) => acc + (v[c.id] || 0), 0);
-                    weights[c.id] = sum / votes.length;
-                });
-            } else {
-                // Default weights if no votes yet (all 1)
-                CRITERIA.forEach(c => weights[c.id] = 1);
-            }
-
-            // 3. Process Submissions
-            const scoredSubmissions = subs.map(sub => {
-                const subReviews = reviews.filter((r: any) => r.submission === sub.id);
-
-                if (subReviews.length === 0) {
-                    return { ...sub, totalScore: 0, reviewCount: 0 };
-                }
-
-                // Calculate score for each review based on weights
-                const reviewScores = subReviews.map((r: any) => {
-                    let rScore = 0;
-                    CRITERIA.forEach(c => {
-                        const criteriaScore = r[`score_${c.id}`] || 0; // Note: review fields are 'score_relevance'
-                        // Wait, my previous code used 'score_relevance' in DB but CRITERIA ids were 'relevance' in weights.
-                        // Let's ensure mapping is correct.
-                        // DB cfp_reviews has: score_relevance, score_originality...
-                        // DB cfp_weight_votes has: relevance, originality...
-
-                        rScore += criteriaScore * (weights[c.id] || 1);
-                    });
-                    return rScore;
-                });
-
-                // Average of all reviews
-                const totalScore = reviewScores.reduce((a, b) => a + b, 0) / subReviews.length;
-
-                return {
-                    ...sub,
-                    totalScore: totalScore,
-                    reviewCount: subReviews.length
-                };
-            });
-
-            // 4. Sort by Score Descending
-            scoredSubmissions.sort((a, b) => b.totalScore - a.totalScore);
-
-            setSubmissions(scoredSubmissions);
-
-        } catch (e) {
-            console.error("Error loading proposals:", e);
-        } finally {
-            setLoading(false);
+    const [submissions] = createResource(async () => {
+        const res = await adminFetchLeaderboardData();
+        if (res.success) {
+            return res.data as LeaderboardItem[];
         }
-    };
-
-    createEffect(() => {
-        if (auth.user?.role === "admin") {
-            fetchData();
-        }
+        return [];
     });
 
     return (
@@ -128,14 +69,14 @@ export default function AdminProposals() {
                         </button>
                     </div>
 
-                    <Show when={loading()}>
+                    <Show when={submissions.loading}>
                         <div class="flex justify-center p-20">
                             <span class="loading loading-bars loading-lg text-primary-500"></span>
                         </div>
                     </Show>
 
-                    <Show when={!loading()}>
-                        <div class="glass-panel rounded-2xl p-1 overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
+                    <Show when={!submissions.loading}>
+                        <div class="glass-panel rounded-2xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
                             <div class="overflow-x-auto">
                                 <table class="table table-lg w-full">
                                     <thead>

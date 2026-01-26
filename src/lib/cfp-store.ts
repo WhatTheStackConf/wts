@@ -99,6 +99,9 @@ export const updateApplicant = async (
     res = await pb.collection("cfp_applicants").create(data);
   }
 
+  // Update store with the new applicant ID
+  setCfpStore("formData", "applicant_id", res.id);
+
   return res;
 };
 
