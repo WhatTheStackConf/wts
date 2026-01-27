@@ -1,4 +1,4 @@
-import { createSignal, createEffect, Show } from "solid-js";
+import { createSignal, createEffect, onMount, Show } from "solid-js";
 import { Navigate, useNavigate } from "@solidjs/router";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
@@ -11,6 +11,14 @@ const RegisterPage = () => {
   const [error, setError] = createSignal("");
   const [success, setSuccess] = createSignal(false);
   const [loading, setLoading] = createSignal(false);
+
+  // Turnstile state
+  const [turnstileToken, setTurnstileToken] = createSignal("");
+  const [turnstileReady, setTurnstileReady] = createSignal(false);
+  let containerRef: HTMLDivElement | undefined;
+  let renderedWidgetId: string | null = null;
+  const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
+
   const auth = useAuth();
   const navigate = useNavigate();
 
@@ -18,6 +26,74 @@ const RegisterPage = () => {
   if (auth && auth.record) {
     return <Navigate href="/" />;
   }
+
+  onMount(() => {
+    // Check if Turnstile is already loaded
+    const checkTurnstile = () => {
+      if ((window as any).turnstile) {
+        setTurnstileReady(true);
+        return true;
+      }
+      return false;
+    };
+
+    if (!checkTurnstile()) {
+      // Poll for a bit just in case
+      const interval = setInterval(() => {
+        if (checkTurnstile()) clearInterval(interval);
+      }, 100);
+      setTimeout(() => clearInterval(interval), 5000);
+    }
+
+    // Inject Turnstile script
+    if (SITE_KEY && !document.getElementById("turnstile-script")) {
+      const script = document.createElement("script");
+      script.src =
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      script.id = "turnstile-script";
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        setTurnstileReady(true);
+      };
+      document.head.appendChild(script);
+    }
+  });
+
+  // Render Turnstile when visible and ready
+  createEffect(() => {
+    if (
+      !success() &&
+      SITE_KEY &&
+      turnstileReady() &&
+      (window as any).turnstile &&
+      containerRef
+    ) {
+      if (renderedWidgetId) return; // Prevent duplicates
+
+      // Tiny delay to ensure DOM is ready
+      setTimeout(() => {
+        try {
+          if (containerRef && !renderedWidgetId) {
+            // Clear to be safe
+            containerRef.innerHTML = "";
+
+            renderedWidgetId = (window as any).turnstile.render(containerRef, {
+              sitekey: SITE_KEY,
+              callback: (token: string) => {
+                setTurnstileToken(token);
+              },
+              "expired-callback": () => setTurnstileToken(""),
+              "error-callback": () => { },
+              theme: "dark",
+            });
+          }
+        } catch (e) {
+          console.error("Turnstile render error", e);
+        }
+      }, 100);
+    }
+  });
 
   const handleRegister = async (e: Event) => {
     e.preventDefault();
@@ -67,68 +143,74 @@ const RegisterPage = () => {
             <h1 class="text-2xl font-bold text-center mb-6">Create an Account</h1>
 
             <form onSubmit={handleRegister}>
-              <div class="mb-4">
-                <label for="name" class="block text-sm font-medium mb-1">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  id="name"
-                  name="name"
-                  value={name()}
-                  onInput={(e) => setName(e.currentTarget.value)}
-                  class="input input-bordered w-full"
-                  required
-                />
+              <div class="mb-6 flex justify-center min-h-[65px]">
+                <div ref={containerRef}></div>
               </div>
 
-              <div class="mb-4">
-                <label for="email" class="block text-sm font-medium mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={email()}
-                  onInput={(e) => setEmail(e.currentTarget.value)}
-                  class="input input-bordered w-full"
-                  required
-                />
-              </div>
+              <Show when={!!turnstileToken()}>
+                <div class="mb-4">
+                  <label for="name" class="block text-sm font-medium mb-1">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    id="name"
+                    name="name"
+                    value={name()}
+                    onInput={(e) => setName(e.currentTarget.value)}
+                    class="input input-bordered w-full"
+                    required
+                  />
+                </div>
 
-              <div class="mb-4">
-                <label for="password" class="block text-sm font-medium mb-1">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  id="password"
-                  name="password"
-                  value={password()}
-                  onInput={(e) => setPassword(e.currentTarget.value)}
-                  class="input input-bordered w-full"
-                  required
-                />
-              </div>
+                <div class="mb-4">
+                  <label for="email" class="block text-sm font-medium mb-1">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    value={email()}
+                    onInput={(e) => setEmail(e.currentTarget.value)}
+                    class="input input-bordered w-full"
+                    required
+                  />
+                </div>
 
-              <div class="mb-4">
-                <label
-                  for="passwordConfirm"
-                  class="block text-sm font-medium mb-1"
-                >
-                  Confirm Password
-                </label>
-                <input
-                  type="password"
-                  id="passwordConfirm"
-                  name="passwordConfirm"
-                  value={passwordConfirm()}
-                  onInput={(e) => setPasswordConfirm(e.currentTarget.value)}
-                  class="input input-bordered w-full"
-                  required
-                />
-              </div>
+                <div class="mb-4">
+                  <label for="password" class="block text-sm font-medium mb-1">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    value={password()}
+                    onInput={(e) => setPassword(e.currentTarget.value)}
+                    class="input input-bordered w-full"
+                    required
+                  />
+                </div>
+
+                <div class="mb-4">
+                  <label
+                    for="passwordConfirm"
+                    class="block text-sm font-medium mb-1"
+                  >
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    id="passwordConfirm"
+                    name="passwordConfirm"
+                    value={passwordConfirm()}
+                    onInput={(e) => setPasswordConfirm(e.currentTarget.value)}
+                    class="input input-bordered w-full"
+                    required
+                  />
+                </div>
+              </Show>
 
               <Show when={error()}>
                 <div class="mb-4 p-3 bg-error text-error-content rounded-lg">
@@ -139,7 +221,7 @@ const RegisterPage = () => {
               <button
                 type="submit"
                 class="btn btn-primary w-full"
-                disabled={loading()}
+                disabled={loading() || !turnstileToken()}
               >
                 {loading() ? (
                   <>
