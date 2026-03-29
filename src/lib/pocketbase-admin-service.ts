@@ -44,9 +44,14 @@ class PocketBaseAdminService {
 
     this.initializationPromise = (async () => {
       try {
-        const email = process.env.POCKETBASE_SUPERUSER_EMAIL || "admin@wts.rs";
-        const password =
-          process.env.POCKETBASE_SUPERUSER_PASSWORD || "supersecret";
+        const email = process.env.POCKETBASE_SUPERUSER_EMAIL;
+        const password = process.env.POCKETBASE_SUPERUSER_PASSWORD;
+
+        if (!email || !password) {
+          throw new Error(
+            "POCKETBASE_SUPERUSER_EMAIL and POCKETBASE_SUPERUSER_PASSWORD environment variables must be set",
+          );
+        }
 
         // Authenticate as superuser
         await this.pb.admins.authWithPassword(email, password);
