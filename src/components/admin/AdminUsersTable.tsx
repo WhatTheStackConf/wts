@@ -17,12 +17,12 @@ export default function AdminUsersTable() {
     const [users, { refetch }] = createResource(async () => {
         const res = await adminFetchAllUsers();
         if (res.success) {
-            return res.data as (UserRecord & { isApplicant?: boolean })[];
+            return res.data as (UserRecord & { isApplicant?: boolean; hasTicket?: boolean })[];
         }
         return [];
     });
 
-    const [selectedUser, setSelectedUser] = createSignal<(UserRecord & { isApplicant?: boolean }) | null>(null);
+    const [selectedUser, setSelectedUser] = createSignal<(UserRecord & { isApplicant?: boolean; hasTicket?: boolean }) | null>(null);
     const [deleteId, setDeleteId] = createSignal<{ id: string, name: string } | null>(null);
 
     const [updating, setUpdating] = createSignal<string | null>(null);
@@ -125,7 +125,15 @@ export default function AdminUsersTable() {
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <div class="font-bold text-white">{user.name || "Unknown"}</div>
+                                                    <div class="font-bold text-white flex items-center gap-2">
+                                                        {user.name || "Unknown"}
+                                                        <Show when={user.isApplicant}>
+                                                            <Icon icon="ph:microphone-stage-bold" class="text-primary-400 text-sm" />
+                                                        </Show>
+                                                        <Show when={user.hasTicket}>
+                                                            <Icon icon="ph:ticket-bold" class="text-warning-400 text-sm" />
+                                                        </Show>
+                                                    </div>
                                                     <div class="text-xs opacity-50 font-mono">{user.email}</div>
                                                 </div>
                                             </div>
@@ -227,6 +235,11 @@ export default function AdminUsersTable() {
                                                                         <Icon icon="ph:microphone-stage-bold" class="text-primary-400" />
                                                                     </div>
                                                                 </Show>
+                                                                <Show when={user.hasTicket}>
+                                                                    <div class="tooltip" data-tip="Has Ticket">
+                                                                        <Icon icon="ph:ticket-bold" class="text-warning-400" />
+                                                                    </div>
+                                                                </Show>
                                                             </div>
                                                             <div class="text-xs opacity-50 font-mono">{user.email}</div>
                                                         </div>
@@ -326,6 +339,12 @@ export default function AdminUsersTable() {
                                             <span class="badge badge-primary badge-sm gap-1">
                                                 <Icon icon="ph:microphone-stage-bold" />
                                                 APPLICANT
+                                            </span>
+                                        </Show>
+                                        <Show when={selectedUser()?.hasTicket}>
+                                            <span class="badge badge-warning badge-sm gap-1">
+                                                <Icon icon="ph:ticket-bold" />
+                                                TICKET
                                             </span>
                                         </Show>
                                     </h4>

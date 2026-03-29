@@ -1,6 +1,7 @@
 // API endpoint for admin operations
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { requireAdmin } from "~/lib/admin-security";
+import { fetchHiEventsAttendees } from "~/lib/hievents";
 
 // Define a server function for admin operations
 export const adminCreateEvent = async (eventData: any) => {
@@ -67,19 +68,23 @@ export const adminFetchAllUsers = async () => {
     await requireAdmin();
     const adminService = getAdminPB();
 
-    // Fetch users and applicants in parallel
+    // Fetch users, applicants, and attendees in parallel
+    let attendees: any[] = [];
     const [users, applicants] = await Promise.all([
       adminService.fetchAllRecords("users", { sort: "-created" }),
-      adminService.fetchAllRecords("cfp_applicants", { fields: "user" })
+      adminService.fetchAllRecords("cfp_applicants", { fields: "user" }),
+      fetchHiEventsAttendees().then(a => { attendees = a; }).catch(() => {}),
     ]);
 
-    // Create a set of user IDs that are applicants
+    // Create lookup sets
     const applicantUserIds = new Set(applicants.map((a: any) => a.user));
+    const attendeeEmails = new Set(attendees.map((a: any) => a.email.toLowerCase()));
 
-    // Enhance user objects with isApplicant flag
+    // Enhance user objects with isApplicant and hasTicket flags
     const enhancedUsers = users.map((user: any) => ({
       ...user,
-      isApplicant: applicantUserIds.has(user.id)
+      isApplicant: applicantUserIds.has(user.id),
+      hasTicket: attendeeEmails.has(user.email.toLowerCase()),
     }));
 
     return { success: true, data: enhancedUsers };
