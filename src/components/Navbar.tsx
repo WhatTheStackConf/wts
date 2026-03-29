@@ -104,7 +104,7 @@ export const Navbar = () => {
                 </li>
               )}
               {/* Reviewer Link */}
-              {mounted() && auth?.user?.role === "reviewer" && (
+              {mounted() && (auth?.user?.role === "reviewer" || auth?.user?.role === "admin") && (
                 <li>
                   <a
                     href="/reviewer"
@@ -192,7 +192,7 @@ export const Navbar = () => {
                 </a>
               </li>
             )}
-            {mounted() && auth?.user?.role === "reviewer" && (
+            {mounted() && (auth?.user?.role === "reviewer" || auth?.user?.role === "admin") && (
               <li>
                 <a
                   href="/reviewer"

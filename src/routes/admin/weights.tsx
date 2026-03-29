@@ -1,9 +1,9 @@
 import { createSignal, createEffect, For, Show } from "solid-js";
 import { useAuth } from "~/lib/auth-context";
-import { pb } from "~/lib/pocketbase-utils";
 import { useNavigate } from "@solidjs/router";
 import { Icon } from "@iconify-icon/solid";
 import { Layout } from "~/layouts/Layout";
+import { fetchWeightVotes, saveWeightVote } from "~/lib/reviewer-actions";
 
 // Criteria definitions
 const CRITERIA = [
@@ -51,10 +51,12 @@ export default function AdminWeights() {
     });
 
     const fetchData = async () => {
-        if (!auth?.user?.id) return;
         setLoading(true);
         try {
-            const records = await pb.collection("cfp_weight_votes").getFullList();
+            const res = await fetchWeightVotes();
+            if (!res.success) return;
+
+            const records = res.data as any[];
 
             // Calculate averages
             let tempAvg: any = {};
@@ -67,15 +69,15 @@ export default function AdminWeights() {
             }
 
             // Find my vote (if reviewer)
-            if (auth.user?.role === "reviewer") {
-                const myVote = records.find((r: any) => r.user === auth.user!.id);
+            if (res.userRole === "reviewer") {
+                const myVote = records.find((r: any) => r.user === res.userId);
                 if (myVote) {
                     setVoteId(myVote.id);
                     const v: any = {};
                     CRITERIA.forEach(c => v[c.id] = (myVote as any)[c.id]);
                     setVotes(v);
                 }
-            } else if (auth.user?.role === "admin") {
+            } else if (res.userRole === "admin") {
                 // Admin Visualization: Show averages on sliders
                 const v: any = {};
                 CRITERIA.forEach(c => v[c.id] = Math.round(parseFloat(tempAvg[c.id] || "1")));
@@ -95,25 +97,20 @@ export default function AdminWeights() {
     };
 
     const handleSave = async () => {
-        if (!auth?.user?.id) return;
         setSaving(true);
         setSuccess(false);
         try {
-            const data = {
-                user: auth.user.id,
-                ...votes()
-            };
-
-            if (voteId()) {
-                await pb.collection("cfp_weight_votes").update(voteId()!, data);
+            const res = await saveWeightVote(voteId(), votes());
+            if (res.success) {
+                if (!voteId() && res.data) {
+                    setVoteId((res.data as any).id);
+                }
+                setSuccess(true);
+                setTimeout(() => setSuccess(false), 3000);
+                fetchData();
             } else {
-                const created = await pb.collection("cfp_weight_votes").create(data);
-                setVoteId(created.id);
+                alert("Failed to save weights: " + res.error);
             }
-            setSuccess(true);
-            setTimeout(() => setSuccess(false), 3000);
-            // Refresh averages
-            fetchData();
         } catch (e) {
             console.error("Error saving weights:", e);
             alert("Failed to save weights.");

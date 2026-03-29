@@ -78,6 +78,57 @@ export const fetchReviewerSubmissionDetail = async (id: string) => {
     }
 };
 
+// Fetch weight votes and the current user's vote
+export const fetchWeightVotes = async () => {
+    "use server";
+    try {
+        const user = await requireReviewer();
+        const adminService = getAdminPB();
+        const records = await adminService.fetchAllRecords("cfp_weight_votes");
+        return { success: true, data: records, userId: user.id, userRole: user.role };
+    } catch (error) {
+        console.error("Fetch weight votes error:", error);
+        return { success: false, error: (error as Error).message };
+    }
+};
+
+// Save or update a weight vote (reviewer only)
+export const saveWeightVote = async (voteId: string | null, votes: Record<string, number>) => {
+    "use server";
+    try {
+        const user = await requireReviewer();
+        if (user.role !== "reviewer") {
+            throw new Error("Only reviewers can submit weight votes");
+        }
+        const adminService = getAdminPB();
+        const data = { user: user.id, ...votes };
+
+        if (voteId) {
+            validateRecordId(voteId);
+            // Verify ownership
+            const existing = await adminService.fetchRecordById("cfp_weight_votes", voteId);
+            if (existing.user !== user.id) {
+                throw new Error("Unauthorized: Cannot edit another user's vote");
+            }
+            const result = await adminService.updateRecord("cfp_weight_votes", voteId, data);
+            return { success: true, data: result };
+        } else {
+            // Check for duplicate vote
+            const existing = await adminService.fetchAllRecords("cfp_weight_votes", {
+                filter: `user = "${user.id}"`
+            });
+            if (existing.length > 0) {
+                throw new Error("You have already submitted weight votes");
+            }
+            const result = await adminService.createRecord("cfp_weight_votes", data);
+            return { success: true, data: result };
+        }
+    } catch (error) {
+        console.error("Save weight vote error:", error);
+        return { success: false, error: (error as Error).message };
+    }
+};
+
 // Create or Update a Review
 export const submitReview = async (data: any) => {
     "use server";
