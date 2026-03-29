@@ -233,6 +233,37 @@ export const adminFetchUserSpeakerProfile = async (userId: string) => {
   }
 };
 
+export const adminFetchAttendeesWithAccounts = async () => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+
+    // Fetch attendees and users in parallel
+    const [attendees, users] = await Promise.all([
+      fetchHiEventsAttendees(),
+      adminService.fetchAllRecords("users", { fields: "id,email,name" }),
+    ]);
+
+    // Build email -> user lookup
+    const usersByEmail = new Map<string, { id: string; name: string }>();
+    for (const u of users) {
+      usersByEmail.set((u as any).email.toLowerCase(), { id: u.id, name: (u as any).name });
+    }
+
+    // Enrich attendees
+    const enriched = attendees.map((a: any) => ({
+      ...a,
+      account: usersByEmail.get(a.email.toLowerCase()) || null,
+    }));
+
+    return { success: true, data: enriched };
+  } catch (error) {
+    console.error("Admin fetch attendees with accounts error:", error);
+    return { success: false, error: (error as Error).message };
+  }
+};
+
 export const deleteSubmission = async (id: string) => {
   "use server";
   try {

@@ -2,16 +2,21 @@ import { createSignal, createResource, Show, For, createMemo } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { Icon } from "@iconify-icon/solid";
 import { Layout } from "~/layouts/Layout";
-import { fetchHiEventsAttendees, HiEventsAttendee } from "~/lib/hievents";
+import { HiEventsAttendee } from "~/lib/hievents";
+import { adminFetchAttendeesWithAccounts } from "~/lib/admin-actions";
 import { getGravatarUrl } from "~/lib/gravatar";
+
+type EnrichedAttendee = HiEventsAttendee & { account: { id: string; name: string } | null };
 
 export default function AdminTickets() {
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = createSignal("");
 
-    // Fetch attendees using existing server action
+    // Fetch attendees enriched with account info
     const [attendees] = createResource(async () => {
-        return await fetchHiEventsAttendees();
+        const res = await adminFetchAttendeesWithAccounts();
+        if (res.success) return res.data as EnrichedAttendee[];
+        return [];
     });
 
     // Filter attendees based on search term
@@ -34,8 +39,9 @@ export default function AdminTickets() {
         const data = attendees() || [];
         const total = data.length;
         const checkedIn = data.filter(a => a.checked_in_at).length;
+        const withAccount = data.filter((a: any) => a.account).length;
         const revenue = data.reduce((acc, curr) => acc + (curr.ticket?.price || 0), 0);
-        return { total, checkedIn, revenue };
+        return { total, checkedIn, withAccount, revenue };
     });
 
     return (
@@ -61,7 +67,7 @@ export default function AdminTickets() {
                     </div>
 
                     {/* Stats Row */}
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
                         <div class="glass-panel p-6 rounded-xl border border-white/10 bg-black/20">
                             <div class="text-secondary-300 text-sm font-mono mb-1">TOTAL ATTENDEES</div>
                             <div class="text-3xl font-bold text-white">{stats().total}</div>
@@ -71,8 +77,12 @@ export default function AdminTickets() {
                             <div class="text-3xl font-bold text-accent-400">{stats().checkedIn}</div>
                         </div>
                         <div class="glass-panel p-6 rounded-xl border border-white/10 bg-black/20">
+                            <div class="text-secondary-300 text-sm font-mono mb-1">WITH ACCOUNT</div>
+                            <div class="text-3xl font-bold text-primary-400">{stats().withAccount}</div>
+                        </div>
+                        <div class="glass-panel p-6 rounded-xl border border-white/10 bg-black/20">
                             <div class="text-secondary-300 text-sm font-mono mb-1">EST. REVENUE</div>
-                            <div class="text-3xl font-bold text-primary-400">€{stats().revenue.toFixed(2)}</div>
+                            <div class="text-3xl font-bold text-warning-400">€{stats().revenue.toFixed(2)}</div>
                         </div>
                     </div>
 
@@ -111,7 +121,12 @@ export default function AdminTickets() {
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <div class="font-bold text-white">{attendee.first_name} {attendee.last_name}</div>
+                                                    <div class="font-bold text-white flex items-center gap-2">
+                                                        {attendee.first_name} {attendee.last_name}
+                                                        <Show when={attendee.account}>
+                                                            <Icon icon="ph:user-circle-check-bold" class="text-primary-400 text-sm" />
+                                                        </Show>
+                                                    </div>
                                                     <div class="text-xs opacity-50 font-mono text-accent-300">{attendee.email}</div>
                                                 </div>
                                             </div>
@@ -193,7 +208,14 @@ export default function AdminTickets() {
                                                             </div>
                                                         </div>
                                                         <div>
-                                                            <div class="font-bold text-white">{attendee.first_name} {attendee.last_name}</div>
+                                                            <div class="font-bold text-white flex items-center gap-2">
+                                                                {attendee.first_name} {attendee.last_name}
+                                                                <Show when={attendee.account}>
+                                                                    <div class="tooltip" data-tip={`Account: ${attendee.account!.name || attendee.email}`}>
+                                                                        <Icon icon="ph:user-circle-check-bold" class="text-primary-400" />
+                                                                    </div>
+                                                                </Show>
+                                                            </div>
                                                             <div class="text-xs opacity-50 font-mono text-accent-300">{attendee.email}</div>
                                                         </div>
                                                     </div>
