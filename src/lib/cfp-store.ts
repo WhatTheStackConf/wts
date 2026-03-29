@@ -222,13 +222,25 @@ export const submitProposal = async () => {
 
 export const fetchProposals = async () => {
   try {
+    if (!pb.authStore.isValid || !pb.authStore.record) return [];
+
+    // Find the current user's applicant profile
+    const applicants = await pb.collection("cfp_applicants").getFullList({
+      filter: `user.id = '${pb.authStore.record.id}'`,
+    });
+
+    if (applicants.length === 0) return [];
+
+    // Fetch only this applicant's submissions
     const res = await pb.collection("cfp_submissions").getFullList({
       sort: "-created",
+      filter: `applicant = "${applicants[0].id}"`,
       expand: "applicant",
     });
 
     return res;
   } catch (error) {
     console.error("Error fetching proposals:", error);
+    return [];
   }
 };
