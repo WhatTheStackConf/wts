@@ -2,6 +2,16 @@ import { requireReviewer } from "~/lib/admin-security";
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { CfpReviewRecord, CfpSubmissionRecord } from "~/lib/pocketbase-types";
 
+// PocketBase record IDs are 15-char alphanumeric strings
+const VALID_ID = /^[a-zA-Z0-9]{15}$/;
+
+function validateRecordId(id: string): string {
+    if (!VALID_ID.test(id)) {
+        throw new Error("Invalid record ID");
+    }
+    return id;
+}
+
 // Fetch all submissions for the reviewer queue
 export const fetchReviewerSubmissions = async () => {
     "use server";
@@ -29,11 +39,12 @@ export const fetchReviewerSubmissionDetail = async (id: string) => {
     "use server";
     try {
         const user = await requireReviewer();
+        const safeId = validateRecordId(id);
         const adminService = getAdminPB();
         const isAdmin = user.role === "admin";
 
         // 1. Fetch Submission
-        const submission = await adminService.fetchRecordById("cfp_submissions", id, {
+        const submission = await adminService.fetchRecordById("cfp_submissions", safeId, {
             expand: isAdmin ? "applicant.user" : undefined
         });
 
@@ -43,12 +54,12 @@ export const fetchReviewerSubmissionDetail = async (id: string) => {
         let reviews = [];
         if (isAdmin) {
             reviews = await adminService.fetchAllRecords("cfp_reviews", {
-                filter: `submission = "${id}"`,
+                filter: `submission = "${safeId}"`,
                 expand: "reviewer"
             });
         } else {
             reviews = await adminService.fetchAllRecords("cfp_reviews", {
-                filter: `submission = "${id}" && reviewer = "${user.id}"`
+                filter: `submission = "${safeId}" && reviewer = "${user.id}"`
             });
         }
 
@@ -81,6 +92,7 @@ export const submitReview = async (data: any) => {
 
         if (data.id) {
             // Update existing
+            validateRecordId(data.id);
             // Verify ownership first if not admin
             if (user.role !== "admin") {
                 const existing = await adminService.fetchRecordById("cfp_reviews", data.id);
@@ -91,7 +103,14 @@ export const submitReview = async (data: any) => {
             const result = await adminService.updateRecord("cfp_reviews", data.id, data);
             return { success: true, data: result };
         } else {
-            // Create new
+            // Create new — check for duplicate review first
+            validateRecordId(data.submission);
+            const existing = await adminService.fetchAllRecords("cfp_reviews", {
+                filter: `submission = "${data.submission}" && reviewer = "${user.id}"`
+            });
+            if (existing.length > 0) {
+                throw new Error("You have already reviewed this submission");
+            }
             const result = await adminService.createRecord("cfp_reviews", data);
             return { success: true, data: result };
         }
