@@ -3,7 +3,7 @@ import { useNavigate } from "@solidjs/router";
 import { Icon } from "@iconify-icon/solid";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
-import { adminFetchAllUsers, adminUpdateUser, adminDeleteUser } from "~/lib/admin-actions";
+import { adminFetchAllUsers, adminUpdateUser, adminDeleteUser, adminFetchUserSpeakerProfile } from "~/lib/admin-actions";
 import { UserRecord } from "~/lib/pocketbase-types";
 import { getGravatarUrl } from "~/lib/gravatar";
 
@@ -23,9 +23,29 @@ export default function AdminUsersTable() {
     });
 
     const [selectedUser, setSelectedUser] = createSignal<(UserRecord & { isApplicant?: boolean; hasTicket?: boolean }) | null>(null);
+    const [speakerProfile, setSpeakerProfile] = createSignal<{ applicant: any; submissions: any[] } | null>(null);
+    const [loadingProfile, setLoadingProfile] = createSignal(false);
     const [deleteId, setDeleteId] = createSignal<{ id: string, name: string } | null>(null);
 
     const [updating, setUpdating] = createSignal<string | null>(null);
+
+    const openUserDetails = async (user: UserRecord & { isApplicant?: boolean; hasTicket?: boolean }) => {
+        setSelectedUser(user);
+        setSpeakerProfile(null);
+        if (user.isApplicant) {
+            setLoadingProfile(true);
+            try {
+                const res = await adminFetchUserSpeakerProfile(user.id);
+                if (res.success && res.data) {
+                    setSpeakerProfile(res.data);
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoadingProfile(false);
+            }
+        }
+    };
 
     const handleRoleChange = async (userId: string, newRole: string) => {
         if (!confirm(`Are you sure you want to change this user's role to ${newRole}?`)) return;
@@ -183,7 +203,7 @@ export default function AdminUsersTable() {
                                                 </button>
                                                 <button
                                                     class="btn btn-ghost btn-xs text-gray-400 hover:text-white"
-                                                    onClick={() => setSelectedUser(user)}
+                                                    onClick={() => openUserDetails(user)}
                                                 >
                                                     Details
                                                 </button>
@@ -286,7 +306,7 @@ export default function AdminUsersTable() {
                                                     <div class="flex items-center justify-center gap-2">
                                                         <button
                                                             class="btn btn-ghost btn-xs text-gray-400 hover:text-white"
-                                                            onClick={() => setSelectedUser(user)}
+                                                            onClick={() => openUserDetails(user)}
                                                         >
                                                             Details
                                                         </button>
@@ -315,7 +335,7 @@ export default function AdminUsersTable() {
             <Show when={selectedUser()}>
                 <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedUser(null)}></div>
-                    <div class="bg-base-900 border border-white/10 p-0 rounded-2xl relative z-10 max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                    <div class="bg-base-900 border border-white/10 p-0 rounded-2xl relative z-10 max-w-xl w-full max-h-[85vh] overflow-y-auto shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
                         <div class="p-6 border-b border-white/10 bg-white/5 flex justify-between items-center">
                             <h3 class="text-xl font-bold text-white">User Details</h3>
                             <button onClick={() => setSelectedUser(null)} class="btn btn-circle btn-ghost btn-sm">
@@ -377,6 +397,83 @@ export default function AdminUsersTable() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Speaker Profile Section */}
+                            <Show when={selectedUser()?.isApplicant}>
+                                <div class="border-t border-white/10 pt-6">
+                                    <h5 class="text-sm font-bold text-secondary-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                        <Icon icon="ph:microphone-stage-bold" />
+                                        Speaker Profile
+                                    </h5>
+                                    <Show when={loadingProfile()}>
+                                        <div class="flex justify-center py-4">
+                                            <span class="loading loading-bars loading-sm text-primary-500"></span>
+                                        </div>
+                                    </Show>
+                                    <Show when={!loadingProfile() && speakerProfile()}>
+                                        <div class="space-y-4">
+                                            <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                                                <div class="text-xs text-gray-400 uppercase font-bold mb-1">Affiliation</div>
+                                                <div class="text-white text-sm">{speakerProfile()!.applicant.affiliation || "N/A"}</div>
+                                            </div>
+                                            <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                                                <div class="text-xs text-gray-400 uppercase font-bold mb-1">Bio</div>
+                                                <div class="text-white text-sm line-clamp-4">{speakerProfile()!.applicant.bio || "N/A"}</div>
+                                            </div>
+                                            <Show when={speakerProfile()!.applicant.social_handles}>
+                                                <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                                                    <div class="text-xs text-gray-400 uppercase font-bold mb-1">Social</div>
+                                                    <div class="text-white text-sm font-mono">
+                                                        {typeof speakerProfile()!.applicant.social_handles === "string"
+                                                            ? speakerProfile()!.applicant.social_handles
+                                                            : JSON.stringify(speakerProfile()!.applicant.social_handles)}
+                                                    </div>
+                                                </div>
+                                            </Show>
+
+                                            {/* Submissions */}
+                                            <Show when={speakerProfile()!.submissions.length > 0}>
+                                                <div class="pt-2">
+                                                    <div class="text-xs text-gray-400 uppercase font-bold mb-2">
+                                                        Submissions ({speakerProfile()!.submissions.length})
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <For each={speakerProfile()!.submissions}>
+                                                            {(sub: any) => (
+                                                                <a
+                                                                    href={`/reviewer/${sub.id}`}
+                                                                    class="block bg-white/5 hover:bg-white/10 p-3 rounded-lg border border-white/5 hover:border-primary-500/30 transition-colors group"
+                                                                >
+                                                                    <div class="flex items-center justify-between gap-2">
+                                                                        <div class="flex-1 min-w-0">
+                                                                            <div class="text-sm font-bold text-white group-hover:text-primary-300 transition-colors truncate">
+                                                                                {sub.session_title}
+                                                                            </div>
+                                                                            <div class="text-xs text-gray-500 font-mono mt-1">
+                                                                                {new Date(sub.created).toISOString().split('T')[0]}
+                                                                            </div>
+                                                                        </div>
+                                                                        <Show when={sub.status}>
+                                                                            <span class={`badge badge-xs font-bold border-0 ${
+                                                                                sub.status === 'accepted' ? 'bg-success/20 text-success' :
+                                                                                sub.status === 'rejected' ? 'bg-error-500/20 text-error-400' :
+                                                                                'bg-white/10 text-gray-400'
+                                                                            }`}>
+                                                                                {sub.status.toUpperCase()}
+                                                                            </span>
+                                                                        </Show>
+                                                                        <Icon icon="ph:arrow-right-bold" class="text-gray-500 group-hover:text-primary-400 transition-colors flex-shrink-0" />
+                                                                    </div>
+                                                                </a>
+                                                            )}
+                                                        </For>
+                                                    </div>
+                                                </div>
+                                            </Show>
+                                        </div>
+                                    </Show>
+                                </div>
+                            </Show>
                         </div>
                         <div class="p-4 bg-black/20 border-t border-white/5 flex justify-end">
                             <button class="btn btn-ghost" onClick={() => setSelectedUser(null)}>Close</button>

@@ -197,6 +197,42 @@ export const adminFetchLeaderboardData = async () => {
   }
 };
 
+export const adminFetchUserSpeakerProfile = async (userId: string) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+
+    // Find applicant profile for this user
+    const applicants = await adminService.fetchAllRecords("cfp_applicants", {
+      filter: `user = "${userId}"`,
+    });
+
+    if (applicants.length === 0) {
+      return { success: true, data: null };
+    }
+
+    const applicant = applicants[0];
+
+    // Fetch submissions for this applicant
+    const submissions = await adminService.fetchAllRecords("cfp_submissions", {
+      filter: `applicant = "${applicant.id}"`,
+      sort: "-created",
+    });
+
+    return {
+      success: true,
+      data: {
+        applicant,
+        submissions,
+      },
+    };
+  } catch (error) {
+    console.error("Admin fetch user speaker profile error:", error);
+    return { success: false, error: (error as Error).message };
+  }
+};
+
 export const deleteSubmission = async (id: string) => {
   "use server";
   try {
