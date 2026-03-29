@@ -23,20 +23,13 @@ class PocketBaseAdminService {
     this.pb = new PocketBase(pocketBaseURL);
   }
 
-  /**
-   * Initialize admin service with superuser credentials
-   * This should be called before any admin operations
-   */
-  /**
-   * Initialize admin service with superuser credentials
-   * This should be called before any admin operations
-   */
   private initializationPromise: Promise<void> | null = null;
 
-  async initializeAdmin() {
-    if (this.initialized) return;
+  async ensureAuthenticated() {
+    // Re-authenticate if never initialized or token has expired
+    if (this.initialized && this.pb.authStore.isValid) return;
 
-    // If initialization is already in progress, wait for it
+    // If authentication is already in progress, wait for it
     if (this.initializationPromise) {
       await this.initializationPromise;
       return;
@@ -57,7 +50,8 @@ class PocketBaseAdminService {
         await this.pb.admins.authWithPassword(email, password);
         this.initialized = true;
       } catch (error) {
-        console.error("Failed to initialize PocketBase admin service:", error);
+        this.initialized = false;
+        console.error("Failed to authenticate PocketBase admin service:", error);
         throw error;
       } finally {
         this.initializationPromise = null;
@@ -71,12 +65,8 @@ class PocketBaseAdminService {
    * Get the PocketBase instance
    * @throws Error if admin service is not initialized
    */
-  getInstance(): PocketBase {
-    if (!this.initialized) {
-      throw new Error(
-        "Admin service not initialized. Call initializeAdmin() first.",
-      );
-    }
+  async getInstance(): Promise<PocketBase> {
+    await this.ensureAuthenticated();
     return this.pb;
   }
 
@@ -85,7 +75,7 @@ class PocketBaseAdminService {
    * This operation bypasses any client-side rules and uses superuser privileges
    */
   async createRecord(collectionName: string, data: any) {
-    if (!this.initialized) await this.initializeAdmin();
+    await this.ensureAuthenticated();
     try {
       const record = await this.pb.collection(collectionName).create(data);
       return record;
@@ -100,7 +90,7 @@ class PocketBaseAdminService {
    * This operation bypasses any client-side rules and uses superuser privileges
    */
   async updateRecord(collectionName: string, id: string, data: any) {
-    if (!this.initialized) await this.initializeAdmin();
+    await this.ensureAuthenticated();
     try {
       const record = await this.pb.collection(collectionName).update(id, data);
       return record;
@@ -115,7 +105,7 @@ class PocketBaseAdminService {
    * This operation bypasses any client-side rules and uses superuser privileges
    */
   async deleteRecord(collectionName: string, id: string) {
-    if (!this.initialized) await this.initializeAdmin();
+    await this.ensureAuthenticated();
     try {
       const result = await this.pb.collection(collectionName).delete(id);
       return result;
@@ -130,7 +120,7 @@ class PocketBaseAdminService {
    * This operation uses superuser privileges to access all records regardless of client-side rules
    */
   async fetchAllRecords(collectionName: string, options?: any) {
-    if (!this.initialized) await this.initializeAdmin();
+    await this.ensureAuthenticated();
     try {
       const records = await this.pb
         .collection(collectionName)
@@ -150,7 +140,7 @@ class PocketBaseAdminService {
    * This operation uses superuser privileges to access the record regardless of client-side rules
    */
   async fetchRecordById(collectionName: string, id: string, options?: any) {
-    if (!this.initialized) await this.initializeAdmin();
+    await this.ensureAuthenticated();
     try {
       const record = await this.pb
         .collection(collectionName)
@@ -169,7 +159,7 @@ class PocketBaseAdminService {
   async rawDatabaseOperation<T>(
     operation: (db: any) => Promise<T>,
   ): Promise<T> {
-    if (!this.initialized) await this.initializeAdmin();
+    await this.ensureAuthenticated();
     try {
       // Access the internal db instance (this may be implementation-specific to PocketBase)
       // For custom operations that bypass standard collection methods
@@ -184,7 +174,7 @@ class PocketBaseAdminService {
    * Batch operations using superuser privileges
    */
   async batchCreate(collectionName: string, records: any[]) {
-    if (!this.initialized) await this.initializeAdmin();
+    await this.ensureAuthenticated();
     try {
       // Process as individual operations since PocketBase doesn't have a built-in batch create
       const results = [];
