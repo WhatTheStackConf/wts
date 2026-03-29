@@ -25,7 +25,7 @@
     "@types/spark-md5": "^3.0.5",
     "dotenv": "^17.2.3",
     "lottie-web": "^5.13.0",
-    "pocketbase": "^0.26.2",
+    "pocketbase": "^0.26.6",
     "prosemirror-commands": "^1.7.1",
     "prosemirror-history": "^1.5.0",
     "prosemirror-keymap": "^1.2.3",

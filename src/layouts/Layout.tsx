@@ -4,8 +4,11 @@ import { Navbar } from "~/components/Navbar";
 import CodeBackground from "../components/CodeBackground";
 import { Footer } from "~/components/Footer";
 import { clientOnly } from "@solidjs/start";
+const NRPlayer = clientOnly(() => import("../components/NRPlayer"));
 
-const NewsletterPopup = clientOnly(() => import("~/components/NewsletterPopup"));
+const NewsletterPopup = clientOnly(
+  () => import("~/components/NewsletterPopup"),
+);
 
 interface LayoutProps {
   children: JSX.Element;
@@ -37,6 +40,7 @@ export const Layout = (props: LayoutProps) => {
           <Footer />
         </div>
         <NewsletterPopup />
+        <NRPlayer />
       </main>
     </>
   );
