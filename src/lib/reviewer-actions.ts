@@ -134,22 +134,20 @@ export const submitReview = async (data: any) => {
     "use server";
     try {
         const user = await requireReviewer();
+        if (user.role !== "reviewer") {
+            throw new Error("Only reviewers can submit reviews");
+        }
         const adminService = getAdminPB();
 
         // Force reviewer ID to be the authenticated user (prevent spoofing)
-        // Unless admin... actually even admins should probably review as themselves?
-        // Let's enforce the reviewer field matches the auth user.
         data.reviewer = user.id;
 
         if (data.id) {
-            // Update existing
+            // Update existing — verify ownership
             validateRecordId(data.id);
-            // Verify ownership first if not admin
-            if (user.role !== "admin") {
-                const existing = await adminService.fetchRecordById("cfp_reviews", data.id);
-                if (existing.reviewer !== user.id) {
-                    throw new Error("Unauthorized: Cannot edit another user's review");
-                }
+            const existing = await adminService.fetchRecordById("cfp_reviews", data.id);
+            if (existing.reviewer !== user.id) {
+                throw new Error("Unauthorized: Cannot edit another user's review");
             }
             const result = await adminService.updateRecord("cfp_reviews", data.id, data);
             return { success: true, data: result };
