@@ -19,10 +19,9 @@ export function setAuthCookie(token: string, model: any) {
 
     // Note: We use Lax instead of Strict to allow cookies on top-level navigation from external sites
     const cookieStr = pb.authStore.exportToCookie({
-        httpOnly: true,
+        httpOnly: false, // must be false — browsers reject HttpOnly from document.cookie
         secure: location.protocol === 'https:',
         sameSite: 'Lax',
-        // Set a long max age (default is session)
         expires: new Date(Date.now() + 34560000 * 1000)
     });
 
