@@ -31,4 +31,4 @@ QWEN.md
 .qwen
 AGENTS.md
 
-pb_data
+**/pb_data/*.db
