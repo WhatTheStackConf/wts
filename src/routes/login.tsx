@@ -76,15 +76,15 @@ const LoginPage = () => {
     }
   };
 
-  // const loginWithGoogle = async () => {
-  //   try {
-  //     await auth?.googleLogin();
-  //     navigate("/");
-  //   } catch (err: any) {
-  //     console.error("Login error:", err);
-  //     setError(err.message || "Login failed");
-  //   }
-  // };
+  const loginWithGoogle = async () => {
+    try {
+      await auth?.googleLogin();
+      navigate("/");
+    } catch (err: any) {
+      console.error("Login error:", err);
+      setError(err.message || "Login failed");
+    }
+  };
 
   return (
     <Layout
@@ -105,13 +105,13 @@ const LoginPage = () => {
             <Icon icon="mdi:github" class="mr-2" /> Log in with GitHub
           </button>
 
-          {/*<button
+          <button
             type="button"
             onClick={loginWithGoogle}
             class="btn btn-primary w-full mb-4"
           >
             <Icon icon="mdi:google" class="mr-2" /> Log in with Google
-          </button>*/}
+          </button>
 
           <form onSubmit={handleEmailLogin}>
             <div class="mb-4">
