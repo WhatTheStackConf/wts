@@ -161,15 +161,6 @@ export default function ReviewPage() {
                                         {submission().session_title}
                                     </h1>
 
-                                    <div class="flex flex-wrap gap-3 mb-8">
-                                        <div class="badge badge-outline border-white/20 text-white/60 font-mono">
-                                            {submission().level || "Intermediate"}
-                                        </div>
-                                        <div class="badge badge-outline border-white/20 text-white/60 font-mono">
-                                            {submission().format || "Talk"}
-                                        </div>
-                                    </div>
-
                                     {/* Abstract Section */}
                                     <div class="mb-8">
                                         <h3 class="text-xs font-bold text-secondary-400 uppercase tracking-widest mb-3">Abstract</h3>
