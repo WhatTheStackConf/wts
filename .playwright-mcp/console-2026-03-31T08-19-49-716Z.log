@@ -1,3 +1,0 @@
-[   41250ms] [LOG] InputEvent @ http://localhost:5173/src/routes/cfp/03-proposal.tsx?pick=default&pick=$css:42
-[   50867ms] [WARNING] ProseMirror expects the CSS white-space property to be set, preferably to 'pre-wrap'. It is recommended to load style/prosemirror.css from the prosemirror-view package. @ http://localhost:5173/node_modules/.vite/deps/prosemirror-view.js?v=404cb477:4135
-[  125053ms] [WARNING] Form submission canceled because the form is not connected @ http://localhost:5173/cfp/01-intro:0
