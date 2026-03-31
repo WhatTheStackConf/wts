@@ -158,8 +158,8 @@ export const AuthProvider = (props: { children: any }) => {
     logout,
     githubLogin,
     googleLogin,
-    record: record(),
-    user: record(), // Expose user alias
+    get record() { return record(); },
+    get user() { return record(); },
     isLoading: loading,
   };
 
