@@ -97,7 +97,6 @@ const ReviewerDashboard = () => {
                                                     <div class="flex-1 w-full">
                                                         <div class="flex items-center gap-3 mb-2">
                                                             <span class="badge badge-outline border-white/20 text-white/50 font-mono text-xs">ID: {submission.id.substring(0, 8)}</span>
-                                                            <span class="text-xs font-mono text-white/40">{new Date(submission.created).toLocaleDateString()}</span>
                                                         </div>
                                                         <h4 class="text-xl font-bold text-white mb-3 group-hover:text-secondary-300 transition-colors leading-tight">
                                                             {submission.session_title || "Untitled Session"}
