@@ -120,7 +120,7 @@ const Proposal = () => {
 
           <div class="form-control w-full">
             <label class="label font-mono text-xs uppercase text-primary">
-              Key takeaways
+              Key takeaways *
             </label>
             <RichEditor
               value={cfpStore.formData.key_takeaways}

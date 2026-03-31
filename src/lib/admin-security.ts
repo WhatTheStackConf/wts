@@ -20,11 +20,20 @@ export const requireAdmin = async () => {
   const pb = new PocketBase(pocketBaseURL);
   pb.authStore.loadFromCookie(cookie);
 
-  if (!pb.authStore.isValid || pb.authStore.record?.role !== "admin") {
-    console.error(
-      "[Admin Security] Authorization failed. Token:",
-      pb.authStore.token.substring(0, 10) + "...",
-    );
+  if (!pb.authStore.isValid) {
+    throw new Error("Unauthorized: Admin access required");
+  }
+
+  // loadFromCookie may have a truncated record (PB SDK strips custom fields
+  // like 'role' when the cookie exceeds 4096 bytes). Refresh against the
+  // server to get the full record.
+  try {
+    await pb.collection("users").authRefresh();
+  } catch {
+    throw new Error("Unauthorized: Admin access required");
+  }
+
+  if (pb.authStore.record?.role !== "admin") {
     throw new Error("Unauthorized: Admin access required");
   }
 
@@ -50,7 +59,14 @@ export const requireAuth = async () => {
   const pb = new PocketBase(pocketBaseURL);
   pb.authStore.loadFromCookie(cookie);
 
-  if (!pb.authStore.isValid || !pb.authStore.record) {
+  if (!pb.authStore.isValid) {
+    throw new Error("Unauthorized: Login required");
+  }
+
+  // Refresh to get the full record (cookie may be truncated by PB SDK)
+  try {
+    await pb.collection("users").authRefresh();
+  } catch {
     throw new Error("Unauthorized: Login required");
   }
 

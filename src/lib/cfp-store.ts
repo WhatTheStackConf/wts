@@ -17,7 +17,6 @@ export interface CfpFormData {
   key_takeaways: string;
   technical_requirements: string;
   previous_presentation: string;
-  description: string;
   company_cover_expenses: string;
   additional_info: string;
   previous_talks?: string;
@@ -46,7 +45,6 @@ const initialStore: CfpStore = {
     key_takeaways: "",
     technical_requirements: "",
     previous_presentation: "",
-    description: "",
     company_cover_expenses: "",
     additional_info: "",
     applicant_id: "",
@@ -143,7 +141,6 @@ export const loadSubmissionToStore = (submission: any) => {
     technical_requirements: submission.technical_requirements || "",
     previous_presentation:
       meta.previous_presentation || submission.previous_presentation || "",
-    description: submission.description || meta.description || "",
     company_cover_expenses:
       meta.company_cover_expenses || submission.company_cover_expenses || "",
     additional_info: meta.additional_info || submission.additional_info || "",
@@ -163,7 +160,6 @@ export const resetProposalData = () => {
     id: "",
     talk_title: "",
     previous_presentation: "",
-    description: "",
     company_cover_expenses: "",
     additional_info: "",
     // applicant_id: "", // Keep applicant_id
@@ -196,7 +192,6 @@ export const submitProposal = async () => {
     abstract: formData.abstract,
     key_takeaways: formData.key_takeaways,
     technical_requirements: formData.technical_requirements,
-    description: formData.description,
     applicant: formData.applicant_id,
     meta: {
       company_cover_expenses: formData.company_cover_expenses,
