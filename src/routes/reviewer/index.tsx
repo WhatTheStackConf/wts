@@ -1,30 +1,25 @@
 import { createEffect, createSignal, Show, For, createResource } from "solid-js";
-import { useNavigate, A } from "@solidjs/router";
+import { useNavigate } from "@solidjs/router";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
 import { clientOnly } from "@solidjs/start";
 import { Icon } from "@iconify-icon/solid";
-import pb from "~/lib/pocketbase";
 
 const ReviewerDashboard = () => {
     const auth = useAuth();
     const navigate = useNavigate();
     const [isReviewer, setIsReviewer] = createSignal(false);
 
-    // Fetch all submissions
-    // In a real app, this should be filtered by "assigned to me" or "unreviewed"
-    // For now, we fetch all submissions as the requirement says "Every submission is anonymized"
-    // We will anonymize them in the UI or fetch logic.
     const fetchSubmissions = async () => {
         const { fetchReviewerSubmissions } = await import("~/lib/reviewer-actions");
         const res = await fetchReviewerSubmissions();
-        if (res.success) {
+        if (res.success && res.data) {
             return res.data;
         }
-        return [];
+        return { reviewed: [], unreviewed: [], totalLeft: 0 };
     };
 
-    const [submissions] = createResource(fetchSubmissions);
+    const [data] = createResource(fetchSubmissions);
 
     createEffect(() => {
         if (auth && auth.isAuthenticated()) {
@@ -32,16 +27,19 @@ const ReviewerDashboard = () => {
             if (user?.role === "reviewer" || user?.role === "admin") {
                 setIsReviewer(true);
             } else {
-                navigate("/"); // Redirect non-reviewers
+                navigate("/");
             }
         } else {
             navigate("/login");
         }
     });
 
-    // ... imports ...
-
-    // ... (logic remains same) ...
+    const reviewRandom = () => {
+        const unreviewed = data()?.unreviewed;
+        if (!unreviewed || unreviewed.length === 0) return;
+        const random = unreviewed[Math.floor(Math.random() * unreviewed.length)];
+        navigate(`/reviewer/${random.id}`);
+    };
 
     return (
         <Layout title="Reviewer Portal" description="CFP Evaluation">
@@ -51,14 +49,14 @@ const ReviewerDashboard = () => {
                 <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
 
                 <div class="container mx-auto px-4">
-                    <div class="max-w-6xl mx-auto">
+                    <div class="max-w-4xl mx-auto">
                         <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
                             <div>
                                 <h1 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-secondary-400 to-primary-400 uppercase drop-shadow-sm mb-2">
                                     Reviewer Portal
                                 </h1>
                                 <p class="text-secondary-300 font-mono text-sm tracking-widest uppercase">
-                                    Queue: {submissions()?.length || 0} submissions
+                                    CFP Evaluation
                                 </p>
                             </div>
                             <div class="flex gap-3">
@@ -73,58 +71,72 @@ const ReviewerDashboard = () => {
                         </div>
 
                         <Show when={isReviewer()}>
-                            <div class="glass-panel p-8 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
-                                <div class="flex items-center gap-3 mb-8 border-b border-white/10 pb-4">
-                                    <div class="p-2 bg-secondary-500/20 rounded-lg text-secondary-400">
-                                        <Icon icon="ph:files-bold" class="text-2xl" />
-                                    </div>
-                                    <h3 class="text-xl font-bold text-white tracking-wide">
-                                        SUBMISSIONS QUEUE
-                                    </h3>
+                            <Show when={data.loading}>
+                                <div class="flex justify-center py-12">
+                                    <span class="loading loading-bars loading-lg text-secondary"></span>
                                 </div>
+                            </Show>
 
-                                <Show when={submissions.loading}>
-                                    <div class="flex justify-center py-12">
-                                        <span class="loading loading-bars loading-lg text-secondary"></span>
-                                    </div>
-                                </Show>
-
-                                <div class="grid gap-4">
-                                    <For each={submissions()}>
-                                        {(submission) => (
-                                            <div class="p-4 md:p-6 bg-white/5 border border-white/5 rounded-xl hover:border-secondary-500/50 hover:bg-white/10 transition-all duration-300 group cursor-pointer" onClick={() => navigate(`/reviewer/${submission.id}`)}>
-                                                <div class="flex flex-col md:flex-row justify-between items-start gap-4 md:gap-6">
-                                                    <div class="flex-1 w-full">
-                                                        <div class="flex items-center gap-3 mb-2">
-                                                            <span class="badge badge-outline border-white/20 text-white/50 font-mono text-xs">ID: {submission.id.substring(0, 8)}</span>
-                                                        </div>
-                                                        <h4 class="text-xl font-bold text-white mb-3 group-hover:text-secondary-300 transition-colors leading-tight">
-                                                            {submission.session_title || "Untitled Session"}
-                                                            {/* Note: changed from session_title to title based on earlier file views, verify if needed */}
-                                                        </h4>
-                                                        <p class="text-gray-400 text-sm line-clamp-2 leading-relaxed opacity-80 group-hover:opacity-100 transition-opacity">
-                                                            {submission.abstract?.replace(/<[^>]*>?/gm, '') || "No abstract provided."}
-                                                        </p>
-                                                    </div>
-                                                    <button
-                                                        class="btn btn-primary font-mono gap-2 shrink-0 w-full md:w-auto group-hover:scale-105 transition-transform shadow-lg shadow-primary-500/20"
-                                                    >
-                                                        <Icon icon="ph:star-half-bold" />
-                                                        EVALUATE
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </For>
-                                    <Show when={!submissions.loading && submissions()?.length === 0}>
-                                        <div class="p-16 text-center border-2 border-dashed border-white/10 rounded-xl bg-white/5">
-                                            <Icon icon="ph:tray-bold" class="text-4xl text-white/20 mb-4 block mx-auto" />
-                                            <p class="text-secondary-300 font-mono text-lg">NO SUBMISSIONS FOUND</p>
-                                            <p class="text-white/30 text-sm mt-2">The queue is currently empty.</p>
+                            <Show when={!data.loading}>
+                                {/* Review Next Card */}
+                                <div class="glass-panel p-8 md:p-12 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40 text-center mb-8">
+                                    <Show when={(data()?.totalLeft ?? 0) > 0} fallback={
+                                        <div class="py-8">
+                                            <Icon icon="ph:check-circle-bold" class="text-6xl text-green-400 mb-4 block mx-auto" />
+                                            <p class="text-2xl font-bold text-white mb-2">All caught up!</p>
+                                            <p class="text-white/50 font-mono text-sm">You've reviewed every submission in the queue.</p>
+                                        </div>
+                                    }>
+                                        <div class="py-4">
+                                            <p class="text-white/50 font-mono text-sm uppercase tracking-widest mb-6">
+                                                {data()!.totalLeft} submission{data()!.totalLeft !== 1 ? "s" : ""} left to review
+                                            </p>
+                                            <button
+                                                onClick={reviewRandom}
+                                                class="btn btn-primary btn-lg font-mono gap-3 text-lg shadow-lg shadow-primary-500/30 hover:shadow-primary-500/50 hover:scale-105 transition-all"
+                                            >
+                                                <Icon icon="ph:shuffle-bold" class="text-2xl" />
+                                                Review Next Submission
+                                            </button>
                                         </div>
                                     </Show>
                                 </div>
-                            </div>
+
+                                {/* Previously Reviewed */}
+                                <Show when={(data()?.reviewed?.length ?? 0) > 0}>
+                                    <div class="glass-panel p-6 md:p-8 rounded-2xl border border-white/10 shadow-xl backdrop-blur-xl bg-black/40">
+                                        <div class="flex items-center gap-3 mb-6 border-b border-white/10 pb-4">
+                                            <div class="p-2 bg-green-500/20 rounded-lg text-green-400">
+                                                <Icon icon="ph:check-square-bold" class="text-xl" />
+                                            </div>
+                                            <h3 class="text-lg font-bold text-white tracking-wide">
+                                                YOUR REVIEWS ({data()!.reviewed.length})
+                                            </h3>
+                                        </div>
+
+                                        <div class="grid gap-3">
+                                            <For each={data()!.reviewed}>
+                                                {(submission) => (
+                                                    <div
+                                                        class="p-4 bg-white/5 border border-white/5 rounded-xl hover:border-green-500/30 hover:bg-white/10 transition-all duration-300 group cursor-pointer flex items-center justify-between gap-4"
+                                                        onClick={() => navigate(`/reviewer/${submission.id}`)}
+                                                    >
+                                                        <div class="flex-1 min-w-0">
+                                                            <h4 class="text-white font-semibold group-hover:text-green-300 transition-colors truncate">
+                                                                {submission.session_title || "Untitled Session"}
+                                                            </h4>
+                                                        </div>
+                                                        <div class="flex items-center gap-2 shrink-0">
+                                                            <span class="badge badge-outline border-green-500/30 text-green-400 font-mono text-xs">Reviewed</span>
+                                                            <Icon icon="ph:arrow-right-bold" class="text-white/30 group-hover:text-green-400 transition-colors" />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </For>
+                                        </div>
+                                    </div>
+                                </Show>
+                            </Show>
                         </Show>
                     </div>
                 </div>

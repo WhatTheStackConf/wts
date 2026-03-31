@@ -12,22 +12,37 @@ function validateRecordId(id: string): string {
     return id;
 }
 
-// Fetch all submissions for the reviewer queue
+// Fetch all submissions split into reviewed/unreviewed for the current reviewer
 export const fetchReviewerSubmissions = async () => {
     "use server";
     try {
         const user = await requireReviewer();
         const adminService = getAdminPB();
 
-        // Admin sees applicant info, reviewers do not (for anonymization)
         const isAdmin = user.role === "admin";
 
-        const submissions = await adminService.fetchAllRecords("cfp_submissions", {
-            sort: '-created',
-            expand: isAdmin ? "applicant" : undefined,
-        });
+        const [submissions, myReviews] = await Promise.all([
+            adminService.fetchAllRecords("cfp_submissions", {
+                expand: isAdmin ? "applicant" : undefined,
+            }),
+            adminService.fetchAllRecords("cfp_reviews", {
+                filter: `reviewer = "${user.id}"`,
+            }),
+        ]);
 
-        return { success: true, data: submissions as CfpSubmissionRecord[] };
+        const reviewedIds = new Set(myReviews.map((r: any) => r.submission));
+
+        const reviewed = submissions.filter((s: any) => reviewedIds.has(s.id));
+        const unreviewed = submissions.filter((s: any) => !reviewedIds.has(s.id));
+
+        return {
+            success: true,
+            data: {
+                reviewed: reviewed as CfpSubmissionRecord[],
+                unreviewed: unreviewed as CfpSubmissionRecord[],
+                totalLeft: unreviewed.length,
+            },
+        };
     } catch (error) {
         console.error("Fetch reviewer submissions error:", error);
         return { success: false, error: (error as Error).message };
