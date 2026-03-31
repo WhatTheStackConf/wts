@@ -1,0 +1,149 @@
+- generic [ref=e3]:
+  - generic [ref=e1009]:
+    - checkbox "open sidebar close sidebar"
+    - generic [ref=e1011]:
+      - link "WhatTheStack 2 0 2 6" [ref=e1013] [cursor=pointer]:
+        - /url: /
+        - img [ref=e1015]
+        - heading "WhatTheStack 2 0 2 6" [level=1] [ref=e1022]:
+          - generic [ref=e1024]:
+            - generic [ref=e1025]: WhatTheStack
+            - generic [ref=e1027]: 2 0 2 6
+      - list [ref=e1030]:
+        - listitem [ref=e1031]:
+          - link "Grab a ticket!" [ref=e1032] [cursor=pointer]:
+            - /url: /tickets
+        - listitem [ref=e1033]:
+          - link "About" [ref=e1034] [cursor=pointer]:
+            - /url: /about
+        - listitem [ref=e1035]:
+          - button "Previous editions" [ref=e1036]
+      - button "Avatar Darko" [ref=e1039] [cursor=pointer]:
+        - img "Avatar" [ref=e1042]
+        - generic [ref=e1043]: Darko
+        - img [ref=e1045]
+  - main [ref=e1047]:
+    - generic [ref=e1048]:
+      - generic [ref=e1049]: "for (let i = 0; i < stack.length; i++) { console.log(stack[i]); }"
+      - generic [ref=e1050]: "const dystopia = { weather: 'rain', season: 'perpetual night' };"
+      - generic [ref=e1051]: "const conference = { name: 'WhatTheStack', vibe: 'neon' };"
+      - generic [ref=e1052]: "function deploy() { return 'To the future'; }"
+      - generic [ref=e1053]: "const stack = { tech: ['Solid.js', 'Node.js', 'WebAssembly'], future: 'bright' };"
+      - generic [ref=e1054]: "function replicant() { return 'More human than human'; }"
+      - generic [ref=e1055]: const future = new Date(2026, 8, 19); // WhatTheStack date confirmed
+      - generic [ref=e1056]: "const ai = { consciousness: 'simulated', empathy: 'questionable' };"
+      - generic [ref=e1057]: "const ai = { consciousness: 'simulated', empathy: 'questionable' };"
+      - generic [ref=e1058]: "if (memory) { return false; } // Replicant memories are implanted"
+      - generic [ref=e1059]: "const replicant = { type: 'Nexus-7', status: 'on-the-run' };"
+      - generic [ref=e1060]: "const data = { eyes: 'blue', density: 'light' }; // VOIGHT-KAMPFF test"
+      - generic [ref=e1061]: "const code = { language: 'Assembly', origin: 'Tyrell Corp' };"
+      - generic [ref=e1062]: "const cyberpunk = { city: 'Skopje', year: 2049 };"
+      - generic [ref=e1063]: "const dystopia = { weather: 'rain', season: 'perpetual night' };"
+      - generic [ref=e1065]: function replicant()
+      - generic [ref=e1067]: function repl
+      - generic [ref=e1069]: functio
+      - generic [ref=e1071]: fun
+    - generic [ref=e1076]:
+      - generic:
+        - paragraph: SYS.INIT_SEQUENCE
+        - paragraph: "PROTOCOL: CFP_2026"
+      - heading "WHATTHESTACK 2026" [level=1] [ref=e1077]
+      - generic [ref=e1079]:
+        - generic [ref=e1080]:
+          - img [ref=e1083]
+          - generic [ref=e1085]: Intro
+        - generic [ref=e1086]:
+          - img [ref=e1089]
+          - generic [ref=e1091]: Personal
+        - generic [ref=e1092]:
+          - img [ref=e1095]
+          - generic [ref=e1097]: Proposal
+        - generic [ref=e1098]:
+          - img [ref=e1101]
+          - generic [ref=e1103]: Experience
+        - generic [ref=e1104]:
+          - img [ref=e1107]
+          - generic [ref=e1109]: Expenses
+        - generic [ref=e1110]:
+          - generic [ref=e1112]: "6"
+          - generic [ref=e1113]: Confirm
+      - heading "// FINAL REVIEW" [level=2] [ref=e1116]:
+        - generic [ref=e1117]: //
+        - text: FINAL REVIEW
+      - paragraph [ref=e1118]: Check everything one last time. Our review process is anonymized.
+      - generic [ref=e1119]:
+        - generic [ref=e1120]:
+          - generic [ref=e1121]:
+            - heading "SPEAKER INFO" [level=3] [ref=e1122]
+            - button "EDIT" [ref=e1123] [cursor=pointer]:
+              - img [ref=e1125]
+              - text: EDIT
+          - generic [ref=e1128]:
+            - paragraph [ref=e1129]: "Name: Darko Bozhinovski"
+            - paragraph [ref=e1130]: "Email: hello@darko.io"
+            - paragraph [ref=e1131]: "Bio: Full-stack developer and conference enthusiast. Building things with JavaScript and exploring the edges of web development."
+        - generic [ref=e1132]:
+          - generic [ref=e1133]:
+            - heading "TALK PROPOSAL" [level=3] [ref=e1134]
+            - button "EDIT" [ref=e1135] [cursor=pointer]:
+              - img [ref=e1137]
+              - text: EDIT
+          - generic [ref=e1139]:
+            - paragraph [ref=e1140]: Building Resilient Web Apps with Edge Computing
+            - generic [ref=e1141]:
+              - paragraph [ref=e1142]: Abstract
+              - paragraph [ref=e1144]: This talk explores how edge computing changes the way we build web applications. We will look at practical patterns for deploying logic closer to users, handling data consistency, and building fault-tolerant systems that work across distributed infrastructure.
+            - generic [ref=e1145]:
+              - paragraph [ref=e1146]: Takeaways
+              - paragraph [ref=e1148]: 1. When and why to use edge computing. 2. Patterns for data consistency at the edge. 3. Real-world deployment strategies. 4. Performance monitoring and debugging distributed apps.
+        - generic [ref=e1149]:
+          - generic [ref=e1150]:
+            - heading "LOGISTICS" [level=3] [ref=e1151]
+            - button "EDIT" [ref=e1152] [cursor=pointer]:
+              - img [ref=e1154]
+              - text: EDIT
+          - generic [ref=e1158]: "Company covers travel: No"
+      - generic [ref=e1160]:
+        - text: Once submitted, you'll still be able to edit the proposal details. Personal profile changes will still sync as described in
+        - link "Step 2." [ref=e1161] [cursor=pointer]:
+          - /url: /cfp/step-2
+      - generic [ref=e1162]:
+        - button "BACK" [ref=e1163] [cursor=pointer]
+        - button "SUBMIT PROPOSAL" [ref=e1164] [cursor=pointer]:
+          - text: SUBMIT PROPOSAL
+          - img [ref=e1166]
+    - generic [ref=e1169]:
+      - generic [ref=e1170]:
+        - navigation [ref=e1171]:
+          - generic [ref=e1172]: Social
+          - generic [ref=e1173]:
+            - link [ref=e1174] [cursor=pointer]:
+              - /url: https://x.com/what_the_stack
+            - link [ref=e1175] [cursor=pointer]:
+              - /url: https://fb.me/whatthestack
+            - link [ref=e1176] [cursor=pointer]:
+              - /url: https://instagram.com/what_the_stack_conference
+            - link [ref=e1177] [cursor=pointer]:
+              - /url: https://www.linkedin.com/company/what-the-stack-conference
+            - link [ref=e1178] [cursor=pointer]:
+              - /url: https://bsky.app/profile/wts.rocks
+            - link [ref=e1179] [cursor=pointer]:
+              - /url: https://www.youtube.com/@WhatTheStackConference
+          - button "Subscribe to Newsletter" [ref=e1181] [cursor=pointer]: Subscribe to Newsletter
+        - navigation [ref=e1182]:
+          - generic [ref=e1183]: Organizers
+          - link "DeveD" [ref=e1184] [cursor=pointer]:
+            - /url: https://deved.mk
+          - link "Base42" [ref=e1185] [cursor=pointer]:
+            - /url: https://42.mk
+          - link "Angular Macedonia" [ref=e1186] [cursor=pointer]:
+            - /url: https://angularmacedonia.org
+        - navigation [ref=e1187]:
+          - generic [ref=e1188]: Legal
+          - link "Terms of Service" [ref=e1189] [cursor=pointer]:
+            - /url: /terms
+          - link "Privacy Policy" [ref=e1190] [cursor=pointer]:
+            - /url: /privacy
+          - link "Code of Conduct" [ref=e1191] [cursor=pointer]:
+            - /url: /code-of-conduct
+      - paragraph [ref=e1193]: © 2026 WhatTheStack?. CC | BY-NC-SA | CodePub LLC

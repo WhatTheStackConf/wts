@@ -1,0 +1,141 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - checkbox "open sidebar close sidebar"
+    - generic [ref=e6]:
+      - link "WhatTheStack 2 0 2 6" [ref=e8] [cursor=pointer]:
+        - /url: /
+        - img [ref=e10]
+        - heading "WhatTheStack 2 0 2 6" [level=1] [ref=e17]:
+          - generic [ref=e19]:
+            - generic [ref=e20]: WhatTheStack
+            - generic [ref=e22]: 2 0 2 6
+      - list [ref=e25]:
+        - listitem [ref=e26]:
+          - link "Grab a ticket!" [ref=e27] [cursor=pointer]:
+            - /url: /tickets
+        - listitem [ref=e28]:
+          - link "About" [ref=e29] [cursor=pointer]:
+            - /url: /about
+        - listitem [ref=e30]:
+          - button "Previous editions" [ref=e31]
+      - button "Avatar Darko" [ref=e34] [cursor=pointer]:
+        - img "Avatar" [ref=e37]
+        - generic [ref=e38]: Darko
+        - img [ref=e40]
+  - main [ref=e42]:
+    - generic [ref=e43]:
+      - generic [ref=e44]: "const javascript = { goodParts: false, es6: true, future: 'bright' };"
+      - generic [ref=e45]: "if (memory) { return false; } // Replicant memories are implanted"
+      - generic [ref=e46]: "const replicant = { type: 'Nexus-7', status: 'on-the-run' };"
+      - generic [ref=e47]: "const ai = { consciousness: 'simulated', empathy: 'questionable' };"
+      - generic [ref=e48]: "const ai = { consciousness: 'simulated', empathy: 'questionable' };"
+      - generic [ref=e49]: "const javascript = { goodParts: false, es6: true, future: 'bright' };"
+      - generic [ref=e50]: "const origami = { animal: 'origami', creator: 'Sapper' };"
+      - generic [ref=e51]: "const conference = { name: 'WhatTheStack', vibe: 'neon' };"
+      - generic [ref=e52]: "for (let i = 0; i < stack.length; i++) { console.log(stack[i]); }"
+      - generic [ref=e53]: "const data = { eyes: 'blue', density: 'light' }; // VOIGHT-KAMPFF test"
+      - generic [ref=e54]: "function deploy() { return 'To the future'; }"
+      - generic [ref=e55]: "const javascript = { goodParts: false, es6: true, future: 'bright' };"
+      - generic [ref=e56]: const neon = 'rgb(255, 0, 255)'; // Cyberpunk pink
+      - generic [ref=e57]: "const server = { location: 'Off-world colony', security: 'high' };"
+      - generic [ref=e58]: "const spinner = { direction: 'up', destination: 'Tyrell Corp' };"
+      - generic [ref=e60]: function
+      - generic [ref=e62]: func
+    - generic [ref=e65]:
+      - generic [ref=e66]:
+        - generic [ref=e67]:
+          - generic [ref=e68]:
+            - generic [ref=e69]: 19TH SEPTEMBER 2026 // SKOPJE, MK
+            - heading "WHAT THE STACK _" [level=1] [ref=e71]:
+              - text: WHAT THE
+              - text: STACK _
+            - paragraph [ref=e72]:
+              - text: "> All things software, all things code."
+              - text: ">"
+              - generic [ref=e74]:
+                - generic [ref=e75]: The Web
+                - generic [ref=e76]: AI & Machine Learning
+                - generic [ref=e77]: Infrastructure
+                - generic [ref=e78]: DevOps
+                - generic [ref=e79]: Soft Skills
+                - generic [ref=e80]: Startups
+              - text: "> With the vibes to match..."
+              - text: "> and the amazing dev community as last time!"
+            - generic [ref=e81]:
+              - link "GRAB A TICKET GRAB A TICKET GRAB A TICKET" [ref=e82] [cursor=pointer]:
+                - /url: /tickets
+                - generic [ref=e83]: GRAB A TICKET GRAB A TICKET GRAB A TICKET
+              - generic [ref=e84]:
+                - text: No early birds, nothing like that. Same price from start to finish :)
+                - generic [ref=e85]: Entry
+                - generic [ref=e86]: €50
+          - img [ref=e91]
+        - generic [ref=e96]:
+          - generic [ref=e98]:
+            - text: That's at least 5. Due to the venue change, we can totally do more this time around!
+            - generic [ref=e99]: Workshops
+            - generic [ref=e100]: 4+
+          - generic [ref=e101]:
+            - text: 30 of the regular ones; We have a few new ideas too!
+            - generic [ref=e102]: Talks
+            - generic [ref=e103]: 26+
+          - generic [ref=e104]:
+            - text: New venue - anything is possible. As in, more!
+            - generic [ref=e105]: Tracks
+            - generic [ref=e106]: 3*
+          - generic [ref=e107]:
+            - text: Based on last year's attendance. But, if we project it, we'll probably break 1000.
+            - generic [ref=e108]: Attendees
+            - generic [ref=e109]: 610+
+      - generic [ref=e111]:
+        - heading "More info coming soon!" [level=2] [ref=e112]
+        - generic [ref=e113]:
+          - text: "Meanwhile:"
+          - list [ref=e114]:
+            - listitem [ref=e115]:
+              - link "> Grab a ticket" [ref=e116] [cursor=pointer]:
+                - /url: /tickets
+            - listitem [ref=e117]:
+              - link "> Apply to speak" [ref=e118] [cursor=pointer]:
+                - /url: /cfp/01-intro
+            - listitem [ref=e119]:
+              - link "> Partner with us" [ref=e120] [cursor=pointer]:
+                - /url: /partnerships
+            - listitem [ref=e121]:
+              - link "> Watch previous year's talks" [ref=e122] [cursor=pointer]:
+                - /url: https://www.youtube.com/@WhatTheStackConference
+    - generic [ref=e124]:
+      - generic [ref=e125]:
+        - navigation [ref=e126]:
+          - generic [ref=e127]: Social
+          - generic [ref=e128]:
+            - link [ref=e129] [cursor=pointer]:
+              - /url: https://x.com/what_the_stack
+            - link [ref=e130] [cursor=pointer]:
+              - /url: https://fb.me/whatthestack
+            - link [ref=e131] [cursor=pointer]:
+              - /url: https://instagram.com/what_the_stack_conference
+            - link [ref=e132] [cursor=pointer]:
+              - /url: https://www.linkedin.com/company/what-the-stack-conference
+            - link [ref=e133] [cursor=pointer]:
+              - /url: https://bsky.app/profile/wts.rocks
+            - link [ref=e134] [cursor=pointer]:
+              - /url: https://www.youtube.com/@WhatTheStackConference
+          - button "Subscribe to Newsletter" [ref=e136] [cursor=pointer]: Subscribe to Newsletter
+        - navigation [ref=e137]:
+          - generic [ref=e138]: Organizers
+          - link "DeveD" [ref=e139] [cursor=pointer]:
+            - /url: https://deved.mk
+          - link "Base42" [ref=e140] [cursor=pointer]:
+            - /url: https://42.mk
+          - link "Angular Macedonia" [ref=e141] [cursor=pointer]:
+            - /url: https://angularmacedonia.org
+        - navigation [ref=e142]:
+          - generic [ref=e143]: Legal
+          - link "Terms of Service" [ref=e144] [cursor=pointer]:
+            - /url: /terms
+          - link "Privacy Policy" [ref=e145] [cursor=pointer]:
+            - /url: /privacy
+          - link "Code of Conduct" [ref=e146] [cursor=pointer]:
+            - /url: /code-of-conduct
+      - paragraph [ref=e148]: © 2026 WhatTheStack?. CC | BY-NC-SA | CodePub LLC

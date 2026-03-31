@@ -1,0 +1,139 @@
+- generic [ref=e3]:
+  - generic [ref=e195]:
+    - checkbox "open sidebar close sidebar"
+    - generic [ref=e197]:
+      - link "WhatTheStack 2 0 2 6" [ref=e199] [cursor=pointer]:
+        - /url: /
+        - img [ref=e201]
+        - heading "WhatTheStack 2 0 2 6" [level=1] [ref=e208]:
+          - generic [ref=e210]:
+            - generic [ref=e211]: WhatTheStack
+            - generic [ref=e213]: 2 0 2 6
+      - list [ref=e216]:
+        - listitem [ref=e217]:
+          - link "Grab a ticket!" [ref=e218] [cursor=pointer]:
+            - /url: /tickets
+        - listitem [ref=e219]:
+          - link "About" [ref=e220] [cursor=pointer]:
+            - /url: /about
+        - listitem [ref=e221]:
+          - button "Previous editions" [ref=e222]
+      - button "Avatar Darko" [ref=e225] [cursor=pointer]:
+        - img "Avatar" [ref=e228]
+        - generic [ref=e229]: Darko
+        - img [ref=e231]
+  - main [ref=e233]:
+    - generic [ref=e234]:
+      - generic [ref=e235]: "const code = { language: 'Assembly', origin: 'Tyrell Corp' };"
+      - generic [ref=e236]: "for (let i = 0; i < stack.length; i++) { console.log(stack[i]); }"
+      - generic [ref=e237]: "const javascript = { goodParts: false, es6: true, future: 'bright' };"
+      - generic [ref=e238]: "const replicant = { type: 'Nexus-7', status: 'on-the-run' };"
+      - generic [ref=e239]: "const WTSTheme = { year: 2026, theme: 'Blade Runner' };"
+      - generic [ref=e240]: "function replicant() { return 'More human than human'; }"
+      - generic [ref=e241]: "const replicant = { type: 'Nexus-7', status: 'on-the-run' };"
+      - generic [ref=e242]: "const javascript = { goodParts: false, es6: true, future: 'bright' };"
+      - generic [ref=e243]: const webAssembly = 'The future of web development';
+      - generic [ref=e244]: const nodejs = 'Running JavaScript everywhere';
+      - generic [ref=e245]: "if (isReplicant) { console.log('Retire'); } else { console.log('Live free'); }"
+      - generic [ref=e246]: "const origami = { animal: 'origami', creator: 'Sapper' };"
+      - generic [ref=e247]: "function replicant() { return 'More human than human'; }"
+      - generic [ref=e248]: "const WTSTheme = { year: 2026, theme: 'Blade Runner' };"
+      - generic [ref=e249]: const webAssembly = 'The future of web development';
+      - generic [ref=e251]: function replicant()
+      - generic [ref=e253]: function repl
+      - generic [ref=e255]: functio
+      - generic [ref=e257]: fun
+    - generic [ref=e262]:
+      - generic:
+        - paragraph: SYS.INIT_SEQUENCE
+        - paragraph: "PROTOCOL: CFP_2026"
+      - heading "WHATTHESTACK 2026" [level=1] [ref=e263]
+      - generic [ref=e265]:
+        - generic [ref=e266]:
+          - img [ref=e269]
+          - generic [ref=e271]: Intro
+        - generic [ref=e272]:
+          - generic [ref=e274]: "2"
+          - generic [ref=e275]: Personal
+        - generic [ref=e276]:
+          - generic [ref=e278]: "3"
+          - generic [ref=e279]: Proposal
+        - generic [ref=e280]:
+          - generic [ref=e282]: "4"
+          - generic [ref=e283]: Experience
+        - generic [ref=e284]:
+          - generic [ref=e286]: "5"
+          - generic [ref=e287]: Expenses
+        - generic [ref=e288]:
+          - generic [ref=e290]: "6"
+          - generic [ref=e291]: Confirm
+      - generic [ref=e294]:
+        - heading "// PERSONAL INFO" [level=2] [ref=e295]:
+          - generic [ref=e296]: //
+          - text: PERSONAL INFO
+        - generic [ref=e298]:
+          - img [ref=e300]
+          - paragraph [ref=e302]: "Protip: you only have to fill out this step once - any subsequent talk submission will reuse this data. Editing info in the step will update your profile for all your submissions."
+        - generic [ref=e303]:
+          - generic [ref=e304]:
+            - generic [ref=e305]: Email
+            - textbox [disabled] [ref=e306]: hello@darko.io
+            - generic [ref=e307]: Cannot be changed
+          - generic [ref=e308]:
+            - generic [ref=e309]: Full Name *
+            - textbox "Jane Doe" [ref=e310]: Darko Bozhinovski
+            - generic [ref=e311]: Public if your talk is accepted
+        - generic [ref=e312]:
+          - generic [ref=e313]: Affiliation and Title
+          - textbox "Senior Engineer @ Tech Corp" [ref=e314]
+          - generic [ref=e315]: Public if your talk is accepted
+        - generic [ref=e316]:
+          - generic [ref=e317]: Short Bio *
+          - textbox "Tell us a bit about yourself..." [ref=e318]
+          - generic [ref=e319]: Public if your talk is accepted
+        - generic [ref=e320]:
+          - generic [ref=e321]: Social Media & Personal Links
+          - textbox "Paste links here (one per line)... https://github.com/jdoe https://bsky.app/profile/jdoe.bsky.social" [ref=e324]:
+            - /placeholder: "Paste links here (one per line)...\nhttps://github.com/jdoe\nhttps://bsky.app/profile/jdoe.bsky.social"
+          - generic [ref=e325]: Public if your talk is accepted (one link per line)
+        - generic [ref=e326]:
+          - generic [ref=e327]: Preferred Contact Method
+          - textbox "Email, Twitter DM, etc." [ref=e328]
+      - generic [ref=e329]:
+        - button "BACK" [ref=e330] [cursor=pointer]
+        - button "NEXT" [ref=e331] [cursor=pointer]: NEXT
+    - generic [ref=e333]:
+      - generic [ref=e334]:
+        - navigation [ref=e335]:
+          - generic [ref=e336]: Social
+          - generic [ref=e337]:
+            - link [ref=e338] [cursor=pointer]:
+              - /url: https://x.com/what_the_stack
+            - link [ref=e339] [cursor=pointer]:
+              - /url: https://fb.me/whatthestack
+            - link [ref=e340] [cursor=pointer]:
+              - /url: https://instagram.com/what_the_stack_conference
+            - link [ref=e341] [cursor=pointer]:
+              - /url: https://www.linkedin.com/company/what-the-stack-conference
+            - link [ref=e342] [cursor=pointer]:
+              - /url: https://bsky.app/profile/wts.rocks
+            - link [ref=e343] [cursor=pointer]:
+              - /url: https://www.youtube.com/@WhatTheStackConference
+          - button "Subscribe to Newsletter" [ref=e345] [cursor=pointer]: Subscribe to Newsletter
+        - navigation [ref=e346]:
+          - generic [ref=e347]: Organizers
+          - link "DeveD" [ref=e348] [cursor=pointer]:
+            - /url: https://deved.mk
+          - link "Base42" [ref=e349] [cursor=pointer]:
+            - /url: https://42.mk
+          - link "Angular Macedonia" [ref=e350] [cursor=pointer]:
+            - /url: https://angularmacedonia.org
+        - navigation [ref=e351]:
+          - generic [ref=e352]: Legal
+          - link "Terms of Service" [ref=e353] [cursor=pointer]:
+            - /url: /terms
+          - link "Privacy Policy" [ref=e354] [cursor=pointer]:
+            - /url: /privacy
+          - link "Code of Conduct" [ref=e355] [cursor=pointer]:
+            - /url: /code-of-conduct
+      - paragraph [ref=e357]: © 2026 WhatTheStack?. CC | BY-NC-SA | CodePub LLC

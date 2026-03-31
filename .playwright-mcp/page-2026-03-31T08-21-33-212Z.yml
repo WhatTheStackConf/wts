@@ -1,0 +1,142 @@
+- generic [ref=e3]:
+  - generic [ref=e788]:
+    - checkbox "open sidebar close sidebar"
+    - generic [ref=e790]:
+      - link "WhatTheStack 2 0 2 6 WhatTheStack WhatTheStack WhatTheStack" [ref=e955] [cursor=pointer]:
+        - /url: /
+        - img [ref=e794]
+        - heading "WhatTheStack 2 0 2 6 WhatTheStack WhatTheStack WhatTheStack" [level=1] [ref=e956]:
+          - generic [ref=e802]:
+            - generic [ref=e803]:
+              - generic [ref=e804]: WhatTheStack
+              - generic [ref=e806]: 2 0 2 6
+            - generic:
+              - generic: WhatTheStack WhatTheStack WhatTheStack
+      - list [ref=e809]:
+        - listitem [ref=e810]:
+          - link "Grab a ticket!" [ref=e811] [cursor=pointer]:
+            - /url: /tickets
+        - listitem [ref=e812]:
+          - link "About" [ref=e813] [cursor=pointer]:
+            - /url: /about
+        - listitem [ref=e814]:
+          - button "Previous editions" [ref=e815]
+      - button "Avatar Darko" [ref=e818] [cursor=pointer]:
+        - img "Avatar" [ref=e821]
+        - generic [ref=e822]: Darko
+  - main [ref=e826]:
+    - generic [ref=e827]:
+      - generic [ref=e828]: "const javascript = { goodParts: false, es6: true, future: 'bright' };"
+      - generic [ref=e829]: "const javascript = { goodParts: false, es6: true, future: 'bright' };"
+      - generic [ref=e830]: "function deploy() { return 'To the future'; }"
+      - generic [ref=e831]: const webAssembly = 'The future of web development';
+      - generic [ref=e832]: const future = new Date(2026, 8, 19); // WhatTheStack date confirmed
+      - generic [ref=e833]: "function replicant() { return 'More human than human'; }"
+      - generic [ref=e834]: const webAssembly = 'The future of web development';
+      - generic [ref=e835]: "const WTSTheme = { year: 2026, theme: 'Blade Runner' };"
+      - generic [ref=e836]: "if (memory) { return false; } // Replicant memories are implanted"
+      - generic [ref=e837]: "const javascript = { goodParts: false, es6: true, future: 'bright' };"
+      - generic [ref=e838]: "if (memory) { return false; } // Replicant memories are implanted"
+      - generic [ref=e839]: "const javascript = { goodParts: false, es6: true, future: 'bright' };"
+      - generic [ref=e840]: "const data = { eyes: 'blue', density: 'light' }; // VOIGHT-KAMPFF test"
+      - generic [ref=e841]: "const code = { language: 'Assembly', origin: 'Tyrell Corp' };"
+      - generic [ref=e842]: "const stack = { tech: ['Solid.js', 'Node.js', 'WebAssembly'], future: 'bright' };"
+      - generic [ref=e844]: "if (isReplicant) { console.log('Retire'); } else { console.log('Live free'); }"
+      - generic [ref=e846]: "if (isReplicant) { console.log"
+      - generic [ref=e848]: const future = new
+      - generic [ref=e850]: const future = new Date(2026, 8, 19); // WhatTheStack date confirmed
+      - generic [ref=e958]: const future = new Date(2026, 8, 19); // WhatTheStack date
+      - generic [ref=e960]: const future = new Date(2026, 8, 19); //
+      - generic [ref=e962]: const future = new Date(20
+      - generic [ref=e964]: const future =
+    - generic [ref=e855]:
+      - generic:
+        - paragraph: SYS.INIT_SEQUENCE
+        - paragraph: "PROTOCOL: CFP_2026"
+      - heading "WHATTHESTACK 2026" [level=1] [ref=e856]
+      - generic [ref=e858]:
+        - generic [ref=e859]:
+          - img [ref=e993]
+          - generic [ref=e864]: Intro
+        - generic [ref=e865]:
+          - img [ref=e995]
+          - generic [ref=e870]: Personal
+        - generic [ref=e871]:
+          - img [ref=e997]
+          - generic [ref=e876]: Proposal
+        - generic [ref=e877]:
+          - img [ref=e999]
+          - generic [ref=e882]: Experience
+        - generic [ref=e883]:
+          - generic [ref=e885]: "5"
+          - generic [ref=e886]: Expenses
+        - generic [ref=e887]:
+          - generic [ref=e889]: "6"
+          - generic [ref=e890]: Confirm
+      - generic [ref=e893]:
+        - heading "// ADDITIONAL NOTES & LOGISTICS" [level=2] [ref=e894]:
+          - generic [ref=e895]: //
+          - text: ADDITIONAL NOTES & LOGISTICS
+        - generic [ref=e896]:
+          - img [ref=e1001]
+          - heading "Travel & Accommodation" [level=3] [ref=e901]
+          - paragraph [ref=e902]: Can your company cover your travel or accommodation expenses? If so, we'll gladly list them as a supporter!
+          - generic [ref=e903]:
+            - button "Yes" [ref=e904] [cursor=pointer]:
+              - img [ref=e1003]
+              - text: "Yes"
+            - button "No" [active] [ref=e908] [cursor=pointer]:
+              - img [ref=e1005]
+              - text: "No"
+            - button "Other" [ref=e912] [cursor=pointer]:
+              - img [ref=e1007]
+              - text: Other
+          - generic [ref=e965]:
+            - img [ref=e967]
+            - text: Please select an option
+        - generic [ref=e916]:
+          - generic [ref=e917]:
+            - generic [ref=e918]: Internal Notes for Organizers (optional)
+            - textbox "Anything specific the reviewers should know?" [ref=e920]
+            - generic [ref=e921]: Won't be public. Use this for things like "I need a visa invite letter" or "I can only speak on Day 2".
+          - generic [ref=e922]:
+            - generic [ref=e923]: Final Comments
+            - textbox "Is there anything else you'd like to share with us?" [ref=e925]
+      - generic [ref=e926]:
+        - button "BACK" [ref=e927] [cursor=pointer]
+        - button "REVIEW PROPOSAL" [ref=e928] [cursor=pointer]: REVIEW PROPOSAL
+    - generic [ref=e930]:
+      - generic [ref=e931]:
+        - navigation [ref=e932]:
+          - generic [ref=e933]: Social
+          - generic [ref=e934]:
+            - link [ref=e935] [cursor=pointer]:
+              - /url: https://x.com/what_the_stack
+            - link [ref=e936] [cursor=pointer]:
+              - /url: https://fb.me/whatthestack
+            - link [ref=e937] [cursor=pointer]:
+              - /url: https://instagram.com/what_the_stack_conference
+            - link [ref=e938] [cursor=pointer]:
+              - /url: https://www.linkedin.com/company/what-the-stack-conference
+            - link [ref=e939] [cursor=pointer]:
+              - /url: https://bsky.app/profile/wts.rocks
+            - link [ref=e940] [cursor=pointer]:
+              - /url: https://www.youtube.com/@WhatTheStackConference
+          - button "Subscribe to Newsletter" [ref=e942] [cursor=pointer]: Subscribe to Newsletter
+        - navigation [ref=e943]:
+          - generic [ref=e944]: Organizers
+          - link "DeveD" [ref=e945] [cursor=pointer]:
+            - /url: https://deved.mk
+          - link "Base42" [ref=e946] [cursor=pointer]:
+            - /url: https://42.mk
+          - link "Angular Macedonia" [ref=e947] [cursor=pointer]:
+            - /url: https://angularmacedonia.org
+        - navigation [ref=e948]:
+          - generic [ref=e949]: Legal
+          - link "Terms of Service" [ref=e950] [cursor=pointer]:
+            - /url: /terms
+          - link "Privacy Policy" [ref=e951] [cursor=pointer]:
+            - /url: /privacy
+          - link "Code of Conduct" [ref=e952] [cursor=pointer]:
+            - /url: /code-of-conduct
+      - paragraph [ref=e954]: © 2026 WhatTheStack?. CC | BY-NC-SA | CodePub LLC

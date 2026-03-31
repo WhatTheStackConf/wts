@@ -1,0 +1,129 @@
+- generic [ref=e3]:
+  - generic [ref=e602]:
+    - checkbox "open sidebar close sidebar"
+    - generic [ref=e604]:
+      - link "WhatTheStack 2 0 2 6" [ref=e606] [cursor=pointer]:
+        - /url: /
+        - img [ref=e608]
+        - heading "WhatTheStack 2 0 2 6" [level=1] [ref=e615]:
+          - generic [ref=e617]:
+            - generic [ref=e618]: WhatTheStack
+            - generic [ref=e620]: 2 0 2 6
+      - list [ref=e623]:
+        - listitem [ref=e624]:
+          - link "Grab a ticket!" [ref=e625] [cursor=pointer]:
+            - /url: /tickets
+        - listitem [ref=e626]:
+          - link "About" [ref=e627] [cursor=pointer]:
+            - /url: /about
+        - listitem [ref=e628]:
+          - button "Previous editions" [ref=e629]
+      - button "Avatar Darko" [ref=e632] [cursor=pointer]:
+        - img "Avatar" [ref=e635]
+        - generic [ref=e636]: Darko
+        - img [ref=e638]
+  - main [ref=e640]:
+    - generic [ref=e641]:
+      - generic [ref=e642]: "if (memory) { return false; } // Replicant memories are implanted"
+      - generic [ref=e643]: const future = new Date(2026, 8, 19); // WhatTheStack date confirmed
+      - generic [ref=e644]: const nodejs = 'Running JavaScript everywhere';
+      - generic [ref=e645]: "for (let i = 0; i < stack.length; i++) { console.log(stack[i]); }"
+      - generic [ref=e646]: "const spinner = { direction: 'up', destination: 'Tyrell Corp' };"
+      - generic [ref=e647]: const nodejs = 'Running JavaScript everywhere';
+      - generic [ref=e648]: "function replicant() { return 'More human than human'; }"
+      - generic [ref=e649]: "const javascript = { goodParts: false, es6: true, future: 'bright' };"
+      - generic [ref=e650]: "function deploy() { return 'To the future'; }"
+      - generic [ref=e651]: "if (memory) { return false; } // Replicant memories are implanted"
+      - generic [ref=e652]: "const spinner = { direction: 'up', destination: 'Tyrell Corp' };"
+      - generic [ref=e653]: const webAssembly = 'The future of web development';
+      - generic [ref=e654]: "function replicant() { return 'More human than human'; }"
+      - generic [ref=e655]: "const stack = { tech: ['Solid.js', 'Node.js', 'WebAssembly'], future: 'bright' };"
+      - generic [ref=e656]: "const replicant = { type: 'Nexus-7', status: 'on-the-run' };"
+      - generic [ref=e658]: function replicant()
+      - generic [ref=e660]: function repl
+      - generic [ref=e662]: functio
+      - generic [ref=e664]: fun
+    - generic [ref=e669]:
+      - generic:
+        - paragraph: SYS.INIT_SEQUENCE
+        - paragraph: "PROTOCOL: CFP_2026"
+      - heading "WHATTHESTACK 2026" [level=1] [ref=e670]
+      - generic [ref=e672]:
+        - generic [ref=e673]:
+          - img [ref=e676]
+          - generic [ref=e678]: Intro
+        - generic [ref=e679]:
+          - img [ref=e682]
+          - generic [ref=e684]: Personal
+        - generic [ref=e685]:
+          - img [ref=e688]
+          - generic [ref=e690]: Proposal
+        - generic [ref=e691]:
+          - generic [ref=e693]: "4"
+          - generic [ref=e694]: Experience
+        - generic [ref=e695]:
+          - generic [ref=e697]: "5"
+          - generic [ref=e698]: Expenses
+        - generic [ref=e699]:
+          - generic [ref=e701]: "6"
+          - generic [ref=e702]: Confirm
+      - generic [ref=e705]:
+        - heading "// PREVIOUS EXPERIENCES" [level=2] [ref=e706]:
+          - generic [ref=e707]: //
+          - text: PREVIOUS EXPERIENCES
+        - generic [ref=e709]:
+          - img [ref=e711]
+          - paragraph [ref=e713]:
+            - text: "Protip: Previous speaking experience is"
+            - strong [ref=e714]: not
+            - text: a requirement. We encourage first-time speakers to apply! Your previous speaking experience (or lack thereof) doesn't count for much towards acceptance.
+        - generic [ref=e715]:
+          - generic [ref=e716]:
+            - generic [ref=e717]: Have you presented this topic before?
+            - textbox "Have you presented this topic before?" [ref=e718]:
+              - /placeholder: If yes, please tell us where and when, and share some links if applicable.
+          - generic [ref=e719]:
+            - generic [ref=e720]: Links to previous talks or your speaker profile
+            - textbox "Links to previous talks or your speaker profile" [ref=e721]:
+              - /placeholder: "https://youtube.com/watch?v=...\nhttps://sessionize.com/user/..."
+            - generic [ref=e722]:
+              - generic [ref=e723]: Videos, slide decks, or profiles (Sessionize, Notist, etc.)
+              - generic [ref=e724]: "Note: this field is for your previous presentations and gets saved to your speaker profile."
+      - generic [ref=e725]:
+        - button "BACK" [ref=e726] [cursor=pointer]
+        - button "NEXT" [ref=e727] [cursor=pointer]: NEXT
+    - generic [ref=e729]:
+      - generic [ref=e730]:
+        - navigation [ref=e731]:
+          - generic [ref=e732]: Social
+          - generic [ref=e733]:
+            - link [ref=e734] [cursor=pointer]:
+              - /url: https://x.com/what_the_stack
+            - link [ref=e735] [cursor=pointer]:
+              - /url: https://fb.me/whatthestack
+            - link [ref=e736] [cursor=pointer]:
+              - /url: https://instagram.com/what_the_stack_conference
+            - link [ref=e737] [cursor=pointer]:
+              - /url: https://www.linkedin.com/company/what-the-stack-conference
+            - link [ref=e738] [cursor=pointer]:
+              - /url: https://bsky.app/profile/wts.rocks
+            - link [ref=e739] [cursor=pointer]:
+              - /url: https://www.youtube.com/@WhatTheStackConference
+          - button "Subscribe to Newsletter" [ref=e741] [cursor=pointer]: Subscribe to Newsletter
+        - navigation [ref=e742]:
+          - generic [ref=e743]: Organizers
+          - link "DeveD" [ref=e744] [cursor=pointer]:
+            - /url: https://deved.mk
+          - link "Base42" [ref=e745] [cursor=pointer]:
+            - /url: https://42.mk
+          - link "Angular Macedonia" [ref=e746] [cursor=pointer]:
+            - /url: https://angularmacedonia.org
+        - navigation [ref=e747]:
+          - generic [ref=e748]: Legal
+          - link "Terms of Service" [ref=e749] [cursor=pointer]:
+            - /url: /terms
+          - link "Privacy Policy" [ref=e750] [cursor=pointer]:
+            - /url: /privacy
+          - link "Code of Conduct" [ref=e751] [cursor=pointer]:
+            - /url: /code-of-conduct
+      - paragraph [ref=e753]: © 2026 WhatTheStack?. CC | BY-NC-SA | CodePub LLC

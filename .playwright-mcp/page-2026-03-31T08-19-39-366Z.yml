@@ -1,0 +1,71 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - checkbox "open sidebar close sidebar"
+    - generic [ref=e6]:
+      - link [ref=e8] [cursor=pointer]:
+        - /url: /
+        - generic:
+          - generic:
+            - heading [level=1]
+      - list [ref=e11]:
+        - listitem [ref=e12]:
+          - link "Grab a ticket!" [ref=e13] [cursor=pointer]:
+            - /url: /tickets
+        - listitem [ref=e14]:
+          - link "About" [ref=e15] [cursor=pointer]:
+            - /url: /about
+        - listitem [ref=e16]:
+          - button "Previous editions" [ref=e17]
+  - main [ref=e18]:
+    - generic [ref=e19]:
+      - generic [ref=e20]: const future = new Date(2026, 8, 19); // WhatTheStack date confirmed
+      - generic [ref=e21]: const webAssembly = 'The future of web development';
+      - generic [ref=e22]: "const ai = { consciousness: 'simulated', empathy: 'questionable' };"
+      - generic [ref=e23]: const neon = 'rgb(255, 0, 255)'; // Cyberpunk pink
+      - generic [ref=e24]: "const replicant = { type: 'Nexus-7', status: 'on-the-run' };"
+      - generic [ref=e25]: "const code = { language: 'Assembly', origin: 'Tyrell Corp' };"
+      - generic [ref=e26]: "function replicant() { return 'More human than human'; }"
+      - generic [ref=e27]: "function deploy() { return 'To the future'; }"
+      - generic [ref=e28]: "const javascript = { goodParts: false, es6: true, future: 'bright' };"
+      - generic [ref=e29]: "const dystopia = { weather: 'rain', season: 'perpetual night' };"
+      - generic [ref=e30]: const digitalRain = [...Array(20)].map(() => Math.random());
+      - generic [ref=e31]: "function deploy() { return 'To the future'; }"
+      - generic [ref=e32]: "const bladerunner = { target: 'replicant', weapon: 'pistol' };"
+      - generic [ref=e33]: "const WTSTheme = { year: 2026, theme: 'Blade Runner' };"
+      - generic [ref=e34]: "const server = { location: 'Off-world colony', security: 'high' };"
+    - heading "Page not found" [level=1] [ref=e39]
+    - generic [ref=e41]:
+      - generic [ref=e42]:
+        - navigation [ref=e43]:
+          - generic [ref=e44]: Social
+          - generic:
+            - link:
+              - /url: https://x.com/what_the_stack
+            - link:
+              - /url: https://fb.me/whatthestack
+            - link:
+              - /url: https://instagram.com/what_the_stack_conference
+            - link:
+              - /url: https://www.linkedin.com/company/what-the-stack-conference
+            - link:
+              - /url: https://bsky.app/profile/wts.rocks
+            - link:
+              - /url: https://www.youtube.com/@WhatTheStackConference
+          - button "Subscribe to Newsletter" [ref=e46] [cursor=pointer]: Subscribe to Newsletter
+        - navigation [ref=e47]:
+          - generic [ref=e48]: Organizers
+          - link "DeveD" [ref=e49] [cursor=pointer]:
+            - /url: https://deved.mk
+          - link "Base42" [ref=e50] [cursor=pointer]:
+            - /url: https://42.mk
+          - link "Angular Macedonia" [ref=e51] [cursor=pointer]:
+            - /url: https://angularmacedonia.org
+        - navigation [ref=e52]:
+          - generic [ref=e53]: Legal
+          - link "Terms of Service" [ref=e54] [cursor=pointer]:
+            - /url: /terms
+          - link "Privacy Policy" [ref=e55] [cursor=pointer]:
+            - /url: /privacy
+          - link "Code of Conduct" [ref=e56] [cursor=pointer]:
+            - /url: /code-of-conduct
+      - paragraph [ref=e58]: © 2026 WhatTheStack?. CC | BY-NC-SA | CodePub LLC
