@@ -16,6 +16,7 @@ import {
 } from "~/lib/pocketbase-utils";
 
 import { UserRecord } from "~/lib/pocketbase-types";
+import { clearAuthCookie } from "~/lib/auth-cookie";
 
 interface AuthContextType {
   isAuthenticated: () => boolean;
@@ -37,11 +38,22 @@ export const AuthProvider = (props: { children: any }) => {
   // Check auth status on mount
   onMount(() => {
     setLoading(true);
+
+    // Clear stale auth if token has expired
+    if (!pb.authStore.isValid) {
+      pb.authStore.clear();
+      clearAuthCookie();
+      setRecord(null);
+      setLoading(false);
+      return;
+    }
+
     const currentRecord = pb.authStore.record as unknown as UserRecord | null;
 
     // Enforce verification
     if (currentRecord && !currentRecord.verified) {
       pb.authStore.clear();
+      clearAuthCookie();
       setRecord(null);
     } else {
       setRecord(currentRecord);
