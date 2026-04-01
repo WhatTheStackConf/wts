@@ -423,10 +423,17 @@ export default function AdminUsersTable() {
                                             <Show when={speakerProfile()!.applicant.social_handles}>
                                                 <div class="bg-white/5 p-3 rounded-lg border border-white/5">
                                                     <div class="text-xs text-gray-400 uppercase font-bold mb-1">Social</div>
-                                                    <div class="text-white text-sm font-mono">
-                                                        {typeof speakerProfile()!.applicant.social_handles === "string"
-                                                            ? speakerProfile()!.applicant.social_handles
-                                                            : JSON.stringify(speakerProfile()!.applicant.social_handles)}
+                                                    <div class="flex flex-col gap-1">
+                                                        <For each={Array.isArray(speakerProfile()!.applicant.social_handles)
+                                                            ? speakerProfile()!.applicant.social_handles as string[]
+                                                            : [speakerProfile()!.applicant.social_handles as string]}>
+                                                            {(handle) => (
+                                                                <a href={handle} target="_blank" rel="noopener noreferrer"
+                                                                    class="text-yellow-400 hover:text-yellow-300 text-sm font-mono truncate">
+                                                                    {handle}
+                                                                </a>
+                                                            )}
+                                                        </For>
                                                     </div>
                                                 </div>
                                             </Show>

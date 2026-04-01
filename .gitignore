@@ -32,5 +32,6 @@ QWEN.md
 AGENTS.md
 
 **/pb_data/*.db
+pb_data
 .planning/
 .playwright-mcp/
