@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show, createResource } from "solid-js";
+import { createSignal, createEffect, createMemo, For, Show, createResource } from "solid-js";
 import { useAuth } from "~/lib/auth-context";
 import { useNavigate } from "@solidjs/router";
 import { Icon } from "@iconify-icon/solid";
@@ -51,6 +51,30 @@ export default function AdminProposalsTable() {
     const [deleteId, setDeleteId] = createSignal<string | null>(null);
     const [isDeleting, setIsDeleting] = createSignal(false);
 
+    // Filters
+    const [expenseFilter, setExpenseFilter] = createSignal<string>("all");
+    const [statusFilter, setStatusFilter] = createSignal<string>("all");
+
+    const filteredSubmissions = createMemo(() => {
+        let items = submissions() || [];
+        const expense = expenseFilter();
+        const status = statusFilter();
+
+        if (expense !== "all") {
+            items = items.filter(item => {
+                const meta = item.meta as any;
+                const val = meta?.company_cover_expenses || "";
+                return val === expense;
+            });
+        }
+
+        if (status !== "all") {
+            items = items.filter(item => (item.status || "pending") === status);
+        }
+
+        return items;
+    });
+
     const handleDelete = async () => {
         if (!deleteId()) return;
         setIsDeleting(true);
@@ -92,6 +116,58 @@ export default function AdminProposalsTable() {
                         </button>
                     </div>
 
+                    {/* Filters */}
+                    <div class="flex flex-wrap gap-3 mb-6 items-center">
+                        <div class="flex items-center gap-2">
+                            <Icon icon="ph:funnel-bold" class="text-gray-400" />
+                            <span class="text-xs font-mono text-gray-400 uppercase">Filters</span>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <label class="text-xs font-mono text-gray-500">Expenses:</label>
+                            <div class="flex gap-1">
+                                <For each={["all", "Yes", "No", "Other"]}>
+                                    {(opt) => (
+                                        <button
+                                            class={`btn btn-xs font-mono ${expenseFilter() === opt
+                                                ? "btn-primary"
+                                                : "btn-ghost border-white/10 text-gray-400 hover:bg-white/10"
+                                                }`}
+                                            onClick={() => setExpenseFilter(opt)}
+                                        >
+                                            {opt === "all" ? "All" : opt}
+                                        </button>
+                                    )}
+                                </For>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <label class="text-xs font-mono text-gray-500">Status:</label>
+                            <div class="flex gap-1">
+                                <For each={["all", "pending", "accepted", "rejected"]}>
+                                    {(opt) => (
+                                        <button
+                                            class={`btn btn-xs font-mono ${statusFilter() === opt
+                                                ? "btn-primary"
+                                                : "btn-ghost border-white/10 text-gray-400 hover:bg-white/10"
+                                                }`}
+                                            onClick={() => setStatusFilter(opt)}
+                                        >
+                                            {opt === "all" ? "All" : opt.charAt(0).toUpperCase() + opt.slice(1)}
+                                        </button>
+                                    )}
+                                </For>
+                            </div>
+                        </div>
+
+                        <Show when={expenseFilter() !== "all" || statusFilter() !== "all"}>
+                            <span class="text-xs font-mono text-gray-500">
+                                {filteredSubmissions().length} / {submissions()?.length || 0} proposals
+                            </span>
+                        </Show>
+                    </div>
+
                     <Show when={submissions.loading}>
                         <div class="flex justify-center p-20">
                             <span class="loading loading-bars loading-lg text-primary-500"></span>
@@ -102,7 +178,7 @@ export default function AdminProposalsTable() {
                         <div class="glass-panel rounded-2xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
                             {/* Mobile Card View */}
                             <div class="md:hidden space-y-4 p-4">
-                                <For each={submissions()}>
+                                <For each={filteredSubmissions()}>
                                     {(item, index) => (
                                         <div class="bg-white/5 rounded-xl p-4 border border-white/10 space-y-3">
                                             <div class="flex justify-between items-start">
@@ -133,8 +209,16 @@ export default function AdminProposalsTable() {
                                             </div>
 
                                             <div class="flex justify-between items-center pt-3 border-t border-white/5">
-                                                <div class="text-xs font-mono opacity-50">
-                                                    {item.reviewCount} Reviews
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-xs font-mono opacity-50">{item.reviewCount} Reviews</span>
+                                                    {(() => {
+                                                        const val = (item.meta as any)?.company_cover_expenses || "";
+                                                        return (
+                                                            <div class={`badge badge-xs font-mono font-bold ${val === "Yes" ? "bg-success/20 border-success/40 text-success" : val === "No" ? "bg-error/20 border-error/40 text-error" : val === "Other" ? "bg-warning/20 border-warning/40 text-warning" : "badge-ghost opacity-50"}`}>
+                                                                {val || "N/A"}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                                 <div class="flex items-center gap-2">
                                                     <a
@@ -165,13 +249,14 @@ export default function AdminProposalsTable() {
                                             <th class="text-center font-mono text-secondary-300">SCORE</th>
                                             <th class="font-bold text-gray-300">PROPOSAL</th>
                                             <th class="font-bold text-gray-300">SPEAKER</th>
+                                            <th class="text-center font-bold text-gray-300">EXPENSES</th>
                                             <th class="text-center font-bold text-gray-300">STATUS</th>
                                             <th class="text-center font-bold text-gray-300">REVIEWS</th>
                                             <th class="text-center font-bold text-gray-300">ACTION</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <For each={submissions()}>
+                                        <For each={filteredSubmissions()}>
                                             {(item, index) => (
                                                 <tr class="hover:bg-white/5 border-b border-white/5 transition-colors group">
                                                     <td class="text-center font-mono font-bold opacity-50 text-xl group-hover:text-accent-400 transition-colors">
@@ -201,6 +286,16 @@ export default function AdminProposalsTable() {
                                                                 <div class="text-xs opacity-50 font-mono">{item.expand?.applicant?.expand?.user?.email || item.expand?.applicant?.email || ""}</div>
                                                             </div>
                                                         </div>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        {(() => {
+                                                            const val = (item.meta as any)?.company_cover_expenses || "";
+                                                            return (
+                                                                <div class={`badge badge-sm font-mono font-bold ${val === "Yes" ? "bg-success/20 border-success/40 text-success" : val === "No" ? "bg-error/20 border-error/40 text-error" : val === "Other" ? "bg-warning/20 border-warning/40 text-warning" : "badge-ghost opacity-50"}`}>
+                                                                    {val || "N/A"}
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </td>
                                                     <td class="text-center">
                                                         <div class={`badge badge-outline font-bold ${item.status === 'accepted' ? 'badge-success text-success' : item.status === 'rejected' ? 'badge-error text-error' : 'badge-ghost opacity-50'}`}>
