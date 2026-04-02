@@ -76,7 +76,7 @@ export default function Timeline() {
                 return (
                   <div class="relative fade-in-delay-2 ml-6 md:ml-10">
                     {/* Vertical line */}
-                    <div class="absolute left-0 top-2 bottom-2 w-[2px] bg-gradient-to-b from-primary-500/60 via-accent-500/40 to-primary-500/60"></div>
+                    <div class="absolute left-0 top-2 bottom-2 w-[2px] bg-primary-500/80"></div>
 
                     <For each={eventList()}>
                       {(event, i) => {
