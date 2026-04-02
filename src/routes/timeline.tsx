@@ -74,9 +74,9 @@ export default function Timeline() {
               {(eventList) => {
                 const nextIdx = isNext(eventList());
                 return (
-                  <div class="relative fade-in-delay-2">
+                  <div class="relative fade-in-delay-2 ml-6 md:ml-10">
                     {/* Vertical line */}
-                    <div class="absolute left-6 md:left-8 top-0 bottom-0 w-px bg-gradient-to-b from-primary-500/50 via-accent-500/30 to-primary-500/50"></div>
+                    <div class="absolute left-0 top-2 bottom-2 w-px bg-gradient-to-b from-primary-500/50 via-accent-500/30 to-primary-500/50"></div>
 
                     <For each={eventList()}>
                       {(event, i) => {
@@ -85,11 +85,11 @@ export default function Timeline() {
 
                         return (
                           <div
-                            class={`relative pl-16 md:pl-20 pb-12 last:pb-0 transition-opacity ${past && !isCurrentNext ? "opacity-60" : ""}`}
+                            class={`relative pb-10 last:pb-0 transition-opacity ${past && !isCurrentNext ? "opacity-50" : ""}`}
                           >
                             {/* Node dot */}
                             <div
-                              class={`absolute left-4 md:left-6 w-4 h-4 rounded-full border-2 top-1 ${
+                              class={`absolute -left-[7px] w-[14px] h-[14px] rounded-full border-2 top-6 z-10 ${
                                 isCurrentNext
                                   ? "border-primary-400 bg-primary-500 shadow-[0_0_12px_rgba(255,0,255,0.6)] animate-pulse"
                                   : past
@@ -100,22 +100,22 @@ export default function Timeline() {
 
                             {/* "You are here" marker */}
                             <Show when={isCurrentNext}>
-                              <div class="absolute -left-1 md:left-1 top-0 -translate-y-1/2 text-[10px] font-star text-primary-400 uppercase tracking-widest whitespace-nowrap">
-                                You are here
+                              <div class="ml-6 pb-1 text-[10px] font-star text-primary-400 uppercase tracking-[0.2em]">
+                                &gt; You are here
                               </div>
                             </Show>
 
-                            {/* Content */}
+                            {/* Content card */}
                             <div
-                              class={`glass-panel p-6 rounded-xl ${
+                              class={`ml-6 bg-base-200/50 backdrop-blur-sm border rounded-xl p-5 ${
                                 isCurrentNext
                                   ? "border-primary-500/40 shadow-[0_0_20px_rgba(255,0,255,0.15)]"
-                                  : ""
+                                  : "border-white/5"
                               }`}
                             >
-                              <div class="flex items-start gap-3 mb-2">
-                                <span class="text-2xl">{event.icon}</span>
-                                <div class="flex-1">
+                              <div class="flex items-start gap-3">
+                                <span class="text-2xl leading-none mt-0.5">{event.icon}</span>
+                                <div class="flex-1 min-w-0">
                                   <div class="text-xs font-mono text-accent-400 mb-1">
                                     {formatDate(event.event_date)}
                                   </div>
@@ -124,7 +124,7 @@ export default function Timeline() {
                                   </h3>
                                 </div>
                               </div>
-                              <p class="text-secondary-300 text-sm leading-relaxed mt-2">
+                              <p class="text-secondary-300 text-sm leading-relaxed mt-3">
                                 {event.description}
                               </p>
                               <Show when={event.link_url && event.link_text}>
