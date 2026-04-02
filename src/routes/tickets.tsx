@@ -191,6 +191,17 @@ export default function Tickets() {
                       </a>{" "}
                       for more information.
                     </p>
+
+                    <p class="text-secondary-300 text-sm">
+                      Need to justify the trip?{" "}
+                      <a
+                        href="/convince-your-boss"
+                        class="text-primary-400 hover:text-primary-300 hover:underline transition-colors"
+                      >
+                        Convince your boss
+                      </a>{" "}
+                      — we wrote the email for you.
+                    </p>
                   </div>
                 </div>
               </Show>

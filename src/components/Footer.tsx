@@ -104,11 +104,29 @@ export const Footer = () => {
           </a>
         </nav>
 
-        {/* Legal */}
+        {/* Info */}
         <nav class="flex flex-col gap-2">
           <header class="footer-title text-primary-400 opacity-100 font-star tracking-widest text-lg">
-            Legal
+            Info
           </header>
+          <a
+            href="/about"
+            class="link link-hover hover:text-primary-400 transition-colors"
+          >
+            About
+          </a>
+          <a
+            href="/convince-your-boss"
+            class="link link-hover hover:text-primary-400 transition-colors"
+          >
+            Convince Your Boss
+          </a>
+          <a
+            href="/partnerships"
+            class="link link-hover hover:text-primary-400 transition-colors"
+          >
+            Partner With Us
+          </a>
           <a
             href="/terms"
             class="link link-hover hover:text-primary-400 transition-colors"
