@@ -13,6 +13,7 @@ interface LayoutProps {
   children: JSX.Element;
   title?: string;
   description?: string;
+  ogSubtitle?: string;
 }
 
 export const Layout = (props: LayoutProps) => {
@@ -22,6 +23,11 @@ export const Layout = (props: LayoutProps) => {
       <Title>{props.title}</Title>
       <Link rel="icon" href="/favicon.svg" />
       <Meta name="description" content={props.description} />
+      <Meta property="og:title" content={props.title || "WhatTheStack 2026"} />
+      <Meta property="og:description" content={props.description || "All things software, all things code. September 19th, Skopje."} />
+      <Meta property="og:image" content={`/api/og?title=${encodeURIComponent(props.title || "WhatTheStack 2026")}&subtitle=${encodeURIComponent(props.ogSubtitle || "September 19th // Skopje, MK")}`} />
+      <Meta property="og:type" content="website" />
+      <Meta name="twitter:card" content="summary_large_image" />
       <main class="font-sans relative w-full min-h-screen flex flex-col items-center overflow-x-hidden">
         <CodeBackground />
         <div class="absolute z-24 w-full min-h-screen h-full top-0 left-0 bg-black opacity-[76%]"></div>

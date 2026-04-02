@@ -114,42 +114,97 @@ export const Navbar = () => {
                   </a>
                 </li>
               )}
+
               <li>
                 <a href="/tickets">Grab a ticket!</a>
               </li>
-              <li>
-                <a href="/about">About</a>
-              </li>
+
+              {/* Conference dropdown */}
               <li>
                 <button
                   class="uppercase"
-                  popovertarget="previous-editions"
-                  style="anchor-name:--anchor-1"
+                  popovertarget="nav-conference"
+                  style="anchor-name:--anchor-conference"
                 >
-                  Previous editions
+                  Conference
                 </button>
                 <ul
                   class="dropdown menu p-2 bg-base-100 shadow-lg w-[200px]"
                   popover
-                  id="previous-editions"
-                  style="position-anchor:--anchor-1"
+                  id="nav-conference"
+                  style="position-anchor:--anchor-conference"
                 >
                   <li>
-                    <a
-                      href="https://2024.wts.sh"
-                      class="text-center"
-                      target="_blank"
-                    >
-                      {`>`} 2024
+                    <a href="/speakers">{`>`} Speakers</a>
+                  </li>
+                  <li>
+                    <a href="/agenda">{`>`} Agenda</a>
+                  </li>
+                  <li>
+                    <a href="/sessions">{`>`} Sessions</a>
+                  </li>
+                  <li>
+                    <a href="/timeline">{`>`} Timeline</a>
+                  </li>
+                </ul>
+              </li>
+
+              {/* Get Involved dropdown */}
+              <li>
+                <button
+                  class="uppercase"
+                  popovertarget="nav-involved"
+                  style="anchor-name:--anchor-involved"
+                >
+                  Get Involved
+                </button>
+                <ul
+                  class="dropdown menu p-2 bg-base-100 shadow-lg w-[220px]"
+                  popover
+                  id="nav-involved"
+                  style="position-anchor:--anchor-involved"
+                >
+                  <li>
+                    <a href="/cfp">{`>`} Apply to speak</a>
+                  </li>
+                  <li>
+                    <a href="/partnerships">{`>`} Partner with us</a>
+                  </li>
+                </ul>
+              </li>
+
+              {/* About dropdown */}
+              <li>
+                <button
+                  class="uppercase"
+                  popovertarget="nav-about"
+                  style="anchor-name:--anchor-about"
+                >
+                  About
+                </button>
+                <ul
+                  class="dropdown menu p-2 bg-base-100 shadow-lg w-[240px]"
+                  popover
+                  id="nav-about"
+                  style="position-anchor:--anchor-about"
+                >
+                  <li>
+                    <a href="/about">{`>`} About WTS</a>
+                  </li>
+                  <li>
+                    <a href="/faq">{`>`} FAQ</a>
+                  </li>
+                  <li>
+                    <a href="/convince-your-boss">{`>`} Convince your boss</a>
+                  </li>
+                  <li class="border-t border-white/10 mt-1 pt-1">
+                    <a href="https://2025.wts.sh" target="_blank">
+                      {`>`} 2025 Edition
                     </a>
                   </li>
                   <li>
-                    <a
-                      href="https://2025.wts.sh"
-                      class="text-center"
-                      target="_blank"
-                    >
-                      {`>`} 2025
+                    <a href="https://2024.wts.sh" target="_blank">
+                      {`>`} 2024 Edition
                     </a>
                   </li>
                 </ul>
@@ -209,37 +264,71 @@ export const Navbar = () => {
                 Grab a ticket!
               </a>
             </li>
-            <li>
-              <a href="/about" onClick={closeDrawer}>
-                About
-              </a>
-            </li>
 
+            {/* Conference */}
             <li>
-              <details open>
-                <summary>Previous Editions</summary>
+              <details>
+                <summary>Conference</summary>
                 <ul>
                   <li>
-                    <a
-                      href="https://2024.wts.sh"
-                      target="_blank"
-                      onClick={closeDrawer}
-                    >
-                      2024 Edition
+                    <a href="/speakers" onClick={closeDrawer}>Speakers</a>
+                  </li>
+                  <li>
+                    <a href="/agenda" onClick={closeDrawer}>Agenda</a>
+                  </li>
+                  <li>
+                    <a href="/sessions" onClick={closeDrawer}>Sessions</a>
+                  </li>
+                  <li>
+                    <a href="/timeline" onClick={closeDrawer}>Timeline</a>
+                  </li>
+                </ul>
+              </details>
+            </li>
+
+            {/* Get Involved */}
+            <li>
+              <details>
+                <summary>Get Involved</summary>
+                <ul>
+                  <li>
+                    <a href="/cfp" onClick={closeDrawer}>Apply to speak</a>
+                  </li>
+                  <li>
+                    <a href="/partnerships" onClick={closeDrawer}>Partner with us</a>
+                  </li>
+                </ul>
+              </details>
+            </li>
+
+            {/* About */}
+            <li>
+              <details>
+                <summary>About</summary>
+                <ul>
+                  <li>
+                    <a href="/about" onClick={closeDrawer}>About WTS</a>
+                  </li>
+                  <li>
+                    <a href="/faq" onClick={closeDrawer}>FAQ</a>
+                  </li>
+                  <li>
+                    <a href="/convince-your-boss" onClick={closeDrawer}>Convince your boss</a>
+                  </li>
+                  <li class="border-t border-white/10 mt-1 pt-1">
+                    <a href="https://2025.wts.sh" target="_blank" onClick={closeDrawer}>
+                      2025 Edition
                     </a>
                   </li>
                   <li>
-                    <a
-                      href="https://2025.wts.sh"
-                      target="_blank"
-                      onClick={closeDrawer}
-                    >
-                      2025 Edition
+                    <a href="https://2024.wts.sh" target="_blank" onClick={closeDrawer}>
+                      2024 Edition
                     </a>
                   </li>
                 </ul>
               </details>
             </li>
+
             {mounted() && auth?.isAuthenticated() && (
               <>
                 <div class="divider border-white/10 my-2"></div>
