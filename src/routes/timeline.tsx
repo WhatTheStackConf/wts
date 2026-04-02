@@ -1,6 +1,7 @@
 import { Layout } from "~/layouts/Layout";
-import { createResource, For, Show } from "solid-js";
+import { createResource, createEffect, For, Show } from "solid-js";
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
+import { isServer } from "solid-js/web";
 
 interface TimelineEvent {
   id: string;
@@ -46,6 +47,18 @@ function formatDate(dateStr: string) {
 export default function Timeline() {
   const [events] = createResource(fetchTimeline);
 
+  createEffect(() => {
+    if (isServer) return;
+    if (events()) {
+      setTimeout(() => {
+        const marker = document.getElementById("you-are-here");
+        if (marker) {
+          marker.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 300);
+    }
+  });
+
   return (
     <Layout
       title="Timeline - WhatTheStack 2026"
@@ -76,7 +89,7 @@ export default function Timeline() {
                 return (
                   <div class="relative fade-in-delay-2 ml-6 md:ml-10">
                     {/* Vertical line */}
-                    <div class="absolute left-0 top-2 bottom-2 w-[2px] bg-primary-500/80"></div>
+                    <div class="absolute left-[9px] top-2 bottom-2 w-[3px] bg-primary-500/80 rounded-full"></div>
 
                     <For each={eventList()}>
                       {(event, i) => {
@@ -89,9 +102,9 @@ export default function Timeline() {
                           >
                             {/* Node dot */}
                             <div
-                              class={`absolute -left-[7px] w-[14px] h-[14px] rounded-full border-2 top-6 z-10 ${
+                              class={`absolute left-0 w-[20px] h-[20px] rounded-full border-3 top-6 z-10 ${
                                 isCurrentNext
-                                  ? "border-primary-400 bg-primary-500 shadow-[0_0_12px_rgba(255,0,255,0.6)] animate-pulse"
+                                  ? "border-primary-400 bg-primary-500 shadow-[0_0_16px_rgba(255,0,255,0.7)] animate-pulse"
                                   : past
                                     ? "border-primary-700 bg-primary-900"
                                     : "border-accent-500/50 bg-accent-900/50"
@@ -100,14 +113,14 @@ export default function Timeline() {
 
                             {/* "You are here" marker */}
                             <Show when={isCurrentNext}>
-                              <div class="ml-6 pb-1 text-[10px] font-star text-primary-400 uppercase tracking-[0.2em]">
+                              <div id="you-are-here" class="ml-8 pb-1 text-[10px] font-star text-primary-400 uppercase tracking-[0.2em]">
                                 &gt; You are here
                               </div>
                             </Show>
 
                             {/* Content card */}
                             <div
-                              class={`ml-6 bg-base-200/50 backdrop-blur-sm border rounded-xl p-5 ${
+                              class={`ml-8 bg-base-200/50 backdrop-blur-sm border rounded-xl p-5 ${
                                 isCurrentNext
                                   ? "border-primary-500/40 shadow-[0_0_20px_rgba(255,0,255,0.15)]"
                                   : "border-white/5"
