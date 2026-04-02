@@ -11,6 +11,8 @@ routerAdd("POST", "/custom/send-email", (c) => {
         throw new BadRequestError("Missing required fields: to, subject, html");
     }
 
+    const wrappedHtml = wtsEmailTemplate($app, data.subject, data.html);
+
     const message = new MailerMessage({
         from: {
             address: $app.settings().meta.senderAddress,
@@ -18,7 +20,7 @@ routerAdd("POST", "/custom/send-email", (c) => {
         },
         to: [{ address: data.to }],
         subject: data.subject,
-        html: data.html,
+        html: wrappedHtml,
     })
 
     $app.newMailClient().send(message);

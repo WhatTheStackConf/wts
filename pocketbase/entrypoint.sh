@@ -44,4 +44,4 @@ fi
 # Start PocketBase server
 echo "Starting PocketBase server..."
 # We need to bind to 0.0.0.0 for Docker networking
-exec /pb/pocketbase serve --http=0.0.0.0:8090 --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations
+exec /pb/pocketbase serve --http=0.0.0.0:8090 --dir=/pb/pb_data --migrationsDir=/pb/pb_migrations --hooksDir=/pb/pb_hooks --publicDir=/pb/pb_public

@@ -17,17 +17,16 @@ onRecordAfterCreateSuccess((e) => {
         const name = user.get("name");
         const title = submission.get("session_title");
 
-        const html = `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2>Thank you for your submission!</h2>
+        const content = `
+            <h2 style="margin: 0 0 15px 0; color: #333333;">Thank you for your submission!</h2>
             <p>Hi ${name},</p>
             <p>We have received your proposal: <strong>${title}</strong>.</p>
             <p>Our team will review it and get back to you soon.</p>
             <br>
             <p>Best regards,</p>
             <p>The WhatTheStack Team</p>
-          </div>
         `;
+        const html = wtsEmailTemplate(e.app, "CfP Submission Received", content);
 
         const message = new MailerMessage({
             from: {

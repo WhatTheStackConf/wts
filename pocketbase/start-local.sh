@@ -44,4 +44,4 @@ echo "Setting up superuser account..."
 
 # Start PocketBase server
 echo "Starting PocketBase server..."
-"$POCKETBASE_PATH" serve --dir="$SCRIPT_DIR/pb_data" --http=127.0.0.1:8090
+"$POCKETBASE_PATH" serve --dir="$SCRIPT_DIR/pb_data" --publicDir="$SCRIPT_DIR/pb_public" --http=127.0.0.1:8090
