@@ -197,6 +197,9 @@ export const Navbar = () => {
                   <li>
                     <a href="/convince-your-boss">{`>`} Convince your boss</a>
                   </li>
+                  <li>
+                    <a href="/trip-cost">{`>`} Trip cost calculator</a>
+                  </li>
                   <li class="border-t border-white/10 mt-1 pt-1">
                     <a href="https://2025.wts.sh" target="_blank">
                       {`>`} 2025 Edition
@@ -314,6 +317,9 @@ export const Navbar = () => {
                   </li>
                   <li>
                     <a href="/convince-your-boss" onClick={closeDrawer}>Convince your boss</a>
+                  </li>
+                  <li>
+                    <a href="/trip-cost" onClick={closeDrawer}>Trip cost calculator</a>
                   </li>
                   <li class="border-t border-white/10 mt-1 pt-1">
                     <a href="https://2025.wts.sh" target="_blank" onClick={closeDrawer}>
