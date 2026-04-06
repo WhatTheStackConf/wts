@@ -2,8 +2,9 @@ import satori from "satori";
 import sharp from "sharp";
 let fontRegular: ArrayBuffer | null = null;
 let fontStar: ArrayBuffer | null = null;
+let logoPngDataUri: string | null = null;
 
-async function ensureFonts(origin: string) {
+async function ensureAssets(origin: string) {
   if (!fontRegular) {
     try {
       const res = await fetch(
@@ -24,6 +25,16 @@ async function ensureFonts(origin: string) {
       console.error("Failed to load StarzoomShavian font:", e);
     }
   }
+  if (!logoPngDataUri) {
+    try {
+      const res = await fetch(`${origin}/favicon.svg`);
+      const svgBuffer = Buffer.from(await res.arrayBuffer());
+      const pngBuffer = await sharp(svgBuffer).resize(80, 100).png().toBuffer();
+      logoPngDataUri = `data:image/png;base64,${pngBuffer.toString("base64")}`;
+    } catch (e) {
+      console.error("Failed to load logo:", e);
+    }
+  }
 }
 
 export async function GET({ request }: { request: Request }) {
@@ -32,7 +43,7 @@ export async function GET({ request }: { request: Request }) {
   const subtitle =
     url.searchParams.get("subtitle") || "September 19th // Skopje, MK";
 
-  await ensureFonts(url.origin);
+  await ensureAssets(url.origin);
 
   const fonts: any[] = [];
   if (fontRegular) {
@@ -207,15 +218,31 @@ export async function GET({ request }: { request: Request }) {
                 justifyContent: "center",
                 width: "100%",
                 height: "100%",
-                padding: "60px",
+                padding: "50px 60px",
+                gap: "12px",
               },
               children: [
+                // Logo
+                ...(logoPngDataUri
+                  ? [
+                      {
+                        type: "img",
+                        props: {
+                          src: logoPngDataUri,
+                          width: 60,
+                          height: 76,
+                          style: { display: "flex" },
+                        },
+                      },
+                    ]
+                  : []),
+                // Title
                 {
                   type: "div",
                   props: {
                     style: {
                       display: "flex",
-                      fontSize: title.length > 30 ? "52px" : "72px",
+                      fontSize: title.length > 30 ? "48px" : "64px",
                       color: "white",
                       fontFamily: titleFont,
                       fontWeight: 900,
@@ -226,19 +253,39 @@ export async function GET({ request }: { request: Request }) {
                     children: title.toUpperCase(),
                   },
                 },
+                // Subtitle
                 {
                   type: "div",
                   props: {
                     style: {
                       display: "flex",
-                      fontSize: "28px",
+                      fontSize: "24px",
                       color: "#d4a0d4",
                       fontFamily: "Space Grotesk",
                       letterSpacing: "0.15em",
                       textAlign: "center",
-                      marginTop: "16px",
                     },
                     children: subtitle.toUpperCase(),
+                  },
+                },
+                // CTA
+                {
+                  type: "div",
+                  props: {
+                    style: {
+                      display: "flex",
+                      marginTop: "16px",
+                      padding: "12px 32px",
+                      background:
+                        "linear-gradient(to right, #ff00ff, #00ffff)",
+                      borderRadius: "999px",
+                      fontSize: "20px",
+                      fontFamily: "Space Grotesk",
+                      fontWeight: 700,
+                      color: "#070514",
+                      letterSpacing: "0.1em",
+                    },
+                    children: "GET TICKETS AT WTS.SH",
                   },
                 },
               ],
