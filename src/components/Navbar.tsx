@@ -146,6 +146,9 @@ export const Navbar = () => {
                   <li>
                     <a href="/timeline">{`>`} Timeline</a>
                   </li>
+                  <li>
+                    <a href="/blog">{`>`} Blog</a>
+                  </li>
                 </ul>
               </li>
 
@@ -284,6 +287,9 @@ export const Navbar = () => {
                   </li>
                   <li>
                     <a href="/timeline" onClick={closeDrawer}>Timeline</a>
+                  </li>
+                  <li>
+                    <a href="/blog" onClick={closeDrawer}>Blog</a>
                   </li>
                 </ul>
               </details>

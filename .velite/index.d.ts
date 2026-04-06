@@ -6,3 +6,6 @@ type Collections = typeof __vc.collections
 
 export type Page = Collections['pages']['schema']['_output']
 export declare const pages: Page[]
+
+export type Post = Collections['posts']['schema']['_output']
+export declare const posts: Post[]

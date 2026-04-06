@@ -756,6 +756,16 @@ main {
   margin-bottom: 0.75rem;
 }
 
+/* Blog image captions */
+.prose img + em,
+.prose p:has(> img) + p > em:only-child {
+  display: block;
+  text-align: center;
+  color: theme('colors.primary.200 / 50%');
+  font-size: 0.875rem;
+  margin-top: -0.5rem;
+}
+
 /* Hologram Button Styles */
 @keyframes glitch-button {
 

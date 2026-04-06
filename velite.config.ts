@@ -21,6 +21,23 @@ export default defineConfig({
                 })
                 .transform((data) => ({ ...data, permalink: `/${data.slug}` })),
         },
+        posts: {
+            name: "Post",
+            pattern: "blog/**/*.md",
+            schema: s
+                .object({
+                    title: s.string(),
+                    slug: s.slug("blog"),
+                    date: s.isodate(),
+                    excerpt: s.string().optional(),
+                    author: s.string().default("WhatTheStack Team"),
+                    content: s.mdx(),
+                })
+                .transform((data) => ({
+                    ...data,
+                    permalink: `/blog/${data.slug}`,
+                })),
+        },
     },
     mdx: {
         jsxImportSource: "solid-jsx",
