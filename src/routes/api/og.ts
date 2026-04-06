@@ -1,11 +1,9 @@
 import satori from "satori";
 import sharp from "sharp";
-import { readFileSync } from "fs";
-import { join } from "path";
 let fontRegular: ArrayBuffer | null = null;
 let fontStar: ArrayBuffer | null = null;
 
-async function ensureFonts() {
+async function ensureFonts(origin: string) {
   if (!fontRegular) {
     try {
       const res = await fetch(
@@ -18,9 +16,10 @@ async function ensureFonts() {
   }
   if (!fontStar) {
     try {
-      fontStar = readFileSync(
-        join(process.cwd(), "public/fonts/starzoom-shavian.regular.ttf")
-      ).buffer as ArrayBuffer;
+      const res = await fetch(
+        `${origin}/fonts/starzoom-shavian.regular.ttf`
+      );
+      fontStar = await res.arrayBuffer();
     } catch (e) {
       console.error("Failed to load StarzoomShavian font:", e);
     }
@@ -33,7 +32,7 @@ export async function GET({ request }: { request: Request }) {
   const subtitle =
     url.searchParams.get("subtitle") || "September 19th // Skopje, MK";
 
-  await ensureFonts();
+  await ensureFonts(url.origin);
 
   const fonts: any[] = [];
   if (fontRegular) {
