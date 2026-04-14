@@ -1,114 +1,141 @@
-# WTS (WhatTheStack) Conference 2026
+# WTS — WhatTheStack Conference 2026
 
-This is the web application for the WhatTheStack conference 2026, built with SolidStart and PocketBase.
+Web app for the WhatTheStack 2026 conference. Public-facing site, CFP system, reviewer workflow, admin tools, ticketing, and content (blog/agenda/speakers).
 
-## Tech Stack
+Live: [wts.rs](https://wts.rs)
 
-- Solid.js as the reactive UI framework
-- SolidStart as the meta framework
-- Tailwind CSS and DaisyUI for styling
-- PocketBase for backend services, authentication, and data storage
-- TypeScript for type safety
+## Stack
 
-## Two-Tier Architecture
+- [SolidStart](https://start.solidjs.com/) (Solid.js meta-framework) on Nitro
+- [PocketBase](https://pocketbase.io/) backend (auth, data, hooks, migrations)
+- [Tailwind CSS 4](https://tailwindcss.com/) + [DaisyUI](https://daisyui.com/)
+- [Velite](https://velite.js.org/) for MDX content (blog, pages)
+- TypeScript
+- Node `>= 22`, pnpm
 
-This application implements PocketBase's recommended two-tier architecture:
+## Features
 
-### Client-Tier (Frontend)
-- Client-side SPA that interacts directly with PocketBase Web APIs
-- Uses PocketBase JavaScript SDK for authentication and data access
-- Collection API rules control access and filtering
-- Regular users authenticate directly with the client-tier
+- Marketing pages (home, about, agenda, speakers, sessions, FAQ, partnerships)
+- Blog (MDX via Velite)
+- CFP submission flow with reviewer/admin dashboards
+- Weighted committee scoring with per-reviewer weight votes
+- Admin: user management, proposal leaderboard, weight averages
+- Ticketing integrations (Tito, HiEvents)
+- Newsletter via Listmonk
+- OG image generation (Satori)
+- Trip cost calculator
 
-### Server-Tier (Backend Operations)
-- Server-side operations using superuser/admin credentials
-- Isolated operations that require elevated privileges
-- Admin API endpoints for sensitive operations
-- Server functions for backend-only operations
-
-## PocketBase Integration
-
-This project includes a PocketBase backend setup for both local development and remote deployment.
-
-### Prerequisites
-
-- Node.js >= 22
-- pnpm
-- PocketBase binary (downloaded automatically)
-
-### Local Development Setup
-
-1. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-
-2. Download the PocketBase binary:
-   ```bash
-   pnpm pocketbase:download
-   ```
-
-3. Start the development server (this will start both the application and PocketBase backend):
-   ```bash
-   pnpm dev
-   ```
-
-The application will start on `http://localhost:3000` and connect to the PocketBase instance at `http://localhost:8090`.
-
-> Note: The development command automatically starts both the frontend application and the PocketBase backend server.
-
-For more detailed setup instructions, see [POCKETBASE_SETUP.md](./POCKETBASE_SETUP.md).
-
-### Authentication
-
-The application implements a clear separation between client and admin authentication:
-
-- **Client authentication** is handled through the client-side service in `src/lib/pocketbase-client-service.ts`
-- **Admin authentication** is handled server-side using superuser credentials in `src/lib/pocketbase-admin-service.ts`
-
-### Admin Access
-
-After first launch, a superuser account is automatically created with credentials from your environment variables:
-- Email: `admin@wts.rs` (or as defined in `POCKETBASE_SUPERUSER_EMAIL`)
-- Password: `supersecret` (or as defined in `POCKETBASE_SUPERUSER_PASSWORD`)
-
-Visit `http://localhost:8090/_/` to access the PocketBase admin panel using these credentials.
-
-## API Endpoints
-
-- Client operations: Direct communication with PocketBase API
-- Admin operations: `/api/admin` endpoint for server-side operations with superuser privileges
-- User data: `/api/user-data` endpoint for server-side data access
-
-## Running in Production
-
-The project includes a `docker-compose.yml` file for easy deployment to Coolify with persistent data storage. The superuser account will be automatically created on first run in the production environment as well.
-
-## Developing
-
-Once you've created a project and installed dependencies with `pnpm install`, start a development server:
+## Quick Start
 
 ```bash
-pnpm run dev
+# 1. Install deps
+pnpm install
 
-# or start the server and open the app in a new browser tab
-pnpm run dev -- --open
+# 2. Download PocketBase binary
+pnpm pocketbase:download
+
+# 3. Copy env template (see "Environment" below)
+cp .env .env.local   # or create .env manually
+
+# 4. Start dev (runs PocketBase + Vite concurrently)
+pnpm dev
 ```
 
-Key authentication files:
-- `src/lib/auth-service.ts` - Client-side authentication store
-- `src/lib/pocketbase-client-service.ts` - Client-side PocketBase service
-- `src/lib/pocketbase-admin-service.ts` - Server-side admin PocketBase service
-- `src/lib/admin-actions.ts` - Server functions for admin operations
-- `src/routes/api/admin.tsx` - Admin API endpoint
-- `src/routes/api/user-data.tsx` - User data API endpoint
+Then:
+- App: <http://localhost:3000>
+- PocketBase admin UI: <http://localhost:8090/_/>
 
-## Building
+First launch auto-creates the superuser from `POCKETBASE_SUPERUSER_EMAIL` / `POCKETBASE_SUPERUSER_PASSWORD`.
 
-To build the application for production:
+## Scripts
+
+| Script | What it does |
+|---|---|
+| `pnpm dev` | Full dev: PocketBase + Velite watch + Vite |
+| `pnpm start:dev` | App only (Velite watch + Vite), no PocketBase |
+| `pnpm build` | Production build (Velite + Vite) |
+| `pnpm start` | Run built app |
+| `pnpm pocketbase:download` | Fetch PocketBase binary into `pocketbase/` |
+| `pnpm pocketbase:start` | Start local PocketBase only |
+| `pnpm pocketbase:createsuperuser` | Manually create superuser |
+| `pnpm docker:up` / `docker:down` | Docker Compose stack |
+
+## Environment
+
+Required in `.env` (or `.env.local`):
 
 ```bash
-pnpm run build
+# PocketBase
+POCKETBASE_URL="http://localhost:8090"
+POCKETBASE_SUPERUSER_EMAIL="admin@example.com"
+POCKETBASE_SUPERUSER_PASSWORD="supersecret"
+VITE_POCKETBASE_URL="http://localhost:8090"   # client-side
+
+# Tito (tickets)
+TITO_ACCOUNT="wts"
+TITO_EVENT="conference-2026"
+
+# HiEvents
+HIEVENTS_API_URL="https://hievents.example.com"
+HIEVENTS_EMAIL=""
+HIEVENTS_PASSWORD=""
+HIEVENTS_EVENT_ID=1
+HIEVENTS_ACCOUNT_ID=1
+
+# Listmonk (newsletter)
+LISTMONK_USERNAME="bot"
+LISTMONK_API_TOKEN=""
+VITE_LISTMONK_LIST_ID=2
 ```
 
-This will generate a Node app that you can run with `pnpm start`.
+## Architecture
+
+Two-tier per PocketBase guidance:
+
+**Client-tier** — browser SPA talks directly to PocketBase Web API via `pocketbase-js` SDK. Collection API rules enforce access.
+
+**Server-tier** — privileged server actions use superuser credentials for operations that can't be gated with API rules (admin reads, cross-collection aggregations, webhooks).
+
+Key files:
+- `src/lib/pocketbase-client-service.ts` — client SDK wrapper
+- `src/lib/pocketbase-admin-service.ts` — server superuser service
+- `src/lib/auth-service.ts` — client auth store
+- `src/lib/admin-actions.ts` — server actions for admin ops
+- `src/lib/reviewer-actions.ts` — server actions for reviewers
+- `src/routes/api/admin.tsx` — admin API route
+- `pocketbase/pb_hooks/` — server-side PB hooks (JS)
+- `pocketbase/pb_migrations/` — schema migrations
+
+See [POCKETBASE_SETUP.md](./POCKETBASE_SETUP.md) for PocketBase setup details and [PB_TYPES_GUIDE.md](./PB_TYPES_GUIDE.md) for regenerating types after schema changes.
+
+## Content (Blog)
+
+MDX posts live under content folders picked up by Velite. Velite emits JSON consumed by routes. Run `pnpm dev` (which runs `velite --watch`) while authoring — output lands in `.velite/`.
+
+## Preview / Build
+
+```bash
+pnpm build
+pnpm start
+```
+
+The build produces a Nitro Node server. Open <http://localhost:3000>.
+
+## Docker / Production
+
+```bash
+pnpm docker:up
+```
+
+`docker-compose.yml` spins up the web app + PocketBase with persistent volume for `pb_data`. Deploys to Coolify. Superuser auto-provisions on first run from env.
+
+## Roles
+
+- **user** — default, can submit CFP and buy tickets
+- **reviewer** — rates proposals, votes on weights
+- **applicant** — linked speaker profile for CFP submissions
+- **admin** — full access to admin routes (`/admin/*`)
+
+## License
+
+See [LICENSE.md](./LICENSE.md).
