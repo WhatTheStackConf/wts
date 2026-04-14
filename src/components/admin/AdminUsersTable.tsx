@@ -116,7 +116,14 @@ export default function AdminUsersTable() {
                 <div class="container mx-auto px-4 max-w-7xl">
                     <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
                         <div>
-                            <h1 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-white uppercase drop-shadow-sm mb-2">User Management</h1>
+                            <h1 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-white uppercase drop-shadow-sm mb-2">
+                                User Management
+                                <Show when={!users.loading}>
+                                    <span class="ml-3 align-middle badge badge-lg font-mono font-black bg-primary-500/20 border-primary-500/40 text-primary-300">
+                                        {users()?.length || 0}
+                                    </span>
+                                </Show>
+                            </h1>
                             <p class="text-secondary-300 font-mono text-sm">SYSTEM ACCESS & STATS</p>
                         </div>
                         <button

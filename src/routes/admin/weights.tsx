@@ -195,7 +195,9 @@ export default function AdminWeights() {
                                                     </span>
                                                 </label>
                                                 <div class="flex flex-col items-end">
-                                                    <span class="font-mono text-3xl font-black text-transparent bg-clip-text bg-gradient-to-br from-primary-400 to-white drop-shadow-sm">{votes()[item.id]}</span>
+                                                    <span class="font-mono text-3xl font-black text-transparent bg-clip-text bg-gradient-to-br from-primary-400 to-white drop-shadow-sm">
+                                                        {isReviewer() ? votes()[item.id] : (averages()[item.id] || votes()[item.id])}
+                                                    </span>
                                                 </div>
                                             </div>
                                             <input

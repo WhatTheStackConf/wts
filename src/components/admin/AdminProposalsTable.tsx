@@ -54,9 +54,11 @@ export default function AdminProposalsTable() {
     // Filters
     const [expenseFilter, setExpenseFilter] = createSignal<string>("all");
     const [statusFilter, setStatusFilter] = createSignal<string>("all");
+    const [sortBy, setSortBy] = createSignal<"score" | "date">("score");
+    const [sortDir, setSortDir] = createSignal<"desc" | "asc">("desc");
 
     const filteredSubmissions = createMemo(() => {
-        let items = submissions() || [];
+        let items = [...(submissions() || [])];
         const expense = expenseFilter();
         const status = statusFilter();
 
@@ -71,6 +73,15 @@ export default function AdminProposalsTable() {
         if (status !== "all") {
             items = items.filter(item => (item.status || "pending") === status);
         }
+
+        const by = sortBy();
+        const dir = sortDir() === "desc" ? -1 : 1;
+        items.sort((a, b) => {
+            if (by === "score") return (a.totalScore - b.totalScore) * dir;
+            const ta = new Date(a.created || 0).getTime();
+            const tb = new Date(b.created || 0).getTime();
+            return (ta - tb) * dir;
+        });
 
         return items;
     });
@@ -104,7 +115,14 @@ export default function AdminProposalsTable() {
                 <div class="container mx-auto px-4 max-w-7xl">
                     <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
                         <div>
-                            <h1 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-secondary-400 uppercase drop-shadow-sm mb-2">Proposal Leaderboard</h1>
+                            <h1 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-secondary-400 uppercase drop-shadow-sm mb-2">
+                                Proposal Leaderboard
+                                <Show when={!submissions.loading}>
+                                    <span class="ml-3 align-middle badge badge-lg font-mono font-black bg-secondary-500/20 border-secondary-500/40 text-secondary-300">
+                                        {submissions()?.length || 0}
+                                    </span>
+                                </Show>
+                            </h1>
                             <p class="text-secondary-300 font-mono text-sm">RANKING BASED ON WEIGHTED COMMITTEE SCORES</p>
                         </div>
                         <button
@@ -158,6 +176,32 @@ export default function AdminProposalsTable() {
                                         </button>
                                     )}
                                 </For>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <label class="text-xs font-mono text-gray-500">Sort:</label>
+                            <div class="flex gap-1">
+                                <For each={[{ k: "score", l: "Score" }, { k: "date", l: "Date" }] as const}>
+                                    {(opt) => (
+                                        <button
+                                            class={`btn btn-xs font-mono ${sortBy() === opt.k
+                                                ? "btn-primary"
+                                                : "btn-ghost border-white/10 text-gray-400 hover:bg-white/10"
+                                                }`}
+                                            onClick={() => setSortBy(opt.k)}
+                                        >
+                                            {opt.l}
+                                        </button>
+                                    )}
+                                </For>
+                                <button
+                                    class="btn btn-xs font-mono btn-ghost border-white/10 text-gray-400 hover:bg-white/10"
+                                    onClick={() => setSortDir(sortDir() === "desc" ? "asc" : "desc")}
+                                    title={sortDir() === "desc" ? "Descending" : "Ascending"}
+                                >
+                                    <Icon icon={sortDir() === "desc" ? "ph:arrow-down-bold" : "ph:arrow-up-bold"} />
+                                </button>
                             </div>
                         </div>
 
