@@ -112,7 +112,7 @@ If you've made it this far, you're probably at least thinking about applying. A 
 
 ### That's it
 
-The CfP for 2026 closes July 30. The committee will be assembled, weights voted on, and the anonymized pile will be ready for review the week after. For what it's worth, we're already sitting at 130+ proposals and the deadline hasn't hit yet, so the bar is going to be real.
+The CfP for 2026 closes June 30. The committee will be assembled, weights voted on, and the anonymized pile will be ready for review the week after. For what it's worth, we're already sitting at 130+ proposals and the deadline hasn't hit yet, so the bar is going to be real.
 
 If you're on the fence, submit anyway. We'd rather read one more proposal we can't fit than pass on one we'd have loved.
 
