@@ -74,11 +74,11 @@ We invite some speakers directly, without them going through the CfP. We keep th
 
 Each of our partner communities that helps us run this also gets an invite slot of their own. They use it to bring someone relevant to their stack, or someone from their scene they think deserves a bigger stage. They decide, we trust them. That's the deal.
 
-Until this year, we had zero sponsor speaking slots. Not one. We've had a lot of... interesting experiences with those, from every side of the stage, so that was an intentional decision to avoid "cheapening" the conference goers experience. We feel like the most important people in a conference are the audience, so it stands to reason that we don't "cheapen" the program by running thinly-veiled sales pitches on stage. This year we've opened a few, due to the ever-increasing pressure of the market, but they go through the same review process as every other applicant. A sponsor slot gets you a seat at the table. It does not get you a seat on stage. If the proposal doesn't score well enough, it doesn't run. And it will go through a 100 iterations if need be - we're not going to compromise on quality.
+Until this year (2026), we had no sponsored speaking slots. We've had a lot of interesting experiences with those, from every side of the stage, so that was an intentional decision to avoid "cheapening" the conference goers experience. We feel like the most important people in a conference are the audience, so it stands to reason that we don't "cheapen" the program by running thinly-veiled sales pitches on stage. This year we've opened a few, due to high demand, but they go through the same review process as every other applicant. A sponsor slot gets you a slot - it does not mean a proposal auto-accept, however. If the proposal doesn't score well enough, it doesn't run. We iterate until it does, but we won't compromise on quality.
 
-In short - you will not see a sales pitch on our stages. Not _ever_.
+In short - you will not see a sales pitch on our stages. _Еver_.
 
-We're saying this out loud because we've been to conferences where the opposite is true, and the audience can always tell. We'd rather lose the sponsor money than lose the trust. In fact, we'd rather see WTS die a hero, than turning into a proverbial villain.
+We're saying this out loud because we've been to conferences where the opposite is true, and the audience can always tell. We'd rather lose the sponsor money than lose the trust and the baseline of quality we've established.
 
 ### Stages and slots this year
 
@@ -86,7 +86,7 @@ Last year we ran four main stages with eight slots each (32 talks in total). Thi
 
 But we're adding a fifth stage with a shorter format: 15 minutes plus 5 for Q&A. Think of it as the lo-fi stage at a festival, the one you duck into between the headliners to cleanse your palate and chill. Startups, soft-skill talks, weird experiments, niche deep-dives that don't quite fit the main-stage arcs. Anything that wants to exist but doesn't need 35 minutes to do it.
 
-Net effect: even more speaker slots overall than last year, but with a format that gives shorter ideas a proper home instead of squeezing them into a 35 minute shape they never wanted. The scoring criteria and the committee process are the same across both formats. Only the time constraint changes.
+The net effect of that decision translated into even more speaker slots overall than last year, but with a format that gives shorter ideas a proper home instead of squeezing them into a 35 minute shape they never wanted. The scoring criteria and the committee process are the same across both formats. Only the time constraint changes.
 
 If you've got a talk that you've been hesitating to submit because it felt too small, the lo-fi stage is probably the answer. Write the proposal, set expectations for the shorter format in your abstract, and send it in.
 
@@ -119,3 +119,5 @@ If you're on the fence, submit anyway. We'd rather read one more proposal we can
 See you in September.
 
 PS. If your idea feels too niche, too weird, or too small for a main stage - good. That's exactly what the lo-fi stage wants. Submit it anyway 😉
+
+PPS. If you like the scoring system and the way we do things, feel free to "steal" it. Hit us up for pointers too :)
