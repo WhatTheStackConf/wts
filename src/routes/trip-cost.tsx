@@ -1,5 +1,5 @@
 import { Layout } from "../layouts/Layout";
-import { createSignal, createMemo, For } from "solid-js";
+import { createSignal, createMemo, For, Show } from "solid-js";
 import { HologramButton } from "../components/HologramButton";
 
 type Option = {
@@ -46,6 +46,7 @@ export default function TripCost() {
   const [customTravel, setCustomTravel] = createSignal<number | null>(null);
   const [customHotel, setCustomHotel] = createSignal<number | null>(null);
   const [customDaily, setCustomDaily] = createSignal<number | null>(null);
+  const [swag, setSwag] = createSignal(false);
 
   const ticketCost = createMemo(() => ticketOptions[ticketIdx()].price);
   const travelCost = createMemo(
@@ -57,8 +58,9 @@ export default function TripCost() {
   const dailyCost = createMemo(
     () => (customDaily() ?? dailySpendOptions[dailyIdx()].price) * extraDays(),
   );
+  const swagCost = createMemo(() => swag() ? 20 : 0);
   const totalCost = createMemo(
-    () => ticketCost() + travelCost() + hotelCost() + dailyCost(),
+    () => ticketCost() + travelCost() + hotelCost() + dailyCost() + swagCost(),
   );
 
   return (
@@ -98,6 +100,19 @@ export default function TripCost() {
                       </button>
                     )}
                   </For>
+                </div>
+                <div class="mt-4">
+                  <label class="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      class="checkbox checkbox-sm checkbox-primary"
+                      checked={swag()}
+                      onChange={(e) => setSwag(e.currentTarget.checked)}
+                    />
+                    <span class="text-sm text-secondary-300">
+                      Swag pack &mdash; &euro;20
+                    </span>
+                  </label>
                 </div>
               </section>
 
@@ -291,6 +306,14 @@ export default function TripCost() {
                       &euro;{ticketCost()}
                     </span>
                   </div>
+                  <Show when={swag()}>
+                    <div class="flex justify-between">
+                      <span class="text-secondary-400">Swag pack</span>
+                      <span class="text-primary-100 font-mono">
+                        &euro;{swagCost()}
+                      </span>
+                    </div>
+                  </Show>
                   <div class="flex justify-between">
                     <span class="text-secondary-400">Travel (round-trip)</span>
                     <span class="text-primary-100 font-mono">
