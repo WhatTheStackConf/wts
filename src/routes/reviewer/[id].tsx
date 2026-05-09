@@ -34,6 +34,17 @@ export default function ReviewPage() {
     const isAdmin = () => auth?.user?.role === "admin";
     const isReviewer = () => auth?.user?.role === "reviewer";
 
+    createEffect(() => {
+        if (auth.isLoading()) return;
+        if (!auth.isAuthenticated()) {
+            navigate("/login");
+            return;
+        }
+        if (auth.user?.role !== "admin" && auth.user?.role !== "reviewer") {
+            navigate("/");
+        }
+    });
+
     const fetchSubmissionData = async (id: string) => {
         const { fetchReviewerSubmissionDetail } = await import("~/lib/reviewer-actions");
         return await fetchReviewerSubmissionDetail(id);

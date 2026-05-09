@@ -1,5 +1,6 @@
-import { createSignal, createResource, Show, For, createMemo } from "solid-js";
+import { createSignal, createResource, Show, For, createMemo, createEffect } from "solid-js";
 import { useNavigate } from "@solidjs/router";
+import { useAuth } from "~/lib/auth-context";
 import { Icon } from "@iconify-icon/solid";
 import { Layout } from "~/layouts/Layout";
 import { HiEventsAttendee } from "~/lib/hievents";
@@ -9,8 +10,20 @@ import { getGravatarUrl } from "~/lib/gravatar";
 type EnrichedAttendee = HiEventsAttendee & { account: { id: string; name: string } | null };
 
 export default function AdminTickets() {
+    const auth = useAuth();
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = createSignal("");
+
+    createEffect(() => {
+        if (auth.isLoading()) return;
+        if (!auth.isAuthenticated()) {
+            navigate("/login");
+            return;
+        }
+        if (auth.user?.role !== "admin") {
+            navigate("/");
+        }
+    });
 
     // Fetch attendees enriched with account info
     const [attendees] = createResource(async () => {
