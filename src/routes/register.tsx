@@ -113,13 +113,14 @@ const RegisterPage = () => {
     e.preventDefault();
     if (loading()) return;
 
-    setLoading(true);
     setError("");
 
     if (password() !== passwordConfirm()) {
       setError("Passwords do not match");
       return;
     }
+
+    setLoading(true);
 
     try {
       // Import the register function from the auth utils
