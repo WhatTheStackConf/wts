@@ -125,11 +125,11 @@ export const register = async (
       name,
     });
 
-    // Auto login after register if implicit login is not disabled
-    // If you do auto-login, you might need to handle cookie here if PB returns token
     return userData;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Registration error:", error);
+    console.error("Error response:", JSON.stringify(error.response, null, 2));
+    console.error("Error data:", JSON.stringify(error.response?.data, null, 2));
     throw error;
   }
 };

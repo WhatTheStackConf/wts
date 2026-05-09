@@ -18,6 +18,11 @@ const RegisterPage = () => {
   let containerRef: HTMLDivElement | undefined;
   let renderedWidgetId: string | null = null;
   const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
+  // Disable turnstile in local dev (key bound to production domains)
+  const isDev = () =>
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1");
 
   const auth = useAuth();
   const navigate = useNavigate();
@@ -28,6 +33,13 @@ const RegisterPage = () => {
   }
 
   onMount(() => {
+    // Skip turnstile in local dev
+    if (isDev()) {
+      setTurnstileToken("dev-bypass");
+      setTurnstileReady(true);
+      return;
+    }
+
     // Check if Turnstile is already loaded
     const checkTurnstile = () => {
       if ((window as any).turnstile) {
@@ -60,8 +72,10 @@ const RegisterPage = () => {
     }
   });
 
-  // Render Turnstile when visible and ready
+  // Render Turnstile when visible and ready (skip in dev)
   createEffect(() => {
+    if (isDev()) return;
+
     if (
       !success() &&
       SITE_KEY &&
@@ -143,9 +157,11 @@ const RegisterPage = () => {
             <h1 class="text-2xl font-bold text-center mb-6">Create an Account</h1>
 
             <form onSubmit={handleRegister}>
-              <div class="mb-6 flex justify-center min-h-[65px]">
-                <div ref={containerRef}></div>
-              </div>
+              <Show when={!isDev()}>
+                <div class="mb-6 flex justify-center min-h-[65px]">
+                  <div ref={containerRef}></div>
+                </div>
+              </Show>
 
               <Show when={!!turnstileToken()}>
                 <div class="mb-4">
@@ -221,7 +237,7 @@ const RegisterPage = () => {
               <button
                 type="submit"
                 class="btn btn-primary w-full"
-                disabled={loading() || !turnstileToken()}
+                disabled={loading() || (!isDev() && !turnstileToken())}
               >
                 {loading() ? (
                   <>
