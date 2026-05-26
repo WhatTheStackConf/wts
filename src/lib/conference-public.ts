@@ -1,6 +1,9 @@
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { getGravatarUrl } from "~/lib/gravatar";
+import { getPbFileUrl } from "~/lib/pocketbase-public-url";
 import type { SpeakerRecord, SessionRecord } from "~/lib/pocketbase-types";
+
+export { getPbFileUrl } from "~/lib/pocketbase-public-url";
 
 export interface PublicSpeakerSummary {
   slug: string;
@@ -33,22 +36,6 @@ export interface PublicSessionDetail {
   speakers: PublicSpeakerSummary[];
   /** Populated when related-sessions feature ships; empty at launch. */
   relatedSessions: PublicSessionCard[];
-}
-
-function pbBaseUrl(): string {
-  return (
-    process.env.POCKETBASE_URL ||
-    process.env.VITE_POCKETBASE_URL ||
-    "http://localhost:8090"
-  ).replace(/\/$/, "");
-}
-
-export function getPbFileUrl(
-  collection: string,
-  recordId: string,
-  filename: string,
-): string {
-  return `${pbBaseUrl()}/api/files/${collection}/${recordId}/${filename}`;
 }
 
 export function normalizeSocialHandles(raw: unknown): string[] {
@@ -97,7 +84,7 @@ function mapSpeakerSummary(row: SpeakerRow): PublicSpeakerSummary {
 
   const displayName = row.display_name || "Speaker";
   const photoUrl = row.photo
-    ? getPbFileUrl("speakers", row.id, row.photo)
+    ? getPbFileUrl(row, row.photo)
     : user?.avatar
       ? getPbFileUrl("users", user.id, user.avatar)
       : getGravatarUrl(user?.email);

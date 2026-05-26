@@ -6,6 +6,7 @@ import { nitroV2Plugin } from "@solidjs/vite-plugin-nitro-2";
 import { fileURLToPath } from "node:url";
 
 export default defineConfig({
+  envPrefix: ["VITE_", "PUBLIC_"],
   plugins: [
     solidStart(),
     solidSvg(),

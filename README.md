@@ -66,11 +66,22 @@ Required in `.env` (or `.env.local`):
 
 ```bash
 # PocketBase
-POCKETBASE_URL="http://localhost:8090"
+POCKETBASE_URL="http://127.0.0.1:8090"            # server admin API (local)
+PUBLIC_POCKETBASE_URL="http://127.0.0.1:8090"     # browser + SSR file URLs (default if unset)
 POCKETBASE_SUPERUSER_EMAIL="admin@example.com"
 POCKETBASE_SUPERUSER_PASSWORD="supersecret"
-VITE_POCKETBASE_URL="http://localhost:8090"   # client-side
+```
 
+**Production (Coolify / Docker):** set the public PocketBase hostname for anything rendered in HTML or loaded by the browser. Keep `POCKETBASE_URL` as the internal service URL for server-side admin API calls only.
+
+```bash
+PUBLIC_POCKETBASE_URL="https://pb-2026.wts.sh"    # canonical — speaker avatars, file URLs
+POCKETBASE_URL="http://pocketbase:8090"           # webapp → pocketbase on Docker network
+```
+
+Optional aliases for local dev or older compose files: `POCKETBASE_PUBLIC_URL`, `VITE_POCKETBASE_URL` (same value as `PUBLIC_POCKETBASE_URL`).
+
+```bash
 # Tito (tickets)
 TITO_ACCOUNT="wts"
 TITO_EVENT="conference-2026"

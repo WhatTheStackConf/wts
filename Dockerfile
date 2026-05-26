@@ -15,9 +15,11 @@ RUN pnpm install --dangerously-allow-all-builds
 
 COPY . .
 
-# Pass PUBLIC_ vars as build args so they are baked into the static build
+# Public PocketBase URL for browser file links (baked into client bundle)
+ARG PUBLIC_POCKETBASE_URL
 ARG VITE_POCKETBASE_URL
-ENV VITE_POCKETBASE_URL=$VITE_POCKETBASE_URL
+ENV PUBLIC_POCKETBASE_URL=${PUBLIC_POCKETBASE_URL}
+ENV VITE_POCKETBASE_URL=${VITE_POCKETBASE_URL:-$PUBLIC_POCKETBASE_URL}
 
 RUN npm_config_fsevents=false pnpm build
 
