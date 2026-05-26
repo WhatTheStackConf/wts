@@ -1344,3 +1344,15 @@ main {
     transform: none;
   }
 }
+
+.promo-starfield {
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, color-mix(in oklch, var(--color-primary-400) 70%, transparent) 50%, transparent 50%),
+    radial-gradient(1px 1px at 78% 24%, color-mix(in oklch, var(--color-secondary-400) 65%, transparent) 50%, transparent 50%),
+    radial-gradient(1px 1px at 44% 72%, color-mix(in oklch, var(--color-accent-400) 60%, transparent) 50%, transparent 50%),
+    radial-gradient(1px 1px at 88% 68%, color-mix(in oklch, var(--color-info) 55%, transparent) 50%, transparent 50%),
+    radial-gradient(1px 1px at 22% 84%, color-mix(in oklch, white 35%, transparent) 50%, transparent 50%),
+    radial-gradient(1px 1px at 62% 38%, color-mix(in oklch, var(--color-primary-300) 50%, transparent) 50%, transparent 50%);
+  background-size: 100% 100%;
+  opacity: 0.55;
+}

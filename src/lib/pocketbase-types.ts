@@ -54,6 +54,8 @@ export interface SpeakerRecord extends RecordModel {
   affiliation?: string;
   bio?: string;
   social_handles?: unknown;
+  /** Optional promo page overrides: statusMessage, roleLine, stack[], ctaHref, ctaLabel, footerText, footerLinks[] */
+  promo?: unknown;
   created: string;
   updated: string;
 }

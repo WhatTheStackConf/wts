@@ -19,6 +19,140 @@ export interface PublicSpeakerDetail extends PublicSpeakerSummary {
   sessions: PublicSessionCard[];
 }
 
+export interface PromoStackTag {
+  name: string;
+  color: string;
+}
+
+export interface PromoFooterLink {
+  label: string;
+  href: string;
+  color: string;
+}
+
+export interface PublicSpeakerPromo {
+  slug: string;
+  displayName: string;
+  photoUrl: string;
+  roleLine: string;
+  statusMessage: string;
+  stack: PromoStackTag[];
+  ctaHref: string;
+  ctaLabel: string;
+  footerText: string;
+  footerLinks: PromoFooterLink[];
+  footerSuffix: string;
+}
+
+interface SpeakerPromoConfig {
+  statusMessage?: string;
+  roleLine?: string;
+  stack?: PromoStackTag[];
+  ctaHref?: string;
+  ctaLabel?: string;
+  footerText?: string;
+  footerLinks?: PromoFooterLink[];
+  footerSuffix?: string;
+}
+
+const DEFAULT_PROMO_STATUS = "will be there!";
+const DEFAULT_PROMO_CTA_LABEL = "See you there";
+const DEFAULT_PROMO_CTA_HREF = "/tickets";
+const DEFAULT_PROMO_FOOTER_TEXT = "Join us at ";
+const DEFAULT_PROMO_FOOTER_SUFFIX = " — September 19, Skopje";
+const DEFAULT_PROMO_FOOTER_LINKS: PromoFooterLink[] = [
+  { label: "wts.sh", href: "https://wts.sh", color: "#e879f9" },
+];
+
+function parsePromoStackTag(raw: unknown): PromoStackTag | null {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw as Record<string, unknown>;
+  if (typeof item.name !== "string" || !item.name.trim()) return null;
+  const color =
+    typeof item.color === "string" && item.color.trim()
+      ? item.color.trim()
+      : "#a855f7";
+  return { name: item.name.trim(), color };
+}
+
+function parsePromoFooterLink(raw: unknown): PromoFooterLink | null {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw as Record<string, unknown>;
+  if (
+    typeof item.label !== "string" ||
+    !item.label.trim() ||
+    typeof item.href !== "string" ||
+    !item.href.trim()
+  ) {
+    return null;
+  }
+  const color =
+    typeof item.color === "string" && item.color.trim()
+      ? item.color.trim()
+      : "#e879f9";
+  return { label: item.label.trim(), href: item.href.trim(), color };
+}
+
+function parseSpeakerPromoConfig(raw: unknown): SpeakerPromoConfig {
+  if (!raw || typeof raw !== "object") return {};
+  const config = raw as Record<string, unknown>;
+  const stack = Array.isArray(config.stack)
+    ? config.stack
+        .map(parsePromoStackTag)
+        .filter((tag): tag is PromoStackTag => tag !== null)
+    : undefined;
+  const footerLinks = Array.isArray(config.footerLinks)
+    ? config.footerLinks
+        .map(parsePromoFooterLink)
+        .filter((link): link is PromoFooterLink => link !== null)
+    : undefined;
+
+  return {
+    statusMessage:
+      typeof config.statusMessage === "string"
+        ? config.statusMessage.trim()
+        : undefined,
+    roleLine:
+      typeof config.roleLine === "string" ? config.roleLine.trim() : undefined,
+    stack,
+    ctaHref:
+      typeof config.ctaHref === "string" ? config.ctaHref.trim() : undefined,
+    ctaLabel:
+      typeof config.ctaLabel === "string" ? config.ctaLabel.trim() : undefined,
+    footerText:
+      typeof config.footerText === "string"
+        ? config.footerText
+        : undefined,
+    footerLinks,
+    footerSuffix:
+      typeof config.footerSuffix === "string"
+        ? config.footerSuffix
+        : undefined,
+  };
+}
+
+function mapSpeakerPromo(row: SpeakerRow): PublicSpeakerPromo {
+  const summary = mapSpeakerSummary(row);
+  const config = parseSpeakerPromoConfig(row.promo);
+
+  return {
+    slug: summary.slug,
+    displayName: summary.displayName,
+    photoUrl: summary.photoUrl,
+    roleLine: config.roleLine || summary.affiliation || "Speaker @ WhatTheStack",
+    statusMessage: config.statusMessage || DEFAULT_PROMO_STATUS,
+    stack: config.stack ?? [],
+    ctaHref: config.ctaHref || DEFAULT_PROMO_CTA_HREF,
+    ctaLabel: config.ctaLabel || DEFAULT_PROMO_CTA_LABEL,
+    footerText: config.footerText ?? DEFAULT_PROMO_FOOTER_TEXT,
+    footerLinks:
+      config.footerLinks && config.footerLinks.length > 0
+        ? config.footerLinks
+        : DEFAULT_PROMO_FOOTER_LINKS,
+    footerSuffix: config.footerSuffix ?? DEFAULT_PROMO_FOOTER_SUFFIX,
+  };
+}
+
 export interface PublicSessionCard {
   slug: string;
   title: string;
@@ -232,6 +366,20 @@ export const fetchPublicSpeakerBySlug = async (
   const sessions = await fetchPublishedSessionsRows();
   const speakerSessions = sessionsForSpeaker(sessions, row.id);
   return mapSpeakerDetail(row, speakerSessions);
+};
+
+export const fetchPublicSpeakerPromoBySlug = async (
+  slug: string,
+): Promise<PublicSpeakerPromo | null> => {
+  "use server";
+  const escaped = slug.replace(/"/g, '\\"');
+  const rows = (await getAdminPB().fetchAllRecords("speakers", {
+    filter: `published = true && slug = "${escaped}"`,
+    expand: "cfp_applicant.user,user",
+  })) as SpeakerRow[];
+  const row = rows[0];
+  if (!row) return null;
+  return mapSpeakerPromo(row);
 };
 
 export const fetchPublicSessions = async (): Promise<PublicSessionCard[]> => {

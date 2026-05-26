@@ -5,7 +5,7 @@ import { fetchSpeakerBySlug } from "~/lib/speakers-public";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
 import { SocialLinks } from "~/components/conference/SocialLinks";
 import { proseArticleClasses } from "~/components/MDXContent";
-import NotFound from "../[...404]";
+import NotFound from "../../[...404]";
 
 export default function SpeakerDetail() {
   const params = useParams();
@@ -49,7 +49,7 @@ export default function SpeakerDetail() {
                         <h1 class="font-star text-3xl md:text-4xl lg:text-5xl font-bold text-secondary-400 leading-tight text-balance">
                           {s().displayName}
                         </h1>
-                        <div class="mt-5 flex justify-center sm:justify-start">
+                        <div class="mt-5 flex flex-col sm:flex-row sm:items-center gap-3 justify-center sm:justify-start">
                           <SocialLinks handles={s().socialHandles} />
                         </div>
                       </div>

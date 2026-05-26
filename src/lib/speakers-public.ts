@@ -3,6 +3,7 @@ export {
   fetchPublicSpeakerTeaser,
   TEASER_SPEAKER_LIMIT,
   fetchPublicSpeakerBySlug as fetchSpeakerBySlug,
+  fetchPublicSpeakerPromoBySlug as fetchSpeakerPromoBySlug,
   fetchPublicSessions as fetchPublishedSessions,
   fetchPublicSessionBySlug as fetchSessionBySlug,
   fetchHasPublishedSessions,
@@ -10,6 +11,9 @@ export {
   normalizeSocialHandles,
   type PublicSpeakerSummary,
   type PublicSpeakerDetail,
+  type PublicSpeakerPromo,
+  type PromoStackTag,
+  type PromoFooterLink,
   type PublicSessionCard,
   type PublicSessionDetail,
 } from "~/lib/conference-public";
