@@ -1,36 +1,28 @@
-import { createSignal, createResource, Show, For, createMemo, createEffect } from "solid-js";
+import { createSignal, createResource, Show, For, createMemo } from "solid-js";
 import { useNavigate } from "@solidjs/router";
-import { useAuth } from "~/lib/auth-context";
 import { Icon } from "@iconify-icon/solid";
 import { Layout } from "~/layouts/Layout";
+import { clientOnly } from "@solidjs/start";
 import { HiEventsAttendee } from "~/lib/hievents";
 import { adminFetchAttendeesWithAccounts } from "~/lib/admin-actions";
 import { getGravatarUrl } from "~/lib/gravatar";
+import { useRequireAdmin } from "~/lib/route-guards";
 
 type EnrichedAttendee = HiEventsAttendee & { account: { id: string; name: string } | null };
 
-export default function AdminTickets() {
-    const auth = useAuth();
+const AdminTickets = () => {
+    const guard = useRequireAdmin();
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = createSignal("");
 
-    createEffect(() => {
-        if (auth.isLoading()) return;
-        if (!auth.isAuthenticated()) {
-            navigate("/login");
-            return;
-        }
-        if (auth.user?.role !== "admin") {
-            navigate("/");
-        }
-    });
-
-    // Fetch attendees enriched with account info
-    const [attendees] = createResource(async () => {
-        const res = await adminFetchAttendeesWithAccounts();
-        if (res.success) return res.data as EnrichedAttendee[];
-        return [];
-    });
+    const [attendees] = createResource(
+        () => (guard.authorized() ? true : undefined),
+        async () => {
+            const res = await adminFetchAttendeesWithAccounts();
+            if (res.success) return res.data as EnrichedAttendee[];
+            return [];
+        },
+    );
 
     // Filter attendees based on search term
     const filteredAttendees = createMemo(() => {
@@ -59,6 +51,7 @@ export default function AdminTickets() {
 
     return (
         <Layout title="Ticket Management" description="Monitor event attendees">
+            <Show when={guard.authorized()}>
             <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
                 {/* Background Decorations */}
                 <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-accent-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
@@ -278,6 +271,11 @@ export default function AdminTickets() {
                     </div>
                 </div>
             </div>
+            </Show>
         </Layout>
     );
-}
+};
+
+export default clientOnly(async () => ({ default: AdminTickets }), {
+    lazy: true,
+});

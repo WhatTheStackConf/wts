@@ -10,6 +10,10 @@ export function loadAuthCookie() {
     return null;
 }
 
+// HttpOnly session cookie (issue #1, phased): requires a server endpoint to Set-Cookie
+// after login/OAuth and logout clear — not feasible via document.cookie alone in the
+// current SolidStart flow without broader auth-context changes. Deferred intentionally.
+
 export function setAuthCookie(token: string, model: any) {
     if (typeof document === 'undefined') return;
 

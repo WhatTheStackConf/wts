@@ -4,23 +4,44 @@ onRecordAfterCreateSuccess((e) => {
     const user = e.record;
 
     try {
+        const username = $os.getenv("LISTMONK_USERNAME");
+        const token = $os.getenv("LISTMONK_API_TOKEN") || $os.getenv("LISTMONK_PASSWORD");
+
+        if (!username || !token) {
+            e.app.logger().warn(
+                "Listmonk sync skipped: set LISTMONK_USERNAME and LISTMONK_API_TOKEN (or LISTMONK_PASSWORD)",
+            );
+            e.next();
+            return;
+        }
+
+        let baseUrl = $os.getenv("LISTMONK_URL") || "https://listmonk.wts.sh";
+        baseUrl = baseUrl.replace(/\/+$/, "");
+
+        let listId = 2;
+        const listIdEnv = $os.getenv("LISTMONK_LIST_ID");
+        if (listIdEnv) {
+            const parsed = parseInt(listIdEnv, 10);
+            if (!isNaN(parsed)) {
+                listId = parsed;
+            }
+        }
+
         const email = user.email();
         const name = user.get("name") || "";
 
         const res = $http.send({
-            url: "https://listmonk.wts.sh/api/subscribers",
+            url: baseUrl + "/api/subscribers",
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": "Basic " + $security.base64Encode(
-                    $os.getenv("LISTMONK_USERNAME") + ":" + $os.getenv("LISTMONK_API_TOKEN")
-                ),
+                "Authorization": "Basic " + $security.base64Encode(username + ":" + token),
             },
             body: JSON.stringify({
                 email: email,
                 name: name,
                 status: "enabled",
-                lists: [2],
+                lists: [listId],
                 preconfirm_subscriptions: true,
             }),
         });

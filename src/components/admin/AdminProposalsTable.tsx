@@ -1,6 +1,6 @@
-import { createSignal, createEffect, createMemo, For, Show, createResource } from "solid-js";
-import { useAuth } from "~/lib/auth-context";
+import { createSignal, createMemo, For, Show, createResource } from "solid-js";
 import { useNavigate } from "@solidjs/router";
+import { useRequireAdmin } from "~/lib/route-guards";
 import { Icon } from "@iconify-icon/solid";
 import { Layout } from "~/layouts/Layout";
 
@@ -33,27 +33,19 @@ type LeaderboardItem = CfpSubmissionRecord & {
 };
 
 export default function AdminProposalsTable() {
-    const auth = useAuth();
+    const guard = useRequireAdmin();
     const navigate = useNavigate();
 
-    // Auth Protection
-    createEffect(() => {
-        if (auth.isAuthenticated()) {
-            if (auth.user?.role !== "admin") {
-                navigate("/");
+    const [submissions, { refetch }] = createResource(
+        () => (guard.authorized() ? true : undefined),
+        async () => {
+            const res = await adminFetchLeaderboardData();
+            if (res.success) {
+                return res.data as LeaderboardItem[];
             }
-        } else if (!auth.isLoading()) {
-            navigate("/login");
-        }
-    });
-
-    const [submissions, { refetch }] = createResource(async () => {
-        const res = await adminFetchLeaderboardData();
-        if (res.success) {
-            return res.data as LeaderboardItem[];
-        }
-        return [];
-    });
+            return [];
+        },
+    );
 
     const [deleteId, setDeleteId] = createSignal<string | null>(null);
     const [isDeleting, setIsDeleting] = createSignal(false);
@@ -69,15 +61,18 @@ export default function AdminProposalsTable() {
     const submissionStatus = (item: LeaderboardItem): CfpSubmissionStatus =>
         (item.status || "pending") as CfpSubmissionStatus;
 
-    const [speakerApplicantIds, { refetch: refetchSpeakers }] = createResource(async () => {
-        const res = await adminFetchSpeakers();
-        if (!res.success) return new Set<string>();
-        return new Set(
-            (res.data as { cfp_applicant?: string }[])
-                .map((s) => s.cfp_applicant)
-                .filter((id): id is string => !!id),
-        );
-    });
+    const [speakerApplicantIds, { refetch: refetchSpeakers }] = createResource(
+        () => (guard.authorized() ? true : undefined),
+        async () => {
+            const res = await adminFetchSpeakers();
+            if (!res.success) return new Set<string>();
+            return new Set(
+                (res.data as { cfp_applicant?: string }[])
+                    .map((s) => s.cfp_applicant)
+                    .filter((id): id is string => !!id),
+            );
+        },
+    );
 
     const handleCreateSpeaker = async (applicantId: string) => {
         setSpeakerBusyApplicant(applicantId);

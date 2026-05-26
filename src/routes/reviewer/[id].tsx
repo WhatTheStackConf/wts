@@ -1,7 +1,8 @@
 import { createSignal, createEffect, Show, For } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
+import { clientOnly } from "@solidjs/start";
 import { useAuth } from "~/lib/auth-context";
-import { pb } from "~/lib/pocketbase-utils";
+import { useRequireReviewer } from "~/lib/route-guards";
 import { Icon } from "@iconify-icon/solid";
 import { CfpReviewRecord } from "~/lib/pocketbase-types";
 import { Layout } from "~/layouts/Layout";
@@ -16,9 +17,10 @@ const CRITERIA = [
     { id: "score_engagement", label: "Engagement" },
 ];
 
-export default function ReviewPage() {
+const ReviewPage = () => {
     const params = useParams();
     const auth = useAuth();
+    const guard = useRequireReviewer();
     const navigate = useNavigate();
     const [submission, setSubmission] = createSignal<any>(null);
     const [myReview, setMyReview] = createSignal<CfpReviewRecord | null>(null);
@@ -34,17 +36,6 @@ export default function ReviewPage() {
     const isAdmin = () => auth?.user?.role === "admin";
     const isReviewer = () => auth?.user?.role === "reviewer";
 
-    createEffect(() => {
-        if (auth.isLoading()) return;
-        if (!auth.isAuthenticated()) {
-            navigate("/login");
-            return;
-        }
-        if (auth.user?.role !== "admin" && auth.user?.role !== "reviewer") {
-            navigate("/");
-        }
-    });
-
     const fetchSubmissionData = async (id: string) => {
         const { fetchReviewerSubmissionDetail } = await import("~/lib/reviewer-actions");
         return await fetchReviewerSubmissionDetail(id);
@@ -56,7 +47,7 @@ export default function ReviewPage() {
     };
 
     createEffect(async () => {
-        if (auth.isAuthenticated() && params.id) {
+        if (guard.authorized() && params.id) {
             setLoading(true);
             try {
                 const res = await fetchSubmissionData(params.id);
@@ -144,6 +135,7 @@ export default function ReviewPage() {
 
     return (
         <Layout title="Review Session" description="CFP Evaluation">
+            <Show when={guard.authorized()}>
             <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
                 {/* Background Elements */}
                 <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-secondary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
@@ -408,6 +400,11 @@ export default function ReviewPage() {
                     </Show>
                 </div>
             </div>
+            </Show>
         </Layout>
     );
-}
+};
+
+export default clientOnly(async () => ({ default: ReviewPage }), {
+    lazy: true,
+});

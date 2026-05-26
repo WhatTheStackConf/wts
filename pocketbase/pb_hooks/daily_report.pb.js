@@ -90,9 +90,9 @@ cronAdd("daily-report", "0 8 * * *", (e) => {
 
         const dateStr = now.toISOString().split("T")[0];
         const hasActivity = newUsers.length > 0 || newSubmissions.length > 0;
+        const forceReport = $os.getenv("CFP_DAILY_REPORT_FORCE") === "true";
 
-        if (!hasActivity) {
-            // Skip sending if nothing happened
+        if (!hasActivity && !forceReport) {
             e.app.logger().info("Daily report: no activity, skipping email");
             return;
         }
@@ -117,12 +117,16 @@ cronAdd("daily-report", "0 8 * * *", (e) => {
 
         const html = wtsEmailTemplate(e.app, "WTS Daily Report", content);
 
+        const recipientEnv = $os.getenv("CFP_DAILY_REPORT_RECIPIENT") || "darko@wts.rocks";
+        const recipients = recipientEnv.split(",").map((addr) => addr.trim()).filter((addr) => addr.length > 0);
+        const to = recipients.map((address) => ({ address }));
+
         const message = new MailerMessage({
             from: {
                 address: e.app.settings().meta.senderAddress,
                 name: e.app.settings().meta.senderName,
             },
-            to: [{ address: "darko@wts.rocks" }],
+            to: to,
             subject: "WTS Daily Report - " + dateStr,
             html: html,
         });

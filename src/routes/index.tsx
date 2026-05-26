@@ -1,18 +1,14 @@
 import { createResource, For, Show } from "solid-js";
 import { Layout } from "../layouts/Layout";
 import { Hero } from "../components/Hero";
-import { fetchPublishedSpeakers } from "~/lib/speakers-public";
+import {
+  fetchPublicSpeakerTeaser,
+  TEASER_SPEAKER_LIMIT,
+} from "~/lib/speakers-public";
 import { SpeakerCard } from "~/components/conference/SpeakerCard";
 
-const TEASER_SPEAKER_LIMIT = 9;
-
-const fetchSpeakerTeaser = async () => {
-  const all = await fetchPublishedSpeakers();
-  return { preview: all.slice(0, TEASER_SPEAKER_LIMIT), total: all.length };
-};
-
 export default function Home() {
-  const [speakers] = createResource(fetchSpeakerTeaser);
+  const [speakers] = createResource(fetchPublicSpeakerTeaser);
 
   return (
     <Layout

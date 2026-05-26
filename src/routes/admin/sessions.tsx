@@ -1,24 +1,15 @@
-import { createEffect } from "solid-js";
-import { useNavigate } from "@solidjs/router";
-import { useAuth } from "~/lib/auth-context";
+import { Show } from "solid-js";
 import { clientOnly } from "@solidjs/start";
+import { useRequireAdmin } from "~/lib/route-guards";
 
 const AdminSessionsHub = clientOnly(() => import("~/components/admin/AdminSessionsHub"));
 
 export default function AdminSessions() {
-  const auth = useAuth();
-  const navigate = useNavigate();
+    const guard = useRequireAdmin();
 
-  createEffect(() => {
-    if (auth.isLoading()) return;
-    if (!auth.isAuthenticated()) {
-      navigate("/login");
-      return;
-    }
-    if (auth.user?.role !== "admin") {
-      navigate("/");
-    }
-  });
-
-  return <AdminSessionsHub />;
+    return (
+        <Show when={guard.authorized()}>
+            <AdminSessionsHub />
+        </Show>
+    );
 }

@@ -93,13 +93,18 @@ export const fetchReviewerSubmissionDetail = async (id: string) => {
     }
 };
 
-// Fetch weight votes and the current user's vote
+// Fetch weight votes: reviewers see only their vote; admins see all (for aggregates).
 export const fetchWeightVotes = async () => {
     "use server";
     try {
         const user = await requireReviewer();
         const adminService = getAdminPB();
-        const records = await adminService.fetchAllRecords("cfp_weight_votes");
+        const records =
+            user.role === "admin"
+                ? await adminService.fetchAllRecords("cfp_weight_votes")
+                : await adminService.fetchAllRecords("cfp_weight_votes", {
+                      filter: `user = "${user.id}"`,
+                  });
         return { success: true, data: records, userId: user.id, userRole: user.role };
     } catch (error) {
         console.error("Fetch weight votes error:", error);

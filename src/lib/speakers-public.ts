@@ -1,5 +1,7 @@
 export {
   fetchPublicSpeakers as fetchPublishedSpeakers,
+  fetchPublicSpeakerTeaser,
+  TEASER_SPEAKER_LIMIT,
   fetchPublicSpeakerBySlug as fetchSpeakerBySlug,
   fetchPublicSessions as fetchPublishedSessions,
   fetchPublicSessionBySlug as fetchSessionBySlug,

@@ -96,8 +96,35 @@ HIEVENTS_ACCOUNT_ID=1
 # Listmonk (newsletter)
 LISTMONK_USERNAME="bot"
 LISTMONK_API_TOKEN=""
+LISTMONK_URL="https://listmonk.wts.sh"
+LISTMONK_LIST_ID=2
 VITE_LISTMONK_LIST_ID=2
 ```
+
+### PocketBase hooks (Coolify / Docker)
+
+Hooks run inside the PocketBase container. Pass variables through `docker-compose.yml` (or Coolify env on the pocketbase service).
+
+**Outbound email** — CFP notifications and the daily report use PocketBase Admin → Settings → Mail (`e.app.newMailClient()`). Configure SMTP there (e.g. Resend). `RESEND_API_KEY` in Coolify is not read by hooks unless you wire SMTP in the admin UI.
+
+**Listmonk user sync** (`listmonk_sync.pb.js`, on new `users` record):
+
+| Variable | Purpose |
+|---|---|
+| `LISTMONK_USERNAME` | Basic auth user (required) |
+| `LISTMONK_API_TOKEN` | API token (preferred) |
+| `LISTMONK_PASSWORD` | Used as token if `LISTMONK_API_TOKEN` is unset (Coolify naming) |
+| `LISTMONK_URL` | Listmonk base URL (default `https://listmonk.wts.sh`) |
+| `LISTMONK_LIST_ID` | Subscriber list ID (default `2`) |
+
+**Daily CFP report** (`daily_report.pb.js`, cron 08:00 UTC):
+
+| Variable | Purpose |
+|---|---|
+| `CFP_DAILY_REPORT_RECIPIENT` | To address(es); comma-separated for multiple (default `darko@wts.rocks`) |
+| `CFP_DAILY_REPORT_FORCE` | Set to `true` to send even when there were no new users/submissions in 24h |
+
+HiEvents vars (`HIEVENTS_*`) are already passed for ticket stats in the report.
 
 ## Architecture
 

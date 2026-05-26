@@ -137,6 +137,18 @@ function sortByTitle<T extends { title: string }>(items: T[]): T[] {
   );
 }
 
+/** Fisher–Yates shuffle; new array, order random per call (server-side for teaser). */
+function shuffleArray<T>(items: readonly T[]): T[] {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+export const TEASER_SPEAKER_LIMIT = 9;
+
 async function fetchPublishedSpeakersRows(): Promise<SpeakerRow[]> {
   const admin = getAdminPB();
   const rows = await admin.fetchAllRecords("speakers", {
@@ -186,6 +198,23 @@ export const fetchPublicSpeakers = async (limit?: number): Promise<PublicSpeaker
     })),
   );
   return limit ? mapped.slice(0, limit) : mapped;
+};
+
+export const fetchPublicSpeakerTeaser = async (): Promise<{
+  preview: PublicSpeakerSummary[];
+  total: number;
+}> => {
+  "use server";
+  const [rows, sessions] = await Promise.all([
+    fetchPublishedSpeakersRows(),
+    fetchPublishedSessionsRows(),
+  ]);
+  const mapped = rows.map((row) => ({
+    ...mapSpeakerSummary(row),
+    sessionCount: sessionsForSpeaker(sessions, row.id).length,
+  }));
+  const preview = shuffleArray(mapped).slice(0, TEASER_SPEAKER_LIMIT);
+  return { preview, total: mapped.length };
 };
 
 export const fetchPublicSpeakerBySlug = async (

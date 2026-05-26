@@ -1,24 +1,15 @@
-import { createEffect } from "solid-js";
-import { useNavigate } from "@solidjs/router";
-import { useAuth } from "~/lib/auth-context";
+import { Show } from "solid-js";
 import { clientOnly } from "@solidjs/start";
+import { useRequireAdmin } from "~/lib/route-guards";
 
 const AdminProposalsTable = clientOnly(() => import("~/components/admin/AdminProposalsTable"));
 
 export default function AdminProposals() {
-    const auth = useAuth();
-    const navigate = useNavigate();
+    const guard = useRequireAdmin();
 
-    createEffect(() => {
-        if (auth.isLoading()) return;
-        if (!auth.isAuthenticated()) {
-            navigate("/login");
-            return;
-        }
-        if (auth.user?.role !== "admin") {
-            navigate("/");
-        }
-    });
-
-    return <AdminProposalsTable />;
+    return (
+        <Show when={guard.authorized()}>
+            <AdminProposalsTable />
+        </Show>
+    );
 }
