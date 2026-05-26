@@ -1,24 +1,11 @@
 import { For, createMemo, Component } from "solid-js";
 import { Icon } from "@iconify-icon/solid";
+import { getSocialIcon } from "~/lib/social-links";
 
 interface SmartAreaProps {
   value: string[];
   onChange: (links: string[]) => void;
 }
-
-// Logic to determine the icon based on URL content
-const getSocialIcon = (link: string) => {
-  const l = link.toLowerCase();
-  if (l.includes("github.com")) return "mdi:github";
-  if (l.includes("linkedin.com")) return "mdi:linkedin";
-  if (l.includes("x.com") || l.includes("twitter.com"))
-    return "ri:twitter-x-fill";
-  if (l.includes("bsky.app")) return "ri:bluesky-fill";
-  if (l.includes("youtube.com") || l.includes("youtu.be")) return "mdi:youtube";
-  if (l.includes("twitch.tv")) return "mdi:twitch";
-  // Default icon for blogs, personal sites, or unknown links
-  return "material-symbols:link";
-};
 
 export const SmartArea: Component<SmartAreaProps> = (props) => {
   // Memoize the raw text to keep the textarea in sync with external store updates

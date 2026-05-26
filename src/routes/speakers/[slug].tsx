@@ -7,12 +7,6 @@ import { SocialLinks } from "~/components/conference/SocialLinks";
 import { proseArticleClasses } from "~/components/MDXContent";
 import NotFound from "../[...404]";
 
-function sessionLabel(count: number) {
-  if (count === 0) return "Sessions soon";
-  if (count === 1) return "1 session on programme";
-  return `${count} sessions on programme`;
-}
-
 export default function SpeakerDetail() {
   const params = useParams();
   const [speaker] = createResource(
@@ -38,28 +32,26 @@ export default function SpeakerDetail() {
             <div class="w-full h-full px-4 relative pt-4 md:pt-12 pb-20">
               <div class="max-w-4xl mx-auto relative z-20">
                 <div class="glass-panel p-6 md:p-12 rounded-2xl fade-in-delay-1 relative z-30">
-                  <header class="flex flex-col md:flex-row gap-8 md:gap-10 items-center md:items-start mb-8 md:mb-10">
-                    <SpeakerAvatar
-                      name={s().displayName}
-                      photoUrl={s().photoUrl}
-                      size="xl"
-                    />
-                    <div class="flex-1 min-w-0 text-center md:text-left">
-                      <div class="mb-4 md:mb-6">
-                        <span class="text-sm text-secondary-500 font-mono">
-                          {sessionLabel(s().sessionCount)}
-                        </span>
+                  <header class="mb-8 md:mb-10">
+                    <div class="flex flex-col sm:flex-row gap-6 sm:gap-8 items-start">
+                      <SpeakerAvatar
+                        name={s().displayName}
+                        photoUrl={s().photoUrl}
+                        size="xl"
+                        class="mx-auto sm:mx-0"
+                      />
+                      <div class="flex-1 min-w-0 w-full text-center sm:text-left">
                         <Show when={s().affiliation}>
-                          <span class="text-primary-200/40 text-sm block md:inline mt-1 md:mt-0 md:ml-4">
+                          <p class="text-sm text-secondary-500 font-mono mb-2">
                             {s().affiliation}
-                          </span>
+                          </p>
                         </Show>
-                      </div>
-                      <h1 class="font-star text-3xl md:text-4xl lg:text-5xl font-bold text-secondary-400 leading-tight">
-                        {s().displayName}
-                      </h1>
-                      <div class="mt-5">
-                        <SocialLinks handles={s().socialHandles} variant="inline" />
+                        <h1 class="font-star text-3xl md:text-4xl lg:text-5xl font-bold text-secondary-400 leading-tight text-balance">
+                          {s().displayName}
+                        </h1>
+                        <div class="mt-5 flex justify-center sm:justify-start">
+                          <SocialLinks handles={s().socialHandles} />
+                        </div>
                       </div>
                     </div>
                   </header>
