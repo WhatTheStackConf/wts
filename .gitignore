@@ -30,8 +30,10 @@ Thumbs.db
 QWEN.md
 .qwen
 AGENTS.md
+CONTEXT.md
 
 **/pb_data/*.db
 pb_data
 .planning/
 .playwright-mcp/
+.impeccable

@@ -4,7 +4,14 @@ import { useNavigate } from "@solidjs/router";
 import { Icon } from "@iconify-icon/solid";
 import { Layout } from "~/layouts/Layout";
 
-import { adminFetchLeaderboardData, deleteSubmission } from "~/lib/admin-actions";
+import {
+    adminPublishFromApplicant,
+    adminFetchLeaderboardData,
+    adminFetchSpeakers,
+    adminSetSubmissionStatus,
+    deleteSubmission,
+    type CfpSubmissionStatus,
+} from "~/lib/admin-actions";
 import { getGravatarUrl } from "~/lib/gravatar";
 import { CfpSubmissionRecord } from "~/lib/pocketbase-types";
 
@@ -50,6 +57,49 @@ export default function AdminProposalsTable() {
 
     const [deleteId, setDeleteId] = createSignal<string | null>(null);
     const [isDeleting, setIsDeleting] = createSignal(false);
+    const [speakerBusyApplicant, setSpeakerBusyApplicant] = createSignal<string | null>(null);
+    const [statusBusyId, setStatusBusyId] = createSignal<string | null>(null);
+    const [toast, setToast] = createSignal<{ type: "success" | "error"; text: string } | null>(null);
+
+    const showToast = (type: "success" | "error", text: string) => {
+        setToast({ type, text });
+        window.setTimeout(() => setToast(null), 6000);
+    };
+
+    const submissionStatus = (item: LeaderboardItem): CfpSubmissionStatus =>
+        (item.status || "pending") as CfpSubmissionStatus;
+
+    const [speakerApplicantIds, { refetch: refetchSpeakers }] = createResource(async () => {
+        const res = await adminFetchSpeakers();
+        if (!res.success) return new Set<string>();
+        return new Set(
+            (res.data as { cfp_applicant?: string }[])
+                .map((s) => s.cfp_applicant)
+                .filter((id): id is string => !!id),
+        );
+    });
+
+    const handleCreateSpeaker = async (applicantId: string) => {
+        setSpeakerBusyApplicant(applicantId);
+        const res = await adminPublishFromApplicant(applicantId);
+        if (!res.success) showToast("error", res.error || "Failed to create speaker");
+        else showToast("success", "Speaker profile created (draft). Publish it from Speakers admin.");
+        await refetchSpeakers();
+        setSpeakerBusyApplicant(null);
+    };
+
+    const handleStatusChange = async (id: string, status: CfpSubmissionStatus) => {
+        setStatusBusyId(id);
+        const res = await adminSetSubmissionStatus(id, status);
+        if (!res.success) showToast("error", res.error || "Could not update status.");
+        else {
+            await refetch();
+            if (status === "accepted") {
+                showToast("success", "Proposal accepted. Use Publish speaker to create a profile.");
+            }
+        }
+        setStatusBusyId(null);
+    };
 
     // Filters
     const [expenseFilter, setExpenseFilter] = createSignal<string>("all");
@@ -124,6 +174,9 @@ export default function AdminProposalsTable() {
                                 </Show>
                             </h1>
                             <p class="text-secondary-300 font-mono text-sm">RANKING BASED ON WEIGHTED COMMITTEE SCORES</p>
+                            <p class="text-xs text-gray-500 font-mono mt-1">
+                                Set status to Accepted, then use Publish speaker to create a draft profile.
+                            </p>
                         </div>
                         <button
                             class="btn btn-ghost hover:bg-white/10 text-white gap-2 group"
@@ -133,6 +186,19 @@ export default function AdminProposalsTable() {
                             Back to Dashboard
                         </button>
                     </div>
+
+                    <Show when={toast()}>
+                        {(t) => (
+                            <div
+                                class={`alert mb-6 font-mono text-sm ${
+                                    t().type === "success" ? "alert-success" : "alert-error"
+                                }`}
+                                role="status"
+                            >
+                                <span>{t().text}</span>
+                            </div>
+                        )}
+                    </Show>
 
                     {/* Filters */}
                     <div class="flex flex-wrap gap-3 mb-6 items-center">
@@ -232,9 +298,27 @@ export default function AdminProposalsTable() {
                                                         {item.totalScore.toFixed(2)}
                                                     </div>
                                                 </div>
-                                                <div class={`badge badge-sm font-bold ${item.status === 'accepted' ? 'badge-success text-success' : item.status === 'rejected' ? 'badge-error text-error' : 'badge-ghost opacity-50'}`}>
-                                                    {item.status?.toUpperCase() || "PENDING"}
-                                                </div>
+                                                <select
+                                                    class={`select select-bordered select-xs font-mono font-bold bg-black/40 ${
+                                                        submissionStatus(item) === "accepted"
+                                                            ? "border-success/40 text-success"
+                                                            : submissionStatus(item) === "rejected"
+                                                              ? "border-error/40 text-error"
+                                                              : "border-white/10 text-gray-400"
+                                                    }`}
+                                                    value={submissionStatus(item)}
+                                                    disabled={statusBusyId() === item.id}
+                                                    onChange={(e) =>
+                                                        handleStatusChange(
+                                                            item.id,
+                                                            e.currentTarget.value as CfpSubmissionStatus,
+                                                        )
+                                                    }
+                                                >
+                                                    <option value="pending">Pending</option>
+                                                    <option value="accepted">Accepted</option>
+                                                    <option value="rejected">Rejected</option>
+                                                </select>
                                             </div>
 
                                             <div>
@@ -264,7 +348,17 @@ export default function AdminProposalsTable() {
                                                         );
                                                     })()}
                                                 </div>
-                                                <div class="flex items-center gap-2">
+                                                <div class="flex items-center gap-2 flex-wrap justify-end">
+                                                    <Show when={submissionStatus(item) === "accepted" && item.applicant && !speakerApplicantIds()?.has(item.applicant)}>
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-sm btn-outline btn-primary font-mono"
+                                                            disabled={speakerBusyApplicant() === item.applicant}
+                                                            onClick={() => handleCreateSpeaker(item.applicant)}
+                                                        >
+                                                            {speakerBusyApplicant() === item.applicant ? "…" : "Publish speaker"}
+                                                        </button>
+                                                    </Show>
                                                     <a
                                                         href={`/reviewer/${item.id}`}
                                                         class="btn btn-sm btn-ghost hover:bg-primary-500/20 hover:text-primary-300 text-gray-400"
@@ -342,14 +436,43 @@ export default function AdminProposalsTable() {
                                                         })()}
                                                     </td>
                                                     <td class="text-center">
-                                                        <div class={`badge badge-outline font-bold ${item.status === 'accepted' ? 'badge-success text-success' : item.status === 'rejected' ? 'badge-error text-error' : 'badge-ghost opacity-50'}`}>
-                                                            {item.status?.toUpperCase() || "PENDING"}
-                                                        </div>
+                                                        <select
+                                                            class={`select select-bordered select-sm font-mono font-bold bg-black/40 min-w-[7.5rem] ${
+                                                                submissionStatus(item) === "accepted"
+                                                                    ? "border-success/40 text-success"
+                                                                    : submissionStatus(item) === "rejected"
+                                                                      ? "border-error/40 text-error"
+                                                                      : "border-white/10 text-gray-400"
+                                                            }`}
+                                                            value={submissionStatus(item)}
+                                                            disabled={statusBusyId() === item.id}
+                                                            onChange={(e) =>
+                                                                handleStatusChange(
+                                                                    item.id,
+                                                                    e.currentTarget.value as CfpSubmissionStatus,
+                                                                )
+                                                            }
+                                                        >
+                                                            <option value="pending">Pending</option>
+                                                            <option value="accepted">Accepted</option>
+                                                            <option value="rejected">Rejected</option>
+                                                        </select>
                                                     </td>
                                                     <td class="text-center font-mono opacity-70">
                                                         {item.reviewCount}
                                                     </td>
                                                     <td class="text-center">
+                                                        <Show when={submissionStatus(item) === "accepted" && item.applicant && !speakerApplicantIds()?.has(item.applicant)}>
+                                                            <button
+                                                                type="button"
+                                                                class="btn btn-sm btn-outline btn-primary font-mono mr-1"
+                                                                title="Create speaker profile"
+                                                                disabled={speakerBusyApplicant() === item.applicant}
+                                                                onClick={() => handleCreateSpeaker(item.applicant)}
+                                                            >
+                                                                {speakerBusyApplicant() === item.applicant ? "…" : "Publish speaker"}
+                                                            </button>
+                                                        </Show>
                                                         <a
                                                             href={`/reviewer/${item.id}`}
                                                             class="btn btn-sm btn-ghost hover:bg-primary-500/20 hover:text-primary-300 text-gray-400"

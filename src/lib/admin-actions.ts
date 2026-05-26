@@ -2,6 +2,63 @@
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { requireAdmin } from "~/lib/admin-security";
 import { fetchHiEventsAttendees } from "~/lib/hievents";
+import { slugify, uniqueSpeakerSlug } from "~/lib/conference-slug";
+import type { SpeakerRecord } from "~/lib/pocketbase-types";
+
+const SPEAKER_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+const SPEAKER_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+function pbAdminErrorMessage(error: unknown): string {
+  const response = (error as { response?: { data?: Record<string, { message?: string }> } })
+    ?.response;
+  const data = response?.data;
+  if (data && typeof data === "object") {
+    const parts = Object.entries(data)
+      .map(([field, detail]) => {
+        const message =
+          detail && typeof detail === "object" && "message" in detail
+            ? String(detail.message)
+            : JSON.stringify(detail);
+        return `${field}: ${message}`;
+      })
+      .filter(Boolean);
+    if (parts.length > 0) return parts.join("; ");
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return "Request failed";
+}
+
+function speakerSnapshot(record: SpeakerRecord) {
+  return {
+    id: record.id,
+    slug: record.slug,
+    display_name: record.display_name,
+    origin: record.origin,
+    published: record.published,
+    photo: record.photo,
+  };
+}
+
+function buildSpeakerCreateBody(
+  fields: Record<string, string | boolean | string[]>,
+  photo?: InviteSpeakerPhotoPayload | null,
+): Record<string, unknown> | FormData {
+  if (!photo?.data?.length) return fields;
+
+  const body = new FormData();
+  for (const [key, value] of Object.entries(fields)) {
+    if (key === "social_handles") {
+      body.append(key, JSON.stringify(value));
+    } else {
+      body.append(key, String(value));
+    }
+  }
+  const blob = new Blob([new Uint8Array(photo.data)], {
+    type: photo.type || "application/octet-stream",
+  });
+  body.append("photo", blob, photo.name || "photo");
+  return body;
+}
 
 // Define a server function for admin operations
 export const adminCreateEvent = async (eventData: any) => {
@@ -274,5 +331,311 @@ export const deleteSubmission = async (id: string) => {
   } catch (error: any) {
     console.error("Delete submission error:", error);
     return { success: false, error: error.message };
+  }
+};
+
+export type CfpSubmissionStatus = "pending" | "accepted" | "rejected";
+
+export const adminSetSubmissionStatus = async (id: string, status: CfpSubmissionStatus) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    const result = await adminService.updateRecord("cfp_submissions", id, { status });
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("Admin set submission status error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+// --- Speakers & Sessions (public programme) ---
+
+export const adminFetchSpeakers = async () => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    const data = await adminService.fetchAllRecords("speakers", {
+      expand: "cfp_applicant.user,user",
+      sort: "slug",
+    });
+    return { success: true, data };
+  } catch (error) {
+    console.error("Admin fetch speakers error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminFetchSessions = async () => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    const data = await adminService.fetchAllRecords("sessions", {
+      expand: "speakers",
+      sort: "title",
+    });
+    return { success: true, data };
+  } catch (error) {
+    console.error("Admin fetch sessions error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+/** Create an unpublished CFP-origin speaker profile from an accepted applicant. */
+export const adminPublishFromApplicant = async (applicantId: string) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+
+    const existing = await adminService.fetchAllRecords("speakers", {
+      filter: `cfp_applicant = "${applicantId}"`,
+    });
+    if (existing.length > 0) {
+      return {
+        success: true,
+        data: speakerSnapshot(existing[0] as SpeakerRecord),
+        created: false,
+      };
+    }
+
+    const applicant = await adminService.fetchRecordById("cfp_applicants", applicantId, {
+      expand: "user",
+    });
+    const user = (applicant as any).expand?.user;
+    const baseName = user?.name || user?.email || "speaker";
+
+    const slugExists = async (slug: string) => {
+      const hits = await adminService.fetchAllRecords("speakers", {
+        filter: `slug = "${slug}"`,
+        fields: "id",
+      });
+      return hits.length > 0;
+    };
+
+    const slug = await uniqueSpeakerSlug(baseName, slugExists);
+
+    const record = await adminService.createRecord("speakers", {
+      slug,
+      published: false,
+      origin: "cfp",
+      cfp_applicant: applicantId,
+      user: (applicant as any).user,
+      display_name: user?.name || "",
+    });
+
+    return { success: true, data: speakerSnapshot(record as SpeakerRecord), created: true };
+  } catch (error) {
+    console.error("Admin create speaker from applicant error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+/** @deprecated Use adminPublishFromApplicant */
+export const adminCreateSpeakerFromApplicant = adminPublishFromApplicant;
+
+/** Serializable file payload for invite speaker photo (Seroval-safe). */
+export type InviteSpeakerPhotoPayload = {
+  name: string;
+  type: string;
+  data: number[];
+};
+
+export type InviteSpeakerInput = {
+  slug: string;
+  display_name: string;
+  affiliation: string;
+  bio: string;
+  social_handles: string[];
+  photo?: InviteSpeakerPhotoPayload | null;
+};
+
+export const adminCreateInviteSpeaker = async (input: InviteSpeakerInput) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+
+    const displayName = input.display_name?.trim();
+    if (!displayName) {
+      return { success: false, error: "Display name is required." };
+    }
+
+    if (input.photo?.data?.length) {
+      if (input.photo.data.length > SPEAKER_PHOTO_MAX_BYTES) {
+        return { success: false, error: "Photo must be 5 MB or smaller." };
+      }
+      if (input.photo.type && !SPEAKER_PHOTO_TYPES.includes(input.photo.type)) {
+        return {
+          success: false,
+          error: "Photo must be JPEG, PNG, or WebP.",
+        };
+      }
+    }
+
+    const slugExists = async (candidate: string) => {
+      const hits = await adminService.fetchAllRecords("speakers", {
+        filter: `slug = "${candidate}"`,
+        fields: "id",
+      });
+      return hits.length > 0;
+    };
+
+    const baseSlug = slugify(input.slug || displayName) || "speaker";
+    const slug = await uniqueSpeakerSlug(baseSlug, slugExists);
+
+    const fields = {
+      slug,
+      published: false,
+      origin: "invite",
+      display_name: displayName,
+      affiliation: input.affiliation?.trim() || "",
+      bio: input.bio?.trim() || "",
+      social_handles: input.social_handles?.length ? input.social_handles : [],
+    };
+
+    const body = buildSpeakerCreateBody(fields, input.photo);
+    const record = (await adminService.createRecord("speakers", body)) as SpeakerRecord;
+    return { success: true, data: speakerSnapshot(record) };
+  } catch (error) {
+    console.error("Admin create invite speaker error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminUpdateSpeaker = async (id: string, data: Record<string, unknown>) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    const result = await adminService.updateRecord("speakers", id, data);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("Admin update speaker error:", error);
+    return { success: false, error: (error as Error).message };
+  }
+};
+
+export const adminSetSpeakerPublished = async (id: string, published: boolean) => {
+  "use server";
+  return adminUpdateSpeaker(id, { published });
+};
+
+export type SessionInput = {
+  slug: string;
+  title: string;
+  abstract: string;
+  format?: string;
+  starts_at?: string;
+  track?: string;
+  room?: string;
+  speakers: string[];
+  published?: boolean;
+};
+
+export const adminCreateSession = async (input: SessionInput) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    const record = await adminService.createRecord("sessions", {
+      slug: slugify(input.slug || input.title),
+      title: input.title,
+      abstract: input.abstract,
+      format: input.format || "",
+      starts_at: input.starts_at || "",
+      track: input.track || "",
+      room: input.room || "",
+      speakers: input.speakers,
+      published: input.published ?? false,
+    });
+    return { success: true, data: record };
+  } catch (error) {
+    console.error("Admin create session error:", error);
+    return { success: false, error: (error as Error).message };
+  }
+};
+
+export const adminUpdateSession = async (id: string, data: Record<string, unknown>) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    const result = await adminService.updateRecord("sessions", id, data);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("Admin update session error:", error);
+    return { success: false, error: (error as Error).message };
+  }
+};
+
+export const adminSetSessionPublished = async (id: string, published: boolean) => {
+  "use server";
+  return adminUpdateSession(id, { published });
+};
+
+async function fetchAcceptedCfpSubmissions(adminService: ReturnType<typeof getAdminPB>): Promise<{
+  submissions: any[];
+  warning?: string;
+}> {
+  try {
+    const submissions = await adminService.fetchAllRecords("cfp_submissions", {
+      filter: 'status = "accepted"',
+      expand: "applicant.user",
+    });
+    return { submissions };
+  } catch (filterError) {
+    console.warn(
+      "Accepted CFP status filter failed; falling back to client-side filter:",
+      filterError,
+    );
+    const allSubmissions = await adminService.fetchAllRecords("cfp_submissions", {
+      expand: "applicant.user",
+      sort: "-created",
+    });
+    return {
+      submissions: allSubmissions.filter(
+        (sub: { status?: string }) => (sub.status || "pending") === "accepted",
+      ),
+      warning:
+        "Could not filter accepted CFP submissions in PocketBase (status field may be missing). Run migrations and mark submissions as accepted.",
+    };
+  }
+}
+
+export const adminFetchAcceptedApplicantsWithoutSpeaker = async () => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+
+    const [{ submissions: acceptedSubs, warning }, speakers] = await Promise.all([
+      fetchAcceptedCfpSubmissions(adminService),
+      adminService.fetchAllRecords("speakers", { fields: "cfp_applicant" }),
+    ]);
+
+    const linkedApplicantIds = new Set(
+      speakers.map((s: any) => s.cfp_applicant).filter(Boolean),
+    );
+
+    const byApplicant = new Map<string, any>();
+    for (const sub of acceptedSubs as any[]) {
+      const applicantId = sub.applicant;
+      if (!applicantId || linkedApplicantIds.has(applicantId)) continue;
+      if (!byApplicant.has(applicantId)) {
+        byApplicant.set(applicantId, {
+          applicantId,
+          applicant: sub.expand?.applicant,
+          submissionTitle: sub.session_title,
+        });
+      }
+    }
+
+    return { success: true, data: Array.from(byApplicant.values()), warning };
+  } catch (error) {
+    console.error("Admin fetch accepted without speaker error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
   }
 };

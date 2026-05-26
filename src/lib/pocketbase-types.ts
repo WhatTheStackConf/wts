@@ -41,6 +41,39 @@ export interface CfpSubmissionRecord extends RecordModel {
   meta?: any; // JSON field containing expenses, notes, etc.
 }
 
+// Speaker collection type (public conference persona)
+export interface SpeakerRecord extends RecordModel {
+  id: string;
+  slug: string;
+  published: boolean;
+  origin: "cfp" | "invite";
+  display_name?: string;
+  user?: string;
+  cfp_applicant?: string;
+  photo?: string;
+  affiliation?: string;
+  bio?: string;
+  social_handles?: unknown;
+  created: string;
+  updated: string;
+}
+
+// Session collection type (public programme item)
+export interface SessionRecord extends RecordModel {
+  id: string;
+  slug: string;
+  published: boolean;
+  title: string;
+  abstract: string;
+  format?: string;
+  starts_at?: string;
+  track?: string;
+  room?: string;
+  speakers?: string[];
+  created: string;
+  updated: string;
+}
+
 // CFP Review collection type
 export interface CfpReviewRecord extends RecordModel {
   id: string;
@@ -69,7 +102,9 @@ export type CollectionRecord =
   | UserRecord
   | CfpApplicantRecord
   | CfpSubmissionRecord
-  | CfpReviewRecord;
+  | CfpReviewRecord
+  | SpeakerRecord
+  | SessionRecord;
 
 // Type guard functions
 export function isUserRecord(record: CollectionRecord): record is UserRecord {
@@ -95,4 +130,16 @@ export function isCfpReviewRecord(
   record: CollectionRecord,
 ): record is CfpReviewRecord {
   return (record as any).collectionName === "cfp_reviews";
+}
+
+export function isSpeakerRecord(
+  record: CollectionRecord,
+): record is SpeakerRecord {
+  return (record as any).collectionName === "speakers";
+}
+
+export function isSessionRecord(
+  record: CollectionRecord,
+): record is SessionRecord {
+  return (record as any).collectionName === "sessions";
 }

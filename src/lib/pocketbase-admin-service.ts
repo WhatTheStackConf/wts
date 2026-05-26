@@ -21,6 +21,9 @@ class PocketBaseAdminService {
 
     const pocketBaseURL = process.env.POCKETBASE_URL || "http://localhost:8090";
     this.pb = new PocketBase(pocketBaseURL);
+    // Server admin runs parallel getFullList (Promise.all, multiple createResource).
+    // Shared client auto-cancels duplicate collection requests otherwise.
+    this.pb.autoCancellation(false);
   }
 
   private initializationPromise: Promise<void> | null = null;
@@ -46,8 +49,12 @@ class PocketBaseAdminService {
           );
         }
 
-        // Authenticate as superuser
-        await this.pb.admins.authWithPassword(email, password);
+        // Authenticate as superuser (PB 0.23+ uses _superusers; keep admins fallback)
+        try {
+          await this.pb.collection("_superusers").authWithPassword(email, password);
+        } catch {
+          await this.pb.admins.authWithPassword(email, password);
+        }
         this.initialized = true;
       } catch (error) {
         this.initialized = false;

@@ -20,7 +20,7 @@ export const HologramButton: Component<HologramButtonProps> = (props) => {
     <Dynamic
       component={local.href ? "a" : "button"}
       href={local.href}
-      class={`btn-hologram rounded-xs flex items-center justify-center text-center decoration-none select-none ${local.class || ""}`}
+      class={`btn-hologram cyber-hologram-surface rounded-xs flex items-center justify-center text-center decoration-none select-none ${local.class || ""}`}
       {...others}
     >
       <span
@@ -29,7 +29,7 @@ export const HologramButton: Component<HologramButtonProps> = (props) => {
       >
         {local.children || local.text}
       </span>
-      <div class="scan-line"></div>
+      <div class="scan-line cyber-scan-line" aria-hidden="true" />
     </Dynamic>
   );
 };

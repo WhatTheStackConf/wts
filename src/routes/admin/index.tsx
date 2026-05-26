@@ -101,7 +101,44 @@ const AdminDashboard = () => {
                                     </a>
                                 </div>
 
-                                {/* Tickets Module */}
+                                {/* Speakers Module */}
+                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-primary-500/50 transition-colors group h-full flex flex-col">
+                                    <div class="flex items-center gap-4 mb-4">
+                                        <div class="p-3 rounded-lg bg-primary-500/20 text-primary-300">
+                                            <Icon icon="ph:microphone-stage-bold" width="24" />
+                                        </div>
+                                        <h3 class="text-xl font-bold text-white">SPEAKERS</h3>
+                                    </div>
+                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
+                                        Create draft speaker profiles and publish when ready.
+                                    </p>
+                                    <a
+                                        href="/admin/speakers"
+                                        class="btn btn-outline btn-primary w-full font-mono group-hover:bg-primary-500 group-hover:text-white mt-auto"
+                                    >
+                                        MANAGE SPEAKERS
+                                    </a>
+                                </div>
+
+                                {/* Sessions Module */}
+                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-secondary-500/50 transition-colors group h-full flex flex-col">
+                                    <div class="flex items-center gap-4 mb-4">
+                                        <div class="p-3 rounded-lg bg-secondary-500/20 text-secondary-300">
+                                            <Icon icon="ph:calendar-blank-bold" width="24" />
+                                        </div>
+                                        <h3 class="text-xl font-bold text-white">SESSIONS</h3>
+                                    </div>
+                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
+                                        Build the programme schedule and link speakers to sessions.
+                                    </p>
+                                    <a
+                                        href="/admin/sessions"
+                                        class="btn btn-outline btn-secondary w-full font-mono group-hover:bg-secondary-500 group-hover:text-white mt-auto"
+                                    >
+                                        MANAGE SESSIONS
+                                    </a>
+                                </div>
+
                                 {/* Tickets Module */}
                                 <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-warning-500/50 transition-colors group h-full flex flex-col">
                                     <div class="flex items-center gap-4 mb-4">
