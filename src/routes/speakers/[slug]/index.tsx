@@ -1,5 +1,5 @@
 import { useParams } from "@solidjs/router";
-import { createResource, For, Show } from "solid-js";
+import { createMemo, createResource, For, Show } from "solid-js";
 import { Layout } from "~/layouts/Layout";
 import { fetchSpeakerBySlug } from "~/lib/speakers-public";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
@@ -14,21 +14,32 @@ export default function SpeakerDetail() {
     (slug) => fetchSpeakerBySlug(slug),
   );
 
+  const pageTitle = createMemo(() => {
+    const data = speaker();
+    if (data) return `${data.displayName} — WhatTheStack 2026`;
+    return "Speaker — WhatTheStack 2026";
+  });
+
+  const pageDescription = createMemo(() => {
+    const data = speaker();
+    if (data) {
+      return data.affiliation || `Speaker at WhatTheStack 2026`;
+    }
+    return "Speaker at WhatTheStack 2026";
+  });
+
   return (
-    <Show
-      when={!speaker.loading}
-      fallback={
-        <div class="flex justify-center py-32">
-          <span class="loading loading-bars loading-lg text-primary-500" />
-        </div>
-      }
-    >
-      <Show when={speaker()} fallback={<NotFound />}>
-        {(s) => (
-          <Layout
-            title={`${s().displayName} — WhatTheStack 2026`}
-            description={s().affiliation || `Speaker at WhatTheStack 2026`}
-          >
+    <Layout title={pageTitle()} description={pageDescription()}>
+      <Show
+        when={!speaker.loading}
+        fallback={
+          <div class="flex justify-center py-32">
+            <span class="loading loading-bars loading-lg text-primary-500" />
+          </div>
+        }
+      >
+        <Show when={speaker()} fallback={<NotFound />}>
+          {(s) => (
             <div class="w-full h-full px-4 relative pt-4 md:pt-12 pb-20">
               <div class="max-w-4xl mx-auto relative z-20">
                 <div class="glass-panel p-6 md:p-12 rounded-2xl fade-in-delay-1 relative z-30">
@@ -104,9 +115,9 @@ export default function SpeakerDetail() {
                 </div>
               </div>
             </div>
-          </Layout>
-        )}
+          )}
+        </Show>
       </Show>
-    </Show>
+    </Layout>
   );
 }

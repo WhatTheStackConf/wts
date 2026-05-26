@@ -1,20 +1,44 @@
 import { JSX } from "solid-js";
-import { Title, Meta } from "@solidjs/meta";
+import { Title, Meta, Link } from "@solidjs/meta";
 import CodeBackground from "~/components/CodeBackground";
+import { toAbsoluteUrl } from "~/lib/site-url";
+
+const DEFAULT_TITLE = "WhatTheStack 2026";
+const DEFAULT_DESCRIPTION =
+  "All things software, all things code. September 19th, Skopje.";
+const DEFAULT_OG_SUBTITLE = "September 19th // Skopje, MK";
 
 interface PromoLayoutProps {
   children: JSX.Element;
   title?: string;
   description?: string;
+  /** Speaker photo or other image; absolute URLs used as-is. */
+  ogImage?: string;
+  ogSubtitle?: string;
 }
 
 export const PromoLayout = (props: PromoLayoutProps) => {
+  const title = () => props.title ?? DEFAULT_TITLE;
+  const description = () => props.description ?? DEFAULT_DESCRIPTION;
+  const ogSubtitle = () => props.ogSubtitle ?? DEFAULT_OG_SUBTITLE;
+  const ogImageUrl = () => {
+    const image = props.ogImage?.trim();
+    if (image) return toAbsoluteUrl(image);
+    return toAbsoluteUrl(
+      `/api/og?title=${encodeURIComponent(title())}&subtitle=${encodeURIComponent(ogSubtitle())}`,
+    );
+  };
+
   return (
     <>
-      <Title>{props.title}</Title>
-      <Meta name="description" content={props.description} />
-      <Meta property="og:title" content={props.title} />
-      <Meta property="og:description" content={props.description} />
+      <Title>{title()}</Title>
+      <Link rel="icon" href="/favicon.svg" />
+      <Meta name="description" content={description()} />
+      <Meta property="og:title" content={title()} />
+      <Meta property="og:description" content={description()} />
+      <Meta property="og:image" content={ogImageUrl()} />
+      <Meta property="og:type" content="website" />
+      <Meta name="twitter:card" content="summary_large_image" />
       <Meta name="robots" content="index,follow" />
       <main class="font-sans relative w-full min-h-screen flex flex-col items-center overflow-x-hidden bg-dark-950">
         <CodeBackground />

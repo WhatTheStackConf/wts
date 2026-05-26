@@ -17,15 +17,21 @@ interface LayoutProps {
 }
 
 export const Layout = (props: LayoutProps) => {
+  const title = () => props.title || "WhatTheStack 2026";
+  const description = () =>
+    props.description ||
+    "All things software, all things code. September 19th, Skopje.";
+  const ogSubtitle = () => props.ogSubtitle || "September 19th // Skopje, MK";
+
   return (
     <>
       <Navbar />
-      <Title>{props.title}</Title>
+      <Title>{title()}</Title>
       <Link rel="icon" href="/favicon.svg" />
-      <Meta name="description" content={props.description} />
-      <Meta property="og:title" content={props.title || "WhatTheStack 2026"} />
-      <Meta property="og:description" content={props.description || "All things software, all things code. September 19th, Skopje."} />
-      <Meta property="og:image" content={`/api/og?title=${encodeURIComponent(props.title || "WhatTheStack 2026")}&subtitle=${encodeURIComponent(props.ogSubtitle || "September 19th // Skopje, MK")}`} />
+      <Meta name="description" content={description()} />
+      <Meta property="og:title" content={title()} />
+      <Meta property="og:description" content={description()} />
+      <Meta property="og:image" content={`/api/og?title=${encodeURIComponent(title())}&subtitle=${encodeURIComponent(ogSubtitle())}`} />
       <Meta property="og:type" content="website" />
       <Meta name="twitter:card" content="summary_large_image" />
       <main class="font-sans relative w-full min-h-screen flex flex-col items-center overflow-x-hidden">
