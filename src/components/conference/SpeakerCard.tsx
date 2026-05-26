@@ -75,7 +75,6 @@ export function SpeakerCard(props: SpeakerCardProps) {
             name={props.speaker.displayName}
             photoUrl={props.speaker.photoUrl}
             size={avatarSize(variant(), layout())}
-            spotlight={false}
           />
         </div>
 

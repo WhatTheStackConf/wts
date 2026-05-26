@@ -1,6 +1,7 @@
 import { Icon } from "@iconify-icon/solid";
 import { For, Show } from "solid-js";
 import Logo from "~/assets/images/LogoSolo.svg?component-solid";
+import { SpeakerAvatarRing } from "~/components/conference/SpeakerAvatarRing";
 import type { PublicSpeakerPromo } from "~/lib/speakers-public";
 
 interface SpeakerPromoPageProps {
@@ -32,7 +33,10 @@ export function SpeakerPromoPage(props: SpeakerPromoPageProps) {
       <div class="w-full rounded-2xl border border-white/10 bg-dark-900/80 backdrop-blur-sm px-6 py-6 sm:px-8 sm:py-8 mb-10 md:mb-12 shadow-[0_0_40px_rgba(0,0,0,0.45)]">
         <div class="flex flex-col sm:flex-row items-center sm:items-center gap-6 sm:gap-8 text-left w-full">
           <div class="shrink-0">
-            <div class="w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden ring-2 ring-white/10 bg-dark-800">
+            <SpeakerAvatarRing
+              class="w-28 h-28 sm:w-36 sm:h-36"
+              glow
+            >
               <img
                 src={props.promo.photoUrl}
                 alt={props.promo.displayName}
@@ -40,7 +44,7 @@ export function SpeakerPromoPage(props: SpeakerPromoPageProps) {
                 width={144}
                 height={144}
               />
-            </div>
+            </SpeakerAvatarRing>
           </div>
           <div class="min-w-0 flex-1 text-center sm:text-left">
             <p class="text-2xl sm:text-3xl font-bold text-white leading-tight">
