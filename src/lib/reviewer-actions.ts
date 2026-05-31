@@ -35,11 +35,18 @@ export const fetchReviewerSubmissions = async () => {
         const reviewed = submissions.filter((s: any) => reviewedIds.has(s.id));
         const unreviewed = submissions.filter((s: any) => !reviewedIds.has(s.id));
 
+        // Strip sensitive fields for non-admin reviewers
+        const sanitizeForReviewer = (sub: any) => {
+            if (isAdmin) return sub;
+            const { applicant, meta, notes, ...safe } = sub;
+            return safe;
+        };
+
         return {
             success: true,
             data: {
-                reviewed: reviewed as CfpSubmissionRecord[],
-                unreviewed: unreviewed as CfpSubmissionRecord[],
+                reviewed: reviewed.map(sanitizeForReviewer) as CfpSubmissionRecord[],
+                unreviewed: unreviewed.map(sanitizeForReviewer) as CfpSubmissionRecord[],
                 totalLeft: unreviewed.length,
             },
         };
@@ -78,10 +85,16 @@ export const fetchReviewerSubmissionDetail = async (id: string) => {
             });
         }
 
+        // Strip sensitive fields for non-admin reviewers
+        const sanitizedSubmission = isAdmin ? submission : (() => {
+            const { applicant, meta, notes, ...safe } = submission as any;
+            return safe;
+        })();
+
         return {
             success: true,
             data: {
-                submission: submission as CfpSubmissionRecord,
+                submission: sanitizedSubmission as CfpSubmissionRecord,
                 reviews: reviews as CfpReviewRecord[],
                 userRole: user.role,
                 userId: user.id

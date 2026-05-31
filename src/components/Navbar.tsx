@@ -1,9 +1,10 @@
 import Logo from "../assets/images/LogoSolo.svg";
-import { createSignal, onMount } from "solid-js";
+import { createSignal, createResource, onMount, Show } from "solid-js";
 import Animation from "../assets/animations/WTS.json";
 import { clientOnly } from "@solidjs/start";
 import { Icon } from "@iconify-icon/solid";
 import { useAuth } from "~/lib/auth-context";
+import { fetchCfpConfig } from "~/lib/cfp-utils";
 
 const Lottie = clientOnly(() => import("./Lottie"));
 const LoginMenu = clientOnly(() => import("./LoginMenu"));
@@ -16,6 +17,7 @@ export const Navbar = () => {
   const auth = useAuth();
   const [mounted, setMounted] = createSignal(false);
   const [isDrawerOpen, setIsDrawerOpen] = createSignal(false);
+  const [cfpConfig] = createResource(fetchCfpConfig);
 
   onMount(() => {
     setMounted(true);
@@ -167,9 +169,11 @@ export const Navbar = () => {
                   id="nav-involved"
                   style="position-anchor:--anchor-involved"
                 >
-                  <li>
-                    <a href="/cfp">{`>`} Apply to speak</a>
-                  </li>
+                  <Show when={cfpConfig()?.cfp_open}>
+                    <li>
+                      <a href="/cfp">{`>`} Apply to speak</a>
+                    </li>
+                  </Show>
                   <li>
                     <a href="/partnerships">{`>`} Partner with us</a>
                   </li>
@@ -300,9 +304,11 @@ export const Navbar = () => {
               <details>
                 <summary>Get Involved</summary>
                 <ul>
-                  <li>
-                    <a href="/cfp" onClick={closeDrawer}>Apply to speak</a>
-                  </li>
+                  <Show when={cfpConfig()?.cfp_open}>
+                    <li>
+                      <a href="/cfp" onClick={closeDrawer}>Apply to speak</a>
+                    </li>
+                  </Show>
                   <li>
                     <a href="/partnerships" onClick={closeDrawer}>Partner with us</a>
                   </li>

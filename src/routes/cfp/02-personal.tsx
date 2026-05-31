@@ -1,4 +1,4 @@
-import { createSignal, onMount, Show } from "solid-js";
+import { createSignal, createResource, onMount, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { useAuth } from "~/lib/auth-context";
 import {
@@ -6,7 +6,7 @@ import {
   useCfpStore,
   updateApplicant,
 } from "~/lib/cfp-store";
-import { isCfpOpen } from "~/lib/cfp-utils";
+import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
 import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
 import { clientOnly } from "@solidjs/start";
 import { Icon } from "@iconify-icon/solid";
@@ -17,9 +17,10 @@ const Personal = () => {
   const navigate = useNavigate();
   const [cfpStore, setCfpStore] = useCfpStore();
   const [errors, setErrors] = createSignal<Record<string, string>>({});
+  const [cfpConfig] = createResource(fetchCfpConfig);
 
   if (!auth || !auth.record) navigate("/login");
-  if (!isCfpOpen()) navigate("/");
+  if (!isCfpOpen()) navigate("/cfp/closed");
 
   onMount(async () => {
     const applicantData = await fetchApplicantData();

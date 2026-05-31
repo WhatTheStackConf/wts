@@ -1,26 +1,53 @@
-// CFP deadline configuration
-// This could be fetched from an environment variable or a configuration in a real application
-const CFP_DEADLINE = import.meta.env.CFP_DEADLINE || "2026-07-30T23:59:59Z"; // Default to March 1, 2025
+import pb from "./pocketbase";
 
-// Function to check if the CFP is still open
+export interface CfpConfig {
+  cfp_open: boolean;
+  cfp_deadline: string | null;
+}
+
+const FALLBACK_DEADLINE = "2026-07-30T23:59:59Z";
+
+let cachedConfig: CfpConfig | null = null;
+
+export const fetchCfpConfig = async (): Promise<CfpConfig> => {
+  try {
+    const record = await pb
+      .collection("conference_config")
+      .getFirstListItem("", { requestKey: "cfp-config" });
+    cachedConfig = {
+      cfp_open: record.cfp_open ?? true,
+      cfp_deadline: record.cfp_deadline ?? null,
+    };
+  } catch {
+    cachedConfig = { cfp_open: true, cfp_deadline: FALLBACK_DEADLINE };
+  }
+  return cachedConfig;
+};
+
 export const isCfpOpen = (): boolean => {
-  const deadline = new Date(CFP_DEADLINE);
-  const now = new Date();
-  return now < deadline;
+  if (cachedConfig) {
+    if (!cachedConfig.cfp_open) return false;
+    if (cachedConfig.cfp_deadline) {
+      return new Date() < new Date(cachedConfig.cfp_deadline);
+    }
+    return true;
+  }
+  return new Date() < new Date(FALLBACK_DEADLINE);
 };
 
-// Function to get the CFP deadline date
 export const getCfpDeadline = (): Date => {
-  return new Date(CFP_DEADLINE);
+  if (cachedConfig?.cfp_deadline) {
+    return new Date(cachedConfig.cfp_deadline);
+  }
+  return new Date(FALLBACK_DEADLINE);
 };
 
-// Function to get the time remaining until the CFP closes
 export const getTimeUntilCfpCloses = (): {
   days: number;
   hours: number;
   minutes: number;
 } => {
-  const deadline = new Date(CFP_DEADLINE);
+  const deadline = getCfpDeadline();
   const now = new Date();
   const diff = deadline.getTime() - now.getTime();
 
@@ -29,7 +56,9 @@ export const getTimeUntilCfpCloses = (): {
   }
 
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const hours = Math.floor(
+    (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+  );
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
   return { days, hours, minutes };

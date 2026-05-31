@@ -1,9 +1,9 @@
 import { useNavigate } from "@solidjs/router";
 import { useAuth } from "~/lib/auth-context";
 import { useCfpStore } from "~/lib/cfp-store";
-import { isCfpOpen } from "~/lib/cfp-utils";
+import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
 import { clientOnly } from "@solidjs/start";
-import { createEffect, createSignal, Show } from "solid-js";
+import { createEffect, createResource, createSignal, Show } from "solid-js";
 import { Icon } from "@iconify-icon/solid";
 import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
 
@@ -14,9 +14,10 @@ const Proposal = () => {
   const navigate = useNavigate();
   const [cfpStore, setCfpStore] = useCfpStore();
   const [errors, setErrors] = createSignal<Record<string, string>>({});
+  const [cfpConfig] = createResource(fetchCfpConfig);
 
   if (!auth || !auth.record) navigate("/login");
-  if (!isCfpOpen()) navigate("/");
+  if (!isCfpOpen()) navigate("/cfp/closed");
 
   const handleNext = () => {
     const currentErrors: Record<string, string> = {};

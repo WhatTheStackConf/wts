@@ -1,10 +1,10 @@
-import { createSignal, onMount } from "solid-js";
+import { createSignal, createResource, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 // Removed Layout
 // import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
 import { useCfpStore } from "~/lib/cfp-store";
-import { isCfpOpen } from "~/lib/cfp-utils";
+import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
 import { clientOnly } from "@solidjs/start";
 import { Icon } from "@iconify-icon/solid";
 
@@ -15,6 +15,7 @@ const Intro = () => {
   const navigate = useNavigate();
   const [cfpStore, setCfpStore] = useCfpStore();
   const [errors, setErrors] = createSignal<Record<string, string>>({});
+  const [cfpConfig] = createResource(fetchCfpConfig);
 
   if (!auth || !auth.record) {
     if (typeof window !== "undefined") {
@@ -24,7 +25,7 @@ const Intro = () => {
   }
 
   if (!isCfpOpen()) {
-    navigate("/");
+    navigate("/cfp/closed");
   }
 
   // Initialize form data with user's info if not already set

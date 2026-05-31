@@ -7,6 +7,7 @@ import pb from "~/lib/pocketbase";
 import { Icon } from "@iconify-icon/solid";
 
 import SparkMD5 from "spark-md5";
+import DOMPurify from "dompurify";
 import { fetchProposals, loadSubmissionToStore, resetProposalData } from "~/lib/cfp-store";
 import { fetchHiEventsAttendees } from "~/lib/hievents";
 
@@ -384,7 +385,7 @@ const ProfilePage = () => {
                               {proposal.session_title || proposal.talk_title}
                             </h4>
                             <div class="line-clamp-2 text-sm text-secondary-300/80 font-mono mb-4">
-                              <div innerHTML={proposal.abstract} />
+                              <div innerHTML={DOMPurify.sanitize(proposal.abstract)} />
                             </div>
                           </div>
                           <div class="flex items-start">

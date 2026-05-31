@@ -1,13 +1,13 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-cronAdd("daily-report", "0 8 * * *", (e) => {
+cronAdd("daily-report", "0 8 * * *", () => {
     try {
         const now = new Date();
         const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
         const since = yesterday.toISOString().replace("T", " ");
 
         // New users in last 24h
-        const newUsers = e.app.findRecordsByFilter(
+        const newUsers = $app.findRecordsByFilter(
             "users",
             "created >= {:since}",
             "-created",
@@ -17,7 +17,7 @@ cronAdd("daily-report", "0 8 * * *", (e) => {
         );
 
         // New CfP submissions in last 24h
-        const newSubmissions = e.app.findRecordsByFilter(
+        const newSubmissions = $app.findRecordsByFilter(
             "cfp_submissions",
             "created >= {:since}",
             "-created",
@@ -27,8 +27,8 @@ cronAdd("daily-report", "0 8 * * *", (e) => {
         );
 
         // Total counts
-        const totalUsers = e.app.findRecordsByFilter("users", "", "", 0, 0);
-        const totalSubmissions = e.app.findRecordsByFilter("cfp_submissions", "", "", 0, 0);
+        const totalUsers = $app.findRecordsByFilter("users", "", "", 0, 0);
+        const totalSubmissions = $app.findRecordsByFilter("cfp_submissions", "", "", 0, 0);
 
         // Ticket sales from HiEvents
         let ticketInfo = "Could not fetch ticket data";
@@ -73,7 +73,7 @@ cronAdd("daily-report", "0 8 * * *", (e) => {
                 ticketInfo = lines.join("<br>") + "<br><strong>Total: " + totalSold + " tickets</strong>";
             }
         } catch (ticketErr) {
-            e.app.logger().error("Daily report: failed to fetch tickets", "error", ticketErr);
+            $app.logger().error("Daily report: failed to fetch tickets", "error", ticketErr);
         }
 
         // Build user details
@@ -90,12 +90,6 @@ cronAdd("daily-report", "0 8 * * *", (e) => {
 
         const dateStr = now.toISOString().split("T")[0];
         const hasActivity = newUsers.length > 0 || newSubmissions.length > 0;
-        const forceReport = $os.getenv("CFP_DAILY_REPORT_FORCE") === "true";
-
-        if (!hasActivity && !forceReport) {
-            e.app.logger().info("Daily report: no activity, skipping email");
-            return;
-        }
 
         const content = `
             <h2 style="margin: 0 0 15px 0; color: #333333;">Daily Report - ${dateStr}</h2>
@@ -115,7 +109,7 @@ cronAdd("daily-report", "0 8 * * *", (e) => {
             </p>
         `;
 
-        const html = wtsEmailTemplate(e.app, "WTS Daily Report", content);
+        const html = wtsEmailTemplate($app, "WTS Daily Report", content);
 
         const recipientEnv = $os.getenv("CFP_DAILY_REPORT_RECIPIENT") || "darko@wts.rocks";
         const recipients = recipientEnv.split(",").map((addr) => addr.trim()).filter((addr) => addr.length > 0);
@@ -123,18 +117,18 @@ cronAdd("daily-report", "0 8 * * *", (e) => {
 
         const message = new MailerMessage({
             from: {
-                address: e.app.settings().meta.senderAddress,
-                name: e.app.settings().meta.senderName,
+                address: $app.settings().meta.senderAddress,
+                name: $app.settings().meta.senderName,
             },
             to: to,
             subject: "WTS Daily Report - " + dateStr,
             html: html,
         });
 
-        e.app.newMailClient().send(message);
-        e.app.logger().info("Daily report sent", "users", newUsers.length, "submissions", newSubmissions.length);
+        $app.newMailClient().send(message);
+        $app.logger().info("Daily report sent", "users", newUsers.length, "submissions", newSubmissions.length);
 
     } catch (err) {
-        e.app.logger().error("Failed to send daily report", "error", err);
+        $app.logger().error("Failed to send daily report", "error", err);
     }
 });

@@ -7,16 +7,14 @@ import {
 } from "solid-js";
 import {
   pb,
-  isAuthenticated as isAuthenticatedUtil,
-  getCurrentUser,
   login as loginUtil,
   logout as logoutUtil,
   loginWithGithub,
   loginWithGoogle,
 } from "~/lib/pocketbase-utils";
+import { serverLogin, serverLogout, syncCookieFromToken } from "~/lib/server-auth";
 
 import { UserRecord } from "~/lib/pocketbase-types";
-import { clearAuthCookie } from "~/lib/auth-cookie";
 
 interface AuthContextType {
   isAuthenticated: () => boolean;
@@ -35,6 +33,17 @@ export const AuthProvider = (props: { children: any }) => {
   const [record, setRecord] = createSignal<UserRecord | null>(pb.authStore.record as unknown as UserRecord | null);
   const [loading, setLoading] = createSignal(true);
 
+  // Sync the HTTP-only session cookie from localStorage auth (for page refreshes)
+  const syncServerCookie = async () => {
+    if (pb.authStore.isValid && pb.authStore.token) {
+      try {
+        await syncCookieFromToken(pb.authStore.token);
+      } catch {
+        // Cookie sync is best-effort
+      }
+    }
+  };
+
   // Check auth status on mount
   onMount(() => {
     setLoading(true);
@@ -42,7 +51,6 @@ export const AuthProvider = (props: { children: any }) => {
     // Clear stale auth if token has expired
     if (!pb.authStore.isValid) {
       pb.authStore.clear();
-      clearAuthCookie();
       setRecord(null);
       setLoading(false);
       return;
@@ -53,10 +61,11 @@ export const AuthProvider = (props: { children: any }) => {
     // Enforce verification
     if (currentRecord && !currentRecord.verified) {
       pb.authStore.clear();
-      clearAuthCookie();
       setRecord(null);
     } else {
       setRecord(currentRecord);
+      // Ensure server-side cookie is in sync
+      syncServerCookie();
     }
 
     setLoading(false);
@@ -95,6 +104,13 @@ export const AuthProvider = (props: { children: any }) => {
         throw new Error("Please verify your email address before logging in.");
       }
 
+      // Set HTTP-only session cookie for server functions
+      try {
+        await serverLogin(email, password);
+      } catch (e) {
+        console.warn("Server cookie sync failed:", e);
+      }
+
       setRecord(userRecord);
       return userData;
     } finally {
@@ -113,6 +129,11 @@ export const AuthProvider = (props: { children: any }) => {
         logoutUtil();
         setRecord(null);
         throw new Error("Please verify your email address before logging in.");
+      }
+
+      // Set HTTP-only session cookie from the OAuth token
+      if (pb.authStore.token) {
+        syncCookieFromToken(pb.authStore.token).catch(() => {});
       }
 
       setRecord(userRecord);
@@ -135,6 +156,11 @@ export const AuthProvider = (props: { children: any }) => {
         throw new Error("Please verify your email address before logging in.");
       }
 
+      // Set HTTP-only session cookie from the OAuth token
+      if (pb.authStore.token) {
+        syncCookieFromToken(pb.authStore.token).catch(() => {});
+      }
+
       setRecord(userRecord);
       return userData;
     } finally {
@@ -144,6 +170,7 @@ export const AuthProvider = (props: { children: any }) => {
 
   const logout = () => {
     logoutUtil();
+    serverLogout().catch(() => {});
     setRecord(null);
   };
 

@@ -349,6 +349,55 @@ export const adminSetSubmissionStatus = async (id: string, status: CfpSubmission
   }
 };
 
+// --- CfP Config (conference_config singleton) ---
+
+export type CfpConfigData = {
+  cfp_open: boolean;
+  cfp_deadline: string | null;
+};
+
+export const adminFetchCfpConfig = async () => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    const records = await adminService.fetchAllRecords("conference_config");
+    if (records.length === 0) {
+      return { success: true, data: { cfp_open: true, cfp_deadline: "2026-07-30" } };
+    }
+    const r = records[0] as any;
+    return {
+      success: true,
+      data: { cfp_open: r.cfp_open ?? true, cfp_deadline: r.cfp_deadline ?? null },
+    };
+  } catch (error) {
+    console.error("Admin fetch CfP config error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminUpdateCfpConfig = async (data: Partial<CfpConfigData>) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    const records = await adminService.fetchAllRecords("conference_config");
+    if (records.length === 0) {
+      const created = await adminService.createRecord("conference_config", data);
+      return { success: true, data: created };
+    }
+    const updated = await adminService.updateRecord(
+      "conference_config",
+      records[0].id,
+      data,
+    );
+    return { success: true, data: updated };
+  } catch (error) {
+    console.error("Admin update CfP config error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
 // --- Speakers & Sessions (public programme) ---
 
 export const adminFetchSpeakers = async () => {

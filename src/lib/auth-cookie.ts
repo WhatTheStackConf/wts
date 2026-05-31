@@ -1,5 +1,22 @@
 import pb from "./pocketbase";
 
+const TOKEN_AGE_BUFFER = 60; // expire cookie 60s before the JWT
+
+function tokenMaxAge(token: string): number {
+  try {
+    const payload = JSON.parse(
+      atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")),
+    );
+    if (typeof payload.exp === "number") {
+      const remaining = payload.exp - Math.floor(Date.now() / 1000);
+      return Math.max(remaining - TOKEN_AGE_BUFFER, 0);
+    }
+  } catch {
+    // malformed token — fall through to default
+  }
+  return 7 * 24 * 60 * 60; // 7 days fallback
+}
+
 export function loadAuthCookie() {
     if (typeof document === 'undefined') return;
 
@@ -10,12 +27,10 @@ export function loadAuthCookie() {
     return null;
 }
 
-// HttpOnly session cookie (issue #1, phased): requires a server endpoint to Set-Cookie
-// after login/OAuth and logout clear — not feasible via document.cookie alone in the
-// current SolidStart flow without broader auth-context changes. Deferred intentionally.
-
 export function setAuthCookie(token: string, model: any) {
     if (typeof document === 'undefined') return;
+
+    const maxAge = tokenMaxAge(token);
 
     // Use the SDK's built-in export to ensure compatibility with loadFromCookie
     // We must ensure the store has the token/model we want to save
@@ -26,7 +41,7 @@ export function setAuthCookie(token: string, model: any) {
         httpOnly: false, // must be false — browsers reject HttpOnly from document.cookie
         secure: location.protocol === 'https:',
         sameSite: 'Lax',
-        expires: new Date(Date.now() + 34560000 * 1000)
+        maxAge,
     });
 
     document.cookie = cookieStr;

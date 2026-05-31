@@ -5,6 +5,7 @@ import { fetchSpeakerBySlug } from "~/lib/speakers-public";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
 import { SocialLinks } from "~/components/conference/SocialLinks";
 import { proseArticleClasses } from "~/components/MDXContent";
+import DOMPurify from "dompurify";
 import NotFound from "../../[...404]";
 
 export default function SpeakerDetail() {
@@ -68,7 +69,7 @@ export default function SpeakerDetail() {
                   </header>
 
                   <Show when={s().bio}>
-                    <div class={proseArticleClasses} innerHTML={s().bio} />
+                    <div class={proseArticleClasses} innerHTML={DOMPurify.sanitize(s().bio)} />
                   </Show>
 
                   <section

@@ -1,11 +1,34 @@
-import { Show } from "solid-js";
+import { Show, createSignal, onMount } from "solid-js";
 import { Layout } from "~/layouts/Layout";
 import { clientOnly } from "@solidjs/start";
 import { Icon } from "@iconify-icon/solid";
 import { useRequireAdmin } from "~/lib/route-guards";
+import { adminUpdateCfpConfig, adminFetchCfpConfig } from "~/lib/admin-actions";
 
 const AdminDashboard = () => {
     const guard = useRequireAdmin();
+
+    const [cfpData, setCfpData] = createSignal<{ cfp_open: boolean; cfp_deadline: string | null } | null>(null);
+    const [toggling, setToggling] = createSignal(false);
+
+    onMount(async () => {
+      const result = await adminFetchCfpConfig();
+      if (result.success && result.data) {
+        setCfpData(result.data);
+      }
+    });
+
+    const handleCfpToggle = async () => {
+      const current = cfpData();
+      if (!current || toggling()) return;
+      setToggling(true);
+      const newValue = !current.cfp_open;
+      const result = await adminUpdateCfpConfig({ cfp_open: newValue });
+      if (result.success) {
+        setCfpData((prev) => prev ? { ...prev, cfp_open: newValue } : prev);
+      }
+      setToggling(false);
+    };
 
     return (
         <Layout title="Admin Dashboard" description="System administration">
@@ -127,6 +150,55 @@ const AdminDashboard = () => {
                                     >
                                         VIEW TICKETS
                                     </a>
+                                </div>
+
+                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-info-500/50 transition-colors group h-full flex flex-col">
+                                    <div class="flex items-center gap-4 mb-4">
+                                        <div class="p-3 rounded-lg bg-info-500/20 text-info-300">
+                                            <Icon icon="ph:microphone-stage-bold" width="24" />
+                                        </div>
+                                        <h3 class="text-xl font-bold text-white">CfP SETTINGS</h3>
+                                    </div>
+                                    <p class="text-sm text-secondary-300/80 mb-4 flex-grow">
+                                        Open or close call for papers submissions.
+                                    </p>
+                                    <Show when={cfpData()}>
+                                      <div class="space-y-3 mb-4">
+                                        <div class="flex items-center justify-between">
+                                          <span class="text-sm font-mono text-secondary-300">Status:</span>
+                                          <span class={`badge font-mono ${cfpData()?.cfp_open ? 'badge-success' : 'badge-error'}`}>
+                                            {cfpData()?.cfp_open ? 'OPEN' : 'CLOSED'}
+                                          </span>
+                                        </div>
+                                        <div class="flex items-center justify-between">
+                                          <span class="text-sm font-mono text-secondary-300">Deadline:</span>
+                                          <span class="text-sm font-mono text-white">
+                                            {cfpData()?.cfp_deadline
+                                              ? new Date(cfpData()!.cfp_deadline!).toLocaleDateString("en-US", {
+                                                  year: "numeric",
+                                                  month: "short",
+                                                  day: "numeric",
+                                                })
+                                              : "Not set"}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </Show>
+                                    <button
+                                      onClick={handleCfpToggle}
+                                      disabled={toggling() || !cfpData()}
+                                      class={`btn btn-outline w-full font-mono mt-auto ${
+                                        cfpData()?.cfp_open
+                                          ? "btn-error hover:bg-error-500 hover:text-white"
+                                          : "btn-success hover:bg-success-500 hover:text-white"
+                                      }`}
+                                    >
+                                      {toggling()
+                                        ? "SAVING..."
+                                        : cfpData()?.cfp_open
+                                          ? "CLOSE CfP"
+                                          : "OPEN CfP"}
+                                    </button>
                                 </div>
                             </div>
                         </div>

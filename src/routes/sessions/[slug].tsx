@@ -3,6 +3,7 @@ import { createResource, For, Show } from "solid-js";
 import { Layout } from "~/layouts/Layout";
 import { fetchSessionBySlug } from "~/lib/speakers-public";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
+import DOMPurify from "dompurify";
 import NotFound from "../[...404]";
 
 function formatScheduleDate(iso: string) {
@@ -78,7 +79,7 @@ export default function SessionDetail() {
 
                   <div
                     class="prose prose-invert max-w-none text-secondary-200 leading-relaxed"
-                    innerHTML={s().abstract}
+                    innerHTML={DOMPurify.sanitize(s().abstract)}
                   />
 
                   <div class="mt-10 pt-8 border-t border-white/10">
