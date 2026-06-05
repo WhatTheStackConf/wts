@@ -98,6 +98,24 @@ const AdminDashboard = () => {
                                     </a>
                                 </div>
 
+                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-secondary-500/50 transition-colors group h-full flex flex-col">
+                                    <div class="flex items-center gap-4 mb-4">
+                                        <div class="p-3 rounded-lg bg-secondary-500/20 text-secondary-300">
+                                            <Icon icon="ph:trophy-bold" width="24" />
+                                        </div>
+                                        <h3 class="text-xl font-bold text-white">REVIEWERS</h3>
+                                    </div>
+                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
+                                        See how many talks each reviewer has reviewed.
+                                    </p>
+                                    <a
+                                        href="/reviewer/leaderboard"
+                                        class="btn btn-outline btn-secondary w-full font-mono group-hover:bg-secondary-500 group-hover:text-white mt-auto"
+                                    >
+                                        VIEW REVIEWERS
+                                    </a>
+                                </div>
+
                                 <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-primary-500/50 transition-colors group h-full flex flex-col">
                                     <div class="flex items-center gap-4 mb-4">
                                         <div class="p-3 rounded-lg bg-primary-500/20 text-primary-300">

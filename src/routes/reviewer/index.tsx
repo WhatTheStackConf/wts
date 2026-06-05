@@ -50,6 +50,16 @@ const ReviewerDashboard = () => {
                                 </div>
                                 <div class="flex gap-3">
                                     <button
+                                        onClick={() => navigate("/reviewer/leaderboard")}
+                                        class="btn btn-outline border-white/20 hover:border-secondary-500 hover:bg-secondary-500/10 text-white gap-2 font-mono group"
+                                    >
+                                        <Icon
+                                            icon="ph:trophy-bold"
+                                            class="text-xl group-hover:scale-110 transition-transform text-secondary-400"
+                                        />
+                                        Leaderboard
+                                    </button>
+                                    <button
                                         onClick={() => navigate("/reviewer/weights")}
                                         class="btn btn-outline border-white/20 hover:border-accent-500 hover:bg-accent-500/10 text-white gap-2 font-mono group"
                                     >

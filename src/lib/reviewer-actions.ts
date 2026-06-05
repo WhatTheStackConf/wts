@@ -2,6 +2,12 @@ import { requireReviewer } from "~/lib/admin-security";
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { CfpReviewRecord, CfpSubmissionRecord } from "~/lib/pocketbase-types";
 
+export type ReviewerLeaderboardRow = {
+    reviewerId: string;
+    reviewerName: string;
+    reviewCount: number;
+};
+
 // PocketBase record IDs are 15-char alphanumeric strings
 const VALID_ID = /^[a-zA-Z0-9]{15}$/;
 
@@ -121,6 +127,52 @@ export const fetchWeightVotes = async () => {
         return { success: true, data: records, userId: user.id, userRole: user.role };
     } catch (error) {
         console.error("Fetch weight votes error:", error);
+        return { success: false, error: (error as Error).message };
+    }
+};
+
+// Fetch reviewer activity counts without exposing submission details.
+export const fetchReviewerLeaderboard = async () => {
+    "use server";
+    try {
+        await requireReviewer();
+        const adminService = getAdminPB();
+
+        const [reviewers, reviews] = await Promise.all([
+            adminService.fetchAllRecords("users", {
+                filter: 'role = "reviewer"',
+                fields: "id,name,username",
+            }),
+            adminService.fetchAllRecords("cfp_reviews", {
+                fields: "reviewer,submission",
+            }),
+        ]);
+
+        const reviewedSubmissionsByReviewer = new Map<string, Set<string>>();
+        for (const review of reviews as any[]) {
+            if (!review.reviewer || !review.submission) continue;
+            const reviewed = reviewedSubmissionsByReviewer.get(review.reviewer) || new Set<string>();
+            reviewed.add(review.submission);
+            reviewedSubmissionsByReviewer.set(review.reviewer, reviewed);
+        }
+
+        const leaderboard = (reviewers as any[])
+            .map((reviewer): ReviewerLeaderboardRow => ({
+                reviewerId: reviewer.id,
+                reviewerName:
+                    reviewer.name ||
+                    reviewer.username ||
+                    `Reviewer ${reviewer.id.slice(-4).toUpperCase()}`,
+                reviewCount: reviewedSubmissionsByReviewer.get(reviewer.id)?.size || 0,
+            }))
+            .sort((a, b) => {
+                if (b.reviewCount !== a.reviewCount) return b.reviewCount - a.reviewCount;
+                return a.reviewerName.localeCompare(b.reviewerName);
+            });
+
+        return { success: true, data: leaderboard };
+    } catch (error) {
+        console.error("Fetch reviewer leaderboard error:", error);
         return { success: false, error: (error as Error).message };
     }
 };

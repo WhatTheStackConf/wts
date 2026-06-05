@@ -175,6 +175,10 @@ export const requireAuth = async () => {
     throw new Error("Unauthorized: Login required");
   }
 
+  if (!pb.authStore.record) {
+    throw new Error("Unauthorized: Login required");
+  }
+
   return pb.authStore.record;
 };
 
