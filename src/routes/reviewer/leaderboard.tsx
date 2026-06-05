@@ -30,17 +30,19 @@ const ReviewerLeaderboard = () => {
     return (
         <Layout title="Reviewer Leaderboard" description="Reviewer activity counts">
             <Show when={guard.authorized()}>
-                <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
+                <div class="min-h-screen w-full max-w-full pt-24 pb-20 relative overflow-hidden">
                     <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-secondary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
                     <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
 
-                    <div class="container mx-auto px-4 max-w-5xl">
-                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
-                            <div>
-                                <h1 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-secondary-400 to-primary-400 uppercase drop-shadow-sm mb-2">
-                                    Reviewer Leaderboard
+                    <div class="container mx-auto w-full max-w-full px-4 sm:px-6 md:max-w-5xl">
+                        <div class="flex flex-col md:flex-row justify-between items-stretch md:items-center mb-10 gap-4">
+                            <div class="min-w-0">
+                                <h1 class="flex max-w-full flex-wrap items-center gap-2 text-3xl sm:text-4xl font-black uppercase drop-shadow-sm mb-2">
+                                    <span class="min-w-0 text-transparent bg-clip-text bg-gradient-to-r from-secondary-400 to-primary-400 break-words">
+                                        Reviewer Leaderboard
+                                    </span>
                                     <Show when={!leaderboard.loading}>
-                                        <span class="ml-3 align-middle badge badge-lg font-mono font-black bg-secondary-500/20 border-secondary-500/40 text-secondary-300">
+                                        <span class="badge badge-lg font-mono font-black bg-secondary-500/20 border-secondary-500/40 text-secondary-300">
                                             {leaderboard()?.length || 0}
                                         </span>
                                     </Show>
@@ -48,12 +50,12 @@ const ReviewerLeaderboard = () => {
                                 <p class="text-secondary-300 font-mono text-sm tracking-widest uppercase">
                                     Talks reviewed per reviewer
                                 </p>
-                                <p class="text-xs text-gray-500 font-mono mt-1">
+                                <p class="text-xs text-gray-500 font-mono mt-1 break-words">
                                     Submission titles and review details are intentionally hidden.
                                 </p>
                             </div>
                             <button
-                                class="btn btn-ghost hover:bg-white/10 text-white gap-2 group"
+                                class="btn btn-ghost w-full justify-center hover:bg-white/10 text-white gap-2 group sm:w-auto"
                                 onClick={() => navigate(backPath())}
                             >
                                 <Icon
@@ -108,13 +110,47 @@ const ReviewerLeaderboard = () => {
                                         </div>
                                     }
                                 >
-                                    <div class="overflow-x-auto">
-                                        <table class="table table-lg w-full">
+                                    <div class="grid gap-3 p-3 md:hidden">
+                                        <For each={leaderboard()}>
+                                            {(reviewer, index) => (
+                                                <div class="rounded-xl border border-white/10 bg-white/5 p-4">
+                                                    <div class="flex items-start justify-between gap-3">
+                                                        <div class="flex min-w-0 items-start gap-3">
+                                                            <div class="shrink-0 rounded-lg border border-accent-500/30 bg-accent-500/10 px-2 py-1 font-mono text-sm font-black text-accent-300">
+                                                                #{index() + 1}
+                                                            </div>
+                                                            <div class="min-w-0">
+                                                                <div class="font-bold text-white break-words">
+                                                                    {reviewer.reviewerName}
+                                                                </div>
+                                                                <Show when={reviewer.reviewerId === guard.user()?.id}>
+                                                                    <div class="text-xs text-primary-300 font-mono">
+                                                                        You
+                                                                    </div>
+                                                                </Show>
+                                                            </div>
+                                                        </div>
+                                                        <div class="shrink-0 text-right">
+                                                            <div class="text-2xl font-black text-white font-mono leading-none">
+                                                                {reviewer.reviewCount}
+                                                            </div>
+                                                            <div class="mt-1 text-[0.65rem] font-mono uppercase tracking-widest text-gray-500">
+                                                                reviewed
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </For>
+                                    </div>
+
+                                    <div class="hidden overflow-x-auto md:block">
+                                        <table class="table table-lg w-full table-fixed">
                                             <thead>
                                                 <tr class="text-white border-b border-white/10 bg-white/5">
-                                                    <th class="w-20 font-mono text-secondary-300">RANK</th>
+                                                    <th class="w-24 font-mono text-secondary-300">RANK</th>
                                                     <th class="font-mono text-secondary-300">REVIEWER</th>
-                                                    <th class="text-right font-mono text-secondary-300">
+                                                    <th class="w-48 text-right font-mono text-secondary-300">
                                                         TALKS REVIEWED
                                                     </th>
                                                 </tr>
@@ -127,14 +163,14 @@ const ReviewerLeaderboard = () => {
                                                                 #{index() + 1}
                                                             </td>
                                                             <td>
-                                                                <div class="flex items-center gap-3">
-                                                                    <div class="w-10 h-10 rounded-full bg-secondary-500/20 border border-secondary-500/30 flex items-center justify-center text-secondary-200 font-mono font-bold">
+                                                                <div class="flex min-w-0 items-center gap-3">
+                                                                    <div class="w-10 h-10 shrink-0 rounded-full bg-secondary-500/20 border border-secondary-500/30 flex items-center justify-center text-secondary-200 font-mono font-bold">
                                                                         {reviewer.reviewerName
                                                                             .slice(0, 2)
                                                                             .toUpperCase()}
                                                                     </div>
-                                                                    <div>
-                                                                        <div class="font-bold text-white">
+                                                                    <div class="min-w-0">
+                                                                        <div class="font-bold text-white break-words">
                                                                             {reviewer.reviewerName}
                                                                         </div>
                                                                         <Show when={reviewer.reviewerId === guard.user()?.id}>
