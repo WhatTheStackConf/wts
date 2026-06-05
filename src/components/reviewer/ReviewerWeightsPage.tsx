@@ -4,6 +4,7 @@ import { Icon } from "@iconify-icon/solid";
 import { Layout } from "~/layouts/Layout";
 import { fetchWeightVotes, saveWeightVote } from "~/lib/reviewer-actions";
 import { useRequireReviewer } from "~/lib/route-guards";
+import { TouchSafeSlider } from "~/components/TouchSafeSlider";
 
 const CRITERIA = [
     { id: "relevance", label: "Relevance" },
@@ -215,31 +216,23 @@ export default function ReviewerWeightsPage() {
                                                         </span>
                                                     </div>
                                                 </div>
-                                                <input
-                                                    type="range"
-                                                    min="1"
-                                                    max="6"
-                                                    step="1"
+                                                <TouchSafeSlider
+                                                    min={1}
+                                                    max={6}
+                                                    step={1}
                                                     value={votes()[item.id]}
-                                                    class="range range-primary range-lg"
-                                                    disabled={
-                                                        !isReviewer() || hasVoted()
-                                                    }
-                                                    onInput={(e) =>
+                                                    label={`${item.label} weight`}
+                                                    rangeClass="range range-primary range-lg"
+                                                    labelClass="w-full text-xs px-2 mt-2 font-mono text-gray-500"
+                                                    tone="primary"
+                                                    disabled={!isReviewer() || hasVoted()}
+                                                    onChange={(weight) =>
                                                         handleSliderChange(
                                                             item.id,
-                                                            e.currentTarget.value,
+                                                            weight.toString(),
                                                         )
                                                     }
                                                 />
-                                                <div class="w-full flex justify-between text-xs px-2 mt-2 font-mono text-gray-500">
-                                                    <span>1</span>
-                                                    <span>2</span>
-                                                    <span>3</span>
-                                                    <span>4</span>
-                                                    <span>5</span>
-                                                    <span>6</span>
-                                                </div>
                                             </div>
                                         )}
                                     </For>

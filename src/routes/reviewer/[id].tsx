@@ -7,6 +7,7 @@ import { Icon } from "@iconify-icon/solid";
 import { sanitizeHtml } from "~/lib/sanitize-html";
 import { CfpReviewRecord } from "~/lib/pocketbase-types";
 import { Layout } from "~/layouts/Layout";
+import { TouchSafeSlider } from "~/components/TouchSafeSlider";
 
 // Criteria definitions
 const CRITERIA = [
@@ -287,18 +288,17 @@ const ReviewPage = () => {
                                                             <span class="text-sm font-bold text-gray-300">{c.label}</span>
                                                             <span class="badge badge-accent font-mono font-bold text-white">{scores()[c.id] || 1}</span>
                                                         </div>
-                                                        <input
-                                                            type="range"
-                                                            min="1"
-                                                            max="5"
-                                                            step="1"
+                                                        <TouchSafeSlider
+                                                            min={1}
+                                                            max={5}
+                                                            step={1}
                                                             value={scores()[c.id] || 1}
-                                                            class="range range-xs range-accent"
-                                                            onInput={(e) => handleScoreChange(c.id, e.currentTarget.value)}
+                                                            label={`${c.label} score`}
+                                                            rangeClass="range range-xs range-accent"
+                                                            labelClass="text-[10px] px-1 mt-1 opacity-30 font-mono"
+                                                            tone="accent"
+                                                            onChange={(score) => handleScoreChange(c.id, score.toString())}
                                                         />
-                                                        <div class="flex justify-between text-[10px] px-1 mt-1 opacity-30 font-mono">
-                                                            <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
-                                                        </div>
                                                     </div>
                                                 )}
                                             </For>
