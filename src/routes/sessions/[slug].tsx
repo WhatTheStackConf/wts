@@ -1,9 +1,10 @@
 import { useParams } from "@solidjs/router";
-import { createResource, For, Show } from "solid-js";
+import { createMemo, createResource, For, Show } from "solid-js";
 import { Layout } from "~/layouts/Layout";
 import { fetchSessionBySlug } from "~/lib/speakers-public";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
-import DOMPurify from "dompurify";
+import { proseArticleClasses } from "~/components/MDXContent";
+import { sanitizeHtml } from "~/lib/sanitize-html";
 import NotFound from "../[...404]";
 
 function formatScheduleDate(iso: string) {
@@ -23,6 +24,18 @@ export default function SessionDetail() {
     (slug) => fetchSessionBySlug(slug),
   );
 
+  const pageTitle = createMemo(() => {
+    const data = session();
+    if (data) return `${data.title} — WhatTheStack 2026`;
+    return "Session — WhatTheStack 2026";
+  });
+
+  const pageDescription = createMemo(() => {
+    const data = session();
+    if (data?.format) return `${data.format} at WhatTheStack 2026`;
+    return "Session at WhatTheStack 2026";
+  });
+
   const hasSchedule = () => {
     const s = session();
     return !!(s?.startsAt || s?.track || s?.room);
@@ -32,109 +45,144 @@ export default function SessionDetail() {
     <Show
       when={!session.loading}
       fallback={
-        <div class="flex justify-center py-32">
-          <span class="loading loading-bars loading-lg text-primary-500"></span>
-        </div>
+        <Layout title={pageTitle()} description={pageDescription()}>
+          <div class="w-full px-4 relative pt-4 md:pt-12 pb-20">
+            <div class="flex justify-center py-24">
+              <span class="loading loading-bars loading-lg text-primary-500" />
+            </div>
+          </div>
+        </Layout>
       }
     >
       <Show when={session()} fallback={<NotFound />}>
         {(s) => (
           <Layout
-            title={`${s().title} - WhatTheStack 2026`}
-            description={`Session at WhatTheStack 2026`}
+            title={pageTitle()}
+            description={pageDescription()}
+            ogSubtitle={s().format || "Conference session"}
           >
-          <div class="w-full px-4 sm:px-6 relative pt-6 md:pt-24 pb-24 speaker-page-bg">
-            <div class="absolute inset-0 scanline z-10 pointer-events-none" />
+            <div class="w-full h-full px-4 relative pt-4 md:pt-12 pb-20">
+              <div class="max-w-4xl mx-auto relative z-20">
+                <article class="glass-panel p-6 md:p-12 rounded-2xl fade-in-delay-1 relative z-30">
+                  <header class="mb-8 md:mb-10">
+                    <p class="speaker-kicker mb-3">Session</p>
+                    <h1 class="font-star text-3xl md:text-4xl lg:text-5xl font-bold text-secondary-400 leading-tight text-balance">
+                      {s().title}
+                    </h1>
+                    <Show when={s().format}>
+                      <p class="speaker-session-chip mt-5 w-fit">{s().format}</p>
+                    </Show>
 
-            <div class="max-w-3xl mx-auto relative z-20">
-                <a
-                  href="/sessions"
-                  class="text-sm text-primary-400 hover:text-primary-300 font-mono transition-colors fade-in"
-                >
-                  &larr; All sessions
-                </a>
+                    <Show when={hasSchedule()}>
+                      <ul class="mt-6 flex flex-wrap gap-3 list-none p-0 m-0 text-sm font-mono text-secondary-300">
+                        <Show when={s().startsAt}>
+                          <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
+                            <span class="text-secondary-500">Time</span>
+                            <span>{formatScheduleDate(s().startsAt!)}</span>
+                          </li>
+                        </Show>
+                        <Show when={s().track}>
+                          <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
+                            <span class="text-secondary-500">Track</span>
+                            <span>{s().track}</span>
+                          </li>
+                        </Show>
+                        <Show when={s().room}>
+                          <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
+                            <span class="text-secondary-500">Room</span>
+                            <span>{s().room}</span>
+                          </li>
+                        </Show>
+                      </ul>
+                    </Show>
+                  </header>
 
-                <article class="speaker-card mt-8 p-6 sm:p-10 md:p-12 fade-in-delay-1">
-                  <p class="speaker-kicker mb-2">Session</p>
-                  <h1 class="speaker-heading text-[clamp(2rem,6vw,3.25rem)] uppercase leading-tight mb-2">
-                    {s().title}
-                  </h1>
-                  <Show when={s().format}>
-                    <p class="text-sm font-mono text-secondary-500 mb-6">{s().format}</p>
+                  <Show
+                    when={s().abstract}
+                    fallback={
+                      <p class="text-primary-200/60 italic">
+                        Abstract coming soon.
+                      </p>
+                    }
+                  >
+                    {(abstract) => (
+                      <div
+                        class={proseArticleClasses}
+                        innerHTML={sanitizeHtml(abstract())}
+                      />
+                    )}
                   </Show>
 
-                  <Show when={hasSchedule()}>
-                    <div class="flex flex-wrap gap-4 mb-6 text-sm font-mono text-secondary-300">
-                      <Show when={s().startsAt}>
-                        <span>{formatScheduleDate(s().startsAt!)}</span>
-                      </Show>
-                      <Show when={s().track}>
-                        <span>Track: {s().track}</span>
-                      </Show>
-                      <Show when={s().room}>
-                        <span>Room: {s().room}</span>
-                      </Show>
-                    </div>
-                  </Show>
-
-                  <div
-                    class="prose prose-invert max-w-none text-secondary-200 leading-relaxed"
-                    innerHTML={DOMPurify.sanitize(s().abstract)}
-                  />
-
-                  <div class="mt-10 pt-8 border-t border-white/10">
-                    <h2 class="text-lg font-star text-primary-400 uppercase tracking-widest mb-4">
+                  <section class="mt-10 pt-8 border-t border-white/10">
+                    <h2 class="text-xl md:text-2xl font-bold text-white mb-6">
                       Speakers
                     </h2>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <For each={s().speakers}>
-                        {(speaker) => (
-                          <a
-                            href={`/speakers/${speaker.slug}`}
-                            class="flex items-center gap-3 glass-panel p-4 rounded-xl hover:border-primary-500/40 transition-colors"
-                          >
-                            <SpeakerAvatar
-                              name={speaker.displayName}
-                              photoUrl={speaker.photoUrl}
-                              size="sm"
-                            />
-                            <div>
-                              <div class="font-bold text-white">{speaker.displayName}</div>
-                              <Show when={speaker.affiliation}>
-                                <div class="text-xs text-secondary-500">
-                                  {speaker.affiliation}
-                                </div>
-                              </Show>
-                            </div>
-                          </a>
-                        )}
-                      </For>
-                    </div>
-                  </div>
-
-                  <Show when={s().relatedSessions.length > 0}>
-                    <div class="mt-10 pt-8 border-t border-white/10">
-                      <h2 class="text-lg font-star text-primary-400 uppercase tracking-widest mb-4">
-                        Related sessions
-                      </h2>
-                      <div class="space-y-3">
-                        <For each={s().relatedSessions}>
-                          {(related) => (
-                            <a
-                              href={`/sessions/${related.slug}`}
-                              class="block glass-panel p-4 rounded-xl hover:border-primary-500/40 transition-colors"
-                            >
-                              <span class="font-bold text-white">{related.title}</span>
-                              <Show when={related.format}>
-                                <span class="text-sm text-secondary-500 ml-2 font-mono">
-                                  {related.format}
+                    <Show
+                      when={s().speakers.length > 0}
+                      fallback={
+                        <p class="text-primary-200/60 italic">
+                          Speaker details coming soon.
+                        </p>
+                      }
+                    >
+                      <ul class="grid grid-cols-1 sm:grid-cols-2 gap-4 list-none p-0 m-0">
+                        <For each={s().speakers}>
+                          {(speaker) => (
+                            <li>
+                              <a
+                                href={`/speakers/${speaker.slug}`}
+                                class="flex items-center gap-4 glass-panel p-4 md:p-5 rounded-2xl hover:border-primary-500/50 transition-all duration-300 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400/60"
+                              >
+                                <SpeakerAvatar
+                                  name={speaker.displayName}
+                                  photoUrl={speaker.photoUrl}
+                                  size="sm"
+                                />
+                                <span class="min-w-0">
+                                  <span class="block font-bold text-white group-hover:text-primary-400 transition-colors truncate">
+                                    {speaker.displayName}
+                                  </span>
+                                  <Show when={speaker.affiliation}>
+                                    <span class="block text-xs text-secondary-500 truncate">
+                                      {speaker.affiliation}
+                                    </span>
+                                  </Show>
                                 </span>
-                              </Show>
-                            </a>
+                              </a>
+                            </li>
                           )}
                         </For>
-                      </div>
-                    </div>
+                      </ul>
+                    </Show>
+                  </section>
+
+                  <Show when={s().relatedSessions.length > 0}>
+                    <section class="mt-10 pt-8 border-t border-white/10">
+                      <h2 class="text-xl md:text-2xl font-bold text-white mb-6">
+                        Related sessions
+                      </h2>
+                      <ul class="space-y-4 list-none p-0 m-0">
+                        <For each={s().relatedSessions}>
+                          {(related) => (
+                            <li>
+                              <a
+                                href={`/sessions/${related.slug}`}
+                                class="block glass-panel p-6 md:p-8 rounded-2xl hover:border-primary-500/50 transition-all duration-300 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400/60"
+                              >
+                                <h3 class="text-lg md:text-xl font-bold text-white group-hover:text-primary-400 transition-colors">
+                                  {related.title}
+                                </h3>
+                                <Show when={related.format}>
+                                  <p class="text-sm text-secondary-500 font-mono mt-2">
+                                    {related.format}
+                                  </p>
+                                </Show>
+                              </a>
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                    </section>
                   </Show>
                 </article>
               </div>

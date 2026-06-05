@@ -4,7 +4,7 @@ import { clientOnly } from "@solidjs/start";
 import { useAuth } from "~/lib/auth-context";
 import { useRequireReviewer } from "~/lib/route-guards";
 import { Icon } from "@iconify-icon/solid";
-import DOMPurify from "dompurify";
+import { sanitizeHtml } from "~/lib/sanitize-html";
 import { CfpReviewRecord } from "~/lib/pocketbase-types";
 import { Layout } from "~/layouts/Layout";
 
@@ -170,7 +170,7 @@ const ReviewPage = () => {
                                         <h3 class="text-xs font-bold text-secondary-400 uppercase tracking-widest mb-3">Abstract</h3>
                                         <div
                                             class="prose prose-invert max-w-none prose-p:text-gray-300 prose-p:leading-relaxed"
-                                            innerHTML={DOMPurify.sanitize(submission().abstract)}
+                                            innerHTML={sanitizeHtml(submission().abstract)}
                                         ></div>
                                     </div>
 
@@ -181,7 +181,7 @@ const ReviewPage = () => {
                                         <h3 class="text-xs font-bold text-secondary-400 uppercase tracking-widest mb-3">Key Takeaways</h3>
                                         <div
                                             class="prose prose-invert max-w-none prose-p:text-gray-300 prose-headings:text-white"
-                                            innerHTML={DOMPurify.sanitize(submission().key_takeaways)}
+                                            innerHTML={sanitizeHtml(submission().key_takeaways)}
                                         ></div>
                                     </div>
 

@@ -4,7 +4,7 @@ import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
 import { fetchProposals, loadSubmissionToStore } from "~/lib/cfp-store";
 import { Icon } from "@iconify-icon/solid";
-import DOMPurify from "dompurify";
+import { sanitizeHtml } from "~/lib/sanitize-html";
 import { clientOnly } from "@solidjs/start";
 
 const MyProposals = () => {
@@ -106,7 +106,7 @@ const MyProposals = () => {
 
                       {/* Render formatted abstract preview */}
                       <div class="prose prose-sm max-w-none text-base-content/60 line-clamp-3 mb-6 bg-base-200/30 p-4 rounded-xl">
-                        <div innerHTML={DOMPurify.sanitize(proposal.abstract)} />
+                        <div innerHTML={sanitizeHtml(proposal.abstract)} />
                       </div>
 
                       <div class="flex flex-wrap gap-4 text-xs font-mono opacity-60">

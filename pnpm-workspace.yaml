@@ -1,8 +1,8 @@
 allowBuilds:
-  '@parcel/watcher': set this to true or false
-  esbuild: set this to true or false
-  sharp: set this to true or false
-  sqlite3: set this to true or false
+  '@parcel/watcher': true
+  esbuild: true
+  sharp: true
+  sqlite3: true
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - '@tailwindcss/oxide'

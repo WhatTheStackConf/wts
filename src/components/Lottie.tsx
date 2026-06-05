@@ -1,5 +1,5 @@
 import { onMount, onCleanup, createEffect, Show } from "solid-js";
-import lottie, { AnimationItem } from "lottie-web";
+import lottie, { AnimationItem } from "lottie-web/build/player/lottie_light";
 import Logo from "../assets/images/LogoSolo.svg?component-solid";
 
 interface LottieProps {
