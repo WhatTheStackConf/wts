@@ -4,8 +4,17 @@ import {
   AdminDataPanel,
   AdminFilterBar,
   AdminFilterGroup,
+  AdminFormField,
+  AdminFormSection,
   AdminPageShell,
+  adminFileInputClass,
   adminFilterButtonClass,
+  adminFormPanelClass,
+  adminInputClass,
+  adminTextareaClass,
+  clearAdminControlValidity,
+  markAdminControlInvalid,
+  syncAdminControlValidity,
   useAdminToast,
 } from "~/components/admin/AdminPageShell";
 import {
@@ -237,7 +246,7 @@ export default function AdminSpeakersHub() {
 
   return (
     <AdminPageShell
-      layoutTitle="Admin — Speakers"
+      layoutTitle="Admin: Speakers"
       layoutDescription="Manage conference speakers"
       title="Speakers"
       subtitle="Speaker profiles & publication"
@@ -355,77 +364,150 @@ export default function AdminSpeakersHub() {
         >
           <form
             onSubmit={submitInvite}
-            class="glass-panel p-6 rounded-2xl border border-white/10 shadow-xl backdrop-blur-xl bg-black/40"
+            class={adminFormPanelClass}
           >
-            <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+            <div class="mb-6">
               <div>
                 <h2 class="text-lg font-bold text-white">Invite speaker</h2>
                 <p class="text-xs text-gray-500 font-mono mt-1">
                   Creates a draft profile. Toggle Published when ready for the public site.
                 </p>
               </div>
-              <button
-                type="button"
-                class="btn btn-ghost btn-sm font-mono"
-                onClick={() => setShowInviteForm(false)}
-              >
-                Cancel
-              </button>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input
-                class="input input-bordered bg-black/40"
-                placeholder="Display name *"
-                required
-                value={inviteName()}
-                onInput={(e) => setInviteName(e.currentTarget.value)}
-              />
-              <input
-                class="input input-bordered bg-black/40 font-mono"
-                placeholder="Slug (optional)"
-                value={inviteSlug()}
-                onInput={(e) => setInviteSlug(e.currentTarget.value)}
-              />
-              <input
-                class="input input-bordered bg-black/40 md:col-span-2"
-                placeholder="Affiliation"
-                value={inviteAffiliation()}
-                onInput={(e) => setInviteAffiliation(e.currentTarget.value)}
-              />
-              <textarea
-                class="textarea textarea-bordered bg-black/40 md:col-span-2 min-h-24"
-                placeholder="Bio"
-                value={inviteBio()}
-                onInput={(e) => setInviteBio(e.currentTarget.value)}
-              />
-              <textarea
-                class="textarea textarea-bordered bg-black/40 md:col-span-2 min-h-20 font-mono text-sm"
-                placeholder="Social URLs (one per line)"
-                value={inviteSocial()}
-                onInput={(e) => setInviteSocial(e.currentTarget.value)}
-              />
-              <div class="md:col-span-2">
-                <label class="label py-1" for="invite-speaker-photo">
-                  <span class="label-text text-gray-400 font-mono text-xs">
-                    Profile photo (JPEG, PNG, or WebP, max 5 MB)
-                  </span>
-                </label>
-                <input
-                  id="invite-speaker-photo"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  class="file-input file-input-bordered w-full bg-black/40 font-mono text-sm"
-                  onChange={(e) => setInvitePhoto(e.currentTarget.files?.[0] ?? null)}
-                />
+            <div class="space-y-6">
+              <AdminFormSection
+                title="Public identity"
+                description="The public name, URL slug, and affiliation used on the speaker profile."
+              >
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
+                  <AdminFormField
+                    id="invite-speaker-name"
+                    label="Display name"
+                    required
+                    hint="Public speaker name shown on the website."
+                    error="Add a display name before creating the profile."
+                    class="lg:col-span-7"
+                  >
+                    <input
+                      id="invite-speaker-name"
+                      name="display_name"
+                      class={adminInputClass()}
+                      required
+                      autocomplete="name"
+                      aria-describedby="invite-speaker-name-hint"
+                      aria-errormessage="invite-speaker-name-error"
+                      value={inviteName()}
+                      onInvalid={markAdminControlInvalid}
+                      onBlur={syncAdminControlValidity}
+                      onInput={(e) => {
+                        clearAdminControlValidity(e);
+                        setInviteName(e.currentTarget.value);
+                      }}
+                    />
+                  </AdminFormField>
+
+                  <AdminFormField
+                    id="invite-speaker-slug"
+                    label="Slug"
+                    hint="Leave blank to generate it from the display name."
+                    class="lg:col-span-5"
+                  >
+                    <input
+                      id="invite-speaker-slug"
+                      name="slug"
+                      class={adminInputClass("font-mono")}
+                      autocomplete="off"
+                      placeholder="ada-lovelace"
+                      value={inviteSlug()}
+                      onInput={(e) => setInviteSlug(e.currentTarget.value)}
+                    />
+                  </AdminFormField>
+
+                  <AdminFormField id="invite-speaker-affiliation" label="Affiliation" class="lg:col-span-12">
+                    <input
+                      id="invite-speaker-affiliation"
+                      name="affiliation"
+                      class={adminInputClass()}
+                      autocomplete="organization"
+                      placeholder="Company, project, or community"
+                      value={inviteAffiliation()}
+                      onInput={(e) => setInviteAffiliation(e.currentTarget.value)}
+                    />
+                  </AdminFormField>
+                </div>
+              </AdminFormSection>
+
+              <AdminFormSection
+                title="Profile content"
+                description="Public profile content. Keep CFP review context out of these fields."
+              >
+                <div class="space-y-4">
+                  <AdminFormField id="invite-speaker-bio" label="Bio">
+                    <textarea
+                      id="invite-speaker-bio"
+                      name="bio"
+                      class={adminTextareaClass("min-h-36")}
+                      value={inviteBio()}
+                      onInput={(e) => setInviteBio(e.currentTarget.value)}
+                    />
+                  </AdminFormField>
+
+                  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 items-start">
+                    <AdminFormField
+                      id="invite-speaker-social"
+                      label="Social URLs"
+                      hint="One URL per line."
+                      class="lg:col-span-7"
+                    >
+                      <textarea
+                        id="invite-speaker-social"
+                        name="social_urls"
+                        class={adminTextareaClass("min-h-24 font-mono text-sm")}
+                        aria-describedby="invite-speaker-social-hint"
+                        placeholder="https://example.com"
+                        value={inviteSocial()}
+                        onInput={(e) => setInviteSocial(e.currentTarget.value)}
+                      />
+                    </AdminFormField>
+
+                    <AdminFormField
+                      id="invite-speaker-photo"
+                      label="Profile photo"
+                      hint="JPEG, PNG, or WebP. Max 5 MB."
+                      class="lg:col-span-5"
+                    >
+                      <input
+                        id="invite-speaker-photo"
+                        name="photo"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        class={adminFileInputClass("font-mono text-sm")}
+                        aria-describedby="invite-speaker-photo-hint"
+                        onChange={(e) => setInvitePhoto(e.currentTarget.files?.[0] ?? null)}
+                      />
+                    </AdminFormField>
+                  </div>
+                </div>
+              </AdminFormSection>
+            </div>
+
+            <div class="mt-6 border-t border-white/10 pt-5 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p class="text-xs text-base-content/45 font-mono">
+                Invite speakers are created as drafts until you publish them from the list.
+              </p>
+              <div class="flex flex-wrap gap-2 sm:justify-end">
+                <button
+                  type="button"
+                  class="btn btn-ghost font-mono"
+                  onClick={() => setShowInviteForm(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" class="btn btn-primary font-mono" disabled={creatingInvite()}>
+                  {creatingInvite() ? "Creating..." : "Create draft profile"}
+                </button>
               </div>
             </div>
-            <button
-              type="submit"
-              class="btn btn-primary mt-4 font-mono"
-              disabled={creatingInvite()}
-            >
-              {creatingInvite() ? "Creating…" : "Create draft profile"}
-            </button>
           </form>
         </Show>
       </div>

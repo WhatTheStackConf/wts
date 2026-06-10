@@ -16,6 +16,10 @@ This project uses manually defined TypeScript types for PocketBase collections t
 - Location: `CfpSubmissionRecord` interface in `src/lib/pocketbase-types.ts`
 - Fields: `session_title`, `abstract`, `key_takeaways`, `technical_requirements`, `notes`, `applicant` (relation to cfp_applicants)
 
+### Partners Collection
+- Location: `PartnerRecord` interface in `src/lib/pocketbase-types.ts`
+- Fields: `name`, `published`, `type`, `tier`, `logo`, `url`, `description`
+
 ## How to Update Types When Schema Changes
 
 When you modify the PocketBase schema (add, remove, or modify fields), you need to update the corresponding TypeScript interfaces in `src/lib/pocketbase-types.ts`. Here's the process:

@@ -3,10 +3,28 @@ import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { requireAdmin } from "~/lib/admin-security";
 import { fetchHiEventsAttendees } from "~/lib/hievents";
 import { slugify, uniqueSpeakerSlug } from "~/lib/conference-slug";
-import type { SpeakerRecord } from "~/lib/pocketbase-types";
+import type { PartnerRecord, SpeakerRecord } from "~/lib/pocketbase-types";
 
 const SPEAKER_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const SPEAKER_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const PARTNER_LOGO_MAX_BYTES = 5 * 1024 * 1024;
+const PARTNER_LOGO_TYPES = [
+  "image/svg+xml",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/avif",
+];
+const PARTNER_TYPES = [
+  "organizer",
+  "sponsor",
+  "supporter",
+  "media",
+  "catering",
+  "other",
+  "company_supporter",
+] as const;
+const PARTNER_TIERS = ["platinum", "gold", "silver", "bronze"] as const;
 
 function pbAdminErrorMessage(error: unknown): string {
   const response = (error as { response?: { data?: Record<string, { message?: string }> } })
@@ -57,6 +75,82 @@ function buildSpeakerCreateBody(
     type: photo.type || "application/octet-stream",
   });
   body.append("photo", blob, photo.name || "photo");
+  return body;
+}
+
+/** Serializable file payload for partner logos (Seroval-safe). */
+export type PartnerLogoPayload = {
+  name: string;
+  type: string;
+  data: number[];
+};
+
+export type PartnerInput = {
+  name: string;
+  type: PartnerRecord["type"];
+  tier?: PartnerRecord["tier"] | "";
+  url?: string;
+  description?: string;
+  published?: boolean;
+  logo?: PartnerLogoPayload | null;
+};
+
+function partnerSnapshot(record: PartnerRecord) {
+  return {
+    id: record.id,
+    name: record.name,
+    type: record.type,
+    tier: record.tier,
+    published: record.published,
+    logo: record.logo,
+    url: record.url,
+  };
+}
+
+function validatePartnerInput(input: PartnerInput, requireLogo: boolean) {
+  const name = input.name?.trim();
+  if (!name) return "Partner name is required.";
+  if (!PARTNER_TYPES.includes(input.type)) return "Choose a valid partner type.";
+  if (input.tier && !PARTNER_TIERS.includes(input.tier)) {
+    return "Choose a valid sponsor tier.";
+  }
+  if (requireLogo && !input.logo?.data?.length) return "Logo is required.";
+  if (input.logo?.data?.length) {
+    if (input.logo.data.length > PARTNER_LOGO_MAX_BYTES) {
+      return "Logo must be 5 MB or smaller.";
+    }
+    if (input.logo.type && !PARTNER_LOGO_TYPES.includes(input.logo.type)) {
+      return "Logo must be SVG, PNG, JPEG, WebP, or AVIF.";
+    }
+  }
+  return null;
+}
+
+function normalizedPartnerFields(input: PartnerInput) {
+  return {
+    name: input.name.trim(),
+    published: input.published ?? false,
+    type: input.type,
+    tier: input.type === "sponsor" ? input.tier || "" : "",
+    url: input.url?.trim() || "",
+    description: input.description?.trim() || "",
+  };
+}
+
+function buildPartnerBody(
+  fields: ReturnType<typeof normalizedPartnerFields>,
+  logo?: PartnerLogoPayload | null,
+): Record<string, unknown> | FormData {
+  if (!logo?.data?.length) return fields;
+
+  const body = new FormData();
+  for (const [key, value] of Object.entries(fields)) {
+    body.append(key, String(value));
+  }
+  const blob = new Blob([new Uint8Array(logo.data)], {
+    type: logo.type || "application/octet-stream",
+  });
+  body.append("logo", blob, logo.name || "logo");
   return body;
 }
 
@@ -205,15 +299,13 @@ export const adminFetchLeaderboardData = async () => {
     ];
 
     const weights: Record<string, number> = {};
-    if (votes.length > 0) {
-      CRITERIA.forEach(c => {
-        const sum = votes.reduce((acc, v) => acc + (v[c.id] || 0), 0);
-        weights[c.id] = sum / votes.length;
-      });
-    } else {
-      // Default weights if no votes yet (all 1)
-      CRITERIA.forEach(c => weights[c.id] = 1);
-    }
+    CRITERIA.forEach(c => {
+      const values = votes
+        .map((v: any) => Number(v[c.id]))
+        .filter((value) => Number.isFinite(value) && value > 0);
+      const sum = values.reduce((acc, value) => acc + value, 0);
+      weights[c.id] = values.length > 0 ? sum / values.length : 1;
+    });
 
     // 3. Process Submissions
     const scoredSubmissions = subs.map(sub => {
@@ -233,8 +325,8 @@ export const adminFetchLeaderboardData = async () => {
         return rScore;
       });
 
-      // Average of all reviews
-      const totalScore = reviewScores.reduce((a, b) => a + b, 0) / subReviews.length;
+      // Aggregate weighted scores across the committee; do not normalize by review count.
+      const totalScore = reviewScores.reduce((a, b) => a + b, 0);
 
       return {
         ...sub,
@@ -394,6 +486,84 @@ export const adminUpdateCfpConfig = async (data: Partial<CfpConfigData>) => {
     return { success: true, data: updated };
   } catch (error) {
     console.error("Admin update CfP config error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+// --- Partners & Sponsors ---
+
+export const adminFetchPartners = async () => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    const data = (await adminService.fetchAllRecords("partners")) as PartnerRecord[];
+    data.sort((a, b) => a.created.localeCompare(b.created));
+    return { success: true, data };
+  } catch (error) {
+    console.error("Admin fetch partners error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminCreatePartner = async (input: PartnerInput) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const validationError = validatePartnerInput(input, true);
+    if (validationError) return { success: false, error: validationError };
+
+    const adminService = getAdminPB();
+    const fields = normalizedPartnerFields(input);
+    const body = buildPartnerBody(fields, input.logo);
+    const record = (await adminService.createRecord("partners", body)) as PartnerRecord;
+    return { success: true, data: partnerSnapshot(record) };
+  } catch (error) {
+    console.error("Admin create partner error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminUpdatePartner = async (id: string, input: PartnerInput) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const validationError = validatePartnerInput(input, false);
+    if (validationError) return { success: false, error: validationError };
+
+    const adminService = getAdminPB();
+    const fields = normalizedPartnerFields(input);
+    const body = buildPartnerBody(fields, input.logo);
+    const record = (await adminService.updateRecord("partners", id, body)) as PartnerRecord;
+    return { success: true, data: partnerSnapshot(record) };
+  } catch (error) {
+    console.error("Admin update partner error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminSetPartnerPublished = async (id: string, published: boolean) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    const record = (await adminService.updateRecord("partners", id, { published })) as PartnerRecord;
+    return { success: true, data: partnerSnapshot(record) };
+  } catch (error) {
+    console.error("Admin set partner published error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminDeletePartner = async (id: string) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    await adminService.deleteRecord("partners", id);
+    return { success: true };
+  } catch (error) {
+    console.error("Admin delete partner error:", error);
     return { success: false, error: pbAdminErrorMessage(error) };
   }
 };

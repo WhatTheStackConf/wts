@@ -1,7 +1,6 @@
 import { createSignal, createResource, Show, For } from "solid-js";
-import { useNavigate } from "@solidjs/router";
 import { Icon } from "@iconify-icon/solid";
-import { Layout } from "~/layouts/Layout";
+import { AdminDataPanel, AdminPageShell } from "~/components/admin/AdminPageShell";
 import { useAuth } from "~/lib/auth-context";
 import { adminFetchAllUsers, adminUpdateUser, adminDeleteUser, adminFetchUserSpeakerProfile } from "~/lib/admin-actions";
 import { UserRecord } from "~/lib/pocketbase-types";
@@ -11,7 +10,6 @@ const ROLES = ["user", "reviewer", "admin"];
 
 export default function AdminUsersTable() {
     const auth = useAuth();
-    const navigate = useNavigate();
 
     // Fetch users using server action
     const [users, { refetch }] = createResource(async () => {
@@ -107,35 +105,15 @@ export default function AdminUsersTable() {
     };
 
     return (
-        <Layout title="User Management" description="Manage system users">
-            <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
-                {/* Background Decorations */}
-                <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-primary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
-                <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-secondary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
-
-                <div class="container mx-auto px-4 max-w-7xl">
-                    <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-                        <div>
-                            <h1 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-white uppercase drop-shadow-sm mb-2">
-                                User Management
-                                <Show when={!users.loading}>
-                                    <span class="ml-3 align-middle badge badge-lg font-mono font-black bg-primary-500/20 border-primary-500/40 text-primary-300">
-                                        {users()?.length || 0}
-                                    </span>
-                                </Show>
-                            </h1>
-                            <p class="text-secondary-300 font-mono text-sm">SYSTEM ACCESS & STATS</p>
-                        </div>
-                        <button
-                            class="btn btn-ghost hover:bg-white/10 text-white gap-2 group"
-                            onClick={() => navigate("/admin")}
-                        >
-                            <Icon icon="ph:arrow-left-bold" class="group-hover:-translate-x-1 transition-transform" />
-                            Back to Dashboard
-                        </button>
-                    </div>
-
-                    <div class="glass-panel rounded-2xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
+        <AdminPageShell
+            layoutTitle="User Management"
+            layoutDescription="Manage system users"
+            title="User Management"
+            subtitle="SYSTEM ACCESS & STATS"
+            count={users()?.length || 0}
+            countLoading={users.loading}
+        >
+            <AdminDataPanel>
                         {/* Mobile Card View */}
                         <div class="md:hidden space-y-4 p-4">
                             <For each={users()}>
@@ -333,11 +311,8 @@ export default function AdminUsersTable() {
                                 </tbody>
                             </table>
                         </div>
-                    </div>
-                </div>
+            </AdminDataPanel>
 
-            </div>
-            {/* Added closing div back */}
             {/* User Details Modal */}
             <Show when={selectedUser()}>
                 <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -527,6 +502,6 @@ export default function AdminUsersTable() {
                     </div>
                 </div>
             </Show>
-        </Layout>
+        </AdminPageShell>
     );
 }

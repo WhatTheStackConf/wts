@@ -128,6 +128,12 @@ export const Footer = () => {
             Partner With Us
           </a>
           <a
+            href="/sponsors"
+            class="link link-hover hover:text-primary-400 transition-colors"
+          >
+            Sponsors & Partners
+          </a>
+          <a
             href="/terms"
             class="link link-hover hover:text-primary-400 transition-colors"
           >

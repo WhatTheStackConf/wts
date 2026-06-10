@@ -1,8 +1,12 @@
 import { createSignal, createResource, Show, For, createMemo } from "solid-js";
-import { useNavigate } from "@solidjs/router";
 import { Icon } from "@iconify-icon/solid";
-import { Layout } from "~/layouts/Layout";
 import { clientOnly } from "@solidjs/start";
+import {
+    AdminDataPanel,
+    AdminFilterBar,
+    AdminPageShell,
+    adminInputClass,
+} from "~/components/admin/AdminPageShell";
 import { HiEventsAttendee } from "~/lib/hievents";
 import { adminFetchAttendeesWithAccounts } from "~/lib/admin-actions";
 import { getGravatarUrl } from "~/lib/gravatar";
@@ -12,7 +16,6 @@ type EnrichedAttendee = HiEventsAttendee & { account: { id: string; name: string
 
 const AdminTickets = () => {
     const guard = useRequireAdmin();
-    const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = createSignal("");
 
     const [attendees] = createResource(
@@ -50,28 +53,17 @@ const AdminTickets = () => {
     });
 
     return (
-        <Layout title="Ticket Management" description="Monitor event attendees">
-            <Show when={guard.authorized()}>
-            <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
-                {/* Background Decorations */}
-                <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-accent-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
-                <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
-
-                <div class="container mx-auto px-4 max-w-7xl">
-                    <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-                        <div>
-                            <h1 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-accent-400 to-white uppercase drop-shadow-sm mb-2">Ticket Management</h1>
-                            <p class="text-secondary-300 font-mono text-sm">ATTENDEE LIST & CHECK-IN STATUS</p>
-                        </div>
-                        <button
-                            class="btn btn-ghost hover:bg-white/10 text-white gap-2 group"
-                            onClick={() => navigate("/admin")}
-                        >
-                            <Icon icon="ph:arrow-left-bold" class="group-hover:-translate-x-1 transition-transform" />
-                            Back to Dashboard
-                        </button>
-                    </div>
-
+        <Show when={guard.authorized()}>
+            <AdminPageShell
+                layoutTitle="Ticket Management"
+                layoutDescription="Monitor event attendees"
+                title="Ticket Management"
+                subtitle="ATTENDEE LIST & CHECK-IN STATUS"
+                hint="Synced from hi.events. Account matches show linked WTS users."
+                count={stats().total}
+                countLoading={attendees.loading}
+                accent="secondary"
+            >
                     {/* Stats Row */}
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
                         <div class="glass-panel p-6 rounded-xl border border-white/10 bg-black/20">
@@ -92,24 +84,29 @@ const AdminTickets = () => {
                         </div>
                     </div>
 
-                    <div class="glass-panel rounded-2xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
-
-                        {/* Toolbar */}
-                        <div class="p-4 border-b border-white/10 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white/5">
+                    <AdminFilterBar showCount={!!searchTerm()} filteredCount={filteredAttendees().length} totalCount={stats().total}>
+                        <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                            <label for="ticket-search" class="text-xs font-mono text-gray-500">Search:</label>
                             <div class="relative w-full sm:w-96">
                                 <Icon icon="ph:magnifying-glass" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                                 <input
+                                    id="ticket-search"
+                                    name="ticket-search"
                                     type="text"
                                     placeholder="Search by name, email, or ticket type..."
-                                    class="input input-sm w-full pl-10 bg-black/20 border-white/10 focus:border-accent-500 text-white placeholder:text-gray-500"
+                                    autocomplete="off"
+                                    class={adminInputClass("input-sm pl-10")}
                                     value={searchTerm()}
                                     onInput={(e) => setSearchTerm(e.currentTarget.value)}
                                 />
                             </div>
-                            <div class="text-xs text-secondary-300 font-mono">
-                                * Showing first page only
-                            </div>
                         </div>
+                        <div class="text-xs text-secondary-300 font-mono">
+                            * Showing first page only
+                        </div>
+                    </AdminFilterBar>
+
+                    <AdminDataPanel>
 
                         {/* Mobile Card View */}
                         <div class="md:hidden space-y-4 p-4">
@@ -268,11 +265,9 @@ const AdminTickets = () => {
                             Synced from hi.events • {stats().total} records loaded
                         </div>
 
-                    </div>
-                </div>
-            </div>
-            </Show>
-        </Layout>
+                    </AdminDataPanel>
+            </AdminPageShell>
+        </Show>
     );
 };
 

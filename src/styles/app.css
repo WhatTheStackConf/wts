@@ -853,6 +853,47 @@ main {
   overflow: hidden;
 }
 
+.admin-field .admin-control {
+  caret-color: var(--color-primary-300);
+  min-height: 3rem;
+}
+
+.admin-field .admin-label,
+.admin-field .admin-hint {
+  white-space: normal;
+}
+
+.admin-field .admin-control:user-invalid,
+.admin-field .admin-control[aria-invalid="true"] {
+  border-color: color-mix(in oklch, var(--color-error) 72%, transparent);
+  background: color-mix(in oklch, var(--color-error) 10%, rgba(10, 10, 15, 0.72));
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-error) 34%, transparent);
+}
+
+.admin-field .admin-control:required:user-valid:not([type="file"]) {
+  border-color: color-mix(in oklch, var(--color-success) 52%, transparent);
+}
+
+.admin-field .admin-error {
+  display: none;
+  color: var(--color-error);
+}
+
+.admin-field:has(.admin-control:user-invalid) .admin-error,
+.admin-field:has(.admin-control[aria-invalid="true"]) .admin-error {
+  display: flex;
+}
+
+.admin-field:focus-within .admin-label {
+  color: var(--color-primary-300);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-control {
+    transition: none;
+  }
+}
+
 @utility glass-sweep {
   &::after {
     content: "";

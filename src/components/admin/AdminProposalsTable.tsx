@@ -1,8 +1,13 @@
 import { createSignal, createMemo, For, Show, createResource } from "solid-js";
-import { useNavigate } from "@solidjs/router";
 import { useRequireAdmin } from "~/lib/route-guards";
 import { Icon } from "@iconify-icon/solid";
-import { Layout } from "~/layouts/Layout";
+import {
+    AdminDataPanel,
+    AdminFilterBar,
+    AdminFilterGroup,
+    AdminPageShell,
+    adminFilterButtonClass,
+} from "~/components/admin/AdminPageShell";
 
 import {
     adminPublishFromApplicant,
@@ -34,7 +39,6 @@ type LeaderboardItem = CfpSubmissionRecord & {
 
 export default function AdminProposalsTable() {
     const guard = useRequireAdmin();
-    const navigate = useNavigate();
 
     const [submissions, { refetch }] = createResource(
         () => (guard.authorized() ? true : undefined),
@@ -151,127 +155,73 @@ export default function AdminProposalsTable() {
     };
 
     return (
-        <Layout title="Proposals Leaderboard" description="Ranked submissions">
-            <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
-                {/* Background Decorations */}
-                <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-secondary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
-                <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
-
-                <div class="container mx-auto px-4 max-w-7xl">
-                    <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-                        <div>
-                            <h1 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-secondary-400 uppercase drop-shadow-sm mb-2">
-                                Proposal Leaderboard
-                                <Show when={!submissions.loading}>
-                                    <span class="ml-3 align-middle badge badge-lg font-mono font-black bg-secondary-500/20 border-secondary-500/40 text-secondary-300">
-                                        {submissions()?.length || 0}
-                                    </span>
-                                </Show>
-                            </h1>
-                            <p class="text-secondary-300 font-mono text-sm">RANKING BASED ON WEIGHTED COMMITTEE SCORES</p>
-                            <p class="text-xs text-gray-500 font-mono mt-1">
-                                Set status to Accepted, then use Publish speaker to create a draft profile.
-                            </p>
-                        </div>
-                        <button
-                            class="btn btn-ghost hover:bg-white/10 text-white gap-2 group"
-                            onClick={() => navigate("/admin")}
-                        >
-                            <Icon icon="ph:arrow-left-bold" class="group-hover:-translate-x-1 transition-transform" />
-                            Back to Dashboard
-                        </button>
-                    </div>
-
-                    <Show when={toast()}>
-                        {(t) => (
-                            <div
-                                class={`alert mb-6 font-mono text-sm ${
-                                    t().type === "success" ? "alert-success" : "alert-error"
-                                }`}
-                                role="status"
-                            >
-                                <span>{t().text}</span>
-                            </div>
-                        )}
-                    </Show>
-
+        <AdminPageShell
+            layoutTitle="Proposals Leaderboard"
+            layoutDescription="Ranked submissions"
+            title="Proposal Leaderboard"
+            subtitle="RANKING BASED ON WEIGHTED COMMITTEE SCORES"
+            hint="Set status to Accepted, then use Publish speaker to create a draft profile."
+            count={submissions()?.length || 0}
+            countLoading={submissions.loading}
+            accent="secondary"
+            toast={toast()}
+        >
                     {/* Filters */}
-                    <div class="flex flex-wrap gap-3 mb-6 items-center">
-                        <div class="flex items-center gap-2">
-                            <Icon icon="ph:funnel-bold" class="text-gray-400" />
-                            <span class="text-xs font-mono text-gray-400 uppercase">Filters</span>
-                        </div>
+                    <AdminFilterBar
+                        showCount={expenseFilter() !== "all" || statusFilter() !== "all"}
+                        filteredCount={filteredSubmissions().length}
+                        totalCount={submissions()?.length || 0}
+                    >
+                        <AdminFilterGroup label="Expenses:">
+                            <For each={["all", "Yes", "No", "Other"]}>
+                                {(opt) => (
+                                    <button
+                                        type="button"
+                                        class={adminFilterButtonClass(expenseFilter() === opt)}
+                                        onClick={() => setExpenseFilter(opt)}
+                                    >
+                                        {opt === "all" ? "All" : opt}
+                                    </button>
+                                )}
+                            </For>
+                        </AdminFilterGroup>
 
-                        <div class="flex items-center gap-2">
-                            <label class="text-xs font-mono text-gray-500">Expenses:</label>
-                            <div class="flex gap-1">
-                                <For each={["all", "Yes", "No", "Other"]}>
-                                    {(opt) => (
-                                        <button
-                                            class={`btn btn-xs font-mono ${expenseFilter() === opt
-                                                ? "btn-primary"
-                                                : "btn-ghost border-white/10 text-gray-400 hover:bg-white/10"
-                                                }`}
-                                            onClick={() => setExpenseFilter(opt)}
-                                        >
-                                            {opt === "all" ? "All" : opt}
-                                        </button>
-                                    )}
-                                </For>
-                            </div>
-                        </div>
+                        <AdminFilterGroup label="Status:">
+                            <For each={["all", "pending", "accepted", "rejected"]}>
+                                {(opt) => (
+                                    <button
+                                        type="button"
+                                        class={adminFilterButtonClass(statusFilter() === opt)}
+                                        onClick={() => setStatusFilter(opt)}
+                                    >
+                                        {opt === "all" ? "All" : opt.charAt(0).toUpperCase() + opt.slice(1)}
+                                    </button>
+                                )}
+                            </For>
+                        </AdminFilterGroup>
 
-                        <div class="flex items-center gap-2">
-                            <label class="text-xs font-mono text-gray-500">Status:</label>
-                            <div class="flex gap-1">
-                                <For each={["all", "pending", "accepted", "rejected"]}>
-                                    {(opt) => (
-                                        <button
-                                            class={`btn btn-xs font-mono ${statusFilter() === opt
-                                                ? "btn-primary"
-                                                : "btn-ghost border-white/10 text-gray-400 hover:bg-white/10"
-                                                }`}
-                                            onClick={() => setStatusFilter(opt)}
-                                        >
-                                            {opt === "all" ? "All" : opt.charAt(0).toUpperCase() + opt.slice(1)}
-                                        </button>
-                                    )}
-                                </For>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center gap-2">
-                            <label class="text-xs font-mono text-gray-500">Sort:</label>
-                            <div class="flex gap-1">
-                                <For each={[{ k: "score", l: "Score" }, { k: "date", l: "Date" }] as const}>
-                                    {(opt) => (
-                                        <button
-                                            class={`btn btn-xs font-mono ${sortBy() === opt.k
-                                                ? "btn-primary"
-                                                : "btn-ghost border-white/10 text-gray-400 hover:bg-white/10"
-                                                }`}
-                                            onClick={() => setSortBy(opt.k)}
-                                        >
-                                            {opt.l}
-                                        </button>
-                                    )}
-                                </For>
-                                <button
-                                    class="btn btn-xs font-mono btn-ghost border-white/10 text-gray-400 hover:bg-white/10"
-                                    onClick={() => setSortDir(sortDir() === "desc" ? "asc" : "desc")}
-                                    title={sortDir() === "desc" ? "Descending" : "Ascending"}
-                                >
-                                    <Icon icon={sortDir() === "desc" ? "ph:arrow-down-bold" : "ph:arrow-up-bold"} />
-                                </button>
-                            </div>
-                        </div>
-
-                        <Show when={expenseFilter() !== "all" || statusFilter() !== "all"}>
-                            <span class="text-xs font-mono text-gray-500">
-                                {filteredSubmissions().length} / {submissions()?.length || 0} proposals
-                            </span>
-                        </Show>
-                    </div>
+                        <AdminFilterGroup label="Sort:">
+                            <For each={[{ k: "score", l: "Score" }, { k: "date", l: "Date" }] as const}>
+                                {(opt) => (
+                                    <button
+                                        type="button"
+                                        class={adminFilterButtonClass(sortBy() === opt.k)}
+                                        onClick={() => setSortBy(opt.k)}
+                                    >
+                                        {opt.l}
+                                    </button>
+                                )}
+                            </For>
+                            <button
+                                type="button"
+                                class="btn btn-xs font-mono btn-ghost border-white/10 text-gray-400 hover:bg-white/10"
+                                onClick={() => setSortDir(sortDir() === "desc" ? "asc" : "desc")}
+                                title={sortDir() === "desc" ? "Descending" : "Ascending"}
+                            >
+                                <Icon icon={sortDir() === "desc" ? "ph:arrow-down-bold" : "ph:arrow-up-bold"} />
+                            </button>
+                        </AdminFilterGroup>
+                    </AdminFilterBar>
 
                     <Show when={submissions.loading}>
                         <div class="flex justify-center p-20">
@@ -280,7 +230,7 @@ export default function AdminProposalsTable() {
                     </Show>
 
                     <Show when={!submissions.loading}>
-                        <div class="glass-panel rounded-2xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
+                        <AdminDataPanel>
                             {/* Mobile Card View */}
                             <div class="md:hidden space-y-4 p-4">
                                 <For each={filteredSubmissions()}>
@@ -489,14 +439,12 @@ export default function AdminProposalsTable() {
                                     </tbody>
                                 </table>
                             </div>
-                        </div>
+                        </AdminDataPanel>
                     </Show>
-                </div>
-            </div>
 
 
             {/* Delete Confirmation Modal */}
-            < Show when={deleteId()} >
+            <Show when={deleteId()}>
                 <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => !isDeleting() && setDeleteId(null)}></div>
                     <div class="relative bg-base-100 border border-white/10 rounded-2xl shadow-2xl p-6 max-w-sm w-full animate-scale-in">
@@ -522,7 +470,7 @@ export default function AdminProposalsTable() {
                         </div>
                     </div>
                 </div>
-            </Show >
-        </Layout >
+            </Show>
+        </AdminPageShell>
     );
 }

@@ -6,9 +6,15 @@ import {
   TEASER_SPEAKER_LIMIT,
 } from "~/lib/speakers-public";
 import { SpeakerCard } from "~/components/conference/SpeakerCard";
+import {
+  PartnersShowcase,
+  PartnersShowcaseSkeleton,
+} from "~/components/conference/PartnersShowcase";
+import { fetchPublicPartnerGroups } from "~/lib/partners-public";
 
 export default function Home() {
   const [speakers] = createResource(fetchPublicSpeakerTeaser);
+  const [partnerGroups] = createResource(fetchPublicPartnerGroups);
 
   return (
     <Layout
@@ -57,6 +63,27 @@ export default function Home() {
             </div>
           </section>
         </Show>
+
+        <section class="px-3 md:px-0 pt-4 md:pt-8 pb-12 md:pb-16 fade-in-delay-2">
+          <header class="max-w-6xl mx-auto mb-8 md:mb-10 fade-in">
+            <h2 class="font-star text-3xl md:text-4xl uppercase tracking-widest text-primary-500 mb-4">
+              Sponsors and partners
+            </h2>
+            <p class="max-w-2xl text-dark-50 text-lg font-light leading-relaxed">
+              The companies, communities, media crews, organizers, and supporters helping make WTS 2026 happen.
+            </p>
+          </header>
+
+          <Show when={partnerGroups()} fallback={<PartnersShowcaseSkeleton />}>
+            <PartnersShowcase groups={partnerGroups() ?? []} variant="home" />
+          </Show>
+
+          <div class="mt-8 md:mt-10 flex justify-center fade-in-delay-3">
+            <a href="/sponsors" class="link text-primary-200 font-black text-xl">
+              {`>`} View sponsors and partners
+            </a>
+          </div>
+        </section>
 
         <section class="max-w-6xl mx-auto pt-8 md:pt-12 pb-24 px-6">
           <div class="glass-panel p-12 rounded-3xl grid-scan fade-in-delay-3">

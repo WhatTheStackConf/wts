@@ -15,7 +15,7 @@ Live: [wts.rs](https://wts.rs)
 
 ## Features
 
-- Marketing pages (home, about, agenda, speakers, sessions, FAQ, partnerships)
+- Marketing pages (home, about, agenda, speakers, sessions, FAQ, sponsors, partnerships)
 - Blog (MDX via Velite)
 - CFP submission flow with reviewer/admin dashboards
 - Weighted committee scoring with per-reviewer weight votes

@@ -76,6 +76,27 @@ export interface SessionRecord extends RecordModel {
   updated: string;
 }
 
+// Partner/sponsor collection type (public conference organizations)
+export interface PartnerRecord extends RecordModel {
+  id: string;
+  name: string;
+  published: boolean;
+  type:
+    | "organizer"
+    | "sponsor"
+    | "supporter"
+    | "media"
+    | "catering"
+    | "other"
+    | "company_supporter";
+  tier?: "platinum" | "gold" | "silver" | "bronze";
+  logo: string;
+  url?: string;
+  description?: string;
+  created: string;
+  updated: string;
+}
+
 // CFP Review collection type
 export interface CfpReviewRecord extends RecordModel {
   id: string;
@@ -106,7 +127,8 @@ export type CollectionRecord =
   | CfpSubmissionRecord
   | CfpReviewRecord
   | SpeakerRecord
-  | SessionRecord;
+  | SessionRecord
+  | PartnerRecord;
 
 // Type guard functions
 export function isUserRecord(record: CollectionRecord): record is UserRecord {
@@ -144,4 +166,10 @@ export function isSessionRecord(
   record: CollectionRecord,
 ): record is SessionRecord {
   return (record as any).collectionName === "sessions";
+}
+
+export function isPartnerRecord(
+  record: CollectionRecord,
+): record is PartnerRecord {
+  return (record as any).collectionName === "partners";
 }

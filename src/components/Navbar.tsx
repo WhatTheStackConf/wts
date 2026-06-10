@@ -146,6 +146,9 @@ export const Navbar = () => {
                     <a href="/sessions">{`>`} Sessions</a>
                   </li>
                   <li>
+                    <a href="/sponsors">{`>`} Sponsors & partners</a>
+                  </li>
+                  <li>
                     <a href="/timeline">{`>`} Timeline</a>
                   </li>
                   <li>
@@ -288,6 +291,9 @@ export const Navbar = () => {
                   </li>
                   <li>
                     <a href="/sessions" onClick={closeDrawer}>Sessions</a>
+                  </li>
+                  <li>
+                    <a href="/sponsors" onClick={closeDrawer}>Sponsors & partners</a>
                   </li>
                   <li>
                     <a href="/timeline" onClick={closeDrawer}>Timeline</a>

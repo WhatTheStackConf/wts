@@ -152,6 +152,24 @@ const AdminDashboard = () => {
                                     </a>
                                 </div>
 
+                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-accent-500/50 transition-colors group h-full flex flex-col">
+                                    <div class="flex items-center gap-4 mb-4">
+                                        <div class="p-3 rounded-lg bg-accent-500/20 text-accent-300">
+                                            <Icon icon="ph:handshake-bold" width="24" />
+                                        </div>
+                                        <h3 class="text-xl font-bold text-white">PARTNERS</h3>
+                                    </div>
+                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
+                                        Add sponsors, organizers, media partners, supporters, and community partners.
+                                    </p>
+                                    <a
+                                        href="/admin/partners"
+                                        class="btn btn-outline btn-accent w-full font-mono group-hover:bg-accent-500 group-hover:text-white mt-auto"
+                                    >
+                                        MANAGE PARTNERS
+                                    </a>
+                                </div>
+
                                 <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-warning-500/50 transition-colors group h-full flex flex-col">
                                     <div class="flex items-center gap-4 mb-4">
                                         <div class="p-3 rounded-lg bg-warning-500/20 text-warning-300">

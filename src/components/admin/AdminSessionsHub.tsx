@@ -2,7 +2,15 @@ import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { Icon } from "@iconify-icon/solid";
 import {
   AdminDataPanel,
+  AdminFormField,
+  AdminFormSection,
   AdminPageShell,
+  adminFormPanelClass,
+  adminInputClass,
+  adminTextareaClass,
+  clearAdminControlValidity,
+  markAdminControlInvalid,
+  syncAdminControlValidity,
   useAdminToast,
 } from "~/components/admin/AdminPageShell";
 import {
@@ -169,7 +177,7 @@ export default function AdminSessionsHub() {
 
   return (
     <AdminPageShell
-      layoutTitle="Admin — Sessions"
+      layoutTitle="Admin: Sessions"
       layoutDescription="Manage conference sessions"
       title="Sessions"
       subtitle="Programme items & publication"
@@ -202,9 +210,9 @@ export default function AdminSessionsHub() {
         >
           <form
             onSubmit={submit}
-            class="glass-panel p-6 rounded-2xl border border-white/10 shadow-xl backdrop-blur-xl bg-black/40"
+            class={adminFormPanelClass}
           >
-            <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+            <div class="mb-6">
               <div>
                 <h2 class="text-lg font-bold text-white">
                   {editingId() ? "Edit session" : "New session"}
@@ -213,107 +221,194 @@ export default function AdminSessionsHub() {
                   Saves as draft. Toggle Published when ready for the public site.
                 </p>
               </div>
-              <button type="button" class="btn btn-ghost btn-sm font-mono" onClick={resetForm}>
-                Cancel
-              </button>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input
-                class="input input-bordered bg-black/40"
-                placeholder="Title *"
-                required
-                value={title()}
-                onInput={(e) => setTitle(e.currentTarget.value)}
-              />
-              <input
-                class="input input-bordered bg-black/40 font-mono"
-                placeholder="Slug"
-                value={slug()}
-                onInput={(e) => setSlug(e.currentTarget.value)}
-              />
-              <input
-                class="input input-bordered bg-black/40"
-                placeholder="Format (e.g. 25+10)"
-                value={format()}
-                onInput={(e) => setFormat(e.currentTarget.value)}
-              />
-              <input
-                type="datetime-local"
-                class="input input-bordered bg-black/40 font-mono"
-                value={startsAt()}
-                onInput={(e) => setStartsAt(e.currentTarget.value)}
-              />
-              <input
-                class="input input-bordered bg-black/40"
-                placeholder="Track"
-                value={track()}
-                onInput={(e) => setTrack(e.currentTarget.value)}
-              />
-              <input
-                class="input input-bordered bg-black/40"
-                placeholder="Room"
-                value={room()}
-                onInput={(e) => setRoom(e.currentTarget.value)}
-              />
-              <textarea
-                class="textarea textarea-bordered bg-black/40 md:col-span-2 min-h-32"
-                placeholder="Public abstract *"
-                required
-                value={abstract()}
-                onInput={(e) => setAbstract(e.currentTarget.value)}
-              />
-            </div>
-
-            <Show when={speakers()}>
-              <fieldset class="mt-4 border border-white/10 rounded-xl p-4">
-                <legend class="text-xs font-mono text-gray-400 uppercase px-2">Speakers</legend>
-                <p class="text-xs text-gray-500 font-mono mb-3">
-                  Select one or more speakers for this session.
-                  {selectedSpeakers().length > 0
-                    ? ` ${selectedSpeakers().length} selected.`
-                    : " None selected yet."}
-                </p>
-                <input
-                  type="search"
-                  class="input input-bordered input-sm bg-black/40 font-mono w-full mb-3"
-                  placeholder="Filter speakers by name…"
-                  value={speakerSearch()}
-                  onInput={(e) => setSpeakerSearch(e.currentTarget.value)}
-                />
-                <div class="max-h-48 overflow-y-auto space-y-1 rounded-lg bg-black/20 p-2">
-                  <Show
-                    when={filteredSpeakers().length > 0}
-                    fallback={
-                      <p class="text-xs text-gray-500 font-mono p-2 text-center">
-                        {speakerSearch()
-                          ? "No speakers match your search."
-                          : "No speaker profiles yet. Create speakers first."}
-                      </p>
-                    }
+            <div class="space-y-6">
+              <AdminFormSection
+                title="Public identity"
+                description="The title and slug used for the public session page."
+              >
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
+                  <AdminFormField
+                    id="session-title"
+                    label="Title"
+                    required
+                    hint="Public session title shown on the website."
+                    error="Add a public title before saving."
+                    class="lg:col-span-8"
                   >
-                    <For each={filteredSpeakers()}>
-                      {(sp) => (
-                        <label class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            class="checkbox checkbox-sm checkbox-primary"
-                            checked={selectedSpeakers().includes(sp.id)}
-                            onChange={() => toggleSpeaker(sp.id)}
-                          />
-                          <span class="text-sm text-white">{speakerDisplayName(sp)}</span>
-                          <span class="text-xs font-mono text-gray-500 ml-auto">{sp.slug}</span>
-                        </label>
-                      )}
-                    </For>
-                  </Show>
-                </div>
-              </fieldset>
-            </Show>
+                    <input
+                      id="session-title"
+                      name="title"
+                      class={adminInputClass()}
+                      required
+                      autocomplete="off"
+                      aria-describedby="session-title-hint"
+                      aria-errormessage="session-title-error"
+                      value={title()}
+                      onInvalid={markAdminControlInvalid}
+                      onBlur={syncAdminControlValidity}
+                      onInput={(e) => {
+                        clearAdminControlValidity(e);
+                        setTitle(e.currentTarget.value);
+                      }}
+                    />
+                  </AdminFormField>
 
-            <div class="flex gap-2 mt-4">
-              <button type="submit" class="btn btn-primary font-mono" disabled={saving()}>
-                {saving() ? "Saving…" : editingId() ? "Update session" : "Create session"}
-              </button>
+                  <AdminFormField
+                    id="session-slug"
+                    label="Slug"
+                    hint="Leave blank to generate it from the title."
+                    class="lg:col-span-4"
+                  >
+                    <input
+                      id="session-slug"
+                      name="slug"
+                      class={adminInputClass("font-mono")}
+                      autocomplete="off"
+                      placeholder="intro-to-rust"
+                      value={slug()}
+                      onInput={(e) => setSlug(e.currentTarget.value)}
+                    />
+                  </AdminFormField>
+                </div>
+              </AdminFormSection>
+
+              <AdminFormSection title="Schedule" description="Optional programme metadata. Leave fields empty until the schedule is firm.">
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-5">
+                  <AdminFormField id="session-format" label="Format">
+                    <input
+                      id="session-format"
+                      name="format"
+                      class={adminInputClass()}
+                      autocomplete="off"
+                      placeholder="25+10"
+                      value={format()}
+                      onInput={(e) => setFormat(e.currentTarget.value)}
+                    />
+                  </AdminFormField>
+
+                  <AdminFormField id="session-starts-at" label="Starts at">
+                    <input
+                      id="session-starts-at"
+                      name="starts_at"
+                      type="datetime-local"
+                      class={adminInputClass("font-mono")}
+                      value={startsAt()}
+                      onInput={(e) => setStartsAt(e.currentTarget.value)}
+                    />
+                  </AdminFormField>
+
+                  <AdminFormField id="session-track" label="Track">
+                    <input
+                      id="session-track"
+                      name="track"
+                      class={adminInputClass()}
+                      autocomplete="off"
+                      placeholder="Systems"
+                      value={track()}
+                      onInput={(e) => setTrack(e.currentTarget.value)}
+                    />
+                  </AdminFormField>
+
+                  <AdminFormField id="session-room" label="Room">
+                    <input
+                      id="session-room"
+                      name="room"
+                      class={adminInputClass()}
+                      autocomplete="off"
+                      placeholder="Main hall"
+                      value={room()}
+                      onInput={(e) => setRoom(e.currentTarget.value)}
+                    />
+                  </AdminFormField>
+                </div>
+              </AdminFormSection>
+
+              <AdminFormSection title="Public copy" description="This text appears on the public session page.">
+                <AdminFormField
+                  id="session-abstract"
+                  label="Public abstract"
+                  required
+                  hint="Do not paste private CFP review notes here."
+                  error="Add a public abstract before saving."
+                >
+                  <textarea
+                    id="session-abstract"
+                    name="abstract"
+                    class={adminTextareaClass("min-h-36")}
+                    required
+                    aria-describedby="session-abstract-hint"
+                    aria-errormessage="session-abstract-error"
+                    value={abstract()}
+                    onInvalid={markAdminControlInvalid}
+                    onBlur={syncAdminControlValidity}
+                    onInput={(e) => {
+                      clearAdminControlValidity(e);
+                      setAbstract(e.currentTarget.value);
+                    }}
+                  />
+                </AdminFormField>
+              </AdminFormSection>
+
+              <Show when={speakers()}>
+                <AdminFormSection
+                  title="Speakers"
+                  description={`Select one or more speakers for this session. ${selectedSpeakers().length > 0 ? `${selectedSpeakers().length} selected.` : "None selected yet."}`}
+                >
+                  <AdminFormField id="session-speaker-search" label="Filter speakers" class="mb-3">
+                    <input
+                      id="session-speaker-search"
+                      name="speaker_search"
+                      type="search"
+                      class={adminInputClass("input-sm font-mono w-full")}
+                      placeholder="Search by name"
+                      value={speakerSearch()}
+                      onInput={(e) => setSpeakerSearch(e.currentTarget.value)}
+                    />
+                  </AdminFormField>
+                  <div class="max-h-56 overflow-y-auto space-y-1 rounded-lg bg-black/20 p-2 border border-white/10">
+                    <Show
+                      when={filteredSpeakers().length > 0}
+                      fallback={
+                        <p class="text-xs text-gray-500 font-mono p-4 text-center">
+                          {speakerSearch()
+                            ? "No speakers match your search."
+                            : "No speaker profiles yet. Create speakers first."}
+                        </p>
+                      }
+                    >
+                      <For each={filteredSpeakers()}>
+                        {(sp) => (
+                          <label class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              class="checkbox checkbox-sm checkbox-primary"
+                              checked={selectedSpeakers().includes(sp.id)}
+                              onChange={() => toggleSpeaker(sp.id)}
+                            />
+                            <span class="text-sm text-white">{speakerDisplayName(sp)}</span>
+                            <span class="text-xs font-mono text-gray-500 ml-auto">{sp.slug}</span>
+                          </label>
+                        )}
+                      </For>
+                    </Show>
+                  </div>
+                </AdminFormSection>
+              </Show>
+            </div>
+
+            <div class="mt-6 border-t border-white/10 pt-5 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p class="text-xs text-base-content/45 font-mono">
+                Sessions save as drafts until you toggle Published in the list.
+              </p>
+              <div class="flex flex-wrap gap-2 sm:justify-end">
+                <button type="button" class="btn btn-ghost font-mono" onClick={resetForm}>
+                  Cancel
+                </button>
+                <button type="submit" class="btn btn-primary font-mono" disabled={saving()}>
+                  {saving() ? "Saving..." : editingId() ? "Update session" : "Create session"}
+                </button>
+              </div>
             </div>
           </form>
         </Show>
