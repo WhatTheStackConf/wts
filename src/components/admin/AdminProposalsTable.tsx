@@ -14,6 +14,7 @@ import {
     adminFetchLeaderboardData,
     adminFetchSpeakers,
     adminSetSubmissionStatus,
+    adminSetSubmissionStatuses,
     deleteSubmission,
     type CfpSubmissionStatus,
 } from "~/lib/admin-actions";
@@ -40,7 +41,7 @@ type LeaderboardItem = CfpSubmissionRecord & {
 export default function AdminProposalsTable() {
     const guard = useRequireAdmin();
 
-    const [submissions, { refetch }] = createResource(
+    const [submissions, { refetch, mutate: mutateSubmissions }] = createResource(
         () => (guard.authorized() ? true : undefined),
         async () => {
             const res = await adminFetchLeaderboardData();
@@ -55,6 +56,8 @@ export default function AdminProposalsTable() {
     const [isDeleting, setIsDeleting] = createSignal(false);
     const [speakerBusyApplicant, setSpeakerBusyApplicant] = createSignal<string | null>(null);
     const [statusBusyId, setStatusBusyId] = createSignal<string | null>(null);
+    const [bulkBusyStatus, setBulkBusyStatus] = createSignal<CfpSubmissionStatus | null>(null);
+    const [selectedIds, setSelectedIds] = createSignal<Set<string>>(new Set());
     const [toast, setToast] = createSignal<{ type: "success" | "error"; text: string } | null>(null);
 
     const showToast = (type: "success" | "error", text: string) => {
@@ -64,6 +67,29 @@ export default function AdminProposalsTable() {
 
     const submissionStatus = (item: LeaderboardItem): CfpSubmissionStatus =>
         (item.status || "pending") as CfpSubmissionStatus;
+
+    const statusSelectDisabled = (id: string) =>
+        statusBusyId() === id || bulkBusyStatus() !== null;
+
+    const isSelected = (id: string) => selectedIds().has(id);
+
+    const setSubmissionSelected = (id: string, selected: boolean) => {
+        setSelectedIds((current) => {
+            const next = new Set(current);
+            if (selected) next.add(id);
+            else next.delete(id);
+            return next;
+        });
+    };
+
+    const clearSelection = () => setSelectedIds(new Set());
+
+    const bulkStatusMessage = (count: number, status: CfpSubmissionStatus) => {
+        const noun = count === 1 ? "proposal" : "proposals";
+        if (status === "accepted") return `${count} ${noun} accepted.`;
+        if (status === "rejected") return `${count} ${noun} rejected.`;
+        return `${count} ${noun} moved back to pending.`;
+    };
 
     const [speakerApplicantIds, { refetch: refetchSpeakers }] = createResource(
         () => (guard.authorized() ? true : undefined),
@@ -88,13 +114,24 @@ export default function AdminProposalsTable() {
     };
 
     const handleStatusChange = async (id: string, status: CfpSubmissionStatus) => {
+        const previousSubmissions = submissions();
+        mutateSubmissions((items) =>
+            (items || []).map((item) =>
+                item.id === id ? { ...item, status } : item,
+            ),
+        );
         setStatusBusyId(id);
         const res = await adminSetSubmissionStatus(id, status);
-        if (!res.success) showToast("error", res.error || "Could not update status.");
-        else {
-            await refetch();
+        if (!res.success) {
+            mutateSubmissions(previousSubmissions);
+            showToast("error", res.error || "Could not update status.");
+        } else {
             if (status === "accepted") {
                 showToast("success", "Proposal accepted. Use Publish speaker to create a profile.");
+            } else if (status === "rejected") {
+                showToast("success", "Proposal rejected.");
+            } else {
+                showToast("success", "Proposal moved back to pending.");
             }
         }
         setStatusBusyId(null);
@@ -135,14 +172,74 @@ export default function AdminProposalsTable() {
         return items;
     });
 
+    const visibleSubmissionIds = createMemo(() => filteredSubmissions().map((item) => item.id));
+    const selectedSubmissionIds = createMemo(() => [...selectedIds()]);
+    const selectedCount = createMemo(() => selectedSubmissionIds().length);
+    const bulkActionDisabled = createMemo(
+        () => selectedCount() === 0 || bulkBusyStatus() !== null || statusBusyId() !== null,
+    );
+    const allVisibleSelected = createMemo(() => {
+        const visibleIds = visibleSubmissionIds();
+        const selected = selectedIds();
+        return visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+    });
+
+    const toggleVisibleSelection = () => {
+        const visibleIds = visibleSubmissionIds();
+        if (visibleIds.length === 0) return;
+
+        setSelectedIds((current) => {
+            const next = new Set(current);
+            const shouldDeselect = visibleIds.every((id) => current.has(id));
+            for (const id of visibleIds) {
+                if (shouldDeselect) next.delete(id);
+                else next.add(id);
+            }
+            return next;
+        });
+    };
+
+    const handleBulkStatusChange = async (status: CfpSubmissionStatus) => {
+        const ids = selectedSubmissionIds();
+        if (ids.length === 0) return;
+
+        const previousSubmissions = submissions();
+        mutateSubmissions((items) =>
+            (items || []).map((item) =>
+                ids.includes(item.id) ? { ...item, status } : item,
+            ),
+        );
+        setBulkBusyStatus(status);
+
+        try {
+            const res = await adminSetSubmissionStatuses(ids, status);
+            if (!res.success) {
+                mutateSubmissions(previousSubmissions);
+                showToast("error", res.error || "Could not update selected proposals.");
+                return;
+            }
+
+            clearSelection();
+            showToast("success", bulkStatusMessage(ids.length, status));
+        } catch (error) {
+            mutateSubmissions(previousSubmissions);
+            console.error(error);
+            showToast("error", "Could not update selected proposals.");
+        } finally {
+            setBulkBusyStatus(null);
+        }
+    };
+
     const handleDelete = async () => {
-        if (!deleteId()) return;
+        const id = deleteId();
+        if (!id) return;
         setIsDeleting(true);
         try {
-            const res = await deleteSubmission(deleteId()!);
+            const res = await deleteSubmission(id);
             if (res.success) {
                 await refetch();
                 setDeleteId(null);
+                setSubmissionSelected(id, false);
             } else {
                 alert("Failed to delete: " + res.error);
             }
@@ -223,6 +320,66 @@ export default function AdminProposalsTable() {
                         </AdminFilterGroup>
                     </AdminFilterBar>
 
+                    <Show when={!submissions.loading}>
+                        <div class="mb-4 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="badge badge-sm border-secondary-500/40 bg-secondary-500/10 font-mono text-secondary-200">
+                                    {selectedCount()} selected
+                                </span>
+                                <button
+                                    type="button"
+                                    class="btn btn-xs btn-ghost border-white/10 font-mono text-gray-400 hover:bg-white/10"
+                                    disabled={visibleSubmissionIds().length === 0 || bulkBusyStatus() !== null}
+                                    onClick={toggleVisibleSelection}
+                                >
+                                    {allVisibleSelected() ? "Deselect visible" : "Select visible"}
+                                </button>
+                                <Show when={selectedCount() > 0}>
+                                    <button
+                                        type="button"
+                                        class="btn btn-xs btn-ghost border-white/10 font-mono text-gray-400 hover:bg-white/10"
+                                        disabled={bulkBusyStatus() !== null}
+                                        onClick={clearSelection}
+                                    >
+                                        Clear
+                                    </button>
+                                </Show>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button
+                                    type="button"
+                                    class="btn btn-xs btn-success font-mono"
+                                    disabled={bulkActionDisabled()}
+                                    onClick={() => handleBulkStatusChange("accepted")}
+                                >
+                                    <Show when={bulkBusyStatus() === "accepted"} fallback="Accept selected">
+                                        <span class="loading loading-spinner loading-xs"></span>
+                                    </Show>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-xs btn-error font-mono"
+                                    disabled={bulkActionDisabled()}
+                                    onClick={() => handleBulkStatusChange("rejected")}
+                                >
+                                    <Show when={bulkBusyStatus() === "rejected"} fallback="Reject selected">
+                                        <span class="loading loading-spinner loading-xs"></span>
+                                    </Show>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-xs btn-ghost border-white/10 font-mono text-gray-400 hover:bg-white/10"
+                                    disabled={bulkActionDisabled()}
+                                    onClick={() => handleBulkStatusChange("pending")}
+                                >
+                                    <Show when={bulkBusyStatus() === "pending"} fallback="Mark pending">
+                                        <span class="loading loading-spinner loading-xs"></span>
+                                    </Show>
+                                </button>
+                            </div>
+                        </div>
+                    </Show>
+
                     <Show when={submissions.loading}>
                         <div class="flex justify-center p-20">
                             <span class="loading loading-bars loading-lg text-primary-500"></span>
@@ -238,6 +395,16 @@ export default function AdminProposalsTable() {
                                         <div class="bg-white/5 rounded-xl p-4 border border-white/10 space-y-3">
                                             <div class="flex justify-between items-start">
                                                 <div class="flex items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        class="checkbox checkbox-sm checkbox-secondary"
+                                                        checked={isSelected(item.id)}
+                                                        aria-label={`Select proposal ${item.session_title}`}
+                                                        disabled={bulkBusyStatus() !== null}
+                                                        onChange={(e) =>
+                                                            setSubmissionSelected(item.id, e.currentTarget.checked)
+                                                        }
+                                                    />
                                                     <span class="font-mono font-bold text-accent-400">#{index() + 1}</span>
                                                     <div class={`badge font-mono font-black text-white ${item.totalScore >= 4 ? 'bg-success/20 border-success/40' : item.totalScore >= 3 ? 'bg-warning/20 border-warning/40' : 'bg-error/20 border-error/40'}`}>
                                                         {item.totalScore.toFixed(2)}
@@ -252,7 +419,7 @@ export default function AdminProposalsTable() {
                                                               : "border-white/10 text-gray-400"
                                                     }`}
                                                     value={submissionStatus(item)}
-                                                    disabled={statusBusyId() === item.id}
+                                                    disabled={statusSelectDisabled(item.id)}
                                                     onChange={(e) =>
                                                         handleStatusChange(
                                                             item.id,
@@ -328,6 +495,16 @@ export default function AdminProposalsTable() {
                                 <table class="table table-lg w-full">
                                     <thead>
                                         <tr class="text-white border-b border-white/10 bg-white/5">
+                                            <th class="w-10 text-center">
+                                                <input
+                                                    type="checkbox"
+                                                    class="checkbox checkbox-sm checkbox-secondary"
+                                                    checked={allVisibleSelected()}
+                                                    disabled={visibleSubmissionIds().length === 0 || bulkBusyStatus() !== null}
+                                                    aria-label={allVisibleSelected() ? "Deselect visible proposals" : "Select visible proposals"}
+                                                    onChange={() => toggleVisibleSelection()}
+                                                />
+                                            </th>
                                             <th class="text-center font-mono text-accent-400">#</th>
                                             <th class="text-center font-mono text-secondary-300">SCORE</th>
                                             <th class="font-bold text-gray-300">PROPOSAL</th>
@@ -342,6 +519,18 @@ export default function AdminProposalsTable() {
                                         <For each={filteredSubmissions()}>
                                             {(item, index) => (
                                                 <tr class="hover:bg-white/5 border-b border-white/5 transition-colors group">
+                                                    <td class="text-center">
+                                                        <input
+                                                            type="checkbox"
+                                                            class="checkbox checkbox-sm checkbox-secondary"
+                                                            checked={isSelected(item.id)}
+                                                            aria-label={`Select proposal ${item.session_title}`}
+                                                            disabled={bulkBusyStatus() !== null}
+                                                            onChange={(e) =>
+                                                                setSubmissionSelected(item.id, e.currentTarget.checked)
+                                                            }
+                                                        />
+                                                    </td>
                                                     <td class="text-center font-mono font-bold opacity-50 text-xl group-hover:text-accent-400 transition-colors">
                                                         {index() + 1}
                                                     </td>
@@ -390,7 +579,7 @@ export default function AdminProposalsTable() {
                                                                       : "border-white/10 text-gray-400"
                                                             }`}
                                                             value={submissionStatus(item)}
-                                                            disabled={statusBusyId() === item.id}
+                                                            disabled={statusSelectDisabled(item.id)}
                                                             onChange={(e) =>
                                                                 handleStatusChange(
                                                                     item.id,

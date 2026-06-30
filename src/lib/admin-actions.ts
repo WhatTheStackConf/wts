@@ -426,17 +426,49 @@ export const deleteSubmission = async (id: string) => {
   }
 };
 
-export type CfpSubmissionStatus = "pending" | "accepted" | "rejected";
+const CFP_SUBMISSION_STATUSES = ["pending", "accepted", "rejected"] as const;
+
+export type CfpSubmissionStatus = (typeof CFP_SUBMISSION_STATUSES)[number];
+
+function isCfpSubmissionStatus(status: unknown): status is CfpSubmissionStatus {
+  return typeof status === "string" && CFP_SUBMISSION_STATUSES.includes(status as CfpSubmissionStatus);
+}
 
 export const adminSetSubmissionStatus = async (id: string, status: CfpSubmissionStatus) => {
   "use server";
   try {
     await requireAdmin();
+    if (!isCfpSubmissionStatus(status)) return { success: false, error: "Choose a valid status." };
     const adminService = getAdminPB();
     const result = await adminService.updateRecord("cfp_submissions", id, { status });
     return { success: true, data: result };
   } catch (error) {
     console.error("Admin set submission status error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminSetSubmissionStatuses = async (ids: string[], status: CfpSubmissionStatus) => {
+  "use server";
+  try {
+    await requireAdmin();
+    if (!isCfpSubmissionStatus(status)) return { success: false, error: "Choose a valid status." };
+
+    if (!Array.isArray(ids)) return { success: false, error: "Choose at least one proposal." };
+
+    const uniqueIds = [
+      ...new Set(ids.filter((id): id is string => typeof id === "string").map((id) => id.trim()).filter(Boolean)),
+    ];
+    if (uniqueIds.length === 0) return { success: false, error: "Select at least one proposal." };
+
+    const adminService = getAdminPB();
+    await Promise.all(
+      uniqueIds.map((id) => adminService.updateRecord("cfp_submissions", id, { status })),
+    );
+
+    return { success: true, data: { updated: uniqueIds.length } };
+  } catch (error) {
+    console.error("Admin bulk set submission status error:", error);
     return { success: false, error: pbAdminErrorMessage(error) };
   }
 };
