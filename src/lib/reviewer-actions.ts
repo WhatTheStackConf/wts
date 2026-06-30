@@ -2,6 +2,29 @@ import { requireReviewer } from "~/lib/admin-security";
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { CfpReviewRecord, CfpSubmissionRecord } from "~/lib/pocketbase-types";
 
+const WEIGHT_CRITERIA = [
+    "relevance",
+    "originality",
+    "depth",
+    "clarity",
+    "takeaways",
+    "engagement",
+] as const;
+
+function calculateWeightAverages(votes: any[]) {
+    const averages: Record<string, number> = {};
+
+    for (const criterion of WEIGHT_CRITERIA) {
+        const values = votes
+            .map((vote) => Number(vote[criterion]))
+            .filter((value) => Number.isFinite(value) && value > 0);
+        const sum = values.reduce((acc, value) => acc + value, 0);
+        averages[criterion] = values.length > 0 ? sum / values.length : 1;
+    }
+
+    return averages;
+}
+
 export type ReviewerLeaderboardRow = {
     reviewerId: string;
     reviewerName: string;
@@ -118,13 +141,18 @@ export const fetchWeightVotes = async () => {
     try {
         const user = await requireReviewer();
         const adminService = getAdminPB();
+        const allRecords = await adminService.fetchAllRecords("cfp_weight_votes");
         const records =
             user.role === "admin"
-                ? await adminService.fetchAllRecords("cfp_weight_votes")
-                : await adminService.fetchAllRecords("cfp_weight_votes", {
-                      filter: `user = "${user.id}"`,
-                  });
-        return { success: true, data: records, userId: user.id, userRole: user.role };
+                ? allRecords
+                : allRecords.filter((record: any) => record.user === user.id);
+        return {
+            success: true,
+            data: records,
+            averages: calculateWeightAverages(allRecords),
+            userId: user.id,
+            userRole: user.role,
+        };
     } catch (error) {
         console.error("Fetch weight votes error:", error);
         return { success: false, error: (error as Error).message };

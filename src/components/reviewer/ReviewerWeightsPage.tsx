@@ -44,17 +44,14 @@ export default function ReviewerWeightsPage() {
             const records = res.data as any[];
             setUserRole(res.userRole === "admin" ? "admin" : "reviewer");
 
-            let tempAvg: Record<string, string> = {};
-            if (records.length > 0) {
-                CRITERIA.forEach((c) => {
-                    const sum = records.reduce(
-                        (acc, r: any) => acc + (r[c.id] || 0),
-                        0,
-                    );
-                    tempAvg[c.id] = (sum / records.length).toFixed(2);
-                });
-                setAverages(tempAvg);
-            }
+            const serverAverages =
+                (res as { averages?: Record<string, number> }).averages || {};
+            const tempAvg: Record<string, string> = {};
+            CRITERIA.forEach((c) => {
+                const value = Number(serverAverages[c.id] ?? 1);
+                tempAvg[c.id] = Number.isFinite(value) ? value.toFixed(2) : "-";
+            });
+            setAverages(tempAvg);
 
             if (res.userRole === "reviewer") {
                 const myVote = records.find((r: any) => r.user === res.userId);
@@ -171,13 +168,13 @@ export default function ReviewerWeightsPage() {
                                     : "Current global averages across all criteria. These weights determine the final score calculation for proposals."}
                             </p>
 
-                            <Show when={hasVoted() && isReviewer()}>
+                            <Show when={success() && isReviewer()}>
                                 <div class="alert alert-success bg-success-900/30 border-success-500/30 text-success-200 mb-8 shadow-lg">
                                     <Icon icon="mdi:check-circle" class="text-2xl" />
                                     <div>
-                                        <h3 class="font-bold">Vote Cast!</h3>
+                                        <h3 class="font-bold">Weights Saved!</h3>
                                         <div class="text-xs">
-                                            You have successfully submitted your
+                                            You have successfully saved your
                                             weight preferences.
                                         </div>
                                     </div>
@@ -225,7 +222,7 @@ export default function ReviewerWeightsPage() {
                                                     rangeClass="range range-primary range-lg"
                                                     labelClass="w-full text-xs px-2 mt-2 font-mono text-gray-500"
                                                     tone="primary"
-                                                    disabled={!isReviewer() || hasVoted()}
+                                                    disabled={!isReviewer()}
                                                     onChange={(weight) =>
                                                         handleSliderChange(
                                                             item.id,
@@ -237,7 +234,7 @@ export default function ReviewerWeightsPage() {
                                         )}
                                     </For>
 
-                                    <Show when={isReviewer() && !hasVoted()}>
+                                    <Show when={isReviewer()}>
                                         <div class="divider border-white/5"></div>
                                         <div class="card-actions justify-end mt-4">
                                             <Show when={success()}>
@@ -254,7 +251,9 @@ export default function ReviewerWeightsPage() {
                                                 {saving() ? (
                                                     <span class="loading loading-spinner"></span>
                                                 ) : (
-                                                    "SUBMIT WEIGHTS"
+                                                    hasVoted()
+                                                        ? "UPDATE WEIGHTS"
+                                                        : "SUBMIT WEIGHTS"
                                                 )}
                                             </button>
                                         </div>
