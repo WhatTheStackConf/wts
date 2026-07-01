@@ -20,6 +20,10 @@ This project uses manually defined TypeScript types for PocketBase collections t
 - Location: `PartnerRecord` interface in `src/lib/pocketbase-types.ts`
 - Fields: `name`, `published`, `type`, `tier`, `logo`, `url`, `description`
 
+### MCP Tokens Collection
+- Location: `McpTokenRecord` interface in `src/lib/pocketbase-types.ts`
+- Fields: `name`, `token_id`, `token_prefix`, `secret_hash`, `scopes`, `created_by`, `expires_at`, `revoked_at`, `revoked_by`, `last_used_at`
+
 ## How to Update Types When Schema Changes
 
 When you modify the PocketBase schema (add, remove, or modify fields), you need to update the corresponding TypeScript interfaces in `src/lib/pocketbase-types.ts`. Here's the process:

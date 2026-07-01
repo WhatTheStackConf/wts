@@ -97,6 +97,23 @@ export interface PartnerRecord extends RecordModel {
   updated: string;
 }
 
+// MCP token collection type (admin-created remote MCP access tokens)
+export interface McpTokenRecord extends RecordModel {
+  id: string;
+  name: string;
+  token_id: string;
+  token_prefix: string;
+  secret_hash: string;
+  scopes?: string[];
+  created_by: string;
+  expires_at?: string;
+  revoked_at?: string;
+  revoked_by?: string;
+  last_used_at?: string;
+  created: string;
+  updated: string;
+}
+
 // CFP Review collection type
 export interface CfpReviewRecord extends RecordModel {
   id: string;
@@ -128,7 +145,8 @@ export type CollectionRecord =
   | CfpReviewRecord
   | SpeakerRecord
   | SessionRecord
-  | PartnerRecord;
+  | PartnerRecord
+  | McpTokenRecord;
 
 // Type guard functions
 export function isUserRecord(record: CollectionRecord): record is UserRecord {
@@ -172,4 +190,10 @@ export function isPartnerRecord(
   record: CollectionRecord,
 ): record is PartnerRecord {
   return (record as any).collectionName === "partners";
+}
+
+export function isMcpTokenRecord(
+  record: CollectionRecord,
+): record is McpTokenRecord {
+  return (record as any).collectionName === "mcp_tokens";
 }
