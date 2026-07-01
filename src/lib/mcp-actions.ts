@@ -22,8 +22,6 @@ export type McpTokenSnapshot = {
   revoked_at?: string;
   revoked_by?: string;
   last_used_at?: string;
-  created: string;
-  updated: string;
 };
 
 function pbMcpErrorMessage(error: unknown): string {
@@ -71,8 +69,6 @@ function tokenSnapshot(record: McpTokenRecord): McpTokenSnapshot {
     revoked_at: record.revoked_at,
     revoked_by: record.revoked_by,
     last_used_at: record.last_used_at,
-    created: record.created,
-    updated: record.updated,
   };
 }
 
@@ -83,7 +79,7 @@ export const adminFetchMcpTokens = async () => {
     const adminService = getAdminPB();
     const records = (await adminService.fetchAllRecords("mcp_tokens", {
       filter: `created_by = "${user.id}"`,
-      sort: "-created",
+      sort: "name",
     })) as McpTokenRecord[];
     return { success: true, data: records.map(tokenSnapshot) };
   } catch (error) {
