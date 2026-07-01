@@ -218,7 +218,7 @@ export default function AdminMcpTokensHub() {
                   <span>
                     <span class="block text-sm font-bold text-white font-mono">program:read</span>
                     <span class="block text-xs text-base-content/45 mt-1 leading-relaxed">
-                      Read Sessions, Speakers, accepted CFP Submissions, and review summaries for programme planning.
+                      Read Sessions, Speakers, CFP Submissions, and review summaries for programme planning.
                     </span>
                   </span>
                 </label>

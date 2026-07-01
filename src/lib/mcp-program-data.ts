@@ -47,6 +47,8 @@ export type ProposalReviewSummary = {
   llm_suspected_count: number;
 };
 
+export type ProposalStatus = NonNullable<CfpSubmissionRecord["status"]>;
+
 function textOrNull(value: unknown) {
   return typeof value === "string" && value.trim() ? value : null;
 }
@@ -174,14 +176,15 @@ export async function fetchMcpSpeakers() {
   return speakers.map(speakerDto);
 }
 
-export async function fetchMcpAcceptedProposals() {
+export async function fetchMcpProposals(status?: ProposalStatus) {
   const adminService = getAdminPB();
+  const submissionOptions = {
+    ...(status ? { filter: `status = "${status}"` } : {}),
+    expand: "applicant.user",
+    sort: "-created",
+  };
   const [submissions, reviews] = await Promise.all([
-    adminService.fetchAllRecords("cfp_submissions", {
-      filter: 'status = "accepted"',
-      expand: "applicant.user",
-      sort: "-created",
-    }) as Promise<ExpandedSubmission[]>,
+    adminService.fetchAllRecords("cfp_submissions", submissionOptions) as Promise<ExpandedSubmission[]>,
     adminService.fetchAllRecords("cfp_reviews") as Promise<CfpReviewRecord[]>,
   ]);
 
@@ -203,31 +206,38 @@ export async function fetchMcpProposalContext(submissionId: string) {
     }) as Promise<CfpReviewRecord[]>,
   ]);
 
-  if ((submission.status || "pending") !== "accepted") {
-    throw new Error("Only accepted CFP Submissions are available through MCP.");
-  }
-
   return proposalDto(submission, reviews);
 }
 
+function proposalStatusCounts(proposals: ReturnType<typeof proposalDto>[]) {
+  return proposals.reduce(
+    (counts, proposal) => {
+      counts[proposal.status] += 1;
+      return counts;
+    },
+    { pending: 0, accepted: 0, rejected: 0 } as Record<ProposalStatus, number>,
+  );
+}
+
 export async function fetchMcpProgramSnapshot() {
-  const [sessions, speakers, accepted_proposals] = await Promise.all([
+  const [sessions, speakers, proposals] = await Promise.all([
     fetchMcpSessions(),
     fetchMcpSpeakers(),
-    fetchMcpAcceptedProposals(),
+    fetchMcpProposals(),
   ]);
 
   return {
     generated_at: new Date().toISOString(),
     sessions,
     speakers,
-    accepted_proposals,
+    proposals,
     summary: {
       session_count: sessions.length,
       published_session_count: sessions.filter((session) => session.published).length,
       speaker_count: speakers.length,
       published_speaker_count: speakers.filter((speaker) => speaker.published).length,
-      accepted_proposal_count: accepted_proposals.length,
+      proposal_count: proposals.length,
+      proposal_status_counts: proposalStatusCounts(proposals),
     },
   };
 }

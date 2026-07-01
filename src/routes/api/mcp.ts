@@ -7,9 +7,9 @@ import {
   type AuthenticatedMcpToken,
 } from "~/lib/mcp-auth";
 import {
-  fetchMcpAcceptedProposals,
   fetchMcpProgramSnapshot,
   fetchMcpProposalContext,
+  fetchMcpProposals,
   fetchMcpSessions,
   fetchMcpSpeakers,
 } from "~/lib/mcp-program-data";
@@ -66,7 +66,7 @@ function buildProgramMcpServer(auth: AuthenticatedMcpToken) {
     {
       title: "Get Program Snapshot",
       description:
-        "Return Sessions, Speakers, accepted CFP Submissions, and aggregate counts for programme/stage design.",
+        "Return Sessions, Speakers, CFP Submissions, and aggregate counts for programme/stage design.",
       inputSchema: {},
     },
     async () => jsonToolResult(await fetchMcpProgramSnapshot()),
@@ -121,21 +121,24 @@ function buildProgramMcpServer(auth: AuthenticatedMcpToken) {
   );
 
   server.registerTool(
-    "list_accepted_proposals",
+    "list_proposals",
     {
-      title: "List Accepted Proposals",
+      title: "List Proposals",
       description:
-        "Return accepted CFP Submissions with applicant context and review score summaries for programme planning.",
-      inputSchema: {},
+        "Return CFP Submissions with applicant context and review score summaries for programme acceptance decisions.",
+      inputSchema: {
+        status: z.enum(["pending", "accepted", "rejected"]).optional(),
+      },
     },
-    async () => jsonToolResult(await fetchMcpAcceptedProposals()),
+    async (args) => jsonToolResult(await fetchMcpProposals(args.status)),
   );
 
   server.registerTool(
     "get_proposal_context",
     {
       title: "Get Proposal Context",
-      description: "Return one CFP Submission with applicant context and review summary.",
+      description:
+        "Return one CFP Submission with applicant context and review summary for acceptance decisions.",
       inputSchema: {
         submission_id: z.string().regex(/^[A-Za-z0-9_-]+$/),
       },

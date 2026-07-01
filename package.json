@@ -5,7 +5,7 @@
     "dev": "concurrently \"pnpm pocketbase:start\" \"pnpm start:dev\"",
     "start:dev": "concurrently \"velite --watch\" \"vite dev\"",
     "build": "velite && vite build",
-    "test": "vitest run src/lib/mcp-token-utils.test.ts",
+    "test": "vitest run src/lib/mcp-token-utils.test.ts src/lib/mcp-program-data.test.ts",
     "start": "vite start",
     "version": "vite version",
     "pocketbase:download": "bash pocketbase/get-pocketbase.sh",
