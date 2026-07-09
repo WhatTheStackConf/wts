@@ -10,7 +10,14 @@ vi.mock("~/lib/pocketbase-admin-service", () => ({
   }),
 }));
 
-import { fetchMcpProposalContext, fetchMcpProposals } from "~/lib/mcp-program-data";
+import {
+  fetchMcpProposalContext,
+  fetchMcpProposals,
+  fetchMcpSessions,
+  fetchMcpSpeakers,
+} from "~/lib/mcp-program-data";
+
+const timestamp = "2026-01-01 00:00:00.000Z";
 
 function submission(id: string, status: "pending" | "accepted" | "rejected") {
   return {
@@ -22,8 +29,8 @@ function submission(id: string, status: "pending" | "accepted" | "rejected") {
     technical_requirements: "",
     notes: "",
     applicant: "applicant-1",
-    created: "2026-01-01 00:00:00.000Z",
-    updated: "2026-01-01 00:00:00.000Z",
+    created: timestamp,
+    updated: timestamp,
     expand: {
       applicant: {
         id: "applicant-1",
@@ -32,8 +39,8 @@ function submission(id: string, status: "pending" | "accepted" | "rejected") {
         social_handles: null,
         preferred_contact_method: "email",
         user: "user-1",
-        created: "2026-01-01 00:00:00.000Z",
-        updated: "2026-01-01 00:00:00.000Z",
+        created: timestamp,
+        updated: timestamp,
         expand: {
           user: {
             id: "user-1",
@@ -45,10 +52,96 @@ function submission(id: string, status: "pending" | "accepted" | "rejected") {
   };
 }
 
+function session(id: string, cfpSubmission?: string) {
+  return {
+    id,
+    slug: id,
+    published: id === "published-session",
+    title: `${id} title`,
+    abstract: `${id} abstract`,
+    format: "Talk",
+    starts_at: "2026-09-19 10:00:00.000Z",
+    track: "Main",
+    room: "Hall A",
+    speakers: ["speaker-1"],
+    cfp_submission: cfpSubmission,
+    created: timestamp,
+    updated: timestamp,
+    expand: { speakers: [] },
+  };
+}
+
 describe("MCP programme data", () => {
   beforeEach(() => {
     fetchAllRecords.mockReset();
     fetchRecordById.mockReset();
+  });
+
+  it("maps MCP speakers from Speaker-owned fields without CFP Applicant or User fallbacks", async () => {
+    fetchAllRecords.mockResolvedValue([
+      {
+        id: "speaker-1",
+        slug: "speaker-slug",
+        published: true,
+        origin: "cfp",
+        display_name: "",
+        affiliation: "",
+        bio: "",
+        social_handles: null,
+        cfp_applicant: "applicant-1",
+        user: "user-1",
+        created: timestamp,
+        updated: timestamp,
+        expand: {
+          cfp_applicant: {
+            id: "applicant-1",
+            affiliation: "Applicant Co",
+            bio: "Applicant bio",
+            social_handles: ["@applicant"],
+            expand: { user: { id: "user-1", name: "User Name" } },
+          },
+          user: { id: "user-1", name: "Direct User Name" },
+        },
+      },
+    ]);
+
+    const speakers = await fetchMcpSpeakers();
+
+    expect(fetchAllRecords).toHaveBeenCalledWith("speakers", {
+      sort: "display_name,slug",
+    });
+    expect(speakers[0]).toMatchObject({
+      id: "speaker-1",
+      display_name: "speaker-slug",
+      affiliation: null,
+      bio: null,
+      social_handles: null,
+    });
+    expect(JSON.stringify(speakers[0])).not.toContain("Applicant");
+    expect(JSON.stringify(speakers[0])).not.toContain("User Name");
+  });
+
+  it("includes MCP session CFP provenance as cfp_submission_id", async () => {
+    fetchAllRecords.mockResolvedValue([
+      session("published-session", "submission-1"),
+      session("manual-session"),
+    ]);
+
+    const sessions = await fetchMcpSessions();
+
+    expect(fetchAllRecords).toHaveBeenCalledWith("sessions", {
+      expand: "speakers",
+      sort: "starts_at,title",
+    });
+    expect(sessions[0]).toMatchObject({
+      id: "published-session",
+      cfp_submission_id: "submission-1",
+    });
+    expect(sessions[1]).toMatchObject({
+      id: "manual-session",
+      cfp_submission_id: null,
+    });
+    expect(sessions[0]).not.toHaveProperty("cfp_submission");
   });
 
   it("lists every CFP proposal by default instead of filtering to accepted", async () => {

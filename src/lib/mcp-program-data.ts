@@ -30,12 +30,7 @@ type ExpandedSubmission = CfpSubmissionRecord & {
   expand?: { applicant?: ExpandedApplicant };
 };
 
-type ExpandedSpeaker = SpeakerRecord & {
-  expand?: {
-    cfp_applicant?: ExpandedApplicant;
-    user?: ExpandedUser;
-  };
-};
+type ExpandedSpeaker = SpeakerRecord;
 
 type ExpandedSession = SessionRecord & {
   expand?: { speakers?: ExpandedSpeaker[] };
@@ -54,25 +49,19 @@ function textOrNull(value: unknown) {
 }
 
 function speakerName(speaker: ExpandedSpeaker): string | null {
-  return (
-    textOrNull(speaker.display_name) ||
-    textOrNull(speaker.expand?.cfp_applicant?.expand?.user?.name) ||
-    textOrNull(speaker.expand?.user?.name) ||
-    textOrNull(speaker.slug)
-  );
+  return textOrNull(speaker.display_name) || textOrNull(speaker.slug);
 }
 
 function speakerDto(speaker: ExpandedSpeaker) {
-  const applicant = speaker.expand?.cfp_applicant;
   return {
     id: speaker.id,
     slug: speaker.slug,
     published: speaker.published,
     origin: speaker.origin,
     display_name: speakerName(speaker),
-    affiliation: textOrNull(speaker.affiliation) || textOrNull(applicant?.affiliation),
-    bio: textOrNull(speaker.bio) || textOrNull(applicant?.bio),
-    social_handles: speaker.social_handles || applicant?.social_handles || null,
+    affiliation: textOrNull(speaker.affiliation),
+    bio: textOrNull(speaker.bio),
+    social_handles: speaker.social_handles ?? null,
     created: speaker.created,
     updated: speaker.updated,
   };
@@ -85,6 +74,7 @@ function sessionDto(session: ExpandedSession) {
     published: session.published,
     title: session.title,
     abstract: session.abstract,
+    cfp_submission_id: session.cfp_submission || null,
     format: session.format || null,
     starts_at: session.starts_at || null,
     track: session.track || null,
@@ -161,7 +151,7 @@ function reviewsBySubmission(reviews: CfpReviewRecord[]) {
 export async function fetchMcpSessions() {
   const adminService = getAdminPB();
   const sessions = (await adminService.fetchAllRecords("sessions", {
-    expand: "speakers.cfp_applicant.user,speakers.user",
+    expand: "speakers",
     sort: "starts_at,title",
   })) as ExpandedSession[];
   return sessions.map(sessionDto);
@@ -170,7 +160,6 @@ export async function fetchMcpSessions() {
 export async function fetchMcpSpeakers() {
   const adminService = getAdminPB();
   const speakers = (await adminService.fetchAllRecords("speakers", {
-    expand: "cfp_applicant.user,user",
     sort: "display_name,slug",
   })) as ExpandedSpeaker[];
   return speakers.map(speakerDto);

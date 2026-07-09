@@ -3,10 +3,30 @@ import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { requireAdmin } from "~/lib/admin-security";
 import { fetchHiEventsAttendees } from "~/lib/hievents";
 import { slugify, uniqueSpeakerSlug } from "~/lib/conference-slug";
+import {
+  buildSpeakerCreateBody,
+  buildSpeakerProfileUpdateBody,
+  createOrReuseCfpSpeakerFromApplicant,
+  isDuplicateFieldError,
+  normalizeSpeakerProfileUpdateInput,
+  normalizeSpeakerSocialHandles,
+  speakerSnapshot,
+  speakerSlugExistsForOther,
+  validateSpeakerPhotoUpload,
+} from "~/lib/admin-speaker-profile";
+import {
+  addPromotedSessionSummaries,
+  buildSessionCreateBody,
+  buildSessionUpdateBody,
+  promoteSubmissionToDraftSession,
+} from "~/lib/admin-session-promotion";
+import type {
+  SpeakerPhotoPayload,
+  SpeakerProfileUpdateInput,
+} from "~/lib/admin-speaker-profile";
+import type { SessionEditableInput } from "~/lib/admin-session-promotion";
 import type { PartnerRecord, SpeakerRecord } from "~/lib/pocketbase-types";
 
-const SPEAKER_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
-const SPEAKER_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const PARTNER_LOGO_MAX_BYTES = 5 * 1024 * 1024;
 const PARTNER_LOGO_TYPES = [
   "image/svg+xml",
@@ -26,6 +46,10 @@ const PARTNER_TYPES = [
 ] as const;
 const PARTNER_TIERS = ["platinum", "gold", "silver", "bronze"] as const;
 
+/** Backwards-compatible alias for the existing invite speaker UI. */
+export type InviteSpeakerPhotoPayload = SpeakerPhotoPayload;
+export type { SpeakerPhotoPayload, SpeakerProfileUpdateInput };
+
 function pbAdminErrorMessage(error: unknown): string {
   const response = (error as { response?: { data?: Record<string, { message?: string }> } })
     ?.response;
@@ -44,38 +68,6 @@ function pbAdminErrorMessage(error: unknown): string {
   }
   if (error instanceof Error && error.message) return error.message;
   return "Request failed";
-}
-
-function speakerSnapshot(record: SpeakerRecord) {
-  return {
-    id: record.id,
-    slug: record.slug,
-    display_name: record.display_name,
-    origin: record.origin,
-    published: record.published,
-    photo: record.photo,
-  };
-}
-
-function buildSpeakerCreateBody(
-  fields: Record<string, string | boolean | string[]>,
-  photo?: InviteSpeakerPhotoPayload | null,
-): Record<string, unknown> | FormData {
-  if (!photo?.data?.length) return fields;
-
-  const body = new FormData();
-  for (const [key, value] of Object.entries(fields)) {
-    if (key === "social_handles") {
-      body.append(key, JSON.stringify(value));
-    } else {
-      body.append(key, String(value));
-    }
-  }
-  const blob = new Blob([new Uint8Array(photo.data)], {
-    type: photo.type || "application/octet-stream",
-  });
-  body.append("photo", blob, photo.name || "photo");
-  return body;
 }
 
 /** Serializable file payload for partner logos (Seroval-safe). */
@@ -282,10 +274,14 @@ export const adminFetchLeaderboardData = async () => {
     const adminService = getAdminPB();
 
     // 1. Fetch EVERYTHING (using admin service)
-    const [subs, reviews, votes] = await Promise.all([
+    const [subs, reviews, votes, promotedSessions] = await Promise.all([
       adminService.fetchAllRecords("cfp_submissions", { expand: "applicant.user", sort: "-created" }),
       adminService.fetchAllRecords("cfp_reviews"),
-      adminService.fetchAllRecords("cfp_weight_votes")
+      adminService.fetchAllRecords("cfp_weight_votes"),
+      adminService.fetchAllRecords("sessions", {
+        fields: "id,slug,title,published,cfp_submission",
+        filter: "cfp_submission != ''",
+      }),
     ]);
 
     // 2. Calculate Global Weights
@@ -308,7 +304,9 @@ export const adminFetchLeaderboardData = async () => {
     });
 
     // 3. Process Submissions
-    const scoredSubmissions = subs.map(sub => {
+    const submissionsWithPromotion = addPromotedSessionSummaries(subs as any[], promotedSessions as any[]);
+
+    const scoredSubmissions = submissionsWithPromotion.map(sub => {
       const subReviews = reviews.filter((r: any) => r.submission === sub.id);
 
       if (subReviews.length === 0) {
@@ -640,44 +638,12 @@ export const adminPublishFromApplicant = async (applicantId: string) => {
   try {
     await requireAdmin();
     const adminService = getAdminPB();
-
-    const existing = await adminService.fetchAllRecords("speakers", {
-      filter: `cfp_applicant = "${applicantId}"`,
-    });
-    if (existing.length > 0) {
-      return {
-        success: true,
-        data: speakerSnapshot(existing[0] as SpeakerRecord),
-        created: false,
-      };
-    }
-
-    const applicant = await adminService.fetchRecordById("cfp_applicants", applicantId, {
-      expand: "user",
-    });
-    const user = (applicant as any).expand?.user;
-    const baseName = user?.name || user?.email || "speaker";
-
-    const slugExists = async (slug: string) => {
-      const hits = await adminService.fetchAllRecords("speakers", {
-        filter: `slug = "${slug}"`,
-        fields: "id",
-      });
-      return hits.length > 0;
+    const result = await createOrReuseCfpSpeakerFromApplicant(adminService, applicantId);
+    return {
+      success: true,
+      data: speakerSnapshot(result.speaker),
+      created: result.created,
     };
-
-    const slug = await uniqueSpeakerSlug(baseName, slugExists);
-
-    const record = await adminService.createRecord("speakers", {
-      slug,
-      published: false,
-      origin: "cfp",
-      cfp_applicant: applicantId,
-      user: (applicant as any).user,
-      display_name: user?.name || "",
-    });
-
-    return { success: true, data: speakerSnapshot(record as SpeakerRecord), created: true };
   } catch (error) {
     console.error("Admin create speaker from applicant error:", error);
     return { success: false, error: pbAdminErrorMessage(error) };
@@ -687,11 +653,17 @@ export const adminPublishFromApplicant = async (applicantId: string) => {
 /** @deprecated Use adminPublishFromApplicant */
 export const adminCreateSpeakerFromApplicant = adminPublishFromApplicant;
 
-/** Serializable file payload for invite speaker photo (Seroval-safe). */
-export type InviteSpeakerPhotoPayload = {
-  name: string;
-  type: string;
-  data: number[];
+export const adminPromoteSubmissionToDraftSession = async (submissionId: string) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    const data = await promoteSubmissionToDraftSession(adminService, submissionId);
+    return { success: true, data };
+  } catch (error) {
+    console.error("Admin promote submission to draft session error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
 };
 
 export type InviteSpeakerInput = {
@@ -715,15 +687,8 @@ export const adminCreateInviteSpeaker = async (input: InviteSpeakerInput) => {
     }
 
     if (input.photo?.data?.length) {
-      if (input.photo.data.length > SPEAKER_PHOTO_MAX_BYTES) {
-        return { success: false, error: "Photo must be 5 MB or smaller." };
-      }
-      if (input.photo.type && !SPEAKER_PHOTO_TYPES.includes(input.photo.type)) {
-        return {
-          success: false,
-          error: "Photo must be JPEG, PNG, or WebP.",
-        };
-      }
+      const photoError = validateSpeakerPhotoUpload(input.photo);
+      if (photoError) return { success: false, error: photoError };
     }
 
     const slugExists = async (candidate: string) => {
@@ -744,7 +709,7 @@ export const adminCreateInviteSpeaker = async (input: InviteSpeakerInput) => {
       display_name: displayName,
       affiliation: input.affiliation?.trim() || "",
       bio: input.bio?.trim() || "",
-      social_handles: input.social_handles?.length ? input.social_handles : [],
+      social_handles: normalizeSpeakerSocialHandles(input.social_handles),
     };
 
     const body = buildSpeakerCreateBody(fields, input.photo);
@@ -752,6 +717,42 @@ export const adminCreateInviteSpeaker = async (input: InviteSpeakerInput) => {
     return { success: true, data: speakerSnapshot(record) };
   } catch (error) {
     console.error("Admin create invite speaker error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminUpdateSpeakerProfile = async (
+  id: string,
+  input: SpeakerProfileUpdateInput,
+) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const normalized = normalizeSpeakerProfileUpdateInput(input);
+    if (!normalized.success) return normalized;
+
+    const adminService = getAdminPB();
+    if (await speakerSlugExistsForOther(adminService, normalized.data.fields.slug, id)) {
+      return {
+        success: false,
+        error: "Slug is already used by another speaker. Choose a different slug.",
+      };
+    }
+
+    const body = buildSpeakerProfileUpdateBody(
+      normalized.data.fields,
+      normalized.data.photo,
+    );
+    const record = (await adminService.updateRecord("speakers", id, body)) as SpeakerRecord;
+    return { success: true, data: speakerSnapshot(record) };
+  } catch (error) {
+    console.error("Admin update speaker profile error:", error);
+    if (isDuplicateFieldError(error, "slug")) {
+      return {
+        success: false,
+        error: "Slug is already used by another speaker. Choose a different slug.",
+      };
+    }
     return { success: false, error: pbAdminErrorMessage(error) };
   }
 };
@@ -774,34 +775,21 @@ export const adminSetSpeakerPublished = async (id: string, published: boolean) =
   return adminUpdateSpeaker(id, { published });
 };
 
-export type SessionInput = {
+export type SessionInput = SessionEditableInput & {
   slug: string;
   title: string;
   abstract: string;
-  format?: string;
-  starts_at?: string;
-  track?: string;
-  room?: string;
   speakers: string[];
-  published?: boolean;
 };
+
+export type SessionUpdateInput = SessionEditableInput;
 
 export const adminCreateSession = async (input: SessionInput) => {
   "use server";
   try {
     await requireAdmin();
     const adminService = getAdminPB();
-    const record = await adminService.createRecord("sessions", {
-      slug: slugify(input.slug || input.title),
-      title: input.title,
-      abstract: input.abstract,
-      format: input.format || "",
-      starts_at: input.starts_at || "",
-      track: input.track || "",
-      room: input.room || "",
-      speakers: input.speakers,
-      published: input.published ?? false,
-    });
+    const record = await adminService.createRecord("sessions", buildSessionCreateBody(input));
     return { success: true, data: record };
   } catch (error) {
     console.error("Admin create session error:", error);
@@ -809,12 +797,12 @@ export const adminCreateSession = async (input: SessionInput) => {
   }
 };
 
-export const adminUpdateSession = async (id: string, data: Record<string, unknown>) => {
+export const adminUpdateSession = async (id: string, data: SessionUpdateInput) => {
   "use server";
   try {
     await requireAdmin();
     const adminService = getAdminPB();
-    const result = await adminService.updateRecord("sessions", id, data);
+    const result = await adminService.updateRecord("sessions", id, buildSessionUpdateBody(data));
     return { success: true, data: result };
   } catch (error) {
     console.error("Admin update session error:", error);
@@ -842,10 +830,10 @@ async function fetchAcceptedCfpSubmissions(adminService: ReturnType<typeof getAd
       "Accepted CFP status filter failed; falling back to client-side filter:",
       filterError,
     );
-    const allSubmissions = await adminService.fetchAllRecords("cfp_submissions", {
+    const allSubmissions = (await adminService.fetchAllRecords("cfp_submissions", {
       expand: "applicant.user",
       sort: "-created",
-    });
+    })) as Array<{ status?: string }>;
     return {
       submissions: allSubmissions.filter(
         (sub: { status?: string }) => (sub.status || "pending") === "accepted",

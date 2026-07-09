@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { Icon } from "@iconify-icon/solid";
 import {
   AdminDataPanel,
@@ -29,14 +29,27 @@ function speakerDisplayName(sp: SpeakerRecord): string {
 
 function formatStartsAt(value?: string): string {
   if (!value) return "Not scheduled";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
   try {
-    return new Date(value).toLocaleString(undefined, {
+    return date.toLocaleString(undefined, {
       dateStyle: "medium",
       timeStyle: "short",
     });
   } catch {
     return value;
   }
+}
+
+function toDatetimeLocalValue(value?: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.includes("T") ? value.slice(0, 16) : "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function reducedMotionPreferred(): boolean {
+  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 }
 
 export default function AdminSessionsHub() {
@@ -46,6 +59,7 @@ export default function AdminSessionsHub() {
   const [showForm, setShowForm] = createSignal(false);
   const [sessionsError, setSessionsError] = createSignal<string | null>(null);
   const [speakerSearch, setSpeakerSearch] = createSignal("");
+  const [requestedEditHandled, setRequestedEditHandled] = createSignal(false);
 
   const [speakers] = createResource(async () => {
     const res = await adminFetchSpeakers();
@@ -71,6 +85,12 @@ export default function AdminSessionsHub() {
   const [room, setRoom] = createSignal("");
   const [selectedSpeakers, setSelectedSpeakers] = createSignal<string[]>([]);
   const [saving, setSaving] = createSignal(false);
+
+  const editingSession = createMemo(() => {
+    const id = editingId();
+    if (!id) return null;
+    return (sessions() || []).find((session) => session.id === id) || null;
+  });
 
   const filteredSpeakers = createMemo(() => {
     const q = speakerSearch().trim().toLowerCase();
@@ -104,13 +124,42 @@ export default function AdminSessionsHub() {
     setSlug(session.slug);
     setAbstract(session.abstract);
     setFormat(session.format || "");
-    setStartsAt(session.starts_at || "");
+    setStartsAt(toDatetimeLocalValue(session.starts_at));
     setTrack(session.track || "");
     setRoom(session.room || "");
     setSelectedSpeakers(session.speakers || []);
     setSpeakerSearch("");
     setShowForm(true);
   };
+
+  createEffect(() => {
+    if (requestedEditHandled() || sessions.loading) return;
+
+    const requestedId = typeof window === "undefined"
+      ? ""
+      : new URLSearchParams(window.location.search).get("edit")?.trim() || "";
+
+    if (!requestedId) {
+      setRequestedEditHandled(true);
+      return;
+    }
+
+    const match = (sessions() || []).find((session) => session.id === requestedId);
+    if (match) {
+      loadSession(match);
+      setRequestedEditHandled(true);
+      window.requestAnimationFrame(() => {
+        document.getElementById("session-edit-form")?.scrollIntoView({
+          block: "start",
+          behavior: reducedMotionPreferred() ? "auto" : "smooth",
+        });
+      });
+      return;
+    }
+
+    setSessionsError("The requested Session could not be found.");
+    setRequestedEditHandled(true);
+  });
 
   const toggleSpeaker = (id: string) => {
     const current = selectedSpeakers();
@@ -123,42 +172,54 @@ export default function AdminSessionsHub() {
 
   const submit = async (e: Event) => {
     e.preventDefault();
+    if (saving()) return;
     setSaving(true);
+    const sessionTitle = title().trim();
     const payload = {
-      slug: slug() || slugify(title()),
-      title: title(),
-      abstract: abstract(),
-      format: format(),
+      slug: slug().trim() || slugify(sessionTitle),
+      title: sessionTitle,
+      abstract: abstract().trim(),
+      format: format().trim(),
       starts_at: startsAt(),
-      track: track(),
-      room: room(),
+      track: track().trim(),
+      room: room().trim(),
       speakers: selectedSpeakers(),
     };
 
     const id = editingId();
-    const res = id ? await adminUpdateSession(id, payload) : await adminCreateSession(payload);
+    try {
+      const res = id ? await adminUpdateSession(id, payload) : await adminCreateSession(payload);
 
-    if (!res.success) {
-      showToast("error", res.error || "Could not save session.");
-    } else {
+      if (!res.success) {
+        showToast("error", res.error || "Could not save session.");
+        return;
+      }
+
       showToast(
         "success",
         id
-          ? `"${title()}" updated. Toggle Published when ready for the public site.`
-          : `"${title()}" created as draft. Toggle Published when ready for the public site.`,
+          ? `"${sessionTitle}" updated. Toggle Published when ready for the public site.`
+          : `"${sessionTitle}" created as draft. Toggle Published when ready for the public site.`,
       );
       resetForm();
       await refetch();
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Could not save session.");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const togglePublished = async (session: SessionRecord) => {
+    if (busyId()) return;
     setBusyId(session.id);
-    const res = await adminSetSessionPublished(session.id, !session.published);
-    if (!res.success) {
-      showToast("error", res.error || "Could not update published state.");
-    } else {
+    try {
+      const res = await adminSetSessionPublished(session.id, !session.published);
+      if (!res.success) {
+        showToast("error", res.error || "Could not update published state.");
+        return;
+      }
+
       showToast(
         "success",
         session.published
@@ -166,8 +227,11 @@ export default function AdminSessionsHub() {
           : `"${session.title}" is now published.`,
       );
       await refetch();
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Could not update published state.");
+    } finally {
+      setBusyId(null);
     }
-    setBusyId(null);
   };
 
   const speakerNameById = (id: string) => {
@@ -194,6 +258,7 @@ export default function AdminSessionsHub() {
     >
       <Show when={sessionsError()}>
         <div class="alert alert-error mb-6 font-mono text-sm" role="alert">
+          <Icon icon="ph:warning-circle-bold" aria-hidden="true" />
           <span>{sessionsError()}</span>
         </div>
       </Show>
@@ -209,6 +274,7 @@ export default function AdminSessionsHub() {
           }
         >
           <form
+            id="session-edit-form"
             onSubmit={submit}
             class={adminFormPanelClass}
           >
@@ -217,12 +283,43 @@ export default function AdminSessionsHub() {
                 <h2 class="text-lg font-bold text-white">
                   {editingId() ? "Edit session" : "New session"}
                 </h2>
-                <p class="text-xs text-gray-500 font-mono mt-1">
+                <p class="text-xs text-base-content/60 font-mono mt-1 leading-relaxed">
                   Saves as draft. Toggle Published when ready for the public site.
                 </p>
               </div>
             </div>
             <div class="space-y-6">
+              <Show when={editingSession()?.cfp_submission}>
+                {(submissionId) => (
+                  <AdminFormSection
+                    title="Source"
+                    description="Read-only provenance context for this public Session."
+                  >
+                    <div class="rounded-xl border border-secondary-500/20 bg-secondary-500/10 p-4">
+                      <div class="mb-3 flex flex-wrap items-center gap-2">
+                        <span class="badge border-secondary-500/40 bg-secondary-500/20 font-mono text-secondary-100">
+                          From CFP
+                        </span>
+                          <span class="text-xs font-mono text-base-content/65 break-all">
+                            Source submission ID: {submissionId()}
+                          </span>
+                      </div>
+                      <p class="max-w-3xl text-xs font-mono leading-relaxed text-base-content/65 text-pretty">
+                        This Session was copied once from an accepted CFP Submission. Edit the public
+                        Session fields here; CFP private and review fields are not shown or editable in
+                        this panel.
+                      </p>
+                      <a
+                        href={`/reviewer/${submissionId()}`}
+                        class="btn btn-xs btn-outline btn-secondary mt-3 font-mono"
+                      >
+                        Open CFP review detail
+                      </a>
+                    </div>
+                  </AdminFormSection>
+                )}
+              </Show>
+
               <AdminFormSection
                 title="Public identity"
                 description="The title and slug used for the public session page."
@@ -366,33 +463,41 @@ export default function AdminSessionsHub() {
                       onInput={(e) => setSpeakerSearch(e.currentTarget.value)}
                     />
                   </AdminFormField>
-                  <div class="max-h-56 overflow-y-auto space-y-1 rounded-lg bg-black/20 p-2 border border-white/10">
+                  <ul class="max-h-56 overflow-y-auto space-y-1 rounded-lg bg-black/20 p-2 border border-white/10" aria-label="Available speakers">
                     <Show
                       when={filteredSpeakers().length > 0}
                       fallback={
-                        <p class="text-xs text-gray-500 font-mono p-4 text-center">
+                        <li class="text-xs text-base-content/60 font-mono p-4 text-center">
                           {speakerSearch()
                             ? "No speakers match your search."
                             : "No speaker profiles yet. Create speakers first."}
-                        </p>
+                        </li>
                       }
                     >
                       <For each={filteredSpeakers()}>
                         {(sp) => (
-                          <label class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              class="checkbox checkbox-sm checkbox-primary"
-                              checked={selectedSpeakers().includes(sp.id)}
-                              onChange={() => toggleSpeaker(sp.id)}
-                            />
-                            <span class="text-sm text-white">{speakerDisplayName(sp)}</span>
-                            <span class="text-xs font-mono text-gray-500 ml-auto">{sp.slug}</span>
-                          </label>
+                          <li>
+                            <label class="flex min-w-0 items-center gap-3 rounded-lg p-2 cursor-pointer transition-colors hover:bg-white/5 focus-within:bg-white/5">
+                              <input
+                                type="checkbox"
+                                name="speakers"
+                                value={sp.id}
+                                class="checkbox checkbox-sm checkbox-primary shrink-0"
+                                checked={selectedSpeakers().includes(sp.id)}
+                                onChange={() => toggleSpeaker(sp.id)}
+                              />
+                              <span class="min-w-0 flex-1 truncate text-sm text-white">
+                                {speakerDisplayName(sp)}
+                              </span>
+                              <span class="max-w-[45%] truncate text-xs font-mono text-base-content/60">
+                                {sp.slug}
+                              </span>
+                            </label>
+                          </li>
                         )}
                       </For>
                     </Show>
-                  </div>
+                  </ul>
                 </AdminFormSection>
               </Show>
             </div>
@@ -406,7 +511,10 @@ export default function AdminSessionsHub() {
                   Cancel
                 </button>
                 <button type="submit" class="btn btn-primary font-mono" disabled={saving()}>
-                  {saving() ? "Saving..." : editingId() ? "Update session" : "Create session"}
+                  <Show when={saving()} fallback={editingId() ? "Update session" : "Create session"}>
+                    <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+                    Saving...
+                  </Show>
                 </button>
               </div>
             </div>
@@ -423,9 +531,9 @@ export default function AdminSessionsHub() {
       <Show when={!sessions.loading && (sessions()?.length ?? 0) === 0 && !sessionsError()}>
         <AdminDataPanel>
           <div class="p-12 text-center">
-            <Icon icon="ph:calendar-blank-bold" class="text-4xl text-gray-600 mb-4" />
+            <Icon icon="ph:calendar-blank-bold" class="text-4xl text-base-content/40 mb-4" aria-hidden="true" />
             <p class="text-white font-bold mb-2">No sessions yet</p>
-            <p class="text-sm text-gray-500 font-mono max-w-md mx-auto mb-4">
+            <p class="text-sm text-base-content/60 font-mono max-w-md mx-auto mb-4 leading-relaxed text-pretty">
               Create a programme item and link speakers. Publish when the schedule is ready for
               attendees.
             </p>
@@ -443,14 +551,22 @@ export default function AdminSessionsHub() {
           <div class="md:hidden space-y-4 p-4">
             <For each={sessions()}>
               {(session) => (
-                <div class="bg-white/5 rounded-xl p-4 border border-white/10 space-y-3">
-                  <div>
-                    <div class="font-bold text-white">{session.title}</div>
-                    <div class="text-xs font-mono text-gray-500">{session.slug}</div>
-                    <div class="text-xs text-gray-400 mt-1">{formatStartsAt(session.starts_at)}</div>
+                <article class="bg-white/5 rounded-xl p-4 border border-white/10 space-y-3">
+                  <div class="min-w-0">
+                    <h2 class="font-bold text-white [overflow-wrap:anywhere]">{session.title}</h2>
+                    <div class="text-xs font-mono text-base-content/60 break-all">{session.slug}</div>
+                    <div class="text-xs text-base-content/70 mt-1">{formatStartsAt(session.starts_at)}</div>
+                    <div class="mt-2">
+                      <Show
+                        when={session.cfp_submission}
+                        fallback={<span class="badge badge-ghost badge-sm font-mono">Manual</span>}
+                      >
+                        <span class="badge badge-secondary badge-sm font-mono">From CFP</span>
+                      </Show>
+                    </div>
                   </div>
                   <Show when={(session.speakers?.length ?? 0) > 0}>
-                    <div class="text-xs font-mono text-gray-500">
+                    <div class="text-xs font-mono text-base-content/60 [overflow-wrap:anywhere]">
                       {(session.speakers || []).map(speakerNameById).join(", ")}
                     </div>
                   </Show>
@@ -458,11 +574,14 @@ export default function AdminSessionsHub() {
                     <button
                       type="button"
                       class={`btn btn-xs font-mono ${session.published ? "btn-success" : "btn-ghost"}`}
-                      disabled={busyId() === session.id}
+                      disabled={busyId() !== null}
                       aria-pressed={session.published}
                       onClick={() => togglePublished(session)}
                     >
-                      {session.published ? "Published" : "Draft"}
+                      <Show when={busyId() === session.id} fallback={session.published ? "Published" : "Draft"}>
+                        <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+                        Updating
+                      </Show>
                     </button>
                     <button
                       type="button"
@@ -480,47 +599,62 @@ export default function AdminSessionsHub() {
                       Preview
                     </a>
                   </div>
-                </div>
+                </article>
               )}
             </For>
           </div>
 
           <div class="hidden md:block overflow-x-auto">
             <table class="table table-lg w-full">
+              <caption class="sr-only">Conference sessions and publication state</caption>
               <thead>
                 <tr class="text-white border-b border-white/10 bg-white/5">
-                  <th class="font-bold text-gray-300">Title</th>
-                  <th class="font-bold text-gray-300">Schedule</th>
-                  <th class="font-bold text-gray-300">Speakers</th>
-                  <th class="font-bold text-gray-300">Visibility</th>
-                  <th class="font-bold text-gray-300">Actions</th>
+                  <th scope="col" class="font-bold text-gray-300">Title</th>
+                  <th scope="col" class="font-bold text-gray-300">Schedule</th>
+                  <th scope="col" class="font-bold text-gray-300">Speakers</th>
+                  <th scope="col" class="font-bold text-gray-300">Source</th>
+                  <th scope="col" class="font-bold text-gray-300">Visibility</th>
+                  <th scope="col" class="font-bold text-gray-300">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 <For each={sessions()}>
                   {(session) => (
                     <tr class="hover:bg-white/5 border-b border-white/5">
-                      <td>
-                        <div class="font-bold text-white">{session.title}</div>
-                        <div class="text-xs font-mono text-gray-500">{session.slug}</div>
+                      <td class="min-w-64 max-w-md">
+                        <div class="font-bold text-white [overflow-wrap:anywhere]">{session.title}</div>
+                        <div class="text-xs font-mono text-base-content/60 break-all">{session.slug}</div>
                       </td>
-                      <td class="text-sm text-gray-400 font-mono">
+                      <td class="text-sm text-base-content/70 font-mono whitespace-nowrap">
                         {formatStartsAt(session.starts_at)}
                       </td>
-                      <td class="text-sm text-gray-400 max-w-xs truncate">
+                      <td class="text-sm text-base-content/70 max-w-xs">
+                        <span class="line-clamp-2 [overflow-wrap:anywhere]">
                         {(session.speakers?.length ?? 0) > 0
                           ? (session.speakers || []).map(speakerNameById).join(", ")
                           : "None"}
+                        </span>
+                      </td>
+                      <td>
+                        <Show
+                          when={session.cfp_submission}
+                          fallback={<span class="badge badge-ghost badge-sm font-mono">Manual</span>}
+                        >
+                          <span class="badge badge-secondary badge-sm font-mono">From CFP</span>
+                        </Show>
                       </td>
                       <td>
                         <button
                           type="button"
                           class={`btn btn-xs font-mono ${session.published ? "btn-success" : "btn-ghost"}`}
-                          disabled={busyId() === session.id}
+                          disabled={busyId() !== null}
                           aria-pressed={session.published}
                           onClick={() => togglePublished(session)}
                         >
-                          {session.published ? "Published" : "Draft"}
+                          <Show when={busyId() === session.id} fallback={session.published ? "Published" : "Draft"}>
+                            <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+                            Updating
+                          </Show>
                         </button>
                       </td>
                       <td>

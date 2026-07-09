@@ -1,5 +1,4 @@
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
-import { getGravatarUrl } from "~/lib/gravatar";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
 import type { SpeakerRecord, SessionRecord } from "~/lib/pocketbase-types";
 
@@ -8,7 +7,7 @@ export { getPbFileUrl } from "~/lib/pocketbase-public-url";
 export interface PublicSpeakerSummary {
   slug: string;
   displayName: string;
-  photoUrl: string;
+  photoUrl: string | null;
   affiliation: string;
   sessionCount: number;
 }
@@ -33,7 +32,7 @@ export interface PromoFooterLink {
 export interface PublicSpeakerPromo {
   slug: string;
   displayName: string;
-  photoUrl: string;
+  photoUrl: string | null;
   roleLine: string;
   statusMessage: string;
   stack: PromoStackTag[];
@@ -181,52 +180,13 @@ export function normalizeSocialHandles(raw: unknown): string[] {
   return [];
 }
 
-type SpeakerRow = SpeakerRecord & {
-  expand?: {
-    cfp_applicant?: {
-      affiliation?: string;
-      bio?: string;
-      social_handles?: unknown;
-      expand?: { user?: { id: string; name?: string; email?: string; avatar?: string } };
-      user?: string;
-    };
-    user?: { id: string; name?: string; email?: string; avatar?: string };
-  };
-};
-
-function resolveUser(row: SpeakerRow) {
-  return row.expand?.user ?? row.expand?.cfp_applicant?.expand?.user;
-}
+type SpeakerRow = SpeakerRecord;
 
 function mapSpeakerSummary(row: SpeakerRow): PublicSpeakerSummary {
-  const user = resolveUser(row);
-  const applicant = row.expand?.cfp_applicant;
-
-  if (row.origin === "cfp" && applicant) {
-    const displayName = row.display_name || user?.name || "Speaker";
-    const photoUrl = user?.avatar
-      ? getPbFileUrl("users", user.id, user.avatar)
-      : getGravatarUrl(user?.email);
-    return {
-      slug: row.slug,
-      displayName,
-      photoUrl,
-      affiliation: applicant.affiliation || "",
-      sessionCount: 0,
-    };
-  }
-
-  const displayName = row.display_name || "Speaker";
-  const photoUrl = row.photo
-    ? getPbFileUrl(row, row.photo)
-    : user?.avatar
-      ? getPbFileUrl("users", user.id, user.avatar)
-      : getGravatarUrl(user?.email);
-
   return {
     slug: row.slug,
-    displayName,
-    photoUrl,
+    displayName: row.display_name || row.slug || "Speaker",
+    photoUrl: row.photo ? getPbFileUrl(row, row.photo) : null,
     affiliation: row.affiliation || "",
     sessionCount: 0,
   };
@@ -237,18 +197,6 @@ function mapSpeakerDetail(
   sessions: PublicSessionCard[],
 ): PublicSpeakerDetail {
   const summary = mapSpeakerSummary(row);
-  const user = resolveUser(row);
-  const applicant = row.expand?.cfp_applicant;
-
-  if (row.origin === "cfp" && applicant) {
-    return {
-      ...summary,
-      sessionCount: sessions.length,
-      bio: applicant.bio || "",
-      socialHandles: normalizeSocialHandles(applicant.social_handles),
-      sessions,
-    };
-  }
 
   return {
     ...summary,
@@ -287,7 +235,6 @@ async function fetchPublishedSpeakersRows(): Promise<SpeakerRow[]> {
   const admin = getAdminPB();
   const rows = await admin.fetchAllRecords("speakers", {
     filter: "published = true",
-    expand: "cfp_applicant.user,user",
   });
   return rows as SpeakerRow[];
 }
@@ -358,7 +305,6 @@ export const fetchPublicSpeakerBySlug = async (
   const escaped = slug.replace(/"/g, '\\"');
   const rows = (await getAdminPB().fetchAllRecords("speakers", {
     filter: `published = true && slug = "${escaped}"`,
-    expand: "cfp_applicant.user,user",
   })) as SpeakerRow[];
   const row = rows[0];
   if (!row) return null;
@@ -375,7 +321,6 @@ export const fetchPublicSpeakerPromoBySlug = async (
   const escaped = slug.replace(/"/g, '\\"');
   const rows = (await getAdminPB().fetchAllRecords("speakers", {
     filter: `published = true && slug = "${escaped}"`,
-    expand: "cfp_applicant.user,user",
   })) as SpeakerRow[];
   const row = rows[0];
   if (!row) return null;
@@ -412,13 +357,13 @@ export const fetchPublicSessionBySlug = async (
   const escaped = slug.replace(/"/g, '\\"');
   const rows = (await admin.fetchAllRecords("sessions", {
     filter: `published = true && slug = "${escaped}"`,
-    expand: "speakers.cfp_applicant.user,speakers.user",
+    expand: "speakers",
   })) as (SessionRecord & { expand?: { speakers?: SpeakerRow[] } })[];
 
   const session = rows[0];
   if (!session) return null;
 
-  const speakerRows = session.expand?.speakers ?? [];
+  const speakerRows = (session.expand?.speakers ?? []).filter((speaker) => speaker.published);
   const speakers = sortByDisplayName(speakerRows.map(mapSpeakerSummary));
 
   return {

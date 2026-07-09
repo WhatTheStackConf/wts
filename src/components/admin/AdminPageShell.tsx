@@ -1,19 +1,34 @@
-import { createSignal, JSX, Show, ParentProps } from "solid-js";
+import { createSignal, JSX, onCleanup, Show, ParentProps } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { Icon } from "@iconify-icon/solid";
 import { Layout } from "~/layouts/Layout";
 
-export type AdminToast = { type: "success" | "error"; text: string };
+export type AdminToast = {
+  type: "success" | "error";
+  text: string;
+  actionHref?: string;
+  actionLabel?: string;
+};
 
 type AdminControlElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 export function useAdminToast() {
   const [toast, setToast] = createSignal<AdminToast | null>(null);
+  let hideTimer: number | undefined;
 
-  const showToast = (type: AdminToast["type"], text: string) => {
-    setToast({ type, text });
-    window.setTimeout(() => setToast(null), 6000);
+  const showToast = (
+    type: AdminToast["type"],
+    text: string,
+    action?: Pick<AdminToast, "actionHref" | "actionLabel">,
+  ) => {
+    if (hideTimer) window.clearTimeout(hideTimer);
+    setToast({ type, text, ...action });
+    hideTimer = window.setTimeout(() => setToast(null), 6000);
   };
+
+  onCleanup(() => {
+    if (hideTimer) window.clearTimeout(hideTimer);
+  });
 
   return { toast, showToast };
 }
@@ -38,7 +53,7 @@ export function clearAdminControlValidity(event: Event) {
 }
 
 const ADMIN_CONTROL_BASE =
-  "admin-control w-full bg-black/40 border-white/10 text-base-content placeholder:text-base-content/35 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-[border-color,box-shadow,background-color] duration-200";
+  "admin-control w-full bg-black/40 border-white/15 text-base-content placeholder:text-base-content/60 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-300 transition-[border-color,box-shadow,background-color] duration-200";
 
 export const adminFormPanelClass =
   "glass-panel p-5 sm:p-6 rounded-2xl border border-white/10 shadow-xl backdrop-blur-xl bg-black/40";
@@ -69,9 +84,9 @@ export function AdminFormSection(props: AdminFormSectionProps) {
   return (
     <section class={`admin-form-section border-t border-white/10 pt-6 first:border-t-0 first:pt-0 ${props.class ?? ""}`}>
       <div class="mb-4">
-        <h3 class="text-sm font-bold text-white uppercase tracking-[0.08em]">{props.title}</h3>
+        <h3 class="text-sm font-bold text-white uppercase tracking-[0.06em] text-wrap-balance">{props.title}</h3>
         <Show when={props.description}>
-          <p class="text-xs text-base-content/45 font-mono mt-1 max-w-3xl">
+          <p class="text-xs text-base-content/60 font-mono mt-1 max-w-3xl leading-relaxed text-pretty">
             {props.description}
           </p>
         </Show>
@@ -93,16 +108,17 @@ interface AdminFormFieldProps extends ParentProps {
 export function AdminFormField(props: AdminFormFieldProps) {
   return (
     <label class={`admin-field block w-full ${props.class ?? ""}`} for={props.id}>
-      <span class="admin-label block text-base-content/80 font-mono text-xs uppercase tracking-[0.14em] mb-1.5">
+      <span class="admin-label block text-base-content/85 font-mono text-xs uppercase tracking-[0.12em] mb-1.5">
         {props.label}
         <Show when={props.required}>
           <span aria-hidden="true" class="text-primary-300 ml-1">
             *
           </span>
+          <span class="sr-only"> required</span>
         </Show>
       </span>
       <Show when={props.hint}>
-        <span id={`${props.id}-hint`} class="admin-hint block text-xs text-base-content/45 font-mono mb-2 max-w-prose leading-relaxed">
+        <span id={`${props.id}-hint`} class="admin-hint block text-xs text-base-content/60 font-mono mb-2 max-w-prose leading-relaxed text-pretty">
           {props.hint}
         </span>
       </Show>
@@ -160,34 +176,35 @@ export function AdminPageShell(props: AdminPageShellProps) {
 
         <div class="container mx-auto px-4 max-w-7xl">
           <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
-            <div>
-              <h1 class={`text-3xl md:text-4xl font-black uppercase tracking-tight ${titleClass()} mb-2`}>
-                <span>{props.title}</span>
+            <div class="min-w-0">
+              <h1 class={`flex flex-wrap items-center gap-x-3 gap-y-2 text-3xl md:text-4xl font-black uppercase tracking-tight ${titleClass()} mb-2 text-wrap-balance`}>
+                <span class="min-w-0 [overflow-wrap:anywhere]">{props.title}</span>
                 <Show when={!props.countLoading && props.count !== undefined}>
                   <span
-                    class={`ml-3 align-middle badge badge-lg font-mono font-black ${badgeClass()}`}
+                    class={`badge badge-lg font-mono font-black ${badgeClass()}`}
                   >
                     {props.count}
                   </span>
                 </Show>
               </h1>
-              <p class="text-secondary-300 font-mono text-sm uppercase tracking-[0.16em]">
+              <p class="text-secondary-200 font-mono text-sm uppercase tracking-[0.14em] leading-relaxed">
                 {props.subtitle}
               </p>
               <Show when={props.hint}>
-                <p class="text-xs text-base-content/45 font-mono mt-2 max-w-2xl">{props.hint}</p>
+                <p class="text-xs text-base-content/60 font-mono mt-2 max-w-2xl leading-relaxed text-pretty">{props.hint}</p>
               </Show>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2 md:justify-end">
               <Show when={props.headerActions}>{props.headerActions}</Show>
               <button
                 type="button"
-                class="btn btn-ghost hover:bg-white/10 text-white gap-2 group"
+                class="btn btn-ghost hover:bg-white/10 text-white gap-2 group shrink-0"
                 onClick={() => navigate("/admin")}
               >
                 <Icon
                   icon="ph:arrow-left-bold"
-                  class="group-hover:-translate-x-1 transition-transform"
+                  class="motion-safe:group-hover:-translate-x-1 transition-transform"
+                  aria-hidden="true"
                 />
                 Back to dashboard
               </button>
@@ -197,12 +214,18 @@ export function AdminPageShell(props: AdminPageShellProps) {
           <Show when={props.toast}>
             {(t) => (
               <div
-                class={`alert mb-6 font-mono text-sm ${
+                class={`alert mb-6 flex-col items-start gap-3 font-mono text-sm sm:flex-row sm:items-center sm:justify-between ${
                   t().type === "success" ? "alert-success" : "alert-error"
                 }`}
-                role="status"
+                role={t().type === "error" ? "alert" : "status"}
+                aria-live={t().type === "error" ? "assertive" : "polite"}
               >
                 <span>{t().text}</span>
+                <Show when={t().actionHref && t().actionLabel}>
+                  <a href={t().actionHref} class="btn btn-sm btn-ghost font-mono">
+                    {t().actionLabel}
+                  </a>
+                </Show>
               </div>
             )}
           </Show>
@@ -233,12 +256,12 @@ export function AdminFilterBar(props: AdminFilterBarProps) {
   return (
     <div class="flex flex-wrap gap-3 mb-6 items-center">
       <div class="flex items-center gap-2">
-        <Icon icon="ph:funnel-bold" class="text-gray-400" />
-        <span class="text-xs font-mono text-gray-400 uppercase">Filters</span>
+        <Icon icon="ph:funnel-bold" class="text-base-content/65" aria-hidden="true" />
+        <span class="text-xs font-mono text-base-content/65 uppercase tracking-[0.08em]">Filters</span>
       </div>
       {props.children}
       <Show when={props.showCount}>
-        <span class="text-xs font-mono text-gray-500">
+        <span class="text-xs font-mono text-base-content/60">
           {props.filteredCount} / {props.totalCount}
         </span>
       </Show>
@@ -253,8 +276,8 @@ interface AdminFilterGroupProps {
 
 export function AdminFilterGroup(props: AdminFilterGroupProps) {
   return (
-    <div class="flex items-center gap-2">
-      <label class="text-xs font-mono text-gray-500">{props.label}</label>
+    <div class="flex items-center gap-2" role="group" aria-label={props.label.replace(/:$/, "")}>
+      <span class="text-xs font-mono text-base-content/60">{props.label}</span>
       <div class="flex gap-1">{props.children}</div>
     </div>
   );
@@ -269,5 +292,5 @@ export function adminFilterButtonClass(
       ? "btn btn-xs font-mono btn-secondary"
       : "btn btn-xs font-mono btn-primary";
   }
-  return "btn btn-xs font-mono btn-ghost border-white/10 text-gray-400 hover:bg-white/10";
+  return "btn btn-xs font-mono btn-ghost border-white/15 text-base-content/70 hover:bg-white/10 hover:text-white";
 }

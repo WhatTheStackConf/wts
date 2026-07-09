@@ -13,7 +13,7 @@ interface PromoLayoutProps {
   title?: string;
   description?: string;
   /** Speaker photo or other image; absolute URLs used as-is. */
-  ogImage?: string;
+  ogImage?: string | null;
   ogSubtitle?: string;
 }
 

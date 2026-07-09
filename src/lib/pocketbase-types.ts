@@ -72,6 +72,7 @@ export interface SessionRecord extends RecordModel {
   track?: string;
   room?: string;
   speakers?: string[];
+  cfp_submission?: string;
   created: string;
   updated: string;
 }
