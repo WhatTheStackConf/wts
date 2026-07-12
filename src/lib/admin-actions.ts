@@ -757,22 +757,17 @@ export const adminUpdateSpeakerProfile = async (
   }
 };
 
-export const adminUpdateSpeaker = async (id: string, data: Record<string, unknown>) => {
+export const adminSetSpeakerPublished = async (id: string, published: boolean) => {
   "use server";
   try {
     await requireAdmin();
     const adminService = getAdminPB();
-    const result = await adminService.updateRecord("speakers", id, data);
-    return { success: true, data: result };
+    const record = (await adminService.updateRecord("speakers", id, { published })) as SpeakerRecord;
+    return { success: true, data: speakerSnapshot(record) };
   } catch (error) {
-    console.error("Admin update speaker error:", error);
-    return { success: false, error: (error as Error).message };
+    console.error("Admin set speaker publication error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
   }
-};
-
-export const adminSetSpeakerPublished = async (id: string, published: boolean) => {
-  "use server";
-  return adminUpdateSpeaker(id, { published });
 };
 
 export type SessionInput = SessionEditableInput & {
@@ -812,7 +807,34 @@ export const adminUpdateSession = async (id: string, data: SessionUpdateInput) =
 
 export const adminSetSessionPublished = async (id: string, published: boolean) => {
   "use server";
-  return adminUpdateSession(id, { published });
+  try {
+    await requireAdmin();
+    return {
+      success: false,
+      error: "Session publication is managed from its Agenda Slot.",
+    };
+  } catch (error) {
+    console.error("Admin set session published error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+/** Clears verified legacy Session schedule values after their Slot has been mapped. */
+export const adminClearSessionLegacySchedule = async (id: string) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const adminService = getAdminPB();
+    const result = await adminService.updateRecord("sessions", id, {
+      starts_at: "",
+      track: "",
+      room: "",
+    });
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("Admin clear legacy Session schedule error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
 };
 
 async function fetchAcceptedCfpSubmissions(adminService: ReturnType<typeof getAdminPB>): Promise<{

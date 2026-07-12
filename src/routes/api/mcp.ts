@@ -76,7 +76,7 @@ function buildProgramMcpServer(auth: AuthenticatedMcpToken) {
     "list_sessions",
     {
       title: "List Sessions",
-      description: "Return draft and published programme Sessions, optionally filtered by publication, track, or room.",
+        description: "Return draft and published programme Sessions, optionally filtered by publication, canonical Track, or location.",
       inputSchema: {
         published: z.boolean().optional(),
         track: z.string().optional(),
@@ -90,11 +90,11 @@ function buildProgramMcpServer(auth: AuthenticatedMcpToken) {
       }
       if (args.track) {
         const track = args.track.toLowerCase();
-        sessions = sessions.filter((session) => (session.track || "").toLowerCase() === track);
+        sessions = sessions.filter((session) => (session.schedule?.track?.name || "").toLowerCase() === track);
       }
       if (args.room) {
         const room = args.room.toLowerCase();
-        sessions = sessions.filter((session) => (session.room || "").toLowerCase() === room);
+        sessions = sessions.filter((session) => (session.schedule?.location_label || "").toLowerCase() === room);
       }
       return jsonToolResult(sessions);
     },

@@ -51,6 +51,8 @@ const Personal = () => {
   });
 
   const handleNext = async () => {
+    const user = auth.record;
+    if (!user) return;
     const currentErrors: Record<string, string> = {};
     if (!cfpStore.formData.full_name)
       currentErrors.full_name = "Full name is required";
@@ -63,7 +65,7 @@ const Personal = () => {
     }
 
     await updateApplicant({
-      user: auth.record.id,
+      user: user.id,
       affiliation: cfpStore.formData.affiliation,
       bio: cfpStore.formData.short_bio,
       social_handles: cfpStore.formData.social_handles.filter(

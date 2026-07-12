@@ -62,7 +62,7 @@ const AdminDashboard = () => {
                                     </a>
                                 </div>
 
-                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-secondary-500/50 transition-colors group h-full flex flex-col">
+                                 <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-secondary-500/50 transition-colors group h-full flex flex-col">
                                     <div class="flex items-center gap-4 mb-4">
                                         <div class="p-3 rounded-lg bg-secondary-500/20 text-secondary-300">
                                             <Icon icon="mdi:podium" width="24" />
@@ -78,9 +78,45 @@ const AdminDashboard = () => {
                                     >
                                         VIEW RANKINGS
                                     </a>
-                                </div>
+                                 </div>
 
-                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-accent-500/50 transition-colors group h-full flex flex-col">
+                                 <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-secondary-500/50 transition-colors group h-full flex flex-col">
+                                     <div class="flex items-center gap-4 mb-4">
+                                         <div class="p-3 rounded-lg bg-secondary-500/20 text-secondary-300">
+                                             <Icon icon="ph:calendar-dots-bold" width="24" />
+                                         </div>
+                                         <h3 class="text-xl font-bold text-white">AGENDA</h3>
+                                     </div>
+                                     <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
+                                         Configure Conference Days, day-specific Tracks, time ranges, and public programme Slots.
+                                     </p>
+                                     <a
+                                         href="/admin/agenda"
+                                         class="btn btn-outline btn-secondary w-full font-mono group-hover:bg-secondary-500 group-hover:text-white mt-auto"
+                                     >
+                                         MANAGE AGENDA
+                                     </a>
+                                 </div>
+
+                                 <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-primary-500/50 transition-colors group h-full flex flex-col">
+                                     <div class="flex items-center gap-4 mb-4">
+                                         <div class="p-3 rounded-lg bg-primary-500/20 text-primary-300">
+                                             <Icon icon="ph:game-controller-bold" width="24" />
+                                         </div>
+                                         <h3 class="text-xl font-bold text-white">GAMIFICATION</h3>
+                                     </div>
+                                     <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
+                                         Configure September Missions, score schedules, and audited one-time code operations.
+                                     </p>
+                                     <a
+                                         href="/admin/gamification"
+                                         class="btn btn-outline btn-primary w-full font-mono group-hover:bg-primary-500 group-hover:text-white mt-auto"
+                                     >
+                                         MANAGE GAMIFICATION
+                                     </a>
+                                 </div>
+
+                                 <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-accent-500/50 transition-colors group h-full flex flex-col">
                                     <div class="flex items-center gap-4 mb-4">
                                         <div class="p-3 rounded-lg bg-accent-500/20 text-accent-300">
                                             <Icon icon="mdi:scale-balance" width="24" />

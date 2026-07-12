@@ -16,9 +16,13 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
   const [showEffect, setShowEffect] = createSignal(false);
   const [isTypingFirst, setIsTypingFirst] = createSignal(true); // true for typing first text, false for second text
 
-  const shouldAnimate = sessionStorage.getItem("shouldAnimate") !== "false";
+  const shouldAnimate =
+    sessionStorage.getItem("shouldAnimate") !== "false" &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   onMount(() => {
+    if (!shouldAnimate) return;
+
     // Delay before typing starts
     const startDelay = props.delay || 0;
 
@@ -131,6 +135,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
           {/* Subtle glitch effect for the entire text */}
           <Show when={showEffect()}>
             <span
+              aria-hidden="true"
               class={`absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-50`}
               style={{ color: "#fc00ff" }}
             >
@@ -161,6 +166,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
           </div>
           <Show when={showEffect()}>
             <span
+              aria-hidden="true"
               class={`absolute top-0 left-0 overflow-hidden pointer-events-none opacity-50 flex flex-col`}
               style={{ color: "#fc00ff" }}
             >

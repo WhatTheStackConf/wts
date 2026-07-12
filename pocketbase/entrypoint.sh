@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -eu
+
 # Function to create superuser via CLI
 create_superuser() {
     local email="$1"
@@ -37,7 +39,7 @@ if [ -d "/pb/pb_migrations" ]; then
 fi
 
 # Create superuser if credentials are provided
-if [ ! -z "$PB_SUPERUSER_EMAIL" ] && [ ! -z "$PB_SUPERUSER_PASSWORD" ]; then
+if [ -n "${PB_SUPERUSER_EMAIL:-}" ] && [ -n "${PB_SUPERUSER_PASSWORD:-}" ]; then
     create_superuser "$PB_SUPERUSER_EMAIL" "$PB_SUPERUSER_PASSWORD"
 fi
 

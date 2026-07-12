@@ -122,16 +122,21 @@ describe("MCP programme data", () => {
   });
 
   it("includes MCP session CFP provenance as cfp_submission_id", async () => {
-    fetchAllRecords.mockResolvedValue([
-      session("published-session", "submission-1"),
-      session("manual-session"),
-    ]);
+    fetchAllRecords.mockImplementation((collection: string) => {
+      if (collection === "sessions") {
+        return Promise.resolve([
+          session("published-session", "submission-1"),
+          session("manual-session"),
+        ]);
+      }
+      return Promise.resolve([]);
+    });
 
     const sessions = await fetchMcpSessions();
 
     expect(fetchAllRecords).toHaveBeenCalledWith("sessions", {
       expand: "speakers",
-      sort: "starts_at,title",
+      sort: "title",
     });
     expect(sessions[0]).toMatchObject({
       id: "published-session",
@@ -142,6 +147,10 @@ describe("MCP programme data", () => {
       cfp_submission_id: null,
     });
     expect(sessions[0]).not.toHaveProperty("cfp_submission");
+    expect(sessions[0]).not.toHaveProperty("starts_at");
+    expect(sessions[0]).not.toHaveProperty("track");
+    expect(sessions[0]).not.toHaveProperty("room");
+    expect(sessions[0].schedule).toBeNull();
   });
 
   it("lists every CFP proposal by default instead of filtering to accepted", async () => {

@@ -17,7 +17,8 @@ export const Footer = () => {
               href="https://x.com/what_the_stack"
               target="_blank"
               rel="noopener noreferrer"
-              class="link link-hover text-2xl hover:text-primary-400 transition-colors"
+              aria-label="WhatTheStack on X"
+              class="link link-hover inline-flex min-h-11 min-w-11 items-center justify-center text-2xl hover:text-primary-400 transition-colors"
             >
               <Icon icon="mdi:twitter" />
             </a>
@@ -25,7 +26,8 @@ export const Footer = () => {
               href="https://fb.me/whatthestack"
               target="_blank"
               rel="noopener noreferrer"
-              class="link link-hover text-2xl hover:text-primary-400 transition-colors"
+              aria-label="WhatTheStack on Facebook"
+              class="link link-hover inline-flex min-h-11 min-w-11 items-center justify-center text-2xl hover:text-primary-400 transition-colors"
             >
               <Icon icon="mdi:facebook" />
             </a>
@@ -33,7 +35,8 @@ export const Footer = () => {
               href="https://instagram.com/what_the_stack_conference"
               target="_blank"
               rel="noopener noreferrer"
-              class="link link-hover text-2xl hover:text-primary-400 transition-colors"
+              aria-label="WhatTheStack on Instagram"
+              class="link link-hover inline-flex min-h-11 min-w-11 items-center justify-center text-2xl hover:text-primary-400 transition-colors"
             >
               <Icon icon="mdi:instagram" />
             </a>
@@ -41,7 +44,8 @@ export const Footer = () => {
               href="https://www.linkedin.com/company/what-the-stack-conference"
               target="_blank"
               rel="noopener noreferrer"
-              class="link link-hover text-2xl hover:text-primary-400 transition-colors"
+              aria-label="WhatTheStack on LinkedIn"
+              class="link link-hover inline-flex min-h-11 min-w-11 items-center justify-center text-2xl hover:text-primary-400 transition-colors"
             >
               <Icon icon="mdi:linkedin" />
             </a>
@@ -49,7 +53,8 @@ export const Footer = () => {
               href="https://bsky.app/profile/wts.rocks"
               target="_blank"
               rel="noopener noreferrer"
-              class="link link-hover text-2xl hover:text-primary-400 transition-colors"
+              aria-label="WhatTheStack on Bluesky"
+              class="link link-hover inline-flex min-h-11 min-w-11 items-center justify-center text-2xl hover:text-primary-400 transition-colors"
             >
               <Icon icon="simple-icons:bluesky" />
             </a>
@@ -57,7 +62,8 @@ export const Footer = () => {
               href="https://www.youtube.com/@WhatTheStackConference"
               target="_blank"
               rel="noopener noreferrer"
-              class="link link-hover text-2xl hover:text-primary-400 transition-colors"
+              aria-label="WhatTheStack on YouTube"
+              class="link link-hover inline-flex min-h-11 min-w-11 items-center justify-center text-2xl hover:text-primary-400 transition-colors"
             >
               <Icon icon="mdi:youtube" />
             </a>
@@ -155,7 +161,7 @@ export const Footer = () => {
       </div>
 
       <div class="w-full text-center mt-10 relative z-10 border-t border-white/5 pt-8">
-        <p class="text-xs w-full text-center text-base-content/40 font-mono">
+        <p class="text-xs w-full text-center text-base-content/65 font-mono">
           © 2026 WhatTheStack?. CC | BY-NC-SA | CodePub LLC
         </p>
       </div>

@@ -1,4 +1,4 @@
-import { For, createSignal, onMount } from "solid-js";
+import { For } from "solid-js";
 
 const codeSnippets = [
   "function replicant() { return 'More human than human'; }",
@@ -28,71 +28,36 @@ const codeSnippets = [
 ];
 
 function TypingCode(props: { snippet: string; index: number }) {
-  const [text, setText] = createSignal("");
-  const [isDeleting, setIsDeleting] = createSignal(false);
-  const [loopNum, setLoopNum] = createSignal(0);
-
-  onMount(() => {
-    const typingSpeed = 100 + props.index * 20;
-    const deletingSpeed = 50 + props.index * 10;
-    const pauseTime = 2000 + props.index * 300;
-
-    const type = () => {
-      const current = loopNum() % codeSnippets.length;
-      const fullText = codeSnippets[current];
-
-      if (isDeleting()) {
-        setText(fullText.substring(0, text().length - 1));
-      } else {
-        setText(fullText.substring(0, text().length + 1));
-      }
-
-      let speed = isDeleting() ? deletingSpeed : typingSpeed;
-
-      if (!isDeleting() && text() === fullText) {
-        speed = pauseTime;
-        setIsDeleting(true);
-      } else if (isDeleting() && text() === "") {
-        setIsDeleting(false);
-        setLoopNum(loopNum() + 1);
-      }
-
-      setTimeout(type, speed);
-    };
-
-    setTimeout(type, props.index * 500);
-  });
-
-  return <div>{text()}</div>;
+  return <div>{props.snippet}</div>;
 }
 
 export default function CodeBackground() {
   return (
-    <div class="absolute inset-0 overflow-hidden z-19">
+    <div class="absolute inset-0 overflow-hidden z-19" aria-hidden="true" inert>
       {/* Scrolling code lines */}
       <For each={Array.from({ length: 15 })}>
         {(item, i) => {
           const index = i();
-          const fontSize = Math.random() > 0.7 ? "text-sm" : "text-xs";
+          const fontSize = index % 4 === 0 ? "text-sm" : "text-xs";
           const colors = [
             "text-green-400",
             "text-cyan-400",
             "text-primary-500",
             "text-secondary-300",
           ];
-          const color = colors[Math.floor(Math.random() * colors.length)];
+          const color = colors[index % colors.length];
 
           return (
             <div
               class={`absolute whitespace-nowrap font-mono ${fontSize} ${color}`}
               style={{
-                top: `${Math.random() * 100}%`,
-                left: `${Math.random() * 20}%`,
-                animation: `scroll-horizontal ${10 + Math.random() * 20}s linear infinite`,
-                "animation-delay": `${Math.random() * 5}s`,
+                top: `${(index * 37 + 11) % 100}%`,
+                left: `${(index * 7 + 3) % 20}%`,
+                animation: `scroll-horizontal ${12 + (index * 7) % 18}s linear infinite`,
+                "animation-delay": `${(index * 11) % 5}s`,
               }}
             >
-              {codeSnippets[Math.floor(Math.random() * codeSnippets.length)]}
+              {codeSnippets[(index * 5 + 3) % codeSnippets.length]}
             </div>
           );
         }}
@@ -102,22 +67,22 @@ export default function CodeBackground() {
       <For each={Array.from({ length: 8 })}>
         {(item, i) => {
           const index = i();
-          const fontSize = Math.random() > 0.5 ? "text-sm" : "text-xs";
+          const fontSize = index % 2 === 0 ? "text-sm" : "text-xs";
           const colors = [
             "text-cyan-400",
             "text-green-400",
             "text-primary-500",
             "text-secondary-400",
           ];
-          const color = colors[Math.floor(Math.random() * colors.length)];
+          const color = colors[index % colors.length];
 
           return (
             <div
               class={`absolute whitespace-nowrap font-mono ${fontSize} ${color}`}
               style={{
-                top: `${20 + Math.random() * 60}%`,
-                left: `${5 + Math.random() * 10}%`,
-                "animation-delay": `${Math.random() * 3}s`,
+                top: `${20 + (index * 17) % 60}%`,
+                left: `${5 + (index * 3) % 10}%`,
+                "animation-delay": `${index % 3}s`,
               }}
             >
               <TypingCode

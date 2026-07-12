@@ -17,11 +17,7 @@ export type SessionEditableInput = {
   title?: string;
   abstract?: string;
   format?: string;
-  starts_at?: string;
-  track?: string;
-  room?: string;
   speakers?: string[];
-  published?: boolean;
   cfp_submission?: never;
 };
 
@@ -82,11 +78,8 @@ export function buildSessionCreateBody(input: SessionEditableInput): Record<stri
     title: input.title || "",
     abstract: input.abstract || "",
     format: input.format || "",
-    starts_at: input.starts_at || "",
-    track: input.track || "",
-    room: input.room || "",
     speakers: Array.isArray(input.speakers) ? input.speakers : [],
-    published: input.published ?? false,
+    published: false,
   };
 }
 
@@ -98,11 +91,7 @@ export function buildSessionUpdateBody(input: SessionEditableInput): Record<stri
   if ("title" in input) body.title = input.title || "";
   if ("abstract" in input) body.abstract = input.abstract || "";
   if ("format" in input) body.format = input.format || "";
-  if ("starts_at" in input) body.starts_at = input.starts_at || "";
-  if ("track" in input) body.track = input.track || "";
-  if ("room" in input) body.room = input.room || "";
   if ("speakers" in input) body.speakers = Array.isArray(input.speakers) ? input.speakers : [];
-  if ("published" in input) body.published = input.published ?? false;
   return body;
 }
 
@@ -187,11 +176,7 @@ export async function promoteSubmissionToDraftSession(
       title,
       abstract,
       format: "",
-      starts_at: "",
-      track: "",
-      room: "",
       speakers: [speakerResult.speaker.id],
-      published: false,
     }),
     cfp_submission: safeSubmissionId,
   };

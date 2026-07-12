@@ -5,6 +5,7 @@ export {
   fetchPublicSpeakerBySlug as fetchSpeakerBySlug,
   fetchPublicSpeakerPromoBySlug as fetchSpeakerPromoBySlug,
   fetchPublicSessions as fetchPublishedSessions,
+  fetchPublicAgenda,
   fetchPublicSessionBySlug as fetchSessionBySlug,
   fetchHasPublishedSessions,
   getPbFileUrl,
@@ -16,4 +17,10 @@ export {
   type PromoFooterLink,
   type PublicSessionCard,
   type PublicSessionDetail,
+  type PublicSessionSchedule,
+  type PublicAgenda,
+  type PublicAgendaDay,
+  type PublicAgendaSlot,
+  type PublicAgendaTrack,
+  type PublicAgendaSession,
 } from "~/lib/conference-public";

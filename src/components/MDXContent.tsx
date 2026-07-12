@@ -15,7 +15,7 @@ const MdxLink = (props: any) => {
   const isExternal = /^(https?:)?\/\//i.test(href) || href.startsWith("mailto:");
 
   if (isStaticAsset) {
-    return <a href={href} download target="_blank" rel="noopener" {...others} />;
+    return <a href={href} download="" target="_blank" rel="noopener" {...others} />;
   }
   if (isExternal) {
     return <a href={href} target="_blank" rel="noopener noreferrer" {...others} />;

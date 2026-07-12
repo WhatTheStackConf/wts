@@ -1,8 +1,26 @@
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
-import type { SpeakerRecord, SessionRecord } from "~/lib/pocketbase-types";
+import {
+  buildPublicAgenda,
+  derivePublicSessionSchedule,
+  type PublicAgenda,
+  type PublicAgendaDay,
+  type PublicAgendaSession,
+  type PublicAgendaSlot,
+  type PublicAgendaTrack,
+  type PublicSessionSchedule,
+} from "~/lib/programme-public";
+import type { AgendaSlotRecord, AgendaTrackRecord, ConferenceDayRecord, SpeakerRecord, SessionRecord } from "~/lib/pocketbase-types";
 
 export { getPbFileUrl } from "~/lib/pocketbase-public-url";
+export type {
+  PublicAgenda,
+  PublicAgendaDay,
+  PublicAgendaSession,
+  PublicAgendaSlot,
+  PublicAgendaTrack,
+  PublicSessionSchedule,
+} from "~/lib/programme-public";
 
 export interface PublicSpeakerSummary {
   slug: string;
@@ -163,13 +181,12 @@ export interface PublicSessionDetail {
   title: string;
   abstract: string;
   format?: string;
-  startsAt?: string;
-  track?: string;
-  room?: string;
+  schedule?: PublicSessionSchedule;
   speakers: PublicSpeakerSummary[];
   /** Populated when related-sessions feature ships; empty at launch. */
   relatedSessions: PublicSessionCard[];
 }
+
 
 export function normalizeSocialHandles(raw: unknown): string[] {
   if (!raw) return [];
@@ -339,6 +356,39 @@ export const fetchPublicSessions = async (): Promise<PublicSessionCard[]> => {
   );
 };
 
+/** Returns the public agenda only from published Day and Slot records. */
+export const fetchPublicAgenda = async (): Promise<PublicAgenda> => {
+  "use server";
+  const admin = getAdminPB();
+  const [days, tracks, slots, sessions] = await Promise.all([
+    admin.fetchAllRecords("conference_days", {
+      filter: "published = true",
+      fields: "id,key,local_date,title,display_order,published",
+      sort: "display_order,local_date,id",
+    }),
+    admin.fetchAllRecords("agenda_tracks", {
+      fields: "id,day,key,name,location_label,display_order",
+      sort: "day,display_order,id",
+    }),
+    admin.fetchAllRecords("agenda_slots", {
+      filter: "published = true",
+      fields: "id,day,track,start_at,end_at,kind,published,display_order,location_label,session,title,summary",
+      sort: "day,start_at,track,display_order,id",
+    }),
+    admin.fetchAllRecords("sessions", {
+      filter: "published = true",
+      fields: "id,slug,title,format,published",
+      sort: "title,id",
+    }),
+  ]);
+  return buildPublicAgenda(
+    days as ConferenceDayRecord[],
+    tracks as AgendaTrackRecord[],
+    slots as AgendaSlotRecord[],
+    sessions as SessionRecord[],
+  );
+};
+
 export const fetchHasPublishedSessions = async (): Promise<boolean> => {
   "use server";
   const admin = getAdminPB();
@@ -366,14 +416,28 @@ export const fetchPublicSessionBySlug = async (
   const speakerRows = (session.expand?.speakers ?? []).filter((speaker) => speaker.published);
   const speakers = sortByDisplayName(speakerRows.map(mapSpeakerSummary));
 
+  const [slots, days, tracks] = await Promise.all([
+    admin.fetchAllRecords("agenda_slots", {
+      filter: `session = "${session.id.replace(/"/g, '\\"')}" && published = true`,
+    }),
+    admin.fetchAllRecords("conference_days"),
+    admin.fetchAllRecords("agenda_tracks"),
+  ]);
+  const scheduleSlot = (slots as AgendaSlotRecord[])[0];
+  const schedule = scheduleSlot
+    ? derivePublicSessionSchedule(
+        scheduleSlot,
+        new Map((days as ConferenceDayRecord[]).map((day) => [day.id, day])),
+        new Map((tracks as AgendaTrackRecord[]).map((track) => [track.id, track])),
+      )
+    : undefined;
+
   return {
     slug: session.slug,
     title: session.title,
     abstract: session.abstract,
     format: session.format || undefined,
-    startsAt: session.starts_at || undefined,
-    track: session.track || undefined,
-    room: session.room || undefined,
+    schedule,
     speakers,
     relatedSessions: [],
   };

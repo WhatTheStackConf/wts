@@ -1,5 +1,5 @@
 import { useParams } from "@solidjs/router";
-import { createMemo, createResource, For, Show } from "solid-js";
+import { createEffect, createMemo, createResource, For, Show } from "solid-js";
 import { Layout } from "~/layouts/Layout";
 import { fetchSessionBySlug } from "~/lib/speakers-public";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
@@ -9,9 +9,18 @@ import NotFound from "../[...404]";
 
 function formatScheduleDate(iso: string) {
   return new Date(iso).toLocaleString("en-US", {
+    timeZone: "Europe/Skopje",
     weekday: "short",
     month: "long",
     day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatScheduleEnd(iso: string) {
+  return new Date(iso).toLocaleTimeString("en-US", {
+    timeZone: "Europe/Skopje",
     hour: "numeric",
     minute: "2-digit",
   });
@@ -38,8 +47,12 @@ export default function SessionDetail() {
 
   const hasSchedule = () => {
     const s = session();
-    return !!(s?.startsAt || s?.track || s?.room);
+    return Boolean(s?.schedule);
   };
+
+  createEffect(() => {
+    if (session()) document.title = pageTitle();
+  });
 
   return (
     <Show
@@ -48,7 +61,7 @@ export default function SessionDetail() {
         <Layout title={pageTitle()} description={pageDescription()}>
           <div class="w-full px-4 relative pt-4 md:pt-12 pb-20">
             <div class="flex justify-center py-24">
-              <span class="loading loading-bars loading-lg text-primary-500" />
+              <span class="loading loading-bars loading-lg text-primary-500" aria-label="Loading session" />
             </div>
           </div>
         </Layout>
@@ -57,7 +70,7 @@ export default function SessionDetail() {
       <Show when={session()} fallback={<NotFound />}>
         {(s) => (
           <Layout
-            title={pageTitle()}
+            title={`${s().title} — WhatTheStack 2026`}
             description={pageDescription()}
             ogSubtitle={s().format || "Conference session"}
           >
@@ -75,22 +88,21 @@ export default function SessionDetail() {
 
                     <Show when={hasSchedule()}>
                       <ul class="mt-6 flex flex-wrap gap-3 list-none p-0 m-0 text-sm font-mono text-secondary-300">
-                        <Show when={s().startsAt}>
+                        <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
+                          <span class="text-secondary-500">Time</span>
+                          <span>
+                            <time datetime={s().schedule!.startAt}>{formatScheduleDate(s().schedule!.startAt)}</time> -{" "}
+                            <time datetime={s().schedule!.endAt}>{formatScheduleEnd(s().schedule!.endAt)}</time>
+                          </span>
+                        </li>
+                        <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
+                          <span class="text-secondary-500">Audience</span>
+                          <span>{s().schedule?.trackName || "All attendees"}</span>
+                        </li>
+                        <Show when={s().schedule?.locationLabel}>
                           <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
-                            <span class="text-secondary-500">Time</span>
-                            <span>{formatScheduleDate(s().startsAt!)}</span>
-                          </li>
-                        </Show>
-                        <Show when={s().track}>
-                          <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
-                            <span class="text-secondary-500">Track</span>
-                            <span>{s().track}</span>
-                          </li>
-                        </Show>
-                        <Show when={s().room}>
-                          <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
-                            <span class="text-secondary-500">Room</span>
-                            <span>{s().room}</span>
+                            <span class="text-secondary-500">Location</span>
+                            <span>{s().schedule?.locationLabel}</span>
                           </li>
                         </Show>
                       </ul>

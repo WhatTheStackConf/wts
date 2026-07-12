@@ -1,5 +1,16 @@
 import PocketBase from "pocketbase";
 
+function logPocketBaseFailure(operation: string, error: unknown, collection?: string): void {
+  const value = error as { name?: string; status?: number };
+  console.error(JSON.stringify({
+    event: "pocketbase_admin_operation_failed",
+    operation,
+    collection,
+    status: Number.isFinite(value?.status) ? value.status : undefined,
+    errorType: value?.name || (error instanceof Error ? error.name : "UnknownError"),
+  }));
+}
+
 /**
  * Server-side PocketBase service for superuser/admin operations
  *
@@ -58,7 +69,7 @@ class PocketBaseAdminService {
         this.initialized = true;
       } catch (error) {
         this.initialized = false;
-        console.error("Failed to authenticate PocketBase admin service:", error);
+        logPocketBaseFailure("authenticate", error);
         throw error;
       } finally {
         this.initializationPromise = null;
@@ -87,7 +98,7 @@ class PocketBaseAdminService {
       const record = await this.pb.collection(collectionName).create(data);
       return record;
     } catch (error) {
-      console.error(`Error creating record in ${collectionName}:`, error);
+      logPocketBaseFailure("create", error, collectionName);
       throw error;
     }
   }
@@ -102,7 +113,7 @@ class PocketBaseAdminService {
       const record = await this.pb.collection(collectionName).update(id, data);
       return record;
     } catch (error) {
-      console.error(`Error updating record in ${collectionName}:`, error);
+      logPocketBaseFailure("update", error, collectionName);
       throw error;
     }
   }
@@ -117,7 +128,7 @@ class PocketBaseAdminService {
       const result = await this.pb.collection(collectionName).delete(id);
       return result;
     } catch (error) {
-      console.error(`Error deleting record in ${collectionName}:`, error);
+      logPocketBaseFailure("delete", error, collectionName);
       throw error;
     }
   }
@@ -134,10 +145,7 @@ class PocketBaseAdminService {
         .getFullList(options);
       return records;
     } catch (error) {
-      console.error(
-        `Error fetching all records from ${collectionName}:`,
-        error,
-      );
+      logPocketBaseFailure("list", error, collectionName);
       throw error;
     }
   }
@@ -154,7 +162,7 @@ class PocketBaseAdminService {
         .getOne(id, options);
       return record;
     } catch (error) {
-      console.error(`Error fetching record from ${collectionName}:`, error);
+      logPocketBaseFailure("view", error, collectionName);
       throw error;
     }
   }
@@ -172,7 +180,7 @@ class PocketBaseAdminService {
       // For custom operations that bypass standard collection methods
       return await operation(this.pb);
     } catch (error) {
-      console.error("Error executing raw database operation:", error);
+      logPocketBaseFailure("raw_database_operation", error);
       throw error;
     }
   }
@@ -193,10 +201,7 @@ class PocketBaseAdminService {
       }
       return results;
     } catch (error) {
-      console.error(
-        `Error batch creating records in ${collectionName}:`,
-        error,
-      );
+      logPocketBaseFailure("batch_create", error, collectionName);
       throw error;
     }
   }

@@ -9,6 +9,7 @@ export function SessionCard(props: SessionCardProps) {
   return (
     <a
       href={`/sessions/${props.session.slug}`}
+      aria-label={`View session: ${props.session.title}`}
       class="speaker-card-grid-tile speaker-card-grid-tile-hover group flex h-full w-full flex-col items-center text-center justify-center rounded-3xl p-5 sm:p-6 min-h-[17rem] cyber-hologram-surface cyber-hologram-card no-underline decoration-none text-inherit outline-none focus-visible:ring-2 focus-visible:ring-accent-400/60"
     >
       <span class="cyber-scan-line" aria-hidden="true" />

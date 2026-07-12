@@ -401,10 +401,9 @@
   box-shadow: 0 0 15px currentColor;
 }
 
-main {
+body {
   background: url("/bg.webp") center center no-repeat;
   background-size: cover;
-  min-height: 100vh;
 }
 
 /* View Transitions API styles */
@@ -430,8 +429,6 @@ main {
 
 /* Fallback animations for browsers that don't support View Transitions */
 main {
-  background: url("/bg.webp") center center no-repeat;
-  background-size: cover;
   min-height: 100vh;
   animation: fadeIn 0.2s ease-out;
 }
@@ -821,6 +818,15 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
   .cyber-hologram-surface {
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }

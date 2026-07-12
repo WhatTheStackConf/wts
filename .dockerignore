@@ -1,0 +1,14 @@
+.git
+.github
+.scratch
+.env
+.env.*
+!.env.example
+.output
+.velite
+coverage
+dist
+node_modules
+pocketbase/pb_data
+pocketbase/pocketbase
+*.log

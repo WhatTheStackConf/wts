@@ -25,6 +25,13 @@ export const Layout = (props: LayoutProps) => {
 
   return (
     <>
+      <a
+        href="#main-content"
+        class="sr-only fixed left-3 top-3 z-[20000] rounded bg-base-100 px-4 py-3 font-mono text-base-content focus:not-sr-only"
+        onClick={() => window.setTimeout(() => document.querySelector<HTMLElement>("#main-content")?.focus(), 0)}
+      >
+        Skip to main content
+      </a>
       <Navbar />
       <Title>{title()}</Title>
       <Link rel="icon" href="/favicon.svg" />
@@ -34,7 +41,7 @@ export const Layout = (props: LayoutProps) => {
       <Meta property="og:image" content={`/api/og?title=${encodeURIComponent(title())}&subtitle=${encodeURIComponent(ogSubtitle())}`} />
       <Meta property="og:type" content="website" />
       <Meta name="twitter:card" content="summary_large_image" />
-      <main class="font-sans relative w-full min-h-screen flex flex-col items-center overflow-x-hidden">
+      <main id="main-content" tabindex="-1" class="font-sans relative w-full min-h-screen flex flex-col items-center overflow-x-hidden">
         <CodeBackground />
         <div class="absolute z-24 w-full min-h-screen h-full top-0 left-0 bg-black opacity-[76%]"></div>
 

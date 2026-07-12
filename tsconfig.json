@@ -10,7 +10,9 @@
     "allowJs": true,
     "strict": true,
     "noEmit": true,
+    "skipLibCheck": true,
     "types": [
+      "@solidjs/start/env",
       "vite-plugin-solid-svg/types",
       "vite/client",
       "node"
@@ -23,6 +25,10 @@
       ".velite": [
         "./.velite"
       ]
-    },
+    }
   },
+  "include": [
+    "src",
+    "vite.config.ts"
+  ]
 }

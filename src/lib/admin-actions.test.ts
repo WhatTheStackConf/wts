@@ -422,9 +422,6 @@ describe("admin CFP promotion helpers", () => {
       title: "Practical Type Safety",
       abstract: "Public abstract",
       format: "",
-      starts_at: "",
-      track: "",
-      room: "",
       speakers: ["speaker-existing"],
       published: false,
       cfp_submission: "submission-1",
@@ -531,6 +528,10 @@ describe("admin CFP promotion helpers", () => {
     } as any);
 
     expect(createBody).not.toHaveProperty("cfp_submission");
+    expect(createBody).not.toHaveProperty("starts_at");
+    expect(createBody).not.toHaveProperty("track");
+    expect(createBody).not.toHaveProperty("room");
     expect(updateBody).toEqual({ slug: "updated-session", title: "Updated Session" });
+    expect(buildSessionUpdateBody({ published: true } as any)).toEqual({});
   });
 });

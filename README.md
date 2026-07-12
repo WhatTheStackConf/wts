@@ -2,7 +2,7 @@
 
 Web app for the WhatTheStack 2026 conference. Public-facing site, CFP system, reviewer workflow, admin tools, ticketing, and content (blog/agenda/speakers).
 
-Live: [wts.rs](https://wts.rs)
+Live: [wts.sh](https://wts.sh)
 
 ## Stack
 
@@ -70,6 +70,9 @@ POCKETBASE_URL="http://127.0.0.1:8090"            # server admin API (local)
 PUBLIC_POCKETBASE_URL="http://127.0.0.1:8090"     # browser + SSR file URLs (default if unset)
 POCKETBASE_SUPERUSER_EMAIL="admin@example.com"
 POCKETBASE_SUPERUSER_PASSWORD="supersecret"
+
+# Canonical site origin
+PUBLIC_SITE_URL="https://wts.sh"
 ```
 
 **Production (Coolify / Docker):** set the public PocketBase hostname for anything rendered in HTML or loaded by the browser. Keep `POCKETBASE_URL` as the internal service URL for server-side admin API calls only.
@@ -88,10 +91,17 @@ TITO_EVENT="conference-2026"
 
 # HiEvents
 HIEVENTS_API_URL="https://hievents.example.com"
+HIEVENTS_API_KEY="" # optional alternative to email/password/account ID
 HIEVENTS_EMAIL=""
 HIEVENTS_PASSWORD=""
 HIEVENTS_EVENT_ID=1
 HIEVENTS_ACCOUNT_ID=1
+HIEVENTS_REQUEST_TIMEOUT_MS=10000
+HIEVENTS_MAX_RETRIES=2
+HIEVENTS_RETRY_BASE_MS=200
+
+# Gamification (server-only; required for Mission-code operations)
+GAMIFICATION_CODE_PEPPER="replace-with-a-random-high-entropy-secret"
 
 # Listmonk (newsletter)
 LISTMONK_USERNAME="bot"
@@ -124,7 +134,7 @@ Hooks run inside the PocketBase container. Pass variables through `docker-compos
 | `CFP_DAILY_REPORT_RECIPIENT` | To address(es); comma-separated for multiple (default `darko@wts.rocks`) |
 | `CFP_DAILY_REPORT_FORCE` | Set to `true` to send even when there were no new users/submissions in 24h |
 
-HiEvents vars (`HIEVENTS_*`) are already passed for ticket stats in the report.
+HiEvents vars (`HIEVENTS_*`) are passed to both the web app evidence service and PocketBase ticket-report hooks. `GAMIFICATION_CODE_PEPPER` is passed only to the web app; never expose it through a `PUBLIC_` or `VITE_` variable.
 
 ## Architecture
 
@@ -166,6 +176,8 @@ pnpm docker:up
 ```
 
 `docker-compose.yml` spins up the web app + PocketBase with persistent volume for `pb_data`. Deploys to Coolify. Superuser auto-provisions on first run from env.
+
+The September gamification award, redemption, code-operation, score-schedule, and rate-limit paths coordinate through PocketBase-backed locks and uniqueness constraints. Multiple `webapp` replicas must share the same PocketBase database and the same `GAMIFICATION_CODE_PEPPER`; do not split these services across independent PocketBase databases.
 
 ## Roles
 

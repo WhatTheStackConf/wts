@@ -1,23 +1,10 @@
 import { createResource, For, Show } from "solid-js";
 import { Layout } from "~/layouts/Layout";
-import {
-  fetchHasPublishedSessions,
-  fetchPublishedSessions,
-} from "~/lib/speakers-public";
+import { fetchPublishedSessions } from "~/lib/speakers-public";
 import { SessionCard } from "~/components/conference/SessionCard";
 
 export default function Sessions() {
-  const [page] = createResource(async () => {
-    const has = await fetchHasPublishedSessions();
-    if (!has) return { kind: "coming-soon" as const };
-    const sessions = await fetchPublishedSessions();
-    return { kind: "list" as const, sessions };
-  });
-
-  const sessions = () => {
-    const data = page();
-    return data?.kind === "list" ? data.sessions : undefined;
-  };
+  const [sessions, { refetch }] = createResource(fetchPublishedSessions);
 
   return (
     <Layout
@@ -37,15 +24,21 @@ export default function Sessions() {
           </header>
 
           <Show
-            when={!page.loading}
+             when={!sessions.loading}
             fallback={
               <div class="flex justify-center py-24">
-                <span class="loading loading-bars loading-lg text-primary-500" />
+                 <span class="loading loading-bars loading-lg text-primary-500" aria-label="Loading sessions" />
               </div>
             }
           >
-            <Show
-              when={sessions()}
+            <Show when={!sessions.error} fallback={
+              <div class="alert alert-error flex-col items-start sm:flex-row sm:items-center sm:justify-between" role="alert">
+                <span>Published sessions could not be loaded. Draft or partial programme data is not being shown.</span>
+                <button type="button" class="btn btn-sm btn-outline min-h-11 font-mono" onClick={() => void refetch()}>Try again</button>
+              </div>
+            }>
+              <Show
+              when={(sessions()?.length || 0) > 0}
               fallback={
                 <div class="md:pl-2 fade-in-delay-2">
                   <p class="text-2xl md:text-3xl font-star text-white/30 mb-4 tracking-wider uppercase">
@@ -57,17 +50,16 @@ export default function Sessions() {
                 </div>
               }
             >
-              {(items) => (
-                <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8 list-none p-0 m-0 fade-in-delay-2">
-                  <For each={items()}>
+              <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8 list-none p-0 m-0 fade-in-delay-2">
+                  <For each={sessions()}>
                     {(session) => (
                       <li class="min-w-0 h-full">
                         <SessionCard session={session} />
                       </li>
                     )}
                   </For>
-                </ul>
-              )}
+              </ul>
+              </Show>
             </Show>
           </Show>
         </div>

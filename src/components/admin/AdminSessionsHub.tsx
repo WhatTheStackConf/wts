@@ -14,10 +14,10 @@ import {
   useAdminToast,
 } from "~/components/admin/AdminPageShell";
 import {
+  adminClearSessionLegacySchedule,
   adminCreateSession,
   adminFetchSessions,
   adminFetchSpeakers,
-  adminSetSessionPublished,
   adminUpdateSession,
 } from "~/lib/admin-actions";
 import type { SessionRecord, SpeakerRecord } from "~/lib/pocketbase-types";
@@ -27,34 +27,12 @@ function speakerDisplayName(sp: SpeakerRecord): string {
   return sp.display_name || sp.slug;
 }
 
-function formatStartsAt(value?: string): string {
-  if (!value) return "Not scheduled";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  try {
-    return date.toLocaleString(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  } catch {
-    return value;
-  }
-}
-
-function toDatetimeLocalValue(value?: string): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value.includes("T") ? value.slice(0, 16) : "";
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-}
-
 function reducedMotionPreferred(): boolean {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 }
 
 export default function AdminSessionsHub() {
   const { toast, showToast } = useAdminToast();
-  const [busyId, setBusyId] = createSignal<string | null>(null);
   const [editingId, setEditingId] = createSignal<string | null>(null);
   const [showForm, setShowForm] = createSignal(false);
   const [sessionsError, setSessionsError] = createSignal<string | null>(null);
@@ -80,11 +58,9 @@ export default function AdminSessionsHub() {
   const [slug, setSlug] = createSignal("");
   const [abstract, setAbstract] = createSignal("");
   const [format, setFormat] = createSignal("");
-  const [startsAt, setStartsAt] = createSignal("");
-  const [track, setTrack] = createSignal("");
-  const [room, setRoom] = createSignal("");
   const [selectedSpeakers, setSelectedSpeakers] = createSignal<string[]>([]);
   const [saving, setSaving] = createSignal(false);
+  const [clearingLegacy, setClearingLegacy] = createSignal(false);
 
   const editingSession = createMemo(() => {
     const id = editingId();
@@ -105,9 +81,6 @@ export default function AdminSessionsHub() {
     setSlug("");
     setAbstract("");
     setFormat("");
-    setStartsAt("");
-    setTrack("");
-    setRoom("");
     setSelectedSpeakers([]);
     setSpeakerSearch("");
     setShowForm(false);
@@ -124,9 +97,6 @@ export default function AdminSessionsHub() {
     setSlug(session.slug);
     setAbstract(session.abstract);
     setFormat(session.format || "");
-    setStartsAt(toDatetimeLocalValue(session.starts_at));
-    setTrack(session.track || "");
-    setRoom(session.room || "");
     setSelectedSpeakers(session.speakers || []);
     setSpeakerSearch("");
     setShowForm(true);
@@ -180,9 +150,6 @@ export default function AdminSessionsHub() {
       title: sessionTitle,
       abstract: abstract().trim(),
       format: format().trim(),
-      starts_at: startsAt(),
-      track: track().trim(),
-      room: room().trim(),
       speakers: selectedSpeakers(),
     };
 
@@ -210,33 +177,29 @@ export default function AdminSessionsHub() {
     }
   };
 
-  const togglePublished = async (session: SessionRecord) => {
-    if (busyId()) return;
-    setBusyId(session.id);
-    try {
-      const res = await adminSetSessionPublished(session.id, !session.published);
-      if (!res.success) {
-        showToast("error", res.error || "Could not update published state.");
-        return;
-      }
-
-      showToast(
-        "success",
-        session.published
-          ? `"${session.title}" is now a draft.`
-          : `"${session.title}" is now published.`,
-      );
-      await refetch();
-    } catch (err) {
-      showToast("error", err instanceof Error ? err.message : "Could not update published state.");
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const speakerNameById = (id: string) => {
     const sp = (speakers() || []).find((s) => s.id === id);
     return sp ? speakerDisplayName(sp) : id;
+  };
+
+  const clearLegacySchedule = async () => {
+    const session = editingSession();
+    if (!session || clearingLegacy()) return;
+    if (!window.confirm("Clear the legacy start time, track, and room fields? This cannot be undone.")) return;
+    setClearingLegacy(true);
+    try {
+      const result = await adminClearSessionLegacySchedule(session.id);
+      if (!result.success) {
+        showToast("error", result.error || "Could not clear legacy schedule data.");
+        return;
+      }
+      showToast("success", "Legacy schedule data cleared. The Agenda Slot remains canonical.");
+      await refetch();
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Could not clear legacy schedule data.");
+    } finally {
+      setClearingLegacy(false);
+    }
   };
 
   return (
@@ -251,9 +214,14 @@ export default function AdminSessionsHub() {
       accent="secondary"
       toast={toast()}
       headerActions={
-        <a href="/admin/speakers" class="btn btn-outline btn-primary font-mono">
-          Speakers
-        </a>
+        <>
+          <a href="/admin/speakers" class="btn btn-outline btn-primary font-mono">
+            Speakers
+          </a>
+          <a href="/admin/agenda" class="btn btn-outline btn-secondary font-mono">
+            Agenda
+          </a>
+        </>
       }
     >
       <Show when={sessionsError()}>
@@ -370,8 +338,8 @@ export default function AdminSessionsHub() {
                 </div>
               </AdminFormSection>
 
-              <AdminFormSection title="Schedule" description="Optional programme metadata. Leave fields empty until the schedule is firm.">
-                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-5">
+              <AdminFormSection title="Format" description="Optional public format label.">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5">
                   <AdminFormField id="session-format" label="Format">
                     <input
                       id="session-format"
@@ -383,42 +351,44 @@ export default function AdminSessionsHub() {
                       onInput={(e) => setFormat(e.currentTarget.value)}
                     />
                   </AdminFormField>
-
-                  <AdminFormField id="session-starts-at" label="Starts at">
-                    <input
-                      id="session-starts-at"
-                      name="starts_at"
-                      type="datetime-local"
-                      class={adminInputClass("font-mono")}
-                      value={startsAt()}
-                      onInput={(e) => setStartsAt(e.currentTarget.value)}
-                    />
-                  </AdminFormField>
-
-                  <AdminFormField id="session-track" label="Track">
-                    <input
-                      id="session-track"
-                      name="track"
-                      class={adminInputClass()}
-                      autocomplete="off"
-                      placeholder="Systems"
-                      value={track()}
-                      onInput={(e) => setTrack(e.currentTarget.value)}
-                    />
-                  </AdminFormField>
-
-                  <AdminFormField id="session-room" label="Room">
-                    <input
-                      id="session-room"
-                      name="room"
-                      class={adminInputClass()}
-                      autocomplete="off"
-                      placeholder="Main hall"
-                      value={room()}
-                      onInput={(e) => setRoom(e.currentTarget.value)}
-                    />
-                  </AdminFormField>
                 </div>
+              </AdminFormSection>
+
+              <AdminFormSection
+                title="Legacy schedule migration data"
+                description="These historical Session fields are read-only. Configure canonical Day, Track, time range, and location in Agenda."
+              >
+                <Show
+                  when={editingSession()}
+                  fallback={<p class="text-sm text-base-content/60 font-mono">Save the Session, then configure its schedule in Agenda.</p>}
+                >
+                  {(session) => (
+                    <>
+                      <dl class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm font-mono">
+                        <div class="rounded-lg border border-white/10 bg-black/20 p-3">
+                          <dt class="text-xs uppercase tracking-[0.1em] text-base-content/55">Starts at</dt>
+                          <dd class="mt-1 text-base-content/85 break-words">{session().starts_at || "None"}</dd>
+                        </div>
+                        <div class="rounded-lg border border-white/10 bg-black/20 p-3">
+                          <dt class="text-xs uppercase tracking-[0.1em] text-base-content/55">Track</dt>
+                          <dd class="mt-1 text-base-content/85 break-words">{session().track || "None"}</dd>
+                        </div>
+                        <div class="rounded-lg border border-white/10 bg-black/20 p-3">
+                          <dt class="text-xs uppercase tracking-[0.1em] text-base-content/55">Room</dt>
+                          <dd class="mt-1 text-base-content/85 break-words">{session().room || "None"}</dd>
+                        </div>
+                      </dl>
+                      <Show when={session().starts_at || session().track || session().room}>
+                        <button type="button" class="btn btn-xs btn-outline btn-warning mt-3 font-mono" disabled={clearingLegacy()} onClick={clearLegacySchedule}>
+                          <Show when={clearingLegacy()} fallback="Clear legacy schedule data">
+                            <span class="loading loading-spinner loading-xs" aria-hidden="true" />
+                            Clearing...
+                          </Show>
+                        </button>
+                      </Show>
+                    </>
+                  )}
+                </Show>
               </AdminFormSection>
 
               <AdminFormSection title="Public copy" description="This text appears on the public session page.">
@@ -555,7 +525,7 @@ export default function AdminSessionsHub() {
                   <div class="min-w-0">
                     <h2 class="font-bold text-white [overflow-wrap:anywhere]">{session.title}</h2>
                     <div class="text-xs font-mono text-base-content/60 break-all">{session.slug}</div>
-                    <div class="text-xs text-base-content/70 mt-1">{formatStartsAt(session.starts_at)}</div>
+                    <div class="text-xs text-base-content/70 mt-1">Schedule managed in Agenda</div>
                     <div class="mt-2">
                       <Show
                         when={session.cfp_submission}
@@ -573,23 +543,14 @@ export default function AdminSessionsHub() {
                   <div class="flex flex-wrap gap-2 pt-3 border-t border-white/5">
                     <button
                       type="button"
-                      class={`btn btn-xs font-mono ${session.published ? "btn-success" : "btn-ghost"}`}
-                      disabled={busyId() !== null}
-                      aria-pressed={session.published}
-                      onClick={() => togglePublished(session)}
-                    >
-                      <Show when={busyId() === session.id} fallback={session.published ? "Published" : "Draft"}>
-                        <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
-                        Updating
-                      </Show>
-                    </button>
-                    <button
-                      type="button"
                       class="btn btn-xs btn-ghost font-mono"
                       onClick={() => loadSession(session)}
                     >
                       Edit
                     </button>
+                    <a href="/admin/agenda" class="btn btn-xs btn-ghost font-mono">
+                      Agenda
+                    </a>
                     <a
                       href={`/sessions/${session.slug}`}
                       class="btn btn-xs btn-ghost"
@@ -626,7 +587,9 @@ export default function AdminSessionsHub() {
                         <div class="text-xs font-mono text-base-content/60 break-all">{session.slug}</div>
                       </td>
                       <td class="text-sm text-base-content/70 font-mono whitespace-nowrap">
-                        {formatStartsAt(session.starts_at)}
+                        <a href="/admin/agenda" class="link link-hover text-secondary-300">
+                          Manage in Agenda
+                        </a>
                       </td>
                       <td class="text-sm text-base-content/70 max-w-xs">
                         <span class="line-clamp-2 [overflow-wrap:anywhere]">
@@ -644,18 +607,9 @@ export default function AdminSessionsHub() {
                         </Show>
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          class={`btn btn-xs font-mono ${session.published ? "btn-success" : "btn-ghost"}`}
-                          disabled={busyId() !== null}
-                          aria-pressed={session.published}
-                          onClick={() => togglePublished(session)}
-                        >
-                          <Show when={busyId() === session.id} fallback={session.published ? "Published" : "Draft"}>
-                            <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
-                            Updating
-                          </Show>
-                        </button>
+                        <span class={`badge badge-sm font-mono ${session.published ? "badge-success" : "badge-ghost"}`}>
+                          {session.published ? "Published" : "Draft"}
+                        </span>
                       </td>
                       <td>
                         <div class="flex gap-1">
@@ -666,6 +620,9 @@ export default function AdminSessionsHub() {
                           >
                             Edit
                           </button>
+                          <a href="/admin/agenda" class="btn btn-xs btn-ghost font-mono">
+                            Agenda
+                          </a>
                           <a
                             href={`/sessions/${session.slug}`}
                             class="btn btn-xs btn-ghost"

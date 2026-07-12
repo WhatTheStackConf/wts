@@ -1,5 +1,4 @@
 import { createSignal, Show } from "solid-js";
-import { useNavigate } from "@solidjs/router";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
 import { clientOnly } from "@solidjs/start";
@@ -12,7 +11,23 @@ const LoginPage = () => {
   const [showResendVerification, setShowResendVerification] = createSignal(false);
   const [resendSuccess, setResendSuccess] = createSignal(false);
   const auth = useAuth();
-  const navigate = useNavigate();
+
+  const completeLogin = () => {
+    const redirectUrl = localStorage.getItem("redirect_url");
+    localStorage.removeItem("redirect_url");
+    if (redirectUrl) {
+      try {
+        const destination = new URL(redirectUrl, location.origin);
+        if (destination.origin === location.origin) {
+          location.href = `${destination.pathname}${destination.search}${destination.hash}`;
+          return;
+        }
+      } catch {
+        // Invalid or cross-origin redirects fall back to the site root.
+      }
+    }
+    location.href = "/";
+  };
 
   // If already logged in, redirect to the CfP page
   // if (typeof window !== "undefined" && auth && auth.record) {
@@ -24,15 +39,8 @@ const LoginPage = () => {
     setError("");
 
     try {
-      const data = await auth?.login(email(), password());
-
-      const redirectUrl = localStorage.getItem("redirect_url");
-      if (redirectUrl) {
-        localStorage.removeItem("redirect_url");
-        location.href = redirectUrl;
-      } else {
-        location.href = "/";
-      }
+      await auth?.login(email(), password());
+      completeLogin();
     } catch (err: any) {
       console.error("Login error:", err);
       const errorMessage = err.message || "Login failed";
@@ -63,13 +71,7 @@ const LoginPage = () => {
   const loginWithGithub = async () => {
     try {
       await auth?.githubLogin();
-      const redirectUrl = localStorage.getItem("redirect_url");
-      if (redirectUrl) {
-        localStorage.removeItem("redirect_url");
-        location.href = redirectUrl;
-      } else {
-        location.href = "/";
-      }
+      completeLogin();
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.message || "Login failed");
@@ -79,7 +81,7 @@ const LoginPage = () => {
   const loginWithGoogle = async () => {
     try {
       await auth?.googleLogin();
-      navigate("/");
+      completeLogin();
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.message || "Login failed");
@@ -122,6 +124,7 @@ const LoginPage = () => {
                 type="email"
                 id="email"
                 name="email"
+                autocomplete="username"
                 value={email()}
                 onInput={(e) => setEmail(e.currentTarget.value)}
                 class="input input-bordered w-full"
@@ -137,6 +140,7 @@ const LoginPage = () => {
                 type="password"
                 id="password"
                 name="password"
+                autocomplete="current-password"
                 value={password()}
                 onInput={(e) => setPassword(e.currentTarget.value)}
                 class="input input-bordered w-full"
