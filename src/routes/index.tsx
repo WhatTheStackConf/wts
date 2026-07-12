@@ -65,13 +65,10 @@ export default function Home() {
         </Show>
 
         <section class="px-3 md:px-0 pt-4 md:pt-8 pb-12 md:pb-16 fade-in-delay-2">
-          <header class="max-w-6xl mx-auto mb-8 md:mb-10 fade-in">
-            <h2 class="font-star text-3xl md:text-4xl uppercase tracking-widest text-primary-500 mb-4">
+          <header class="max-w-6xl mx-auto mb-6 md:mb-8 fade-in">
+            <h2 class="font-star text-3xl md:text-4xl uppercase tracking-widest text-primary-500">
               Sponsors and partners
             </h2>
-            <p class="max-w-2xl text-dark-50 text-lg font-light leading-relaxed">
-              The companies, communities, media crews, organizers, and supporters helping make WTS 2026 happen.
-            </p>
           </header>
 
           <Show when={partnerGroups()} fallback={<PartnersShowcaseSkeleton />}>

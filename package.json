@@ -6,7 +6,7 @@
     "start:dev": "concurrently \"velite --watch\" \"vite dev\"",
     "build": "velite && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run src/lib/mcp-token-utils.test.ts src/lib/mcp-program-data.test.ts src/lib/admin-actions.test.ts src/lib/programme.test.ts src/lib/gamification.test.ts",
+    "test": "vitest run src/lib/mcp-token-utils.test.ts src/lib/mcp-program-data.test.ts src/lib/admin-actions.test.ts src/lib/programme.test.ts src/lib/partners-public.test.ts src/lib/gamification.test.ts",
     "start": "vite start",
     "version": "vite version",
     "pocketbase:download": "bash pocketbase/get-pocketbase.sh",

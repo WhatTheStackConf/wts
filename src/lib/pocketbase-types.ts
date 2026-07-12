@@ -582,8 +582,6 @@ export interface PartnerRecord extends RecordModel {
   logo: string;
   url?: string;
   description?: string;
-  created: string;
-  updated: string;
 }
 
 // MCP token collection type (admin-created remote MCP access tokens)

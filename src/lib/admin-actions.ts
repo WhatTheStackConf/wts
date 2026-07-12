@@ -25,6 +25,7 @@ import type {
   SpeakerProfileUpdateInput,
 } from "~/lib/admin-speaker-profile";
 import type { SessionEditableInput } from "~/lib/admin-session-promotion";
+import { sortPartnerRecords } from "~/lib/partners-public-data";
 import type { PartnerRecord, SpeakerRecord } from "~/lib/pocketbase-types";
 
 const PARTNER_LOGO_MAX_BYTES = 5 * 1024 * 1024;
@@ -528,8 +529,7 @@ export const adminFetchPartners = async () => {
     await requireAdmin();
     const adminService = getAdminPB();
     const data = (await adminService.fetchAllRecords("partners")) as PartnerRecord[];
-    data.sort((a, b) => a.created.localeCompare(b.created));
-    return { success: true, data };
+    return { success: true, data: sortPartnerRecords(data) };
   } catch (error) {
     console.error("Admin fetch partners error:", error);
     return { success: false, error: pbAdminErrorMessage(error) };
