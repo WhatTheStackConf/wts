@@ -41,7 +41,7 @@ const PARTNER_GROUPS: PublicPartnerGroupConfig[] = [
 function mapPartner(row: PartnerRecord): PublicPartner {
   return {
     name: row.name,
-    logoUrl: getPbFileUrl(row, row.logo),
+    logoUrl: getPbFileUrl(row, row.logo || ""),
     url: row.url || undefined,
     type: row.type,
     tier: row.tier || undefined,

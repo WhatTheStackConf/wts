@@ -18,7 +18,7 @@ This project uses manually defined TypeScript types for PocketBase collections t
 
 ### Partners Collection
 - Location: `PartnerRecord` interface in `src/lib/pocketbase-types.ts`
-- Fields: `name`, `published`, `type`, `tier`, `logo`, `url`, `notes`
+- Fields: `name`, `published`, `type`, `tier`, optional `logo`, `url`, `notes`, `normalized_name`, `canonical_url`, internal `mutation_token`, `logo_uploaded_by_human`, `note_agent_visible`, `created`, `updated`
 - Classifications: `organizer`, `sponsor`, `supporter`, `community_partner`, `media`, `catering`, `other`
 - Sponsor tiers: `platinum`, `gold`, `silver`, `bronze`; non-Sponsors have no tier
 

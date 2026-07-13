@@ -26,15 +26,11 @@ import type {
   SpeakerProfileUpdateInput,
 } from "~/lib/admin-speaker-profile";
 import type { SessionEditableInput } from "~/lib/admin-session-promotion";
-import { sortPartnerRecords } from "~/lib/partners-public-data";
-import { normalizePartnerInput, partnerSnapshot } from "~/lib/admin-partner-data";
-import type { PartnerInput, PartnerLogoPayload } from "~/lib/admin-partner-data";
-import type { PartnerRecord, SpeakerRecord } from "~/lib/pocketbase-types";
+import type { SpeakerRecord } from "~/lib/pocketbase-types";
 
 /** Backwards-compatible alias for the existing invite speaker UI. */
 export type InviteSpeakerPhotoPayload = SpeakerPhotoPayload;
 export type { SpeakerPhotoPayload, SpeakerProfileUpdateInput };
-export type { PartnerInput, PartnerLogoPayload };
 
 function pbAdminErrorMessage(error: unknown): string {
   const response = (error as { response?: { data?: Record<string, { message?: string }> } })
@@ -426,79 +422,6 @@ export const adminUpdateCfpConfig = async (data: Partial<CfpConfigData>) => {
     return { success: true, data: updated };
   } catch (error) {
     console.error("Admin update CfP config error:", error);
-    return { success: false, error: pbAdminErrorMessage(error) };
-  }
-};
-
-// --- Partners & Sponsors ---
-
-export const adminFetchPartners = async () => {
-  "use server";
-  try {
-    await requireAdmin();
-    const adminService = getAdminPB();
-    const data = (await adminService.fetchAllRecords("partners")) as PartnerRecord[];
-    return { success: true, data: sortPartnerRecords(data) };
-  } catch (error) {
-    console.error("Admin fetch partners error:", error);
-    return { success: false, error: pbAdminErrorMessage(error) };
-  }
-};
-
-export const adminCreatePartner = async (input: PartnerInput) => {
-  "use server";
-  try {
-    await requireAdmin();
-    const normalized = normalizePartnerInput(input, true);
-    if (!normalized.success) return normalized;
-
-    const adminService = getAdminPB();
-    const record = (await adminService.createRecord("partners", normalized.body)) as PartnerRecord;
-    return { success: true, data: partnerSnapshot(record) };
-  } catch (error) {
-    console.error("Admin create partner error:", error);
-    return { success: false, error: pbAdminErrorMessage(error) };
-  }
-};
-
-export const adminUpdatePartner = async (id: string, input: PartnerInput) => {
-  "use server";
-  try {
-    await requireAdmin();
-    const normalized = normalizePartnerInput(input, false);
-    if (!normalized.success) return normalized;
-
-    const adminService = getAdminPB();
-    const record = (await adminService.updateRecord("partners", id, normalized.body)) as PartnerRecord;
-    return { success: true, data: partnerSnapshot(record) };
-  } catch (error) {
-    console.error("Admin update partner error:", error);
-    return { success: false, error: pbAdminErrorMessage(error) };
-  }
-};
-
-export const adminSetPartnerPublished = async (id: string, published: boolean) => {
-  "use server";
-  try {
-    await requireAdmin();
-    const adminService = getAdminPB();
-    const record = (await adminService.updateRecord("partners", id, { published })) as PartnerRecord;
-    return { success: true, data: partnerSnapshot(record) };
-  } catch (error) {
-    console.error("Admin set partner published error:", error);
-    return { success: false, error: pbAdminErrorMessage(error) };
-  }
-};
-
-export const adminDeletePartner = async (id: string) => {
-  "use server";
-  try {
-    await requireAdmin();
-    const adminService = getAdminPB();
-    await adminService.deleteRecord("partners", id);
-    return { success: true };
-  } catch (error) {
-    console.error("Admin delete partner error:", error);
     return { success: false, error: pbAdminErrorMessage(error) };
   }
 };

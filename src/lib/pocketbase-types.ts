@@ -579,9 +579,16 @@ export interface PartnerRecord extends RecordModel {
     | "catering"
     | "other";
   tier?: "platinum" | "gold" | "silver" | "bronze";
-  logo: string;
+  logo?: string;
   url?: string;
   notes?: string;
+  normalized_name: string;
+  canonical_url?: string;
+  mutation_token: string;
+  logo_uploaded_by_human: boolean;
+  note_agent_visible: boolean;
+  created: string;
+  updated: string;
 }
 
 // MCP token collection type (admin-created remote MCP access tokens)

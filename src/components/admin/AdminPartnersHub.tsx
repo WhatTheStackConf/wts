@@ -22,13 +22,18 @@ import {
   adminCreatePartner,
   adminDeletePartner,
   adminFetchPartners,
+  adminSetPartnerNoteApproval,
   adminSetPartnerPublished,
   adminUpdatePartner,
-  type PartnerInput,
   type PartnerLogoPayload,
-} from "~/lib/admin-actions";
+  type PartnerDraftInput,
+  type PartnerPatch,
+} from "~/lib/partner-administration-actions";
+import type {
+  PartnerAdminListItem,
+  PartnerAdminSnapshot,
+} from "~/lib/partner-administration";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
-import { partnerUrlNeedsRemediation } from "~/lib/admin-partner-data";
 import type { PartnerRecord } from "~/lib/pocketbase-types";
 
 type PartnerTypeFilter = PartnerRecord["type"] | "all";
@@ -71,7 +76,7 @@ function tierLabel(value?: PartnerRecord["tier"]): string {
   return TIER_OPTIONS.find((option) => option.value === value)?.label ?? value;
 }
 
-function partnerLogoUrl(partner: PartnerRecord): string {
+function partnerLogoUrl(partner: PartnerAdminSnapshot): string {
   return partner.logo ? getPbFileUrl("partners", partner.id, partner.logo) : "";
 }
 
@@ -87,15 +92,9 @@ function logoMimeType(file: File): string {
 }
 
 async function readLogoPayload(file: File | null): Promise<PartnerLogoPayload | null> {
-  if (!file || file.size === 0) return null;
-  if (file.size > 5 * 1024 * 1024) throw new Error("Logo must be 5 MB or smaller.");
-  const type = logoMimeType(file);
-  const accepted = ["image/svg+xml", "image/png", "image/jpeg", "image/webp", "image/avif"];
-  if (type && !accepted.includes(type)) {
-    throw new Error("Logo must be SVG, PNG, JPEG, WebP, or AVIF.");
-  }
+  if (!file) return null;
   const data = Array.from(new Uint8Array(await file.arrayBuffer()));
-  return { name: file.name, type, data };
+  return { name: file.name, type: logoMimeType(file), data };
 }
 
 export default function AdminPartnersHub() {
@@ -107,25 +106,30 @@ export default function AdminPartnersHub() {
   const [busyId, setBusyId] = createSignal<string | null>(null);
   const [deleteCandidateId, setDeleteCandidateId] = createSignal<string | null>(null);
   const [partnersError, setPartnersError] = createSignal<string | null>(null);
+  const [formWarnings, setFormWarnings] = createSignal<string[]>([]);
 
   const [name, setName] = createSignal("");
   const [type, setType] = createSignal<PartnerRecord["type"]>("sponsor");
   const [tier, setTier] = createSignal<PartnerRecord["tier"] | "">("bronze");
   const [url, setUrl] = createSignal("");
   const [notes, setNotes] = createSignal("");
-  const [published, setPublished] = createSignal(false);
   const [logo, setLogo] = createSignal<File | null>(null);
+  const [removeLogo, setRemoveLogo] = createSignal(false);
+  const [editingOriginal, setEditingOriginal] = createSignal<PartnerAdminSnapshot | null>(null);
   const [saving, setSaving] = createSignal(false);
 
-  const [partners, { refetch }] = createResource(async () => {
+  const [partnerReviews, { refetch }] = createResource(async () => {
     const res = await adminFetchPartners();
     if (!res.success) {
       setPartnersError(res.error || "Could not load partners.");
-      return [] as PartnerRecord[];
+      return [] as PartnerAdminListItem[];
     }
     setPartnersError(null);
-    return res.data as PartnerRecord[];
+    return res.data;
   });
+  const partners = () => (partnerReviews() || []).map((item) => item.partner);
+  const reviewFor = (id: string) =>
+    (partnerReviews() || []).find((item) => item.partner.id === id);
 
   const resetFileInput = () => {
     const input = document.getElementById("partner-logo") as HTMLInputElement | null;
@@ -139,8 +143,10 @@ export default function AdminPartnersHub() {
     setTier("bronze");
     setUrl("");
     setNotes("");
-    setPublished(false);
     setLogo(null);
+    setRemoveLogo(false);
+    setEditingOriginal(null);
+    setFormWarnings([]);
     resetFileInput();
     setShowForm(false);
   };
@@ -150,15 +156,17 @@ export default function AdminPartnersHub() {
     setShowForm(true);
   };
 
-  const loadPartner = (partner: PartnerRecord) => {
+  const loadPartner = (partner: PartnerAdminSnapshot) => {
     setEditingId(partner.id);
     setName(partner.name);
     setType(partner.type);
     setTier(partner.tier || "");
     setUrl(partner.url || "");
     setNotes(partner.notes || "");
-    setPublished(Boolean(partner.published));
     setLogo(null);
+    setRemoveLogo(false);
+    setEditingOriginal(partner);
+    setFormWarnings([]);
     resetFileInput();
     setShowForm(true);
   };
@@ -180,28 +188,52 @@ export default function AdminPartnersHub() {
     setSaving(true);
     try {
       const logoPayload = await readLogoPayload(logo());
-      const payload: PartnerInput = {
-        name: name(),
-        type: type(),
-        tier: tier(),
-        url: url(),
-        notes: notes(),
-        published: published(),
-        logo: logoPayload,
-      };
       const id = editingId();
-      const res = id ? await adminUpdatePartner(id, payload) : await adminCreatePartner(payload);
+      let res;
+      if (id) {
+        const original = editingOriginal();
+        if (!original) throw new Error("Reload this Partner before editing it.");
+        const patch: PartnerPatch = {};
+        if (name().trim() !== original.name) patch.name = name();
+        if (type() !== original.type) patch.type = type();
+        if ((tier() || undefined) !== original.tier) patch.tier = tier() || null;
+        if ((url().trim() || undefined) !== original.url) patch.url = url().trim() || null;
+        if ((notes().trim() || undefined) !== original.notes) patch.notes = notes().trim() || null;
+        if (logoPayload) patch.logo = logoPayload;
+        else if (removeLogo()) patch.logo = null;
+        if (Object.keys(patch).length === 0) {
+          showToast("error", "No Partner changes to save.");
+          return;
+        }
+        res = await adminUpdatePartner(id, original.version, patch);
+      } else {
+        const payload: PartnerDraftInput = {
+          name: name(),
+          type: type(),
+          tier: tier(),
+          url: url(),
+          notes: notes(),
+          logo: logoPayload,
+        };
+        res = await adminCreatePartner(payload);
+      }
       if (!res.success) {
+        if (res.code === "stale" && "current" in res) {
+          loadPartner(res.current);
+          await refetch();
+        }
         showToast("error", res.error || "Could not save partner.");
         return;
       }
+      const warnings = res.data.warnings.map((warning) => warning.message);
       showToast(
         "success",
         id
           ? `"${name().trim()}" updated.`
-          : `"${name().trim()}" created${published() ? " and published" : " as draft"}.`,
+          : `"${name().trim()}" created as draft${warnings.length ? ` with ${warnings.length} duplicate warning${warnings.length === 1 ? "" : "s"}` : ""}.`,
       );
       resetForm();
+      setFormWarnings(warnings);
       await refetch();
     } catch (err) {
       showToast("error", err instanceof Error ? err.message : "Could not save partner.");
@@ -210,11 +242,12 @@ export default function AdminPartnersHub() {
     }
   };
 
-  const togglePublished = async (partner: PartnerRecord) => {
+  const togglePublished = async (partner: PartnerAdminSnapshot) => {
     setBusyId(partner.id);
     const nextPublished = !partner.published;
-    const res = await adminSetPartnerPublished(partner.id, nextPublished);
+    const res = await adminSetPartnerPublished(partner.id, partner.version, nextPublished);
     if (!res.success) {
+      if (res.code === "stale") await refetch();
       showToast("error", res.error || "Could not update published state.");
     } else {
       showToast(
@@ -226,14 +259,34 @@ export default function AdminPartnersHub() {
     setBusyId(null);
   };
 
-  const deletePartner = async (partner: PartnerRecord) => {
+  const toggleNoteApproval = async (partner: PartnerAdminSnapshot) => {
+    setBusyId(partner.id);
+    const approved = !partner.noteAgentVisible;
+    const res = await adminSetPartnerNoteApproval(partner.id, partner.version, approved);
+    if (!res.success) {
+      if (res.code === "stale") await refetch();
+      showToast("error", res.error || "Could not update Partner Note approval.");
+    } else {
+      showToast(
+        "success",
+        approved
+          ? `"${partner.name}" Partner Note approved for agent visibility.`
+          : `"${partner.name}" Partner Note approval removed.`,
+      );
+      await refetch();
+    }
+    setBusyId(null);
+  };
+
+  const deletePartner = async (partner: PartnerAdminSnapshot) => {
     if (deleteCandidateId() !== partner.id) {
       setDeleteCandidateId(partner.id);
       return;
     }
     setBusyId(partner.id);
-    const res = await adminDeletePartner(partner.id);
+    const res = await adminDeletePartner(partner.id, partner.version);
     if (!res.success) {
+      if (res.code === "stale") await refetch();
       showToast("error", res.error || "Could not delete partner.");
     } else {
       showToast("success", `"${partner.name}" deleted.`);
@@ -243,28 +296,47 @@ export default function AdminPartnersHub() {
     setBusyId(null);
   };
 
-  const renderPartnerActions = (partner: PartnerRecord) => (
-    <div class="flex flex-wrap gap-1">
-      <button
-        type="button"
-        class={`btn btn-xs font-mono ${partner.published ? "btn-success" : "btn-ghost"}`}
-        disabled={busyId() === partner.id}
-        aria-pressed={partner.published}
-        onClick={() => togglePublished(partner)}
+  const renderPartnerActions = (partner: PartnerAdminSnapshot) => {
+    const review = () => reviewFor(partner.id);
+    const hasUrlIssue = () =>
+      review()?.publication.issues.some((issue) => issue.field === "url");
+    return (
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span
+        class={`badge badge-sm font-mono ${partner.published ? "badge-success" : "badge-ghost"}`}
       >
         {partner.published ? "Published" : "Draft"}
+      </span>
+      <button
+        type="button"
+        class={`btn btn-xs max-md:min-h-12 max-md:px-3 font-mono ${partner.published ? "btn-ghost" : "btn-primary"}`}
+        disabled={busyId() === partner.id}
+        onClick={() => togglePublished(partner)}
+      >
+        {partner.published ? "Unpublish" : "Publish"}
       </button>
       <button
         type="button"
-        class="btn btn-xs btn-ghost font-mono"
+        class="btn btn-xs btn-ghost max-md:min-h-12 max-md:px-3 font-mono"
         disabled={busyId() === partner.id}
         onClick={() => loadPartner(partner)}
       >
         Edit
       </button>
+      <Show when={partner.notes}>
+        <button
+          type="button"
+          class={`btn btn-xs max-md:min-h-12 max-md:px-3 font-mono ${partner.noteAgentVisible ? "btn-success btn-outline" : "btn-ghost"}`}
+          disabled={busyId() === partner.id}
+          aria-pressed={partner.noteAgentVisible}
+          onClick={() => toggleNoteApproval(partner)}
+        >
+          {partner.noteAgentVisible ? "Revoke note approval" : "Approve note"}
+        </button>
+      </Show>
       <button
         type="button"
-        class={`btn btn-xs font-mono ${deleteCandidateId() === partner.id ? "btn-error" : "btn-ghost text-error"}`}
+        class={`btn btn-xs max-md:min-h-12 max-md:px-3 font-mono ${deleteCandidateId() === partner.id ? "btn-error" : "btn-ghost text-error"}`}
         disabled={busyId() === partner.id}
         onClick={() => deletePartner(partner)}
       >
@@ -273,25 +345,17 @@ export default function AdminPartnersHub() {
       <Show when={deleteCandidateId() === partner.id}>
         <button
           type="button"
-          class="btn btn-xs btn-ghost font-mono"
+          class="btn btn-xs btn-ghost max-md:min-h-12 max-md:px-3 font-mono"
           disabled={busyId() === partner.id}
           onClick={() => setDeleteCandidateId(null)}
         >
           Cancel
         </button>
       </Show>
-      <Show when={partnerUrlNeedsRemediation(partner.url)}>
-        <span
-          class="badge badge-warning badge-outline h-auto py-1 font-mono text-[0.65rem]"
-          title="This Partner has a malformed or non-HTTPS URL."
-        >
-          Fix Partner URL
-        </span>
-      </Show>
-      <Show when={partner.url && !partnerUrlNeedsRemediation(partner.url)}>
+      <Show when={partner.url && !hasUrlIssue()}>
         <a
           href={partner.url}
-          class="btn btn-xs btn-ghost font-mono"
+          class="btn btn-xs btn-ghost max-md:min-h-12 max-md:px-3 font-mono"
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -299,7 +363,26 @@ export default function AdminPartnersHub() {
         </a>
       </Show>
     </div>
-  );
+    );
+  };
+
+  const renderReadiness = (partner: PartnerAdminSnapshot) => {
+    const review = () => reviewFor(partner.id);
+    return (
+      <Show when={!review()?.publication.ready}>
+        <div class="mt-2 space-y-1" role="status">
+          <For each={review()?.publication.issues || []}>
+            {(issue) => (
+              <div class="flex items-start gap-1.5 text-xs font-mono text-warning">
+                <Icon icon="ph:warning-circle-bold" class="mt-0.5 shrink-0" aria-hidden="true" />
+                <span>{issue.message}</span>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
+    );
+  };
 
   return (
     <AdminPageShell
@@ -307,9 +390,9 @@ export default function AdminPartnersHub() {
       layoutDescription="Manage conference sponsors and partners"
       title="Sponsors & Partners"
       subtitle="Public logo wall & partner network"
-      hint="Create records as drafts. Toggle Published to show them on the homepage and /sponsors."
-      count={partners()?.length}
-      countLoading={partners.loading}
+      hint="Create incomplete drafts, review publication requirements, then publish intentionally."
+      count={partners().length}
+      countLoading={partnerReviews.loading}
       accent="secondary"
       toast={toast()}
       headerActions={
@@ -323,8 +406,17 @@ export default function AdminPartnersHub() {
           <span>{partnersError()}</span>
         </div>
       </Show>
+      <Show when={formWarnings().length > 0}>
+        <div class="alert alert-warning mb-6 items-start font-mono text-sm" role="status">
+          <Icon icon="ph:warning-circle-bold" class="mt-0.5 shrink-0" aria-hidden="true" />
+          <div>
+            <div class="font-bold">Draft saved with possible duplicates</div>
+            <For each={formWarnings()}>{(warning) => <div class="mt-1">{warning}</div>}</For>
+          </div>
+        </div>
+      </Show>
 
-      <div class="mb-8">
+      <div class="mb-8 w-[calc(100vw-2rem)] max-w-full sm:w-full">
         <Show
           when={showForm()}
           fallback={
@@ -336,7 +428,7 @@ export default function AdminPartnersHub() {
         >
           <form
             onSubmit={submit}
-            class={adminFormPanelClass}
+            class={`${adminFormPanelClass} w-full min-w-0 max-w-full overflow-hidden`}
           >
             <div class="mb-6">
               <div>
@@ -344,7 +436,7 @@ export default function AdminPartnersHub() {
                   {editingId() ? "Edit sponsor or partner" : "New sponsor or partner"}
                 </h2>
                 <p class="text-xs text-gray-500 font-mono mt-1">
-                  Logo is required for new records. Use SVG where possible for crisp dark-theme logos.
+                  Incomplete records can stay drafts. An official logo is required only when publishing.
                 </p>
               </div>
             </div>
@@ -361,7 +453,7 @@ export default function AdminPartnersHub() {
                     required
                     hint="Public sponsor or partner name."
                     error="Add a name before saving."
-                    class="lg:col-span-7"
+                    class="min-w-0 lg:col-span-7"
                   >
                     <input
                       id="partner-name"
@@ -384,9 +476,9 @@ export default function AdminPartnersHub() {
                   <AdminFormField
                     id="partner-url"
                     label="Website URL"
-                    hint="Use a full URL so the public link opens correctly."
+                    hint="Optional. Use an absolute https:// URL."
                     error="Enter a valid URL, including https://."
-                    class="lg:col-span-5"
+                    class="min-w-0 lg:col-span-5"
                   >
                     <input
                       id="partner-url"
@@ -410,32 +502,55 @@ export default function AdminPartnersHub() {
                   <AdminFormField
                     id="partner-logo"
                     label="Logo"
-                    required={!editingId()}
                     hint={
                       editingId()
-                        ? "Upload a new logo to replace the current file."
-                        : "SVG preferred. PNG, JPEG, WebP, or AVIF also accepted. Max 5 MB."
+                        ? "Optional while draft. Upload a human-verified official logo to replace the current file."
+                        : "Optional while draft. SVG preferred; PNG, JPEG, WebP, or AVIF accepted. Max 5 MB."
                     }
-                    error="Upload a logo before creating the record."
-                    class="lg:col-span-12"
+                    class="min-w-0 lg:col-span-12"
                   >
                     <input
                       id="partner-logo"
                       name="logo"
                       type="file"
                       accept="image/svg+xml,image/png,image/jpeg,image/webp,image/avif"
-                      required={!editingId()}
-                      class={adminFileInputClass("font-mono text-sm")}
+                      class={adminFileInputClass("min-w-0 max-w-full font-mono text-sm")}
                       aria-describedby="partner-logo-hint"
-                      aria-errormessage="partner-logo-error"
                       onInvalid={markAdminControlInvalid}
                       onBlur={syncAdminControlValidity}
                       onChange={(e) => {
                         clearAdminControlValidity(e);
                         setLogo(e.currentTarget.files?.[0] ?? null);
+                        if (e.currentTarget.files?.[0]) setRemoveLogo(false);
                       }}
                     />
                   </AdminFormField>
+                  <Show when={editingOriginal()?.logo}>
+                    <div class="min-w-0 lg:col-span-12">
+                      <label
+                        for="partner-remove-logo"
+                        class="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-mono"
+                      >
+                        <input
+                          id="partner-remove-logo"
+                          type="checkbox"
+                          class="checkbox checkbox-warning checkbox-sm"
+                          checked={removeLogo()}
+                          disabled={editingOriginal()?.published}
+                          onChange={(e) => {
+                            setRemoveLogo(e.currentTarget.checked);
+                            if (e.currentTarget.checked) {
+                              setLogo(null);
+                              resetFileInput();
+                            }
+                          }}
+                        />
+                        {editingOriginal()?.published
+                          ? "Unpublish this Partner before removing its current logo"
+                          : "Remove the current logo and keep this Partner as an incomplete draft"}
+                      </label>
+                    </div>
+                  </Show>
                 </div>
               </AdminFormSection>
 
@@ -444,7 +559,7 @@ export default function AdminPartnersHub() {
                 description="Controls which public group this record appears in and whether sponsor tiering applies."
               >
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 lg:gap-5 items-end">
-                  <AdminFormField id="partner-type" label="Classification" required class="lg:col-span-4">
+                  <AdminFormField id="partner-type" label="Classification" required class="min-w-0 lg:col-span-4">
                     <select
                       id="partner-type"
                       name="type"
@@ -472,7 +587,7 @@ export default function AdminPartnersHub() {
                       </div>
                     }
                   >
-                    <AdminFormField id="partner-tier" label="Sponsor tier" required class="lg:col-span-4">
+                    <AdminFormField id="partner-tier" label="Sponsor tier" required class="min-w-0 lg:col-span-4">
                       <select
                         id="partner-tier"
                         name="tier"
@@ -492,7 +607,7 @@ export default function AdminPartnersHub() {
 
               <AdminFormSection
                 title="Partner Note"
-                description="Private, non-sensitive organizational context for organizers. This is not shown publicly."
+                description="Private, non-sensitive organizational context only. Exclude contacts, contracts, financial terms, credentials, and secrets. Editing this note clears agent-visible approval."
               >
                 <AdminFormField id="partner-notes" label="Partner Note">
                   <textarea
@@ -503,31 +618,45 @@ export default function AdminPartnersHub() {
                     onInput={(e) => setNotes(e.currentTarget.value)}
                   />
                 </AdminFormField>
+                <Show when={editingOriginal()?.notes}>
+                  <div class={`mt-3 badge badge-outline h-auto py-2 font-mono text-xs ${editingOriginal()?.noteAgentVisible ? "badge-success" : "badge-warning"}`}>
+                    {editingOriginal()?.noteAgentVisible
+                      ? "Current note is approved for agent visibility"
+                      : "Current note requires human approval"}
+                  </div>
+                </Show>
               </AdminFormSection>
 
-              <AdminFormSection title="Publication">
-                <label class="flex items-center gap-4 rounded-xl border border-white/10 bg-white/5 px-4 py-4 cursor-pointer hover:border-primary-500/30 transition-colors">
-                  <input
-                    id="partner-published"
-                    name="published"
-                    type="checkbox"
-                    class="toggle toggle-success shrink-0"
-                    checked={published()}
-                    onChange={(e) => setPublished(e.currentTarget.checked)}
-                  />
-                  <span>
-                    <span class="block text-sm font-bold text-white">Publish immediately</span>
-                    <span class="block text-xs text-base-content/45 font-mono mt-1">
-                      Published records appear on the homepage and /sponsors.
-                    </span>
-                  </span>
-                </label>
+              <AdminFormSection
+                title="Draft lifecycle"
+                description="Save changes here first. Publication is a separate action from the Partner list."
+              >
+                <div class="rounded-xl border border-white/10 bg-white/5 px-4 py-4">
+                  <Show
+                    when={editingOriginal()}
+                    fallback={<p class="text-sm font-mono text-base-content/65">This record will be created as a draft.</p>}
+                  >
+                    {(partner) => (
+                      <>
+                        <div class="flex flex-wrap items-center gap-2">
+                          <span class={`badge font-mono ${partner().published ? "badge-success" : "badge-ghost"}`}>
+                            {partner().published ? "Published" : "Draft"}
+                          </span>
+                          <span class="text-xs font-mono text-base-content/60">
+                            Save edits before changing publication state.
+                          </span>
+                        </div>
+                        {renderReadiness(partner())}
+                      </>
+                    )}
+                  </Show>
+                </div>
               </AdminFormSection>
             </div>
 
             <div class="mt-6 border-t border-white/10 pt-5 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
               <p class="text-xs text-base-content/45 font-mono">
-                New records stay drafts unless Publish immediately is enabled.
+                New records always stay drafts until a separate publication action succeeds.
               </p>
               <div class="flex flex-wrap gap-2 sm:justify-end">
                 <button type="button" class="btn btn-ghost font-mono" onClick={resetForm}>
@@ -549,7 +678,7 @@ export default function AdminPartnersHub() {
       <AdminFilterBar
         showCount={filtersActive()}
         filteredCount={filtered().length}
-        totalCount={partners()?.length}
+        totalCount={partners().length}
       >
         <AdminFilterGroup label="Type:">
           <For each={TYPE_FILTER_OPTIONS}>
@@ -579,13 +708,13 @@ export default function AdminPartnersHub() {
         </AdminFilterGroup>
       </AdminFilterBar>
 
-      <Show when={partners.loading}>
+      <Show when={partnerReviews.loading}>
         <div class="flex justify-center py-16">
           <span class="loading loading-bars loading-lg text-primary-500"></span>
         </div>
       </Show>
 
-      <Show when={!partners.loading && filtered().length === 0}>
+      <Show when={!partnerReviews.loading && filtered().length === 0}>
         <AdminDataPanel>
           <div class="p-12 text-center">
             <Icon icon="ph:handshake-bold" class="text-4xl text-gray-600 mb-4" />
@@ -606,7 +735,7 @@ export default function AdminPartnersHub() {
         </AdminDataPanel>
       </Show>
 
-      <Show when={!partners.loading && filtered().length > 0}>
+      <Show when={!partnerReviews.loading && filtered().length > 0}>
         <AdminDataPanel>
           <div class="md:hidden space-y-4 p-4">
             <For each={filtered()}>
@@ -614,20 +743,26 @@ export default function AdminPartnersHub() {
                 <div class="bg-white/5 rounded-xl p-4 border border-white/10 space-y-3">
                   <div class="flex items-center gap-4">
                     <div class="h-16 w-24 shrink-0 rounded-lg border border-white/10 bg-base-300/80 p-2 flex items-center justify-center">
-                      <img
-                        src={partnerLogoUrl(partner)}
-                        alt={partner.name}
-                        class="max-h-full max-w-full object-contain"
-                        loading="lazy"
-                        width={160}
-                        height={80}
-                      />
+                      <Show
+                        when={partner.logo}
+                        fallback={<Icon icon="ph:image-broken" class="text-2xl text-base-content/30" aria-label="No logo uploaded" />}
+                      >
+                        <img
+                          src={partnerLogoUrl(partner)}
+                          alt={`${partner.name} logo`}
+                          class="max-h-full max-w-full object-contain"
+                          loading="lazy"
+                          width={160}
+                          height={80}
+                        />
+                      </Show>
                     </div>
                     <div class="min-w-0">
                       <div class="font-bold text-white truncate">{partner.name}</div>
                       <div class="text-xs font-mono text-gray-500">
                         {typeLabel(partner.type)} · {tierLabel(partner.tier)}
                       </div>
+                      {renderReadiness(partner)}
                     </div>
                   </div>
                   <div class="pt-3 border-t border-white/5">
@@ -655,19 +790,25 @@ export default function AdminPartnersHub() {
                     <tr class="hover:bg-white/5 border-b border-white/5">
                       <td>
                         <div class="h-16 w-28 rounded-lg border border-white/10 bg-base-300/80 p-2 flex items-center justify-center">
-                          <img
-                            src={partnerLogoUrl(partner)}
-                            alt={partner.name}
-                            class="max-h-full max-w-full object-contain"
-                            loading="lazy"
-                            width={160}
-                            height={80}
-                          />
+                          <Show
+                            when={partner.logo}
+                            fallback={<Icon icon="ph:image-broken" class="text-2xl text-base-content/30" aria-label="No logo uploaded" />}
+                          >
+                            <img
+                              src={partnerLogoUrl(partner)}
+                              alt={`${partner.name} logo`}
+                              class="max-h-full max-w-full object-contain"
+                              loading="lazy"
+                              width={160}
+                              height={80}
+                            />
+                          </Show>
                         </div>
                       </td>
                       <td>
-                        <div class="font-bold text-white">{partner.name}</div>
-                        <div class="text-xs font-mono text-gray-500">{partner.id}</div>
+                          <div class="font-bold text-white">{partner.name}</div>
+                          <div class="text-xs font-mono text-gray-500">{partner.id}</div>
+                          {renderReadiness(partner)}
                       </td>
                       <td>
                         <div class="text-sm text-gray-300">{typeLabel(partner.type)}</div>

@@ -166,7 +166,7 @@ export function AdminPageShell(props: AdminPageShellProps) {
 
   return (
     <Layout title={props.layoutTitle} description={props.layoutDescription}>
-      <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
+      <div class="min-h-screen w-full min-w-0 max-w-full pt-24 pb-20 relative overflow-hidden">
         <div
           class={`absolute top-0 right-0 w-[500px] h-[500px] ${orbTopClass()} rounded-full blur-[120px] -z-10 pointer-events-none`}
         />
@@ -174,7 +174,7 @@ export function AdminPageShell(props: AdminPageShellProps) {
           class={`absolute bottom-0 left-0 w-[500px] h-[500px] ${orbBottomClass()} rounded-full blur-[120px] -z-10 pointer-events-none`}
         />
 
-        <div class="container mx-auto px-4 max-w-7xl">
+        <div class="container mx-auto w-full min-w-0 max-w-7xl px-4">
           <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
             <div class="min-w-0">
               <h1 class={`flex flex-wrap items-center gap-x-3 gap-y-2 text-3xl md:text-4xl font-black uppercase tracking-tight ${titleClass()} mb-2 text-wrap-balance`}>
@@ -276,9 +276,9 @@ interface AdminFilterGroupProps {
 
 export function AdminFilterGroup(props: AdminFilterGroupProps) {
   return (
-    <div class="flex items-center gap-2" role="group" aria-label={props.label.replace(/:$/, "")}>
+    <div class="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label={props.label.replace(/:$/, "")}>
       <span class="text-xs font-mono text-base-content/60">{props.label}</span>
-      <div class="flex gap-1">{props.children}</div>
+      <div class="flex min-w-0 flex-wrap gap-1">{props.children}</div>
     </div>
   );
 }
