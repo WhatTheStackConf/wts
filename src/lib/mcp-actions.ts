@@ -3,8 +3,7 @@ import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import type { McpTokenRecord } from "~/lib/pocketbase-types";
 import { createMcpTokenMaterial } from "~/lib/mcp-token-utils";
 import { MCP_SCOPES, type McpScope, normalizeMcpScopes } from "~/lib/mcp-auth";
-
-const DEFAULT_TOKEN_DAYS = 90;
+import { normalizeNewMcpTokenExpiry } from "~/lib/mcp-token-policy";
 
 export type McpTokenInput = {
   name: string;
@@ -42,20 +41,6 @@ function pbMcpErrorMessage(error: unknown): string {
   }
   if (error instanceof Error && error.message) return error.message;
   return "Request failed";
-}
-
-function defaultExpiryIso() {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + DEFAULT_TOKEN_DAYS);
-  return date.toISOString();
-}
-
-function normalizeExpiry(value?: string | null) {
-  if (!value) return defaultExpiryIso();
-  const date = new Date(`${value}T23:59:59.999Z`);
-  if (!Number.isFinite(date.getTime())) return null;
-  if (date.getTime() <= Date.now()) return null;
-  return date.toISOString();
 }
 
 function tokenSnapshot(record: McpTokenRecord): McpTokenSnapshot {
@@ -103,8 +88,16 @@ export const adminCreateMcpToken = async (input: McpTokenInput) => {
     const unknownScope = input.scopes.find((scope) => !MCP_SCOPES.includes(scope));
     if (unknownScope) return { success: false, error: "Choose a valid MCP scope." };
 
-    const expiresAt = normalizeExpiry(input.expires_at);
-    if (!expiresAt) return { success: false, error: "Choose a future expiry date." };
+    const expiry = normalizeNewMcpTokenExpiry(input.expires_at);
+    if (!expiry.success) {
+      return {
+        success: false,
+        error:
+          expiry.reason === "too_long"
+            ? "Token expiry cannot be more than 90 days away."
+            : "Choose a future expiry date.",
+      };
+    }
 
     const material = createMcpTokenMaterial();
     const adminService = getAdminPB();
@@ -115,7 +108,7 @@ export const adminCreateMcpToken = async (input: McpTokenInput) => {
       secret_hash: material.secretHash,
       scopes,
       created_by: user.id,
-      expires_at: expiresAt,
+      expires_at: expiry.expiresAt,
     })) as McpTokenRecord;
 
     return {

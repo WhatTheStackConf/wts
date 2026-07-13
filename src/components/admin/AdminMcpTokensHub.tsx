@@ -19,14 +19,9 @@ import {
   type McpTokenSnapshot,
 } from "~/lib/mcp-actions";
 import type { McpScope } from "~/lib/mcp-auth";
+import { maximumNewMcpTokenExpiryDate } from "~/lib/mcp-token-policy";
 
-const DEFAULT_SCOPES: McpScope[] = ["program:read"];
-
-function defaultExpiryDate() {
-  const date = new Date();
-  date.setDate(date.getDate() + 90);
-  return date.toISOString().slice(0, 10);
-}
+const DEFAULT_SCOPES: McpScope[] = ["programme:read", "cfp:read"];
 
 function formatDateTime(value?: string) {
   if (!value) return "Never";
@@ -50,7 +45,8 @@ export default function AdminMcpTokensHub() {
   const { toast, showToast } = useAdminToast();
   const [error, setError] = createSignal<string | null>(null);
   const [name, setName] = createSignal("Program assistant");
-  const [expiresAt, setExpiresAt] = createSignal(defaultExpiryDate());
+  const [expiresAt, setExpiresAt] = createSignal("");
+  const [maximumExpiryDate, setMaximumExpiryDate] = createSignal("");
   const [scopes, setScopes] = createSignal<McpScope[]>(DEFAULT_SCOPES);
   const [saving, setSaving] = createSignal(false);
   const [busyId, setBusyId] = createSignal<string | null>(null);
@@ -58,6 +54,9 @@ export default function AdminMcpTokensHub() {
   const [mcpUrl, setMcpUrl] = createSignal("/api/mcp");
 
   onMount(() => {
+    const maximum = maximumNewMcpTokenExpiryDate();
+    setExpiresAt(maximum);
+    setMaximumExpiryDate(maximum);
     setMcpUrl(`${window.location.origin}/api/mcp`);
   });
 
@@ -96,7 +95,9 @@ export default function AdminMcpTokensHub() {
       setCreatedToken(res.token || null);
       showToast("success", "MCP token created. Copy it now; it will not be shown again.");
       setName("Program assistant");
-      setExpiresAt(defaultExpiryDate());
+      const maximum = maximumNewMcpTokenExpiryDate();
+      setExpiresAt(maximum);
+      setMaximumExpiryDate(maximum);
       setScopes(DEFAULT_SCOPES);
       await refetch();
     }
@@ -181,8 +182,8 @@ export default function AdminMcpTokensHub() {
                 id="mcp-token-expiry"
                 label="Expires on"
                 required
-                hint="A future expiry date limits leaked-token impact."
-                error="Choose a future expiry date."
+                hint="New tokens expire within 90 days to limit leaked-token impact."
+                error="Choose a future date within 90 days."
               >
                 <input
                   id="mcp-token-expiry"
@@ -190,6 +191,7 @@ export default function AdminMcpTokensHub() {
                   type="date"
                   class={adminInputClass("font-mono")}
                   required
+                  max={maximumExpiryDate() || undefined}
                   value={expiresAt()}
                   aria-describedby="mcp-token-expiry-hint"
                   aria-errormessage="mcp-token-expiry-error"
@@ -206,19 +208,35 @@ export default function AdminMcpTokensHub() {
                 <legend class="px-2 text-xs font-mono uppercase tracking-[0.14em] text-base-content/80">
                   Scopes
                 </legend>
-                <label class="flex items-start gap-3 cursor-pointer min-h-12 py-2" for="mcp-scope-program-read">
+                <label class="flex items-start gap-3 cursor-pointer min-h-12 py-2" for="mcp-scope-programme-read">
                   <input
-                    id="mcp-scope-program-read"
-                    name="scope_program_read"
+                    id="mcp-scope-programme-read"
+                    name="scope_programme_read"
                     type="checkbox"
                     class="checkbox checkbox-secondary mt-1"
-                    checked={scopes().includes("program:read")}
-                    onChange={(event) => toggleScope("program:read", event.currentTarget.checked)}
+                    checked={scopes().includes("programme:read")}
+                    onChange={(event) => toggleScope("programme:read", event.currentTarget.checked)}
                   />
                   <span>
-                    <span class="block text-sm font-bold text-white font-mono">program:read</span>
+                    <span class="block text-sm font-bold text-white font-mono">programme:read</span>
                     <span class="block text-xs text-base-content/45 mt-1 leading-relaxed">
-                      Read Sessions, Speakers, CFP Submissions, and review summaries for programme planning.
+                      Read draft and Published Sessions, Speakers, and schedule context.
+                    </span>
+                  </span>
+                </label>
+                <label class="flex items-start gap-3 cursor-pointer min-h-12 py-2" for="mcp-scope-cfp-read">
+                  <input
+                    id="mcp-scope-cfp-read"
+                    name="scope_cfp_read"
+                    type="checkbox"
+                    class="checkbox checkbox-secondary mt-1"
+                    checked={scopes().includes("cfp:read")}
+                    onChange={(event) => toggleScope("cfp:read", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <span class="block text-sm font-bold text-white font-mono">cfp:read</span>
+                    <span class="block text-xs text-base-content/45 mt-1 leading-relaxed">
+                      Read CFP Submissions, applicant context, and aggregate review summaries.
                     </span>
                   </span>
                 </label>

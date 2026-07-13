@@ -73,9 +73,12 @@ POCKETBASE_SUPERUSER_PASSWORD="supersecret"
 
 # Canonical site origin
 PUBLIC_SITE_URL="https://wts.sh"
+
+# Optional comma-separated additional browser Origins for the MCP endpoint
+MCP_ALLOWED_ORIGINS="https://trusted-client.example"
 ```
 
-**Production (Coolify / Docker):** set the public PocketBase hostname for anything rendered in HTML or loaded by the browser. Keep `POCKETBASE_URL` as the internal service URL for server-side admin API calls only.
+**Production (Coolify / Docker):** set the public PocketBase hostname for anything rendered in HTML or loaded by the browser. Keep `POCKETBASE_URL` as the internal service URL for server-side admin API calls only. Native and server MCP clients do not send an `Origin`; browser clients must use the canonical `PUBLIC_SITE_URL` Origin or an Origin listed in the server-only `MCP_ALLOWED_ORIGINS` value.
 
 ```bash
 PUBLIC_POCKETBASE_URL="https://pb-2026.wts.sh"    # canonical — speaker avatars, file URLs

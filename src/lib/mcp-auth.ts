@@ -1,8 +1,8 @@
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
-import type { McpTokenRecord } from "~/lib/pocketbase-types";
+import type { McpTokenRecord, UserRecord } from "~/lib/pocketbase-types";
 import { parseMcpToken, verifyMcpTokenSecret } from "~/lib/mcp-token-utils";
 
-export const MCP_SCOPES = ["program:read"] as const;
+export const MCP_SCOPES = ["programme:read", "cfp:read"] as const;
 
 export type McpScope = (typeof MCP_SCOPES)[number];
 
@@ -21,9 +21,7 @@ export type McpAuthResult =
 
 export function normalizeMcpScopes(value: unknown): McpScope[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((scope): scope is McpScope =>
-    MCP_SCOPES.includes(scope as McpScope),
-  );
+  return MCP_SCOPES.filter((scope) => value.includes(scope));
 }
 
 export function hasMcpScope(token: AuthenticatedMcpToken, scope: McpScope) {
@@ -32,15 +30,15 @@ export function hasMcpScope(token: AuthenticatedMcpToken, scope: McpScope) {
 
 function extractBearerToken(authorization: string | null): string | null {
   if (!authorization) return null;
-  const [scheme, token] = authorization.split(" ");
-  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
-  return token;
+  const match = /^Bearer[ \t]+([^ \t]+)$/i.exec(authorization.trim());
+  return match?.[1] || null;
 }
 
-function isPastDate(value?: string): boolean {
-  if (!value) return false;
+function expiryState(value?: string): "active" | "expired" | "invalid" {
+  if (!value) return "active";
   const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) && timestamp <= Date.now();
+  if (!Number.isFinite(timestamp)) return "invalid";
+  return timestamp <= Date.now() ? "expired" : "active";
 }
 
 export async function authenticateMcpBearer(
@@ -67,14 +65,29 @@ export async function authenticateMcpBearer(
   }
 
   if (record.revoked_at) {
-    return { success: false, status: 403, error: "MCP token has been revoked" };
+    return { success: false, status: 401, error: "MCP token has been revoked" };
   }
 
-  if (isPastDate(record.expires_at)) {
-    return { success: false, status: 403, error: "MCP token has expired" };
+  const expiry = expiryState(record.expires_at);
+  if (expiry === "expired") {
+    return { success: false, status: 401, error: "MCP token has expired" };
+  }
+  if (expiry === "invalid") {
+    return { success: false, status: 401, error: "MCP token expiry is invalid" };
   }
 
   const scopes = normalizeMcpScopes(record.scopes);
+  const owners = (await adminService.fetchAllRecords("users", {
+    filter: `id = "${record.created_by}"`,
+  })) as UserRecord[];
+  if (owners[0]?.role !== "admin") {
+    return {
+      success: false,
+      status: 403,
+      error: "MCP token owner is not a current admin",
+    };
+  }
+
   await adminService.updateRecord("mcp_tokens", record.id, {
     last_used_at: new Date().toISOString(),
   });
