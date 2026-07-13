@@ -214,10 +214,8 @@ onRecordValidate((e) => {
   if (!record.getBool("published") && publishedSlots.length > 0) {
     throw new BadRequestError("Unpublish the Agenda Slot before unpublishing its Session.");
   }
-  if (record.getBool("published")) {
-    if (publishedSlots.length !== 1) {
-      throw new BadRequestError("A published Session requires exactly one published Agenda Slot.");
-    }
+  if (publishedSlots.length > 1) {
+    throw new BadRequestError("A Session cannot have more than one published Agenda Slot.");
   }
   return e.next();
 }, "sessions");

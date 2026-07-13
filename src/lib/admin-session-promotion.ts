@@ -95,6 +95,16 @@ export function buildSessionUpdateBody(input: SessionEditableInput): Record<stri
   return body;
 }
 
+export async function setSessionPublished(
+  adminService: AdminSpeakerService,
+  id: string,
+  published: boolean,
+): Promise<SessionRecord> {
+  return (await adminService.updateRecord("sessions", id, {
+    published: Boolean(published),
+  })) as SessionRecord;
+}
+
 async function fetchPromotedSessionForSubmission(
   adminService: AdminSpeakerService,
   submissionId: string,

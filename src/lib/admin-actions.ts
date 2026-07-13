@@ -19,6 +19,7 @@ import {
   buildSessionCreateBody,
   buildSessionUpdateBody,
   promoteSubmissionToDraftSession,
+  setSessionPublished,
 } from "~/lib/admin-session-promotion";
 import type {
   SpeakerPhotoPayload,
@@ -713,10 +714,9 @@ export const adminSetSessionPublished = async (id: string, published: boolean) =
   "use server";
   try {
     await requireAdmin();
-    return {
-      success: false,
-      error: "Session publication is managed from its Agenda Slot.",
-    };
+    const adminService = getAdminPB();
+    const record = await setSessionPublished(adminService, id, published);
+    return { success: true, data: record };
   } catch (error) {
     console.error("Admin set session published error:", error);
     return { success: false, error: pbAdminErrorMessage(error) };

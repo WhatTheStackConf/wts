@@ -18,6 +18,7 @@ import {
   adminCreateSession,
   adminFetchSessions,
   adminFetchSpeakers,
+  adminSetSessionPublished,
   adminUpdateSession,
 } from "~/lib/admin-actions";
 import type { SessionRecord, SpeakerRecord } from "~/lib/pocketbase-types";
@@ -33,6 +34,7 @@ function reducedMotionPreferred(): boolean {
 
 export default function AdminSessionsHub() {
   const { toast, showToast } = useAdminToast();
+  const [busyId, setBusyId] = createSignal<string | null>(null);
   const [editingId, setEditingId] = createSignal<string | null>(null);
   const [showForm, setShowForm] = createSignal(false);
   const [sessionsError, setSessionsError] = createSignal<string | null>(null);
@@ -180,6 +182,30 @@ export default function AdminSessionsHub() {
   const speakerNameById = (id: string) => {
     const sp = (speakers() || []).find((s) => s.id === id);
     return sp ? speakerDisplayName(sp) : id;
+  };
+
+  const togglePublished = async (session: SessionRecord) => {
+    if (busyId()) return;
+    setBusyId(session.id);
+    try {
+      const res = await adminSetSessionPublished(session.id, !session.published);
+      if (!res.success) {
+        showToast("error", res.error || "Could not update published state.");
+        return;
+      }
+
+      showToast(
+        "success",
+        session.published
+          ? `"${session.title}" is now a draft.`
+          : `"${session.title}" is now published.`,
+      );
+      await refetch();
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Could not update published state.");
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const clearLegacySchedule = async () => {
@@ -543,6 +569,18 @@ export default function AdminSessionsHub() {
                   <div class="flex flex-wrap gap-2 pt-3 border-t border-white/5">
                     <button
                       type="button"
+                      class={`btn btn-xs font-mono ${session.published ? "btn-success" : "btn-ghost"}`}
+                      disabled={busyId() !== null}
+                      aria-pressed={session.published}
+                      onClick={() => togglePublished(session)}
+                    >
+                      <Show when={busyId() === session.id} fallback={session.published ? "Published" : "Draft"}>
+                        <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+                        Updating
+                      </Show>
+                    </button>
+                    <button
+                      type="button"
                       class="btn btn-xs btn-ghost font-mono"
                       onClick={() => loadSession(session)}
                     >
@@ -607,9 +645,18 @@ export default function AdminSessionsHub() {
                         </Show>
                       </td>
                       <td>
-                        <span class={`badge badge-sm font-mono ${session.published ? "badge-success" : "badge-ghost"}`}>
-                          {session.published ? "Published" : "Draft"}
-                        </span>
+                        <button
+                          type="button"
+                          class={`btn btn-xs font-mono ${session.published ? "btn-success" : "btn-ghost"}`}
+                          disabled={busyId() !== null}
+                          aria-pressed={session.published}
+                          onClick={() => togglePublished(session)}
+                        >
+                          <Show when={busyId() === session.id} fallback={session.published ? "Published" : "Draft"}>
+                            <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+                            Updating
+                          </Show>
+                        </button>
                       </td>
                       <td>
                         <div class="flex gap-1">

@@ -316,7 +316,7 @@ export default function AdminAgendaHub() {
       layoutDescription="Manage the public conference programme"
       title="Agenda"
       subtitle="Conference Days, day-specific Tracks, and Slots"
-      hint={`All schedule times are interpreted in ${SCHEDULE_TIME_ZONE}. Session publication is controlled by its Agenda Slot.`}
+      hint={`All schedule times are interpreted in ${SCHEDULE_TIME_ZONE}. Publishing a Session Slot also publishes its linked Session.`}
       count={programme()?.slots.length}
       countLoading={programme.loading}
       accent="secondary"
