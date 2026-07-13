@@ -36,6 +36,7 @@ import {
   buildSessionUpdateBody,
   promoteSubmissionToDraftSession,
 } from "~/lib/admin-session-promotion";
+import { normalizePartnerInput, partnerUrlNeedsRemediation } from "~/lib/admin-partner-data";
 
 const timestamp = "2026-01-01 00:00:00.000Z";
 const originalFetch = globalThis.fetch;
@@ -142,6 +143,60 @@ function mockSpeakerLookups(existingByApplicant: unknown[] = [], slugHits: unkno
     return Promise.resolve([]);
   });
 }
+
+describe("admin Partner actions", () => {
+  it("normalizes a canonical Community Partner with a private Partner Note", () => {
+    const result = normalizePartnerInput({
+      name: " Skopje Tech ",
+      type: "community_partner",
+      url: " https://skopje.tech ",
+      notes: " Organizer context ",
+      logo: { name: "logo.svg", type: "image/svg+xml", data: [1, 2, 3] },
+    }, true);
+
+    expect(result).toMatchObject({
+      success: true,
+      fields: {
+        name: "Skopje Tech",
+        published: false,
+        type: "community_partner",
+        tier: "",
+        url: "https://skopje.tech",
+        notes: "Organizer context",
+      },
+    });
+    if (!result.success) throw new Error(result.error);
+    const body = result.body as FormData;
+    expect(body.get("type")).toBe("community_partner");
+    expect(body.get("notes")).toBe("Organizer context");
+    expect(body.has("description")).toBe(false);
+  });
+
+  it("enforces canonical classifications and Sponsor tiers", () => {
+    expect(normalizePartnerInput({ name: "Legacy", type: "company_supporter" as never }, false)).toEqual({
+      success: false,
+      error: "Choose a valid Partner type.",
+    });
+    expect(normalizePartnerInput({ name: "Untiered Sponsor", type: "sponsor" }, false)).toEqual({
+      success: false,
+      error: "Choose a Sponsor tier.",
+    });
+
+    const supporter = normalizePartnerInput({
+      name: "Supporter",
+      type: "supporter",
+      tier: "gold",
+    }, false);
+    expect(supporter).toMatchObject({ success: true, fields: { type: "supporter", tier: "" } });
+  });
+
+  it("identifies draft Partner URLs that need remediation", () => {
+    expect(partnerUrlNeedsRemediation()).toBe(false);
+    expect(partnerUrlNeedsRemediation("https://partner.example/path")).toBe(false);
+    expect(partnerUrlNeedsRemediation("http://partner.example")).toBe(true);
+    expect(partnerUrlNeedsRemediation("not a url")).toBe(true);
+  });
+});
 
 describe("admin speaker profile helpers", () => {
   beforeEach(() => {

@@ -26,30 +26,14 @@ import type {
 } from "~/lib/admin-speaker-profile";
 import type { SessionEditableInput } from "~/lib/admin-session-promotion";
 import { sortPartnerRecords } from "~/lib/partners-public-data";
+import { normalizePartnerInput, partnerSnapshot } from "~/lib/admin-partner-data";
+import type { PartnerInput, PartnerLogoPayload } from "~/lib/admin-partner-data";
 import type { PartnerRecord, SpeakerRecord } from "~/lib/pocketbase-types";
-
-const PARTNER_LOGO_MAX_BYTES = 5 * 1024 * 1024;
-const PARTNER_LOGO_TYPES = [
-  "image/svg+xml",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/avif",
-];
-const PARTNER_TYPES = [
-  "organizer",
-  "sponsor",
-  "supporter",
-  "media",
-  "catering",
-  "other",
-  "company_supporter",
-] as const;
-const PARTNER_TIERS = ["platinum", "gold", "silver", "bronze"] as const;
 
 /** Backwards-compatible alias for the existing invite speaker UI. */
 export type InviteSpeakerPhotoPayload = SpeakerPhotoPayload;
 export type { SpeakerPhotoPayload, SpeakerProfileUpdateInput };
+export type { PartnerInput, PartnerLogoPayload };
 
 function pbAdminErrorMessage(error: unknown): string {
   const response = (error as { response?: { data?: Record<string, { message?: string }> } })
@@ -69,82 +53,6 @@ function pbAdminErrorMessage(error: unknown): string {
   }
   if (error instanceof Error && error.message) return error.message;
   return "Request failed";
-}
-
-/** Serializable file payload for partner logos (Seroval-safe). */
-export type PartnerLogoPayload = {
-  name: string;
-  type: string;
-  data: number[];
-};
-
-export type PartnerInput = {
-  name: string;
-  type: PartnerRecord["type"];
-  tier?: PartnerRecord["tier"] | "";
-  url?: string;
-  description?: string;
-  published?: boolean;
-  logo?: PartnerLogoPayload | null;
-};
-
-function partnerSnapshot(record: PartnerRecord) {
-  return {
-    id: record.id,
-    name: record.name,
-    type: record.type,
-    tier: record.tier,
-    published: record.published,
-    logo: record.logo,
-    url: record.url,
-  };
-}
-
-function validatePartnerInput(input: PartnerInput, requireLogo: boolean) {
-  const name = input.name?.trim();
-  if (!name) return "Partner name is required.";
-  if (!PARTNER_TYPES.includes(input.type)) return "Choose a valid partner type.";
-  if (input.tier && !PARTNER_TIERS.includes(input.tier)) {
-    return "Choose a valid sponsor tier.";
-  }
-  if (requireLogo && !input.logo?.data?.length) return "Logo is required.";
-  if (input.logo?.data?.length) {
-    if (input.logo.data.length > PARTNER_LOGO_MAX_BYTES) {
-      return "Logo must be 5 MB or smaller.";
-    }
-    if (input.logo.type && !PARTNER_LOGO_TYPES.includes(input.logo.type)) {
-      return "Logo must be SVG, PNG, JPEG, WebP, or AVIF.";
-    }
-  }
-  return null;
-}
-
-function normalizedPartnerFields(input: PartnerInput) {
-  return {
-    name: input.name.trim(),
-    published: input.published ?? false,
-    type: input.type,
-    tier: input.type === "sponsor" ? input.tier || "" : "",
-    url: input.url?.trim() || "",
-    description: input.description?.trim() || "",
-  };
-}
-
-function buildPartnerBody(
-  fields: ReturnType<typeof normalizedPartnerFields>,
-  logo?: PartnerLogoPayload | null,
-): Record<string, unknown> | FormData {
-  if (!logo?.data?.length) return fields;
-
-  const body = new FormData();
-  for (const [key, value] of Object.entries(fields)) {
-    body.append(key, String(value));
-  }
-  const blob = new Blob([new Uint8Array(logo.data)], {
-    type: logo.type || "application/octet-stream",
-  });
-  body.append("logo", blob, logo.name || "logo");
-  return body;
 }
 
 // Define a server function for admin operations
@@ -540,13 +448,11 @@ export const adminCreatePartner = async (input: PartnerInput) => {
   "use server";
   try {
     await requireAdmin();
-    const validationError = validatePartnerInput(input, true);
-    if (validationError) return { success: false, error: validationError };
+    const normalized = normalizePartnerInput(input, true);
+    if (!normalized.success) return normalized;
 
     const adminService = getAdminPB();
-    const fields = normalizedPartnerFields(input);
-    const body = buildPartnerBody(fields, input.logo);
-    const record = (await adminService.createRecord("partners", body)) as PartnerRecord;
+    const record = (await adminService.createRecord("partners", normalized.body)) as PartnerRecord;
     return { success: true, data: partnerSnapshot(record) };
   } catch (error) {
     console.error("Admin create partner error:", error);
@@ -558,13 +464,11 @@ export const adminUpdatePartner = async (id: string, input: PartnerInput) => {
   "use server";
   try {
     await requireAdmin();
-    const validationError = validatePartnerInput(input, false);
-    if (validationError) return { success: false, error: validationError };
+    const normalized = normalizePartnerInput(input, false);
+    if (!normalized.success) return normalized;
 
     const adminService = getAdminPB();
-    const fields = normalizedPartnerFields(input);
-    const body = buildPartnerBody(fields, input.logo);
-    const record = (await adminService.updateRecord("partners", id, body)) as PartnerRecord;
+    const record = (await adminService.updateRecord("partners", id, normalized.body)) as PartnerRecord;
     return { success: true, data: partnerSnapshot(record) };
   } catch (error) {
     console.error("Admin update partner error:", error);

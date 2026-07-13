@@ -28,6 +28,7 @@ import {
   type PartnerLogoPayload,
 } from "~/lib/admin-actions";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
+import { partnerUrlNeedsRemediation } from "~/lib/admin-partner-data";
 import type { PartnerRecord } from "~/lib/pocketbase-types";
 
 type PartnerTypeFilter = PartnerRecord["type"] | "all";
@@ -36,15 +37,14 @@ type PartnerVisibilityFilter = "all" | "yes" | "no";
 const PARTNER_TYPE_OPTIONS: { value: PartnerRecord["type"]; label: string }[] = [
   { value: "organizer", label: "Organizer" },
   { value: "sponsor", label: "Sponsor" },
+  { value: "supporter", label: "Supporter" },
+  { value: "community_partner", label: "Community Partner" },
   { value: "media", label: "Media" },
-  { value: "company_supporter", label: "Supporter" },
-  { value: "supporter", label: "Community" },
   { value: "catering", label: "Bytes and beverages" },
   { value: "other", label: "Other" },
 ];
 
-const TIER_OPTIONS: { value: NonNullable<PartnerRecord["tier"]> | ""; label: string }[] = [
-  { value: "", label: "No tier" },
+const TIER_OPTIONS: { value: NonNullable<PartnerRecord["tier"]>; label: string }[] = [
   { value: "platinum", label: "Platinum" },
   { value: "gold", label: "Gold" },
   { value: "silver", label: "Silver" },
@@ -112,7 +112,7 @@ export default function AdminPartnersHub() {
   const [type, setType] = createSignal<PartnerRecord["type"]>("sponsor");
   const [tier, setTier] = createSignal<PartnerRecord["tier"] | "">("bronze");
   const [url, setUrl] = createSignal("");
-  const [description, setDescription] = createSignal("");
+  const [notes, setNotes] = createSignal("");
   const [published, setPublished] = createSignal(false);
   const [logo, setLogo] = createSignal<File | null>(null);
   const [saving, setSaving] = createSignal(false);
@@ -138,7 +138,7 @@ export default function AdminPartnersHub() {
     setType("sponsor");
     setTier("bronze");
     setUrl("");
-    setDescription("");
+    setNotes("");
     setPublished(false);
     setLogo(null);
     resetFileInput();
@@ -156,7 +156,7 @@ export default function AdminPartnersHub() {
     setType(partner.type);
     setTier(partner.tier || "");
     setUrl(partner.url || "");
-    setDescription(partner.description || "");
+    setNotes(partner.notes || "");
     setPublished(Boolean(partner.published));
     setLogo(null);
     resetFileInput();
@@ -185,7 +185,7 @@ export default function AdminPartnersHub() {
         type: type(),
         tier: tier(),
         url: url(),
-        description: description(),
+        notes: notes(),
         published: published(),
         logo: logoPayload,
       };
@@ -280,7 +280,15 @@ export default function AdminPartnersHub() {
           Cancel
         </button>
       </Show>
-      <Show when={partner.url}>
+      <Show when={partnerUrlNeedsRemediation(partner.url)}>
+        <span
+          class="badge badge-warning badge-outline h-auto py-1 font-mono text-[0.65rem]"
+          title="This Partner has a malformed or non-HTTPS URL."
+        >
+          Fix Partner URL
+        </span>
+      </Show>
+      <Show when={partner.url && !partnerUrlNeedsRemediation(partner.url)}>
         <a
           href={partner.url}
           class="btn btn-xs btn-ghost font-mono"
@@ -436,7 +444,7 @@ export default function AdminPartnersHub() {
                 description="Controls which public group this record appears in and whether sponsor tiering applies."
               >
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 lg:gap-5 items-end">
-                  <AdminFormField id="partner-type" label="Type" required class="lg:col-span-4">
+                  <AdminFormField id="partner-type" label="Classification" required class="lg:col-span-4">
                     <select
                       id="partner-type"
                       name="type"
@@ -464,13 +472,14 @@ export default function AdminPartnersHub() {
                       </div>
                     }
                   >
-                    <AdminFormField id="partner-tier" label="Sponsor tier" class="lg:col-span-4">
+                    <AdminFormField id="partner-tier" label="Sponsor tier" required class="lg:col-span-4">
                       <select
                         id="partner-tier"
                         name="tier"
                         class={adminSelectClass()}
-                        value={tier() || ""}
-                        onChange={(e) => setTier(e.currentTarget.value as PartnerRecord["tier"] | "")}
+                        required
+                        value={tier()}
+                        onChange={(e) => setTier(e.currentTarget.value as PartnerRecord["tier"])}
                       >
                         <For each={TIER_OPTIONS}>
                           {(option) => <option value={option.value}>{option.label}</option>}
@@ -482,16 +491,16 @@ export default function AdminPartnersHub() {
               </AdminFormSection>
 
               <AdminFormSection
-                title="Admin notes"
-                description="Private operational context for organizers. This is not shown on the public logo wall."
+                title="Partner Note"
+                description="Private, non-sensitive organizational context for organizers. This is not shown publicly."
               >
-                <AdminFormField id="partner-description" label="Internal description">
+                <AdminFormField id="partner-notes" label="Partner Note">
                   <textarea
-                    id="partner-description"
-                    name="description"
+                    id="partner-notes"
+                    name="notes"
                     class={adminTextareaClass("min-h-28")}
-                    value={description()}
-                    onInput={(e) => setDescription(e.currentTarget.value)}
+                    value={notes()}
+                    onInput={(e) => setNotes(e.currentTarget.value)}
                   />
                 </AdminFormField>
               </AdminFormSection>

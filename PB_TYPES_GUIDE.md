@@ -18,7 +18,9 @@ This project uses manually defined TypeScript types for PocketBase collections t
 
 ### Partners Collection
 - Location: `PartnerRecord` interface in `src/lib/pocketbase-types.ts`
-- Fields: `name`, `published`, `type`, `tier`, `logo`, `url`, `description`
+- Fields: `name`, `published`, `type`, `tier`, `logo`, `url`, `notes`
+- Classifications: `organizer`, `sponsor`, `supporter`, `community_partner`, `media`, `catering`, `other`
+- Sponsor tiers: `platinum`, `gold`, `silver`, `bronze`; non-Sponsors have no tier
 
 ### MCP Tokens Collection
 - Location: `McpTokenRecord` interface in `src/lib/pocketbase-types.ts`

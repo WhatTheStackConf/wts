@@ -574,14 +574,14 @@ export interface PartnerRecord extends RecordModel {
     | "organizer"
     | "sponsor"
     | "supporter"
+    | "community_partner"
     | "media"
     | "catering"
-    | "other"
-    | "company_supporter";
+    | "other";
   tier?: "platinum" | "gold" | "silver" | "bronze";
   logo: string;
   url?: string;
-  description?: string;
+  notes?: string;
 }
 
 // MCP token collection type (admin-created remote MCP access tokens)

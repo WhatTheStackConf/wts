@@ -31,10 +31,9 @@ const PARTNER_GROUPS: PublicPartnerGroupConfig[] = [
   { id: "gold-sponsors", title: "Gold Sponsors", kind: "sponsor", type: "sponsor", tier: "gold" },
   { id: "silver-sponsors", title: "Silver Sponsors", kind: "sponsor", type: "sponsor", tier: "silver" },
   { id: "bronze-sponsors", title: "Bronze Sponsors", kind: "sponsor", type: "sponsor", tier: "bronze" },
-  { id: "sponsors", title: "Sponsors", kind: "sponsor", type: "sponsor" },
   { id: "media-partners", title: "Media Partners", kind: "partner", type: "media" },
-  { id: "supporters", title: "Supporters", kind: "partner", type: "company_supporter" },
-  { id: "community-partners", title: "Community Partners", kind: "partner", type: "supporter" },
+  { id: "supporters", title: "Supporters", kind: "partner", type: "supporter" },
+  { id: "community-partners", title: "Community Partners", kind: "partner", type: "community_partner" },
   { id: "bytes-and-beverages", title: "Bytes and Beverages", kind: "partner", type: "catering" },
   { id: "other-partners", title: "Other Partners", kind: "partner", type: "other" },
 ];
@@ -56,12 +55,11 @@ export function sortPartnerRecords(rows: PartnerRecord[]): PartnerRecord[] {
 function partnerMatchesGroup(partner: PublicPartner, group: PublicPartnerGroupConfig): boolean {
   if (partner.type !== group.type) return false;
   if (group.tier && partner.tier !== group.tier) return false;
-  if (!group.tier && group.type === "sponsor") return !partner.tier;
   return true;
 }
 
 export function buildPublicPartnerGroups(rows: PartnerRecord[]): PublicPartnerGroup[] {
-  const partners = sortPartnerRecords(rows).map(mapPartner);
+  const partners = sortPartnerRecords(rows.filter((row) => row.published)).map(mapPartner);
   return PARTNER_GROUPS.map((group) => ({
     ...group,
     partners: partners.filter((partner) => partnerMatchesGroup(partner, group)),
