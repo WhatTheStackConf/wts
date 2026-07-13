@@ -1,3 +1,13 @@
+import { createHash } from "node:crypto";
+import type {
+  AdminActionCompletion,
+  AdminActionHandle,
+  AdminActionRecord,
+  AdminActionRequest,
+  AdminActionSource,
+  AdminActionValue,
+} from "~/lib/admin-action-ledger";
+import { AdminActions } from "~/lib/admin-action-ledger";
 import type { PartnerRecord } from "~/lib/pocketbase-types";
 
 const PARTNER_TYPES = [
@@ -26,6 +36,23 @@ export type PartnerLogoPayload = {
 };
 
 export type PartnerAdministrationActor = "human_admin" | "agent";
+
+export interface PartnerAdministrationActorContext {
+  mode: PartnerAdministrationActor;
+  userId: string;
+  source: AdminActionSource;
+  mcpTokenId?: string;
+}
+
+export interface PartnerStoreAdminAction {
+  handle: AdminActionHandle;
+  operationKind: string;
+  targetId?: string;
+  normalizedInput: AdminActionValue;
+  completion: AdminActionCompletion;
+  complete(completion: AdminActionCompletion): Promise<AdminActionRecord>;
+  isApplied(): Promise<boolean>;
+}
 
 export interface PartnerStoredRecord {
   id: string;
@@ -94,6 +121,32 @@ export interface PartnerAdministrationStore {
   >;
 }
 
+export interface AuditedPartnerAdministrationStore {
+  list(): Promise<PartnerStoredRecord[]>;
+  get(id: string): Promise<PartnerStoredRecord | undefined>;
+  create(
+    input: PartnerStoreCreateInput,
+    adminAction: PartnerStoreAdminAction,
+  ): Promise<PartnerStoredRecord>;
+  update(
+    id: string,
+    expectedVersion: string,
+    input: PartnerStoreUpdateInput,
+    adminAction: PartnerStoreAdminAction,
+  ): Promise<
+    | { success: true; record: PartnerStoredRecord }
+    | { success: false; current: PartnerStoredRecord }
+  >;
+  delete(
+    id: string,
+    expectedVersion: string,
+    adminAction: PartnerStoreAdminAction,
+  ): Promise<
+    | { success: true }
+    | { success: false; current: PartnerStoredRecord }
+  >;
+}
+
 export class PartnerStoreConflictError extends Error {
   constructor(readonly field: "name" | "url") {
     super(`Partner ${field} already exists.`);
@@ -155,7 +208,81 @@ export interface PartnerAdminListItem {
   publication: PartnerPublicationReadiness;
 }
 
+export interface PartnerAdminHistoryItem {
+  id: string;
+  actorUserId: string;
+  source: AdminActionSource;
+  operationKind: string;
+  targetId?: string;
+  operationId: string;
+  status: AdminActionRecord["status"];
+  beforeSummary: AdminActionValue;
+  afterSummary: AdminActionValue;
+  failure?: { code: string; message: string; metadata?: AdminActionValue };
+  attemptCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PartnerAppliedAdminAction {
+  id: string;
+  operationId: string;
+  operationKind: string;
+  status: "applied";
+  replayed: boolean;
+}
+
+export interface PartnerUnresolvedAdminAction {
+  id: string;
+  operationId: string;
+  operationKind: string;
+  status: "pending" | "applied" | "failed";
+}
+
 export type PartnerAdministrationResult<T> =
+  | { success: true; data: T; action: PartnerAppliedAdminAction }
+  | { success: false; code: "validation"; error: string }
+  | { success: false; code: "not_found"; error: string }
+  | {
+      success: false;
+      code: "stale";
+      error: string;
+      current: PartnerAdminSnapshot;
+    }
+  | {
+      success: false;
+      code: "publication_not_ready";
+      error: string;
+      current: PartnerAdminSnapshot;
+      publication: PartnerPublicationReadiness;
+    }
+  | {
+      success: false;
+      code: "duplicate";
+      field: "name" | "url";
+      error: string;
+      current: PartnerAdminSnapshot;
+    }
+  | {
+      success: false;
+      code: "operation_pending";
+      error: string;
+      action: PartnerUnresolvedAdminAction;
+    }
+  | {
+      success: false;
+      code: "operation_mismatch";
+      error: string;
+      action: PartnerUnresolvedAdminAction;
+    }
+  | {
+      success: false;
+      code: "operation_failed";
+      error: string;
+      action: PartnerUnresolvedAdminAction;
+    };
+
+type PartnerDomainResult<T> =
   | { success: true; data: T }
   | { success: false; code: "validation"; error: string }
   | { success: false; code: "not_found"; error: string }
@@ -382,6 +509,7 @@ function normalizePartnerName(value: string): { name: string; identity: string }
 
 function validatePartnerLogo(logo?: PartnerLogoPayload | null): string | undefined {
   if (!logo) return undefined;
+  if (!logo.name.trim() || logo.name.length > 255) return "Logo filename must be 255 characters or shorter.";
   if (!logo.data.length) return "Logo file is empty.";
   if (logo.data.length > PARTNER_LOGO_MAX_BYTES) return "Logo must be 5 MB or smaller.";
   if (!PARTNER_LOGO_TYPES.includes(logo.type)) {
@@ -394,7 +522,7 @@ function duplicateResult(
   field: "name" | "url",
   record: PartnerStoredRecord,
   actor: PartnerAdministrationActor,
-): PartnerAdministrationResult<never> {
+): PartnerDomainResult<never> {
   return {
     success: false,
     code: "duplicate",
@@ -410,7 +538,7 @@ function duplicateResult(
 function staleResult(
   record: PartnerStoredRecord,
   actor: PartnerAdministrationActor,
-): PartnerAdministrationResult<never> {
+): PartnerDomainResult<never> {
   return {
     success: false,
     code: "stale",
@@ -443,7 +571,11 @@ function namesAreSimilar(left: string, right: string): boolean {
 }
 
 function warningPartner(record: PartnerStoredRecord): PartnerWarning["partner"] {
-  return { id: record.id, name: record.name, published: record.published };
+  return { id: record.id, name: record.name.slice(0, 200), published: record.published };
+}
+
+function warningMessage(value: string): string {
+  return value.slice(0, 500);
 }
 
 function similarityWarnings(
@@ -457,8 +589,9 @@ function similarityWarnings(
       warnings.push({
         kind: "similar_name",
         partner: warningPartner(record),
-        message: `The name is similar to existing Partner "${record.name}".`,
+        message: warningMessage(`The name is similar to existing Partner "${record.name.slice(0, 200)}".`),
       });
+      if (warnings.length === 3) return warnings;
     }
   }
   if (!canonicalUrl) return warnings;
@@ -469,8 +602,9 @@ function similarityWarnings(
       warnings.push({
         kind: "shared_host",
         partner: warningPartner(record),
-        message: `The URL shares ${hostname} with existing Partner "${record.name}".`,
+        message: warningMessage(`The URL shares ${hostname} with existing Partner "${record.name.slice(0, 200)}".`),
       });
+      if (warnings.length === 3) return warnings;
     }
   }
   return warnings;
@@ -482,7 +616,7 @@ function hasOwn(value: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-export class PartnerAdministration {
+class PartnerAdministrationDomain {
   constructor(
     private readonly store: PartnerAdministrationStore,
     private readonly actor: PartnerAdministrationActor,
@@ -500,7 +634,7 @@ export class PartnerAdministration {
 
   async createDraft(
     input: PartnerDraftInput,
-  ): Promise<PartnerAdministrationResult<{
+  ): Promise<PartnerDomainResult<{
     partner: PartnerAdminSnapshot;
     warnings: PartnerWarning[];
     publication: PartnerPublicationReadiness;
@@ -508,6 +642,9 @@ export class PartnerAdministration {
     const { name, identity: normalizedName } = normalizePartnerName(input.name);
     if (!name) {
       return { success: false, code: "validation", error: "Partner name is required." };
+    }
+    if (name.length > 200) {
+      return { success: false, code: "validation", error: "Partner name must be 200 characters or shorter." };
     }
     if (!PARTNER_TYPES.includes(input.type)) {
       return {
@@ -531,6 +668,9 @@ export class PartnerAdministration {
     }
     const logoError = validatePartnerLogo(input.logo);
     if (logoError) return { success: false, code: "validation", error: logoError };
+    if ((input.url?.trim().length || 0) > 2_000) {
+      return { success: false, code: "validation", error: "Partner URL must be 2,000 characters or shorter." };
+    }
     const normalizedUrl = normalizePartnerUrl(input.url);
     if (!normalizedUrl.success) {
       return {
@@ -588,7 +728,7 @@ export class PartnerAdministration {
     id: string,
     expectedVersion: string,
     patch: PartnerPatch,
-  ): Promise<PartnerAdministrationResult<{
+  ): Promise<PartnerDomainResult<{
     partner: PartnerAdminSnapshot;
     warnings: PartnerWarning[];
     publication: PartnerPublicationReadiness;
@@ -638,6 +778,9 @@ export class PartnerAdministration {
     if (!normalizedName.name) {
       return { success: false, code: "validation", error: "Partner name is required." };
     }
+    if (normalizedName.name.length > 200) {
+      return { success: false, code: "validation", error: "Partner name must be 200 characters or shorter." };
+    }
     const type = hasOwn(patch, "type") ? patch.type : current.type;
     if (!type || !PARTNER_TYPES.includes(type)) {
       return {
@@ -655,6 +798,9 @@ export class PartnerAdministration {
       return { success: false, code: "validation", error: "Choose a Sponsor tier." };
     }
     const requestedUrl = hasOwn(patch, "url") ? patch.url || undefined : current.url;
+    if ((requestedUrl?.trim().length || 0) > 2_000) {
+      return { success: false, code: "validation", error: "Partner URL must be 2,000 characters or shorter." };
+    }
     const normalizedUrl = normalizePartnerUrl(requestedUrl);
     if (!normalizedUrl.success) {
       return {
@@ -755,7 +901,7 @@ export class PartnerAdministration {
     id: string,
     expectedVersion: string,
     approved: boolean,
-  ): Promise<PartnerAdministrationResult<{
+  ): Promise<PartnerDomainResult<{
     partner: PartnerAdminSnapshot;
     warnings: PartnerWarning[];
     publication: PartnerPublicationReadiness;
@@ -815,7 +961,7 @@ export class PartnerAdministration {
     id: string,
     expectedVersion: string,
     published: boolean,
-  ): Promise<PartnerAdministrationResult<{
+  ): Promise<PartnerDomainResult<{
     partner: PartnerAdminSnapshot;
     warnings: PartnerWarning[];
     publication: PartnerPublicationReadiness;
@@ -883,7 +1029,7 @@ export class PartnerAdministration {
   async deletePartner(
     id: string,
     expectedVersion: string,
-  ): Promise<PartnerAdministrationResult<{ id: string }>> {
+  ): Promise<PartnerDomainResult<{ id: string }>> {
     if (this.actor !== "human_admin") {
       return {
         success: false,
@@ -906,5 +1052,656 @@ export class PartnerAdministration {
     const deleted = await this.store.delete(id, current.version);
     if (!deleted.success) return staleResult(deleted.current, this.actor);
     return { success: true, data: { id } };
+  }
+}
+
+type PartnerMutationData =
+  | {
+      partner: PartnerAdminSnapshot;
+      warnings: PartnerWarning[];
+      publication: PartnerPublicationReadiness;
+    }
+  | { id: string };
+
+function hashActionContent(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function actionNote(value?: string | null): AdminActionValue {
+  const normalized = value?.trim() || "";
+  return normalized
+    ? { present: true, length: normalized.length, fingerprint: hashActionContent(normalized) }
+    : { present: false };
+}
+
+function actionLogo(value?: PartnerLogoPayload | null): AdminActionValue {
+  if (value === null) return { present: false };
+  if (!value) return { changed: false };
+  return {
+    present: true,
+    name: value.name,
+    mediaType: value.type,
+    bytes: value.data.length,
+    fingerprint: hashActionContent(Buffer.from(value.data).toString("base64")),
+  };
+}
+
+function safePartnerSummary(
+  partner: Pick<
+    PartnerStoredRecord,
+    | "id"
+    | "name"
+    | "published"
+    | "type"
+    | "tier"
+    | "logo"
+    | "url"
+    | "notes"
+    | "noteAgentVisible"
+  >,
+  changedFields: string[] = [],
+): AdminActionValue {
+  return {
+    id: partner.id,
+    name: partner.name,
+    published: partner.published,
+    type: partner.type,
+    tier: partner.tier || null,
+    logoPresent: Boolean(partner.logo),
+    urlPresent: Boolean(partner.url),
+    notePresent: Boolean(partner.notes),
+    noteAgentVisible: partner.noteAgentVisible,
+    changedFields,
+  };
+}
+
+function safeCreateSummary(input: PartnerStoreCreateInput): AdminActionValue {
+  return {
+    name: input.name,
+    published: false,
+    type: input.type,
+    tier: input.tier || null,
+    logoPresent: Boolean(input.logo),
+    urlPresent: Boolean(input.url),
+    notePresent: Boolean(input.notes),
+    noteAgentVisible: false,
+    changedFields: ["created"],
+  };
+}
+
+function replayPartnerSnapshot(
+  partner: Pick<
+    PartnerStoredRecord,
+    | "id"
+    | "name"
+    | "published"
+    | "type"
+    | "tier"
+    | "logo"
+    | "url"
+    | "noteAgentVisible"
+    | "createdAt"
+    | "updatedAt"
+    | "version"
+  >,
+): Omit<PartnerAdminSnapshot, "notes"> {
+  return {
+    id: partner.id,
+    name: partner.name.slice(0, 200),
+    published: partner.published,
+    type: partner.type,
+    tier: partner.tier,
+    logo: partner.logo.slice(0, 255),
+    url: partner.url?.slice(0, 2_000),
+    noteAgentVisible: partner.noteAgentVisible,
+    createdAt: partner.createdAt,
+    updatedAt: partner.updatedAt,
+    version: partner.version,
+  };
+}
+
+function toAdminActionValue(value: unknown): AdminActionValue {
+  return JSON.parse(JSON.stringify(value)) as AdminActionValue;
+}
+
+function partnerMutationReplayResult(
+  partner: Parameters<typeof replayPartnerSnapshot>[0],
+  warnings: PartnerWarning[],
+  publication: PartnerPublicationReadiness,
+): AdminActionValue {
+  return toAdminActionValue({
+    kind: "partner_mutation",
+    data: {
+      partner: replayPartnerSnapshot(partner),
+      warnings,
+      publication,
+    },
+  });
+}
+
+export function completePartnerMutationAdminAction(
+  completion: AdminActionCompletion,
+  record: PartnerStoredRecord,
+): AdminActionCompletion {
+  const afterSummary =
+    completion.afterSummary &&
+    typeof completion.afterSummary === "object" &&
+    !Array.isArray(completion.afterSummary)
+      ? { ...completion.afterSummary, id: record.id }
+      : completion.afterSummary;
+  const replayResult = completion.replayResult;
+  let completedReplayResult: AdminActionValue = { kind: "partner_delete", data: { id: record.id } };
+  if (
+    replayResult &&
+    typeof replayResult === "object" &&
+    !Array.isArray(replayResult) &&
+    replayResult.kind === "partner_mutation" &&
+    replayResult.data &&
+    typeof replayResult.data === "object" &&
+    !Array.isArray(replayResult.data)
+  ) {
+    completedReplayResult = toAdminActionValue({
+      ...replayResult,
+      data: {
+        ...replayResult.data,
+        partner: replayPartnerSnapshot(record),
+      },
+    });
+  }
+  return {
+    ...completion,
+    targetId: record.id,
+    afterSummary,
+    replayResult: completedReplayResult,
+  };
+}
+
+function replayResultFromData(data: PartnerMutationData): AdminActionValue {
+  if ("id" in data) return { kind: "partner_delete", data: { id: data.id } };
+  const { notes: _notes, ...partner } = data.partner;
+  return toAdminActionValue({
+    kind: "partner_mutation",
+    data: {
+      partner,
+      warnings: data.warnings.slice(0, 3),
+      publication: data.publication,
+    },
+  });
+}
+
+function updatedStoredRecord(
+  current: PartnerStoredRecord,
+  input: PartnerStoreUpdateInput,
+): PartnerStoredRecord {
+  return {
+    ...current,
+    name: input.name,
+    normalizedName: input.normalizedName,
+    published: input.published,
+    type: input.type,
+    tier: input.tier,
+    logo:
+      input.logo === undefined
+        ? current.logo
+        : input.logo === null
+          ? ""
+          : input.logo.name,
+    logoUploadedByHuman: input.logoUploadedByHuman,
+    url: input.url,
+    canonicalUrl: input.canonicalUrl,
+    notes: input.notes,
+    noteAgentVisible: input.noteAgentVisible,
+  };
+}
+
+function operationAction(record: AdminActionRecord, replayed: boolean): PartnerAppliedAdminAction {
+  return {
+    id: record.id,
+    operationId: record.operationId,
+    operationKind: record.operationKind,
+    status: "applied",
+    replayed,
+  };
+}
+
+function unresolvedAction(record: AdminActionRecord): PartnerUnresolvedAdminAction {
+  return {
+    id: record.id,
+    operationId: record.operationId,
+    operationKind: record.operationKind,
+    status: record.status,
+  };
+}
+
+class PartnerAdminActionFlow extends Error {
+  constructor(readonly result: PartnerAdministrationResult<never>) {
+    super(result.success ? "Partner Admin Action replayed." : result.error);
+    this.name = "PartnerAdminActionFlow";
+  }
+}
+
+export class PartnerAdministration {
+  constructor(
+    private readonly store: AuditedPartnerAdministrationStore,
+    private readonly actor: PartnerAdministrationActorContext,
+    private readonly adminActions: AdminActions,
+  ) {}
+
+  async listPartners(): Promise<PartnerAdminListItem[]> {
+    return new PartnerAdministrationDomain(this.readOnlyStore(), this.actor.mode).listPartners();
+  }
+
+  async listHistory(targetId?: string, limit = 50): Promise<PartnerAdminHistoryItem[]> {
+    const actions = await this.adminActions.list({ targetCollection: "partners", targetId, limit });
+    return actions.map((action) => ({
+      id: action.id,
+      actorUserId: action.actorUserId,
+      source: action.source,
+      operationKind: action.operationKind,
+      targetId: action.targetId,
+      operationId: action.operationId,
+      status: action.status,
+      beforeSummary: action.beforeSummary,
+      afterSummary: action.afterSummary,
+      failure: action.failure,
+      attemptCount: action.attemptCount,
+      createdAt: action.createdAt,
+      updatedAt: action.updatedAt,
+    }));
+  }
+
+  async createDraft(
+    input: PartnerDraftInput,
+    operationId: string,
+  ): Promise<PartnerAdministrationResult<Extract<PartnerMutationData, { partner: unknown }>>> {
+    const normalizedName = normalizePartnerName(input.name || "");
+    const normalizedUrl = normalizePartnerUrl(input.url);
+    return this.runMutation(
+      this.request("partner.create", operationId, undefined, {
+        name: normalizedName.name,
+        normalizedName: normalizedName.identity,
+        type: input.type,
+        tier: input.type === "sponsor" ? input.tier || null : null,
+        url: normalizedUrl.success ? normalizedUrl.canonicalUrl : input.url?.trim() || null,
+        urlValue: input.url?.trim() || null,
+        partnerNote: actionNote(input.notes),
+        logo: actionLogo(input.logo || undefined),
+      }),
+      (domain) => domain.createDraft(input),
+    );
+  }
+
+  async updatePartner(
+    id: string,
+    expectedVersion: string,
+    patch: PartnerPatch,
+    operationId: string,
+  ): Promise<PartnerAdministrationResult<Extract<PartnerMutationData, { partner: unknown }>>> {
+    const normalizedPatch: Record<string, AdminActionValue> = {};
+    for (const key of Object.keys(patch).sort()) {
+      if (key === "name") {
+        const normalizedName = normalizePartnerName(patch.name || "");
+        normalizedPatch.name = normalizedName.name;
+        normalizedPatch.normalizedName = normalizedName.identity;
+      }
+      else if (key === "url") {
+        const normalized = normalizePartnerUrl(patch.url || undefined);
+        normalizedPatch.url = normalized.success
+          ? normalized.canonicalUrl || null
+          : patch.url?.trim() || null;
+        normalizedPatch.urlValue = patch.url?.trim() || null;
+      } else if (key === "notes") normalizedPatch.partnerNote = actionNote(patch.notes);
+      else if (key === "logo") normalizedPatch.logo = actionLogo(patch.logo);
+      else if (key === "type") normalizedPatch.type = patch.type || null;
+      else if (key === "tier") normalizedPatch.tier = patch.tier || null;
+      else normalizedPatch[key] = null;
+    }
+    if (hasOwn(patch, "type") && patch.type !== "sponsor") normalizedPatch.tier = null;
+    return this.runMutation(
+      this.request("partner.patch", operationId, id, {
+        id,
+        expectedVersion,
+        patch: normalizedPatch,
+      }),
+      (domain) => domain.updatePartner(id, expectedVersion, patch),
+    );
+  }
+
+  async setNoteApproval(
+    id: string,
+    expectedVersion: string,
+    approved: boolean,
+    operationId: string,
+  ): Promise<PartnerAdministrationResult<Extract<PartnerMutationData, { partner: unknown }>>> {
+    return this.runMutation(
+      this.request("partner.note_approval", operationId, id, { id, expectedVersion, approved }),
+      (domain) => domain.setNoteApproval(id, expectedVersion, approved),
+    );
+  }
+
+  async setPublication(
+    id: string,
+    expectedVersion: string,
+    published: boolean,
+    operationId: string,
+  ): Promise<PartnerAdministrationResult<Extract<PartnerMutationData, { partner: unknown }>>> {
+    return this.runMutation(
+      this.request(published ? "partner.publish" : "partner.unpublish", operationId, id, {
+        id,
+        expectedVersion,
+        published,
+      }),
+      (domain) => domain.setPublication(id, expectedVersion, published),
+    );
+  }
+
+  async deletePartner(
+    id: string,
+    expectedVersion: string,
+    operationId: string,
+  ): Promise<PartnerAdministrationResult<{ id: string }>> {
+    return this.runMutation(
+      this.request("partner.delete", operationId, id, { id, expectedVersion }),
+      (domain) => domain.deletePartner(id, expectedVersion),
+    );
+  }
+
+  private readOnlyStore(): PartnerAdministrationStore {
+    return {
+      list: () => this.store.list(),
+      get: (id) => this.store.get(id),
+      create: () => Promise.reject(new Error("Partner mutation requires an Admin Action.")),
+      update: () => Promise.reject(new Error("Partner mutation requires an Admin Action.")),
+      delete: () => Promise.reject(new Error("Partner mutation requires an Admin Action.")),
+    };
+  }
+
+  private request(
+    operationKind: string,
+    operationId: string,
+    targetId: string | undefined,
+    normalizedInput: AdminActionValue,
+  ): AdminActionRequest {
+    return {
+      actorUserId: this.actor.userId,
+      mcpTokenId: this.actor.mcpTokenId,
+      source: this.actor.source,
+      operationKind,
+      targetCollection: "partners",
+      targetId,
+      operationId,
+      normalizedInput,
+    };
+  }
+
+  private async replay<T>(
+    action: AdminActionRecord,
+    replayed = true,
+  ): Promise<PartnerAdministrationResult<T>> {
+    const replayResult = action.replayResult;
+    if (
+      replayResult &&
+      typeof replayResult === "object" &&
+      !Array.isArray(replayResult) &&
+      replayResult.data &&
+      typeof replayResult.data === "object" &&
+      !Array.isArray(replayResult.data)
+    ) {
+      return {
+        success: true,
+        data: replayResult.data as T,
+        action: operationAction(action, replayed),
+      };
+    }
+    return {
+      success: false,
+      code: "operation_failed",
+      error: "The applied Partner operation has no replayable result.",
+      action: unresolvedAction(action),
+    };
+  }
+
+  private async existingAction<T>(
+    request: AdminActionRequest,
+  ): Promise<{ handle?: AdminActionHandle; result?: PartnerAdministrationResult<T> }> {
+    const inspected = await this.adminActions.inspect(request);
+    if (inspected.outcome === "new") return {};
+    if (inspected.outcome === "retryable") {
+      const reclaimed = await this.adminActions.start(request);
+      if (reclaimed.outcome === "started") return { handle: reclaimed.handle };
+      if (reclaimed.outcome === "replayed") {
+        return { result: await this.replay<T>(reclaimed.action) };
+      }
+      if (reclaimed.outcome === "pending") {
+        return {
+          result: {
+            success: false,
+            code: "operation_pending",
+            error: "This Partner operation is already in progress.",
+            action: unresolvedAction(reclaimed.action),
+          },
+        };
+      }
+      return {
+        result: {
+          success: false,
+          code: "operation_mismatch",
+          error: "This operation ID is already bound to different Partner input.",
+          action: unresolvedAction(reclaimed.action),
+        },
+      };
+    }
+    if (inspected.outcome === "replayed") {
+      return { result: await this.replay<T>(inspected.action) };
+    }
+    if (inspected.outcome === "pending") {
+      return {
+        result: {
+          success: false,
+          code: "operation_pending",
+          error: "This Partner operation is already in progress.",
+          action: unresolvedAction(inspected.action),
+        },
+      };
+    }
+    return {
+      result: {
+        success: false,
+        code: "operation_mismatch",
+        error: "This operation ID is already bound to different Partner input.",
+        action: unresolvedAction(inspected.action),
+      },
+    };
+  }
+
+  private async runMutation<T extends PartnerMutationData>(
+    request: AdminActionRequest,
+    mutate: (domain: PartnerAdministrationDomain) => Promise<PartnerDomainResult<T>>,
+  ): Promise<PartnerAdministrationResult<T>> {
+    const existing = await this.existingAction<T>(request);
+    if (existing.result) return existing.result;
+
+    let activeHandle = existing.handle;
+    const reserve = async (completion: AdminActionCompletion): Promise<PartnerStoreAdminAction> => {
+      if (!activeHandle) {
+        const started = await this.adminActions.start(request, {
+          beforeSummary: completion.beforeSummary,
+          afterSummary: completion.afterSummary,
+        });
+        if (started.outcome === "replayed") throw new PartnerAdminActionFlow(await this.replay(started.action));
+        if (started.outcome === "pending") {
+          throw new PartnerAdminActionFlow({
+            success: false,
+            code: "operation_pending",
+            error: "This Partner operation is already in progress.",
+            action: unresolvedAction(started.action),
+          });
+        }
+        if (started.outcome === "mismatch") {
+          throw new PartnerAdminActionFlow({
+            success: false,
+            code: "operation_mismatch",
+            error: "This operation ID is already bound to different Partner input.",
+            action: unresolvedAction(started.action),
+          });
+        }
+        activeHandle = started.handle;
+      }
+      const handle = activeHandle;
+      return {
+        handle,
+        operationKind: request.operationKind,
+        targetId: request.targetId,
+        normalizedInput: request.normalizedInput,
+        completion,
+        complete: (value) => this.adminActions.complete(handle, value),
+        isApplied: async () => (await this.adminActions.inspect(request)).outcome === "replayed",
+      };
+    };
+
+    const auditedStore: PartnerAdministrationStore = {
+      list: () => this.store.list(),
+      get: (id) => this.store.get(id),
+      create: async (input) => {
+        const existing = await this.store.list();
+        const timestamp = "";
+        const candidate: PartnerStoredRecord = {
+          id: "",
+          name: input.name,
+          normalizedName: input.normalizedName,
+          published: false,
+          type: input.type,
+          tier: input.tier,
+          logo: input.logo?.name || "",
+          logoUploadedByHuman: input.logoUploadedByHuman,
+          url: input.url,
+          canonicalUrl: input.canonicalUrl,
+          notes: input.notes,
+          noteAgentVisible: false,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          version: timestamp,
+        };
+        const action = await reserve({
+          beforeSummary: null,
+          afterSummary: safeCreateSummary(input),
+          replayResult: partnerMutationReplayResult(
+            candidate,
+            similarityWarnings(existing, input.normalizedName, input.canonicalUrl),
+            publicationReadiness(candidate),
+          ),
+        });
+        return this.store.create(input, action);
+      },
+      update: async (id, expectedVersion, input) => {
+        const current = await this.store.get(id);
+        const changedFields =
+          request.operationKind === "partner.patch"
+            ? Object.keys((request.normalizedInput as { patch?: Record<string, AdminActionValue> }).patch || {})
+                .filter((field) => field !== "normalizedName" && field !== "urlValue")
+                .map((field) => (field === "partnerNote" ? "partnerNote" : field))
+            : [request.operationKind.replace("partner.", "")];
+        const candidate = current ? updatedStoredRecord(current, input) : undefined;
+        const existing = request.operationKind === "partner.patch"
+          ? (await this.store.list()).filter((record) => record.id !== id)
+          : [];
+        const action = await reserve({
+          targetId: id,
+          beforeSummary: current ? safePartnerSummary(current) : null,
+          afterSummary: candidate ? safePartnerSummary(candidate, changedFields) : null,
+          replayResult: candidate
+            ? partnerMutationReplayResult(
+                candidate,
+                request.operationKind === "partner.patch"
+                  ? similarityWarnings(existing, candidate.normalizedName, candidate.canonicalUrl)
+                  : [],
+                publicationReadiness(candidate),
+              )
+            : { kind: "partner_mutation", data: null },
+        });
+        return this.store.update(id, expectedVersion, input, action);
+      },
+      delete: async (id, expectedVersion) => {
+        const current = await this.store.get(id);
+        const action = await reserve({
+          targetId: id,
+          beforeSummary: current ? safePartnerSummary(current, ["deleted"]) : null,
+          afterSummary: null,
+          replayResult: { kind: "partner_delete", data: { id } },
+        });
+        return this.store.delete(id, expectedVersion, action);
+      },
+    };
+
+    try {
+      const domain = new PartnerAdministrationDomain(auditedStore, this.actor.mode);
+      const result = await mutate(domain);
+      if (!result.success) {
+        if (activeHandle) {
+          await this.adminActions.fail(activeHandle, {
+            code: result.code,
+            message: "The Partner operation was rejected without changing the Partner.",
+          });
+        }
+        return result;
+      }
+
+      let applied = await this.adminActions.inspect(request);
+      if (applied.outcome === "new" || applied.outcome === "retryable") {
+        const partner = "partner" in result.data ? result.data.partner : undefined;
+        const started = await this.adminActions.start(request);
+        if (started.outcome !== "started") {
+          if (started.outcome === "replayed") return this.replay<T>(started.action);
+          throw new PartnerAdminActionFlow({
+            success: false,
+            code: started.outcome === "pending" ? "operation_pending" : "operation_mismatch",
+            error:
+              started.outcome === "pending"
+                ? "This Partner operation is already in progress."
+                : "This operation ID is already bound to different Partner input.",
+            action: unresolvedAction(started.action),
+          });
+        }
+        const completed = await this.adminActions.complete(started.handle, {
+          targetId: partner?.id,
+          beforeSummary: partner ? safePartnerSummary(partner) : null,
+          afterSummary: partner ? safePartnerSummary(partner) : null,
+          replayResult: replayResultFromData(result.data),
+        });
+        return this.replay<T>(completed, false);
+      }
+      if (applied.outcome === "replayed") {
+        return this.replay<T>(applied.action, false);
+      }
+      throw new Error("Partner mutation returned before its Admin Action was applied.");
+    } catch (error) {
+      if (error instanceof PartnerAdminActionFlow) return error.result as PartnerAdministrationResult<T>;
+      const inspected = await this.adminActions.inspect(request);
+      if (inspected.outcome === "replayed") return this.replay<T>(inspected.action);
+      if (activeHandle) {
+        console.error("Audited Partner persistence failed", error);
+        let failed: AdminActionRecord;
+        try {
+          failed = await this.adminActions.fail(activeHandle, {
+            code: "partner_write_failed",
+            message: "Partner persistence failed safely.",
+            metadata: { retryable: true },
+          });
+        } catch (failureError) {
+          console.error("Could not mark the Partner Admin Action as failed", failureError);
+          const unresolved = await this.adminActions.inspect(request);
+          if (unresolved.outcome === "new") throw failureError;
+          if (unresolved.outcome === "replayed") return this.replay<T>(unresolved.action);
+          failed = unresolved.action;
+        }
+        return {
+          success: false,
+          code: "operation_failed",
+          error: "The Partner operation failed safely and may be retried with the same operation ID.",
+          action: unresolvedAction(failed),
+        };
+      }
+      throw error;
+    }
   }
 }

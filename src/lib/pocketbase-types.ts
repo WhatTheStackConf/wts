@@ -591,6 +591,32 @@ export interface PartnerRecord extends RecordModel {
   updated: string;
 }
 
+export interface AdminActionRecord extends RecordModel {
+  id: string;
+  actor_user: string;
+  mcp_token?: string;
+  source: "admin_ui" | "mcp";
+  operation_kind: string;
+  target_collection: string;
+  target_id?: string;
+  operation_id: string;
+  input_fingerprint: string;
+  idempotency_key: string;
+  status: "pending" | "applied" | "failed";
+  before_summary?: unknown;
+  after_summary?: unknown;
+  replay_result?: unknown;
+  failure_code?: string;
+  failure_message?: string;
+  failure_metadata?: unknown;
+  attempt_count: number;
+  attempt_token: string;
+  lease_expires_at?: string;
+  completed_at?: string;
+  created: string;
+  updated: string;
+}
+
 // MCP token collection type (admin-created remote MCP access tokens)
 export interface McpTokenRecord extends RecordModel {
   id: string;
@@ -657,6 +683,7 @@ export type CollectionRecord =
   | PartnerContactConsentRecord
   | PartnerContactDisclosureRecord
   | PartnerRecord
+  | AdminActionRecord
   | McpTokenRecord;
 
 // Type guard functions

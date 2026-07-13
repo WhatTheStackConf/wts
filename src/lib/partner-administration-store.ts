@@ -4,7 +4,7 @@ import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import type { PartnerRecord } from "~/lib/pocketbase-types";
 import {
   PartnerStoreConflictError,
-  type PartnerAdministrationStore,
+  type AuditedPartnerAdministrationStore,
   type PartnerLogoPayload,
   type PartnerStoredRecord,
   type PartnerStoreCreateInput,
@@ -69,6 +69,27 @@ function appendLogo(
   return body;
 }
 
+function appendAdminAction(
+  body: Record<string, unknown> | FormData,
+  adminAction: Parameters<AuditedPartnerAdministrationStore["create"]>[1],
+): Record<string, unknown> | FormData {
+  const fields = {
+    admin_action_id: adminAction.handle.actionId,
+    admin_action_attempt_token: adminAction.handle.attemptToken,
+    admin_action_operation_kind: adminAction.operationKind,
+    admin_action_target_id: adminAction.completion.targetId || "",
+    admin_action_normalized_input: JSON.stringify(adminAction.normalizedInput),
+    admin_action_before_summary: JSON.stringify(adminAction.completion.beforeSummary),
+    admin_action_after_summary: JSON.stringify(adminAction.completion.afterSummary),
+    admin_action_replay_result: JSON.stringify(adminAction.completion.replayResult),
+  };
+  if (body instanceof FormData) {
+    for (const [key, value] of Object.entries(fields)) body.append(key, value);
+    return body;
+  }
+  return { ...body, ...fields };
+}
+
 function createBody(input: PartnerStoreCreateInput): Record<string, unknown> | FormData {
   const fields: Record<string, unknown> = {
     name: input.name,
@@ -125,7 +146,7 @@ function isNotFound(error: unknown): boolean {
 /** Production Partner store; all lifecycle rules remain in PartnerAdministration. */
 export function createPocketBasePartnerAdministrationStore(
   client?: PocketBase,
-): PartnerAdministrationStore {
+): AuditedPartnerAdministrationStore {
   const pocketBase = async () => client || getAdminPB().getInstance();
 
   return {
@@ -146,20 +167,22 @@ export function createPocketBasePartnerAdministrationStore(
         throw error;
       }
     },
-    async create(input: PartnerStoreCreateInput): Promise<PartnerStoredRecord> {
+    async create(input: PartnerStoreCreateInput, adminAction): Promise<PartnerStoredRecord> {
       const pb = await pocketBase();
       try {
-        const record = await pb.collection(PARTNERS_COLLECTION)
-          .create<PocketBasePartnerRecord>(createBody(input));
+        const record = await pb.send<PocketBasePartnerRecord>(PARTNER_MUTATION_ROUTE, {
+          method: "POST",
+          body: appendAdminAction(createBody(input), adminAction),
+        });
         return partnerRecord(record);
       } catch (error) {
         return throwIdentityConflict(error);
       }
     },
-    async update(id: string, expectedVersion: string, input: PartnerStoreUpdateInput) {
+    async update(id: string, expectedVersion: string, input: PartnerStoreUpdateInput, adminAction) {
       const pb = await pocketBase();
       try {
-        const body = updateBody(input);
+        const body = appendAdminAction(updateBody(input), adminAction);
         if (body instanceof FormData) body.append("expected_version", expectedVersion);
         else body.expected_version = expectedVersion;
         const result = await pb.send<
@@ -173,14 +196,14 @@ export function createPocketBasePartnerAdministrationStore(
         return throwIdentityConflict(error);
       }
     },
-    async delete(id: string, expectedVersion: string) {
+    async delete(id: string, expectedVersion: string, adminAction) {
       const pb = await pocketBase();
       const result = await pb.send<
         | { success: true }
         | { success: false; current: PocketBasePartnerRecord }
       >(`${PARTNER_MUTATION_ROUTE}/${encodeURIComponent(id)}`, {
         method: "DELETE",
-        body: { expected_version: expectedVersion },
+        body: appendAdminAction({ expected_version: expectedVersion }, adminAction),
       });
       return result.success
         ? { success: true as const }

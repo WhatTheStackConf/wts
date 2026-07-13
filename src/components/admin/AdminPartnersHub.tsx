@@ -1,4 +1,4 @@
-import { createResource, createSignal, For, Show } from "solid-js";
+import { createResource, createSignal, For, onMount, Show } from "solid-js";
 import { Icon } from "@iconify-icon/solid";
 import {
   AdminDataPanel,
@@ -21,6 +21,7 @@ import {
 import {
   adminCreatePartner,
   adminDeletePartner,
+  adminFetchPartnerHistory,
   adminFetchPartners,
   adminSetPartnerNoteApproval,
   adminSetPartnerPublished,
@@ -30,6 +31,7 @@ import {
   type PartnerPatch,
 } from "~/lib/partner-administration-actions";
 import type {
+  PartnerAdminHistoryItem,
   PartnerAdminListItem,
   PartnerAdminSnapshot,
 } from "~/lib/partner-administration";
@@ -67,6 +69,8 @@ const VISIBILITY_OPTIONS: { value: PartnerVisibilityFilter; label: string }[] = 
   { value: "no", label: "Draft" },
 ];
 
+const PARTNER_OPERATION_IDS_STORAGE_KEY = "wts.admin.partner-operation-ids";
+
 function typeLabel(value: PartnerRecord["type"]): string {
   return PARTNER_TYPE_OPTIONS.find((option) => option.value === value)?.label ?? value;
 }
@@ -74,6 +78,83 @@ function typeLabel(value: PartnerRecord["type"]): string {
 function tierLabel(value?: PartnerRecord["tier"]): string {
   if (!value) return "No tier";
   return TIER_OPTIONS.find((option) => option.value === value)?.label ?? value;
+}
+
+function historySummary(action: PartnerAdminHistoryItem): Record<string, unknown> {
+  const after = action.afterSummary;
+  if (after && typeof after === "object" && !Array.isArray(after)) return after;
+  const before = action.beforeSummary;
+  return before && typeof before === "object" && !Array.isArray(before) ? before : {};
+}
+
+function historyPartnerName(action: PartnerAdminHistoryItem): string {
+  const name = historySummary(action).name;
+  return typeof name === "string" && name ? name : action.targetId || "Unresolved Partner";
+}
+
+function historyOperationLabel(action: PartnerAdminHistoryItem): string {
+  if (action.operationKind === "partner.create") return "Created draft";
+  if (action.operationKind === "partner.patch") return "Updated Partner details";
+  if (action.operationKind === "partner.note_approval") {
+    return historySummary(action).noteAgentVisible
+      ? "Approved Partner Note visibility"
+      : "Removed Partner Note visibility";
+  }
+  if (action.operationKind === "partner.publish") return "Published Partner";
+  if (action.operationKind === "partner.unpublish") return "Unpublished Partner";
+  if (action.operationKind === "partner.delete") return "Deleted Partner";
+  return action.operationKind;
+}
+
+function historyChangeLabel(action: PartnerAdminHistoryItem): string {
+  const summary = historySummary(action);
+  const changedFields = Array.isArray(summary.changedFields)
+    ? summary.changedFields.filter(
+        (field): field is string =>
+          typeof field === "string" && field !== "created" && field !== "deleted",
+      )
+    : [];
+  if (changedFields.length) {
+    const labels = changedFields.map((field) => {
+      if (field === "partnerNote") return "Partner Note metadata";
+      if (field === "note_approval") return "Partner Note visibility";
+      return field.replaceAll("_", " ");
+    });
+    return `Changed: ${labels.join(", ")}`;
+  }
+  const details = [
+    typeof summary.type === "string" ? typeLabel(summary.type as PartnerRecord["type"]) : "",
+    summary.published === true ? "Published" : summary.published === false ? "Draft" : "",
+    summary.logoPresent === true ? "logo present" : "",
+    summary.urlPresent === true ? "URL present" : "",
+    summary.notePresent === true ? "Partner Note present" : "",
+  ].filter(Boolean);
+  return details.join(" · ");
+}
+
+function historyStatusLabel(status: PartnerAdminHistoryItem["status"]): string {
+  if (status === "applied") return "Applied";
+  if (status === "pending") return "Pending";
+  return "Failed";
+}
+
+function historyStatusClass(status: PartnerAdminHistoryItem["status"]): string {
+  if (status === "applied") return "badge-success";
+  if (status === "pending") return "badge-warning";
+  return "badge-error";
+}
+
+function historyTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function createOperationId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return `admin-ui-${Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function partnerLogoUrl(partner: PartnerAdminSnapshot): string {
@@ -107,6 +188,23 @@ export default function AdminPartnersHub() {
   const [deleteCandidateId, setDeleteCandidateId] = createSignal<string | null>(null);
   const [partnersError, setPartnersError] = createSignal<string | null>(null);
   const [formWarnings, setFormWarnings] = createSignal<string[]>([]);
+  const [operationIds, setOperationIds] = createSignal<Record<string, string>>({});
+  const [historyPartner, setHistoryPartner] = createSignal<Pick<PartnerAdminSnapshot, "id" | "name"> | null>(null);
+
+  onMount(() => {
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(PARTNER_OPERATION_IDS_STORAGE_KEY) || "null");
+      if (!stored || typeof stored !== "object" || Array.isArray(stored)) return;
+      const valid = Object.fromEntries(
+        Object.entries(stored).filter(
+          ([key, value]) => key.length <= 256 && typeof value === "string" && value.length <= 128,
+        ),
+      ) as Record<string, string>;
+      setOperationIds(valid);
+    } catch {
+      sessionStorage.removeItem(PARTNER_OPERATION_IDS_STORAGE_KEY);
+    }
+  });
 
   const [name, setName] = createSignal("");
   const [type, setType] = createSignal<PartnerRecord["type"]>("sponsor");
@@ -122,21 +220,81 @@ export default function AdminPartnersHub() {
     const res = await adminFetchPartners();
     if (!res.success) {
       setPartnersError(res.error || "Could not load partners.");
-      return [] as PartnerAdminListItem[];
+      return { partners: [] as PartnerAdminListItem[], history: [] as PartnerAdminHistoryItem[] };
     }
     setPartnersError(null);
     return res.data;
   });
-  const partners = () => (partnerReviews() || []).map((item) => item.partner);
+  const partnerReviewItems = () => partnerReviews()?.partners || [];
+  const partnerHistory = () => partnerReviews()?.history || [];
+  const partners = () => partnerReviewItems().map((item) => item.partner);
   const reviewFor = (id: string) =>
-    (partnerReviews() || []).find((item) => item.partner.id === id);
+    partnerReviewItems().find((item) => item.partner.id === id);
+  const [selectedPartnerHistory, { refetch: refetchSelectedHistory }] = createResource(
+    () => historyPartner()?.id,
+    async (targetId) => {
+      const result = await adminFetchPartnerHistory(targetId);
+      if (!result.success) {
+        showToast("error", result.error || "Could not load Partner history.");
+        return [] as PartnerAdminHistoryItem[];
+      }
+      return result.data;
+    },
+  );
+  const displayedHistory = () =>
+    historyPartner() ? selectedPartnerHistory() || [] : partnerHistory();
+  const displayedHistoryLimit = () => (historyPartner() ? 100 : 20);
+
+  const refreshPartnerData = async () => {
+    await refetch();
+    if (historyPartner()) await refetchSelectedHistory();
+  };
+
+  const updateOperationIds = (
+    update: (current: Record<string, string>) => Record<string, string>,
+  ) => {
+    setOperationIds((current) => {
+      const next = update(current);
+      try {
+        sessionStorage.setItem(PARTNER_OPERATION_IDS_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // The in-memory identity still keeps same-page retries safe when storage is unavailable.
+      }
+      return next;
+    });
+  };
+
+  const operationId = (key: string) => {
+    const existing = operationIds()[key];
+    if (existing) return existing;
+    const created = createOperationId();
+    updateOperationIds((current) => ({ ...current, [key]: created }));
+    return created;
+  };
+
+  const clearOperationId = (key: string) => {
+    updateOperationIds((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const clearRejectedOperation = (key: string, code: string) => {
+    if (!["infrastructure", "operation_failed", "operation_pending"].includes(code)) {
+      clearOperationId(key);
+    }
+  };
 
   const resetFileInput = () => {
     const input = document.getElementById("partner-logo") as HTMLInputElement | null;
     if (input) input.value = "";
   };
 
-  const resetForm = () => {
+  const resetForm = (clearOperation = true) => {
+    if (clearOperation) {
+      clearOperationId(editingId() ? `partner.patch:${editingId()}` : "partner.create");
+    }
     setEditingId(null);
     setName("");
     setType("sponsor");
@@ -152,7 +310,7 @@ export default function AdminPartnersHub() {
   };
 
   const openNewPartner = () => {
-    resetForm();
+    resetForm(false);
     setShowForm(true);
   };
 
@@ -185,43 +343,56 @@ export default function AdminPartnersHub() {
 
   const submit = async (e: Event) => {
     e.preventDefault();
+    const submitted = {
+      id: editingId(),
+      original: editingOriginal(),
+      name: name(),
+      type: type(),
+      tier: tier(),
+      url: url(),
+      notes: notes(),
+      logo: logo(),
+      removeLogo: removeLogo(),
+    };
+    const operationKey = submitted.id ? `partner.patch:${submitted.id}` : "partner.create";
     setSaving(true);
     try {
-      const logoPayload = await readLogoPayload(logo());
-      const id = editingId();
+      const logoPayload = await readLogoPayload(submitted.logo);
+      const id = submitted.id;
       let res;
       if (id) {
-        const original = editingOriginal();
+        const original = submitted.original;
         if (!original) throw new Error("Reload this Partner before editing it.");
         const patch: PartnerPatch = {};
-        if (name().trim() !== original.name) patch.name = name();
-        if (type() !== original.type) patch.type = type();
-        if ((tier() || undefined) !== original.tier) patch.tier = tier() || null;
-        if ((url().trim() || undefined) !== original.url) patch.url = url().trim() || null;
-        if ((notes().trim() || undefined) !== original.notes) patch.notes = notes().trim() || null;
+        if (submitted.name.trim() !== original.name) patch.name = submitted.name;
+        if (submitted.type !== original.type) patch.type = submitted.type;
+        if ((submitted.tier || undefined) !== original.tier) patch.tier = submitted.tier || null;
+        if ((submitted.url.trim() || undefined) !== original.url) patch.url = submitted.url.trim() || null;
+        if ((submitted.notes.trim() || undefined) !== original.notes) patch.notes = submitted.notes.trim() || null;
         if (logoPayload) patch.logo = logoPayload;
-        else if (removeLogo()) patch.logo = null;
+        else if (submitted.removeLogo) patch.logo = null;
         if (Object.keys(patch).length === 0) {
           showToast("error", "No Partner changes to save.");
           return;
         }
-        res = await adminUpdatePartner(id, original.version, patch);
+        res = await adminUpdatePartner(operationId(operationKey), id, original.version, patch);
       } else {
         const payload: PartnerDraftInput = {
-          name: name(),
-          type: type(),
-          tier: tier(),
-          url: url(),
-          notes: notes(),
+          name: submitted.name,
+          type: submitted.type,
+          tier: submitted.tier,
+          url: submitted.url,
+          notes: submitted.notes,
           logo: logoPayload,
         };
-        res = await adminCreatePartner(payload);
+        res = await adminCreatePartner(operationId(operationKey), payload);
       }
       if (!res.success) {
         if (res.code === "stale" && "current" in res) {
           loadPartner(res.current);
-          await refetch();
+          await refreshPartnerData();
         }
+        clearRejectedOperation(operationKey, res.code);
         showToast("error", res.error || "Could not save partner.");
         return;
       }
@@ -229,12 +400,13 @@ export default function AdminPartnersHub() {
       showToast(
         "success",
         id
-          ? `"${name().trim()}" updated.`
-          : `"${name().trim()}" created as draft${warnings.length ? ` with ${warnings.length} duplicate warning${warnings.length === 1 ? "" : "s"}` : ""}.`,
+          ? `"${submitted.name.trim()}" updated.`
+          : `"${submitted.name.trim()}" created as draft${warnings.length ? ` with ${warnings.length} duplicate warning${warnings.length === 1 ? "" : "s"}` : ""}.`,
       );
+      clearOperationId(operationKey);
       resetForm();
       setFormWarnings(warnings);
-      await refetch();
+      await refreshPartnerData();
     } catch (err) {
       showToast("error", err instanceof Error ? err.message : "Could not save partner.");
     } finally {
@@ -245,37 +417,63 @@ export default function AdminPartnersHub() {
   const togglePublished = async (partner: PartnerAdminSnapshot) => {
     setBusyId(partner.id);
     const nextPublished = !partner.published;
-    const res = await adminSetPartnerPublished(partner.id, partner.version, nextPublished);
-    if (!res.success) {
-      if (res.code === "stale") await refetch();
-      showToast("error", res.error || "Could not update published state.");
-    } else {
-      showToast(
-        "success",
-        nextPublished ? `"${partner.name}" is now published.` : `"${partner.name}" is now a draft.`,
+    const operationKey = `partner.${nextPublished ? "publish" : "unpublish"}:${partner.id}`;
+    try {
+      const res = await adminSetPartnerPublished(
+        operationId(operationKey),
+        partner.id,
+        partner.version,
+        nextPublished,
       );
-      await refetch();
+      if (!res.success) {
+        if (res.code === "stale") await refreshPartnerData();
+        clearRejectedOperation(operationKey, res.code);
+        showToast("error", res.error || "Could not update published state.");
+      } else {
+        clearOperationId(operationKey);
+        showToast(
+          "success",
+          nextPublished ? `"${partner.name}" is now published.` : `"${partner.name}" is now a draft.`,
+        );
+        await refreshPartnerData();
+      }
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Could not update published state.");
+    } finally {
+      setBusyId(null);
     }
-    setBusyId(null);
   };
 
   const toggleNoteApproval = async (partner: PartnerAdminSnapshot) => {
     setBusyId(partner.id);
     const approved = !partner.noteAgentVisible;
-    const res = await adminSetPartnerNoteApproval(partner.id, partner.version, approved);
-    if (!res.success) {
-      if (res.code === "stale") await refetch();
-      showToast("error", res.error || "Could not update Partner Note approval.");
-    } else {
-      showToast(
-        "success",
-        approved
-          ? `"${partner.name}" Partner Note approved for agent visibility.`
-          : `"${partner.name}" Partner Note approval removed.`,
+    const operationKey = `partner.note_approval:${approved ? "approve" : "revoke"}:${partner.id}`;
+    try {
+      const res = await adminSetPartnerNoteApproval(
+        operationId(operationKey),
+        partner.id,
+        partner.version,
+        approved,
       );
-      await refetch();
+      if (!res.success) {
+        if (res.code === "stale") await refreshPartnerData();
+        clearRejectedOperation(operationKey, res.code);
+        showToast("error", res.error || "Could not update Partner Note approval.");
+      } else {
+        clearOperationId(operationKey);
+        showToast(
+          "success",
+          approved
+            ? `"${partner.name}" Partner Note approved for agent visibility.`
+            : `"${partner.name}" Partner Note approval removed.`,
+        );
+        await refreshPartnerData();
+      }
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Could not update Partner Note approval.");
+    } finally {
+      setBusyId(null);
     }
-    setBusyId(null);
   };
 
   const deletePartner = async (partner: PartnerAdminSnapshot) => {
@@ -284,16 +482,29 @@ export default function AdminPartnersHub() {
       return;
     }
     setBusyId(partner.id);
-    const res = await adminDeletePartner(partner.id, partner.version);
-    if (!res.success) {
-      if (res.code === "stale") await refetch();
-      showToast("error", res.error || "Could not delete partner.");
-    } else {
-      showToast("success", `"${partner.name}" deleted.`);
-      setDeleteCandidateId(null);
-      await refetch();
+    const operationKey = `partner.delete:${partner.id}`;
+    try {
+      const res = await adminDeletePartner(
+        operationId(operationKey),
+        partner.id,
+        partner.version,
+      );
+      if (!res.success) {
+        if (res.code === "stale") await refreshPartnerData();
+        clearRejectedOperation(operationKey, res.code);
+        showToast("error", res.error || "Could not delete partner.");
+      } else {
+        clearOperationId(operationKey);
+        showToast("success", `"${partner.name}" deleted.`);
+        setDeleteCandidateId(null);
+        if (historyPartner()?.id === partner.id) setHistoryPartner(null);
+        await refreshPartnerData();
+      }
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Could not delete partner.");
+    } finally {
+      setBusyId(null);
     }
-    setBusyId(null);
   };
 
   const renderPartnerActions = (partner: PartnerAdminSnapshot) => {
@@ -310,7 +521,7 @@ export default function AdminPartnersHub() {
       <button
         type="button"
         class={`btn btn-xs max-md:min-h-12 max-md:px-3 font-mono ${partner.published ? "btn-ghost" : "btn-primary"}`}
-        disabled={busyId() === partner.id}
+        disabled={saving() || busyId() === partner.id}
         onClick={() => togglePublished(partner)}
       >
         {partner.published ? "Unpublish" : "Publish"}
@@ -318,16 +529,24 @@ export default function AdminPartnersHub() {
       <button
         type="button"
         class="btn btn-xs btn-ghost max-md:min-h-12 max-md:px-3 font-mono"
-        disabled={busyId() === partner.id}
+        disabled={saving() || busyId() === partner.id}
         onClick={() => loadPartner(partner)}
       >
         Edit
+      </button>
+      <button
+        type="button"
+        class="btn btn-xs btn-ghost max-md:min-h-12 max-md:px-3 font-mono"
+        aria-label={`Show history for ${partner.name}`}
+        onClick={() => setHistoryPartner({ id: partner.id, name: partner.name })}
+      >
+        History
       </button>
       <Show when={partner.notes}>
         <button
           type="button"
           class={`btn btn-xs max-md:min-h-12 max-md:px-3 font-mono ${partner.noteAgentVisible ? "btn-success btn-outline" : "btn-ghost"}`}
-          disabled={busyId() === partner.id}
+          disabled={saving() || busyId() === partner.id}
           aria-pressed={partner.noteAgentVisible}
           onClick={() => toggleNoteApproval(partner)}
         >
@@ -337,7 +556,7 @@ export default function AdminPartnersHub() {
       <button
         type="button"
         class={`btn btn-xs max-md:min-h-12 max-md:px-3 font-mono ${deleteCandidateId() === partner.id ? "btn-error" : "btn-ghost text-error"}`}
-        disabled={busyId() === partner.id}
+        disabled={saving() || busyId() === partner.id}
         onClick={() => deletePartner(partner)}
       >
         {deleteCandidateId() === partner.id ? "Confirm delete" : "Delete"}
@@ -441,6 +660,7 @@ export default function AdminPartnersHub() {
               </div>
             </div>
 
+            <fieldset disabled={saving()} class="contents">
             <div class="space-y-6">
               <AdminFormSection
                 title="Public identity"
@@ -653,13 +873,14 @@ export default function AdminPartnersHub() {
                 </div>
               </AdminFormSection>
             </div>
+            </fieldset>
 
             <div class="mt-6 border-t border-white/10 pt-5 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
               <p class="text-xs text-base-content/45 font-mono">
                 New records always stay drafts until a separate publication action succeeds.
               </p>
               <div class="flex flex-wrap gap-2 sm:justify-end">
-                <button type="button" class="btn btn-ghost font-mono" onClick={resetForm}>
+                <button type="button" class="btn btn-ghost font-mono" disabled={saving()} onClick={() => resetForm()}>
                   Cancel
                 </button>
                 <button type="submit" class="btn btn-primary font-mono" disabled={saving()}>
@@ -828,6 +1049,102 @@ export default function AdminPartnersHub() {
           </div>
         </AdminDataPanel>
       </Show>
+
+      <section class="mt-8" aria-labelledby="partner-history-title">
+        <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 id="partner-history-title" class="text-lg font-bold text-white">
+              <Show when={historyPartner()} fallback="Partner history">
+                {(partner) => `Partner history: ${partner().name}`}
+              </Show>
+            </h2>
+            <p class="mt-1 text-xs font-mono text-base-content/55">
+              Durable admin operations. Partner Note content is never copied into this history.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <Show when={historyPartner()}>
+              <button
+                type="button"
+                class="btn btn-xs btn-ghost font-mono"
+                onClick={() => setHistoryPartner(null)}
+              >
+                Show all recent history
+              </button>
+            </Show>
+            <Show when={displayedHistory().some((action) => action.status !== "applied")}>
+              <span class="badge badge-warning badge-outline font-mono">
+                {displayedHistory().filter((action) => action.status !== "applied").length} unresolved
+              </span>
+            </Show>
+          </div>
+        </div>
+        <AdminDataPanel>
+          <Show
+            when={displayedHistory().length > 0}
+            fallback={
+              <p class="px-5 py-6 text-sm font-mono text-base-content/55">
+                No audited Partner operations yet.
+              </p>
+            }
+          >
+            <details
+              class="group"
+              open={displayedHistory().some((action) => action.status !== "applied")}
+            >
+              <summary class="cursor-pointer list-none px-5 py-4 font-mono text-sm text-base-content/75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                <span class="inline-flex items-center gap-2">
+                  <Icon icon="ph:clock-counter-clockwise-bold" aria-hidden="true" />
+                  Show {Math.min(displayedHistory().length, displayedHistoryLimit())} operation
+                  <Show when={displayedHistory().length !== 1}>s</Show>
+                </span>
+              </summary>
+              <ol class="divide-y divide-white/10 border-t border-white/10">
+                <For each={displayedHistory().slice(0, displayedHistoryLimit())}>
+                  {(action) => (
+                    <li class="grid gap-3 px-5 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+                      <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <span class={`badge badge-sm font-mono ${historyStatusClass(action.status)}`}>
+                            {historyStatusLabel(action.status)}
+                          </span>
+                          <strong class="text-sm text-white">{historyOperationLabel(action)}</strong>
+                          <span class="truncate text-sm text-base-content/70">
+                            {historyPartnerName(action)}
+                          </span>
+                        </div>
+                        <Show when={action.failure}>
+                          {(failure) => (
+                            <p class="mt-2 text-xs font-mono text-error" role="status">
+                              {failure().message} ({failure().code})
+                            </p>
+                          )}
+                        </Show>
+                        <Show when={historyChangeLabel(action)}>
+                          <p class="mt-2 text-xs font-mono text-base-content/60">
+                            {historyChangeLabel(action)}
+                          </p>
+                        </Show>
+                        <p class="mt-2 break-all text-[0.7rem] font-mono text-base-content/45">
+                          <Show when={action.source === "admin_ui"} fallback="MCP">Admin UI</Show>
+                          {" · User "}{action.actorUserId}{" · Operation "}{action.operationId}
+                          <Show when={action.attemptCount > 1}> · Attempt {action.attemptCount}</Show>
+                        </p>
+                      </div>
+                      <time
+                        datetime={action.updatedAt}
+                        class="whitespace-nowrap text-xs font-mono text-base-content/50"
+                      >
+                        {historyTime(action.updatedAt)}
+                      </time>
+                    </li>
+                  )}
+                </For>
+              </ol>
+            </details>
+          </Show>
+        </AdminDataPanel>
+      </section>
     </AdminPageShell>
   );
 }

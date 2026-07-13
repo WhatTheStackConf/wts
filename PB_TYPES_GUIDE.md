@@ -26,6 +26,11 @@ This project uses manually defined TypeScript types for PocketBase collections t
 - Location: `McpTokenRecord` interface in `src/lib/pocketbase-types.ts`
 - Fields: `name`, `token_id`, `token_prefix`, `secret_hash`, `scopes`, `created_by`, `expires_at`, `revoked_at`, `revoked_by`, `last_used_at`
 
+### Admin Actions Collection
+- Location: `AdminActionRecord` interface in `src/lib/pocketbase-types.ts`
+- Fields: actor User, optional MCP token, source, operation/target identity, input fingerprint, `pending`/`applied`/`failed` status, bounded summaries and replay result, safe failure metadata, attempt lease, and timestamps
+- API rules are private; ordinary clients cannot directly create, alter, or delete Admin Actions
+
 ## How to Update Types When Schema Changes
 
 When you modify the PocketBase schema (add, remove, or modify fields), you need to update the corresponding TypeScript interfaces in `src/lib/pocketbase-types.ts`. Here's the process:
