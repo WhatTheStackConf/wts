@@ -9,6 +9,11 @@ import {
 } from "solid-js";
 import Logo from "../assets/images/LogoSolo.svg?component-solid";
 import { HologramButton } from "./HologramButton";
+import {
+  conferenceLocation,
+  conferenceLongDate,
+  conferenceTicketPrice,
+} from "~/lib/conference-guide-content";
 
 // --- Sub-components ---
 
@@ -271,7 +276,7 @@ export const Hero = () => {
       <div class="grid lg:grid-cols-2 gap-10 items-center px-3 md:px-0">
         <div class="fade-in relative z-30">
           <div class="inline-block font-bold px-3 py-1 bg-dark-800/50 border-l-2 border-secondary-500 text-[16px] tracking-[2px] mb-8 text-secondary-200">
-            19TH SEPTEMBER 2026 // SKOPJE, MK
+            {conferenceLongDate.toUpperCase()} // {conferenceLocation.toUpperCase()}
           </div>
 
           <div class="flex gap-2">
@@ -316,7 +321,7 @@ export const Hero = () => {
                 Entry
               </span>
               <span class="text-2xl sm:text-3xl xl:text-4xl font-bold text-secondary-300">
-                <span class="font-sans">€</span>50
+                {conferenceTicketPrice("regular")}
               </span>
             </div>
           </div>

@@ -2,6 +2,12 @@ import * as runtime from "solid-jsx";
 import { runSync } from "@mdx-js/mdx";
 import { Dynamic } from "solid-js/web";
 import { createMemo, JSX, splitProps } from "solid-js";
+import {
+  conferenceGuideContent,
+  conferenceLocation,
+  conferenceLongDate,
+  conferenceTicketPrice,
+} from "~/lib/conference-guide-content";
 
 interface MDXProps {
   code: string;
@@ -23,6 +29,18 @@ const MdxLink = (props: any) => {
   return <a href={href} {...others} />;
 };
 
+const conferenceComponents = {
+  ConferenceDate: () => conferenceLongDate,
+  ConferenceLocation: () => conferenceLocation,
+  RegularTicketPrice: () => conferenceTicketPrice("regular"),
+  StudentTicketPrice: () => conferenceTicketPrice("student"),
+  GeneralContactEmail: () => (
+    <a href={`mailto:${conferenceGuideContent.contact.generalEmail}`}>
+      {conferenceGuideContent.contact.generalEmail}
+    </a>
+  ),
+};
+
 /** Shared with blog-style article surfaces (e.g. speaker bio). */
 export const proseArticleClasses =
   "prose prose-invert prose-lg md:prose-2xl max-w-none prose-strong:text-secondary-400 prose-headings:font-star prose-headings:text-secondary-400 prose-a:text-primary-400 prose-a:no-underline hover:prose-a:text-primary-300 prose-img:mx-auto prose-img:rounded-xl prose-img:border-2 prose-img:border-primary-500/40 prose-img:shadow-lg prose-img:shadow-primary-500/10";
@@ -39,7 +57,10 @@ export const MDXContent = (props: MDXProps): JSX.Element => {
   return (
     <div class={proseArticleClasses}>
       {/* @ts-ignore */}
-      <Dynamic component={Content()} components={{ a: MdxLink, ...(props.components || {}) }} />
+      <Dynamic
+        component={Content()}
+        components={{ a: MdxLink, ...conferenceComponents, ...(props.components || {}) }}
+      />
     </div>
   );
 };

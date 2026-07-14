@@ -1,5 +1,9 @@
 import satori from "satori";
 import sharp from "sharp";
+import {
+  conferenceDefaultOgSubtitle,
+  conferenceName,
+} from "~/lib/conference-guide-content";
 let fontRegular: ArrayBuffer | null = null;
 let fontStar: ArrayBuffer | null = null;
 let logoPngDataUri: string | null = null;
@@ -39,9 +43,9 @@ async function ensureAssets(origin: string) {
 
 export async function GET({ request }: { request: Request }) {
   const url = new URL(request.url);
-  const title = url.searchParams.get("title") || "WhatTheStack 2026";
+  const title = url.searchParams.get("title") || conferenceName;
   const subtitle =
-    url.searchParams.get("subtitle") || "September 19th // Skopje, MK";
+    url.searchParams.get("subtitle") || conferenceDefaultOgSubtitle;
 
   await ensureAssets(url.origin);
 

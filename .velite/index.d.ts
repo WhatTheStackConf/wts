@@ -4,6 +4,9 @@ import type __vc from '../velite.config.ts'
 
 type Collections = typeof __vc.collections
 
+export type ConferenceGuide = Collections['conferenceGuide']['schema']['_output']
+export declare const conferenceGuide: ConferenceGuide
+
 export type Page = Collections['pages']['schema']['_output']
 export declare const pages: Page[]
 

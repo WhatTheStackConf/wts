@@ -1,8 +1,10 @@
 import { createResource, For, Show } from "solid-js";
 import { Layout } from "~/layouts/Layout";
 import { fetchPublicAgenda, type PublicAgendaSlot } from "~/lib/speakers-public";
+import { conferenceLocation } from "~/lib/conference-guide-content";
+import { SCHEDULE_TIME_ZONE } from "~/lib/programme";
 
-const TIME_ZONE = "Europe/Skopje";
+const TIME_ZONE = SCHEDULE_TIME_ZONE;
 
 function formatDay(localDate: string): string {
   return new Date(`${localDate}T12:00:00.000Z`).toLocaleDateString("en-US", {
@@ -61,7 +63,7 @@ export default function Agenda() {
             <p class="speaker-kicker mb-3">WhatTheStack 2026</p>
             <h1 class="font-star text-4xl font-bold text-secondary-300 md:text-6xl">Agenda</h1>
             <p class="mt-4 font-mono text-sm leading-relaxed text-secondary-200/75">
-              All times are local to Skopje, North Macedonia.
+              All times are local to {conferenceLocation}.
             </p>
           </header>
 

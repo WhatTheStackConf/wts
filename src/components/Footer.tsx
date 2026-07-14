@@ -12,7 +12,7 @@ export const Footer = () => {
           <header class="footer-title text-primary-400 opacity-100 font-star tracking-widest text-lg">
             Social
           </header>
-          <div class="grid grid-flow-col gap-4">
+          <div class="flex flex-wrap gap-2 sm:gap-4">
             <a
               href="https://x.com/what_the_stack"
               target="_blank"
@@ -138,6 +138,12 @@ export const Footer = () => {
             class="link link-hover hover:text-primary-400 transition-colors"
           >
             Sponsors & Partners
+          </a>
+          <a
+            href="/mcp"
+            class="link link-hover hover:text-primary-400 transition-colors"
+          >
+            MCP Conference Guide
           </a>
           <a
             href="/terms"

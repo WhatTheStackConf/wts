@@ -3,6 +3,7 @@ import { Layout } from "../layouts/Layout";
 import { fetchHiEventsReleases, HiEventsRelease } from "../lib/hievents";
 import { createResource, Show, For } from "solid-js";
 import { HologramButton } from "../components/HologramButton";
+import { conferenceGuideContent } from "~/lib/conference-guide-content";
 
 // Define the fetch function for releases API
 const fetchReleases = async (): Promise<HiEventsRelease[]> => {
@@ -15,15 +16,15 @@ const fetchReleases = async (): Promise<HiEventsRelease[]> => {
     title: "Student Ticket",
     description:
       "Discounted entry for students. Requires valid student ID card verification.",
-    price: 20,
-    currency: "EUR",
+    price: conferenceGuideContent.tickets.student.amount,
+    currency: conferenceGuideContent.tickets.student.currency,
     is_available: true,
     sales_start_date: null,
     sales_end_date: null,
     quantity_sold: 0,
     quantity_available: null,
     purchase_link:
-      "mailto:students@wts.sh?subject=Student%20Ticket%20Verification&body=Hello%2C%0A%0AI%20would%20like%20to%20apply%20for%20a%20student%20ticket%20for%20WhatTheStack%202026.%0A%0AMy%20details%3A%0AName%3A%20%5BYOUR%20NAME%5D%0AUniversity%2FInstitution%3A%20%5BYOUR%20INSTITUTION%5D",
+      `mailto:${conferenceGuideContent.tickets.student.verificationEmail}?subject=Student%20Ticket%20Verification&body=Hello%2C%0A%0AI%20would%20like%20to%20apply%20for%20a%20student%20ticket%20for%20WhatTheStack%202026.%0A%0AMy%20details%3A%0AName%3A%20%5BYOUR%20NAME%5D%0AUniversity%2FInstitution%3A%20%5BYOUR%20INSTITUTION%5D`,
   };
 
   // Combine properly - put student ticket last effectively
@@ -185,9 +186,9 @@ export default function Tickets() {
                       well. Send an email to{" "}
                       <a
                         class="text-primary-200 hover:text-primary-100"
-                        href="mailto:what@wts.sh"
+                        href={`mailto:${conferenceGuideContent.contact.generalEmail}`}
                       >
-                        what@wts.sh
+                        {conferenceGuideContent.contact.generalEmail}
                       </a>{" "}
                       for more information.
                     </p>

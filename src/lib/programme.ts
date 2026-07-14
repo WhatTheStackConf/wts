@@ -1,4 +1,6 @@
-export const SCHEDULE_TIME_ZONE = "Europe/Skopje";
+import { conferenceTimeZone } from "~/lib/conference-guide-content";
+
+export const SCHEDULE_TIME_ZONE = conferenceTimeZone;
 
 export const AGENDA_SLOT_KINDS = [
   "session",

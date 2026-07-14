@@ -1,6 +1,13 @@
 import { Layout } from "../layouts/Layout";
 import { For } from "solid-js";
 import { HologramButton } from "../components/HologramButton";
+import {
+  conferenceGuideContent,
+  conferenceLocation,
+  conferenceLongDate,
+  conferenceTicketPrice,
+} from "~/lib/conference-guide-content";
+import { sanitizeHtml } from "~/lib/sanitize-html";
 
 type FAQItem = {
   question: string;
@@ -18,7 +25,7 @@ const faqSections: FAQSection[] = [
     items: [
       {
         question: "When and where is the conference taking place?",
-        answer: `WhatTheStack 2026 will be held on <strong>September 19th</strong> in <strong>Skopje, Macedonia</strong>. The venue will be announced soon &mdash; stay tuned! Workshops and pre-conference events will be held at the <strong>Base42 Hackerspace</strong> (Rimska 25, 1000 Skopje).`,
+        answer: `WhatTheStack 2026 will be held on <strong>${conferenceLongDate}</strong> in <strong>${conferenceLocation}</strong>. The main venue has not been announced yet. Workshops and pre-conference events will be held at <strong>${conferenceGuideContent.preConferenceVenue.name}</strong> (${conferenceGuideContent.preConferenceVenue.address}).`,
       },
       {
         question: "What can I expect at WhatTheStack?",
@@ -32,7 +39,7 @@ const faqSections: FAQSection[] = [
       },
       {
         question: "Do you have a Code of Conduct?",
-        answer: `Yes. We follow the <a href="https://citizencodeofconduct.org/" target="_blank" rel="noopener noreferrer" class="text-primary-400 hover:text-primary-300 underline">Citizen Code of Conduct</a>. We're committed to providing a safe and inclusive environment for everyone. Any breach will be taken seriously and may result in being asked to leave the event.`,
+        answer: `Yes. Read our <a href="${conferenceGuideContent.codeOfConduct.canonicalPath}" class="text-primary-400 hover:text-primary-300 underline">Code of Conduct</a>. We're committed to providing a safe and inclusive environment for everyone. Any breach will be taken seriously and may result in being asked to leave the event.`,
       },
       {
         question: "Can I apply to speak?",
@@ -56,7 +63,7 @@ const faqSections: FAQSection[] = [
         question: "Do you offer any discounts?",
         answer: `We keep our pricing flat and affordable from start to finish &mdash; no early bird games. That said, we do offer a few options:<br/><br/>
           <ul class="list-disc list-inside space-y-1">
-            <li><strong>Student Discount</strong> &mdash; 50% off with valid student ID</li>
+            <li><strong>Student Ticket</strong> &mdash; ${conferenceTicketPrice("student")} with valid student ID</li>
             <li><strong>Group Discount</strong> &mdash; 5-20% off for groups of 5+ attendees</li>
             <li><strong>Community Partner Discount</strong> &mdash; available through our partner communities</li>
           </ul>
@@ -65,13 +72,11 @@ const faqSections: FAQSection[] = [
       },
       {
         question: "Can I transfer, refund, or cancel my ticket?",
-        answer:
-          "You can transfer your ticket to another person at any time. Refunds are possible in exceptional cases. Contact us at <a href='mailto:what@wts.sh' class='text-primary-400 hover:text-primary-300 underline'>what@wts.sh</a> and we'll work it out.",
+        answer: `You can transfer your ticket to another person at any time. Refunds are possible in exceptional cases. Contact us at <a href="mailto:${conferenceGuideContent.contact.generalEmail}" class="text-primary-400 hover:text-primary-300 underline">${conferenceGuideContent.contact.generalEmail}</a> and we'll work it out.`,
       },
       {
         question: "Are team discounts or payment via invoice available?",
-        answer:
-          "Yes! We offer volume discounts and can issue invoices for company purchases. Send us an email at <a href='mailto:what@wts.sh' class='text-primary-400 hover:text-primary-300 underline'>what@wts.sh</a> for details.",
+        answer: `Yes! We offer volume discounts and can issue invoices for company purchases. Send us an email at <a href="mailto:${conferenceGuideContent.contact.generalEmail}" class="text-primary-400 hover:text-primary-300 underline">${conferenceGuideContent.contact.generalEmail}</a> for details.`,
       },
     ],
   },
@@ -85,12 +90,12 @@ const faqSections: FAQSection[] = [
       {
         question: "Are there recommended hotels near the venue?",
         answer:
-          "We'll publish a list of recommended hotels with any available partner rates once the venue is announced. Skopje is very affordable compared to most European cities &mdash; expect great value for accommodation.",
+          "Recommended hotels and partner rates have not been announced. Skopje is very affordable compared to most European cities &mdash; expect great value for accommodation.",
       },
       {
         question: "Is the venue accessible?",
         answer:
-          "We'll share accessibility details once the venue is announced. If you have specific accessibility needs, please reach out to us at <a href='mailto:what@wts.sh' class='text-primary-400 hover:text-primary-300 underline'>what@wts.sh</a> and we'll do our best to accommodate you.",
+          `Accessibility details have not been announced. If you have specific accessibility needs, please reach out to us at <a href="mailto:${conferenceGuideContent.accessibility.contactEmail}" class="text-primary-400 hover:text-primary-300 underline">${conferenceGuideContent.accessibility.contactEmail}</a> and we'll do our best to accommodate you.`,
       },
       {
         question: "Do I need a visa?",
@@ -115,13 +120,11 @@ const faqSections: FAQSection[] = [
       },
       {
         question: "Can I become a sponsor or exhibitor?",
-        answer:
-          "Absolutely! We have several sponsorship tiers available. Check out our <a href='/partnerships' class='text-primary-400 hover:text-primary-300 underline'>partnerships page</a> or contact us at <a href='mailto:what@wts.sh' class='text-primary-400 hover:text-primary-300 underline'>what@wts.sh</a> for the sponsorship prospectus.",
+        answer: `Absolutely! We have several sponsorship tiers available. Check out our <a href="/partnerships" class="text-primary-400 hover:text-primary-300 underline">partnerships page</a> or contact us at <a href="mailto:${conferenceGuideContent.contact.generalEmail}" class="text-primary-400 hover:text-primary-300 underline">${conferenceGuideContent.contact.generalEmail}</a> for the sponsorship prospectus.`,
       },
       {
         question: "Who can I contact if I have additional questions?",
-        answer:
-          "Drop us an email at <a href='mailto:what@wts.sh' class='text-primary-400 hover:text-primary-300 underline'>what@wts.sh</a> &mdash; we usually reply within a day or two.",
+        answer: `Drop us an email at <a href="mailto:${conferenceGuideContent.contact.generalEmail}" class="text-primary-400 hover:text-primary-300 underline">${conferenceGuideContent.contact.generalEmail}</a> &mdash; we usually reply within a day or two.`,
       },
     ],
   },
@@ -163,7 +166,7 @@ export default function FAQ() {
                         </div>
                         <div
                           class="collapse-content text-secondary-100/90 leading-relaxed"
-                          innerHTML={item.answer}
+                          innerHTML={sanitizeHtml(item.answer)}
                         />
                       </div>
                     )}
@@ -177,10 +180,10 @@ export default function FAQ() {
             <p class="text-secondary-400">
               Still have questions? Reach out at{" "}
               <a
-                href="mailto:what@wts.sh"
+                href={`mailto:${conferenceGuideContent.contact.generalEmail}`}
                 class="text-primary-400 hover:text-primary-300 underline"
               >
-                what@wts.sh
+                {conferenceGuideContent.contact.generalEmail}
               </a>
             </p>
             <HologramButton

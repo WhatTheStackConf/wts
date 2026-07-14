@@ -4,6 +4,7 @@ import { MDXContent } from "~/components/MDXContent";
 import { pages } from ".velite";
 import { createMemo } from "solid-js";
 import { HologramButton } from "~/components/HologramButton";
+import { conferenceShortDate } from "~/lib/conference-guide-content";
 
 export default function About() {
   const page = createMemo(() => pages.find(p => p.slug === "about"));
@@ -65,7 +66,7 @@ export default function About() {
               <br />
               Will that help? :D <br />
               <span class="text-xl font-bold text-white mt-2 block">
-                Cool? Cool. See you on September 19th 🍻
+                Cool? Cool. See you on {conferenceShortDate} 🍻
               </span>
             </p>
 

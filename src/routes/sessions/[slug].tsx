@@ -5,11 +5,12 @@ import { fetchSessionBySlug } from "~/lib/speakers-public";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
 import { proseArticleClasses } from "~/components/MDXContent";
 import { sanitizeHtml } from "~/lib/sanitize-html";
+import { SCHEDULE_TIME_ZONE } from "~/lib/programme";
 import NotFound from "../[...404]";
 
 function formatScheduleDate(iso: string) {
   return new Date(iso).toLocaleString("en-US", {
-    timeZone: "Europe/Skopje",
+    timeZone: SCHEDULE_TIME_ZONE,
     weekday: "short",
     month: "long",
     day: "numeric",
@@ -20,7 +21,7 @@ function formatScheduleDate(iso: string) {
 
 function formatScheduleEnd(iso: string) {
   return new Date(iso).toLocaleTimeString("en-US", {
-    timeZone: "Europe/Skopje",
+    timeZone: SCHEDULE_TIME_ZONE,
     hour: "numeric",
     minute: "2-digit",
   });

@@ -2,11 +2,15 @@ import { JSX } from "solid-js";
 import { Title, Meta, Link } from "@solidjs/meta";
 import CodeBackground from "~/components/CodeBackground";
 import { toAbsoluteUrl } from "~/lib/site-url";
+import {
+  conferenceDefaultDescription,
+  conferenceDefaultOgSubtitle,
+  conferenceName,
+} from "~/lib/conference-guide-content";
 
-const DEFAULT_TITLE = "WhatTheStack 2026";
-const DEFAULT_DESCRIPTION =
-  "All things software, all things code. September 19th, Skopje.";
-const DEFAULT_OG_SUBTITLE = "September 19th // Skopje, MK";
+const DEFAULT_TITLE = conferenceName;
+const DEFAULT_DESCRIPTION = conferenceDefaultDescription;
+const DEFAULT_OG_SUBTITLE = conferenceDefaultOgSubtitle;
 
 interface PromoLayoutProps {
   children: JSX.Element;

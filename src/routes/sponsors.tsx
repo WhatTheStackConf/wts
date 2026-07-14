@@ -5,6 +5,7 @@ import {
   PartnersShowcaseSkeleton,
 } from "~/components/conference/PartnersShowcase";
 import { fetchPublicPartnerGroups } from "~/lib/partners-public";
+import { conferenceGuideContent } from "~/lib/conference-guide-content";
 import { Layout } from "~/layouts/Layout";
 
 export default function Sponsors() {
@@ -22,8 +23,8 @@ export default function Sponsors() {
           </h1>
           <div class="flex flex-col sm:flex-row gap-3 sm:items-center fade-in-delay-1">
             <HologramButton href="/partnerships" text="Partner with us" class="px-7 py-3" />
-            <a href="mailto:what@wts.sh" class="link text-primary-200 font-black text-lg">
-              {`>`} what@wts.sh
+            <a href={`mailto:${conferenceGuideContent.contact.generalEmail}`} class="link text-primary-200 font-black text-lg">
+              {`>`} {conferenceGuideContent.contact.generalEmail}
             </a>
           </div>
         </header>

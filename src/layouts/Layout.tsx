@@ -4,6 +4,11 @@ import { Navbar } from "~/components/Navbar";
 import CodeBackground from "../components/CodeBackground";
 import { Footer } from "~/components/Footer";
 import { clientOnly } from "@solidjs/start";
+import {
+  conferenceDefaultDescription,
+  conferenceDefaultOgSubtitle,
+  conferenceName,
+} from "~/lib/conference-guide-content";
 
 const NewsletterPopup = clientOnly(
   () => import("~/components/NewsletterPopup"),
@@ -17,11 +22,10 @@ interface LayoutProps {
 }
 
 export const Layout = (props: LayoutProps) => {
-  const title = () => props.title || "WhatTheStack 2026";
+  const title = () => props.title || conferenceName;
   const description = () =>
-    props.description ||
-    "All things software, all things code. September 19th, Skopje.";
-  const ogSubtitle = () => props.ogSubtitle || "September 19th // Skopje, MK";
+    props.description || conferenceDefaultDescription;
+  const ogSubtitle = () => props.ogSubtitle || conferenceDefaultOgSubtitle;
 
   return (
     <>

@@ -11,6 +11,10 @@ import {
   type PublicSessionSchedule,
 } from "~/lib/programme-public";
 import type { AgendaSlotRecord, AgendaTrackRecord, ConferenceDayRecord, SpeakerRecord, SessionRecord } from "~/lib/pocketbase-types";
+import {
+  conferenceGuideContent,
+  conferenceShortDate,
+} from "~/lib/conference-guide-content";
 
 export { getPbFileUrl } from "~/lib/pocketbase-public-url";
 export type {
@@ -76,7 +80,7 @@ const DEFAULT_PROMO_STATUS = "will be there!";
 const DEFAULT_PROMO_CTA_LABEL = "See you there";
 const DEFAULT_PROMO_CTA_HREF = "/tickets";
 const DEFAULT_PROMO_FOOTER_TEXT = "Join us at ";
-const DEFAULT_PROMO_FOOTER_SUFFIX = " — September 19, Skopje";
+const DEFAULT_PROMO_FOOTER_SUFFIX = ` — ${conferenceShortDate}, ${conferenceGuideContent.event.location.city}`;
 const DEFAULT_PROMO_FOOTER_LINKS: PromoFooterLink[] = [
   { label: "wts.sh", href: "https://wts.sh", color: "#e879f9" },
 ];
@@ -185,6 +189,12 @@ export interface PublicSessionDetail {
   speakers: PublicSpeakerSummary[];
   /** Populated when related-sessions feature ships; empty at launch. */
   relatedSessions: PublicSessionCard[];
+}
+
+export interface PublicConferenceGuideProgramme {
+  agenda: PublicAgenda;
+  sessions: PublicSessionDetail[];
+  speakers: PublicSpeakerDetail[];
 }
 
 
@@ -387,6 +397,60 @@ export const fetchPublicAgenda = async (): Promise<PublicAgenda> => {
     slots as AgendaSlotRecord[],
     sessions as SessionRecord[],
   );
+};
+
+function scheduleFromPublicAgenda(
+  agenda: PublicAgenda,
+  sessionSlug: string,
+): PublicSessionSchedule | undefined {
+  for (const day of agenda.days) {
+    const slot = day.slots.find((item) => item.session?.slug === sessionSlug);
+    if (!slot) continue;
+    return {
+      dayDate: day.localDate,
+      dayTitle: day.title,
+      startAt: slot.startAt,
+      endAt: slot.endAt,
+      trackName: slot.track?.name,
+      locationLabel: slot.locationLabel,
+    };
+  }
+  return undefined;
+}
+
+/** Loads one allowlisted Published programme snapshot for Conference Guide composition. */
+export const fetchPublicConferenceGuideProgramme = async (): Promise<PublicConferenceGuideProgramme> => {
+  "use server";
+  const [speakerRows, rawSessionRows, agenda] = await Promise.all([
+    fetchPublishedSpeakersRows(),
+    fetchPublishedSessionsRows(),
+    fetchPublicAgenda(),
+  ]);
+  const sessionRows = rawSessionRows as Array<SessionRecord & {
+    expand?: { speakers?: SpeakerRow[] };
+  }>;
+
+  const sessions = sortByTitle(sessionRows.map((session) => ({
+    slug: session.slug,
+    title: session.title,
+    abstract: session.abstract,
+    format: session.format || undefined,
+    schedule: scheduleFromPublicAgenda(agenda, session.slug),
+    speakers: sortByDisplayName(
+      (session.expand?.speakers ?? [])
+        .filter((speaker) => speaker.published)
+        .map(mapSpeakerSummary),
+    ),
+    relatedSessions: [],
+  })));
+  const speakers = sortByDisplayName(
+    speakerRows.map((speaker) => mapSpeakerDetail(
+      speaker,
+      sessionsForSpeaker(rawSessionRows, speaker.id),
+    )),
+  );
+
+  return { agenda, sessions, speakers };
 };
 
 export const fetchHasPublishedSessions = async (): Promise<boolean> => {

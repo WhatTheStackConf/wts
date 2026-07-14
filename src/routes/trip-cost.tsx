@@ -1,6 +1,7 @@
 import { Layout } from "../layouts/Layout";
 import { createSignal, createMemo, For, Show } from "solid-js";
 import { HologramButton } from "../components/HologramButton";
+import { conferenceGuideContent } from "~/lib/conference-guide-content";
 
 type Option = {
   label: string;
@@ -9,8 +10,8 @@ type Option = {
 };
 
 const ticketOptions: Option[] = [
-  { label: "Regular", price: 50 },
-  { label: "Student", price: 20 },
+  { label: "Regular", price: conferenceGuideContent.tickets.regular.amount },
+  { label: "Student", price: conferenceGuideContent.tickets.student.amount },
 ];
 
 const travelOptions: Option[] = [
