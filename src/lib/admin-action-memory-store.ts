@@ -129,8 +129,9 @@ export function createInMemoryAdminActionStore(): AdminActionStore {
       return records
         .filter(
           (record) =>
-            record.targetCollection === query.targetCollection &&
+            (query.targetCollection === undefined || record.targetCollection === query.targetCollection) &&
             (query.targetId === undefined || record.targetId === query.targetId) &&
+            (!query.sources?.length || query.sources.includes(record.source)) &&
             (!query.statuses?.length || query.statuses.includes(record.status)),
         )
         .sort(

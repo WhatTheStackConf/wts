@@ -629,7 +629,10 @@ export interface McpTokenRecord extends RecordModel {
   expires_at?: string;
   revoked_at?: string;
   revoked_by?: string;
+  revocation_reason?: string;
   last_used_at?: string;
+  created: string;
+  updated: string;
 }
 
 // CFP Review collection type

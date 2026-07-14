@@ -97,8 +97,9 @@ export interface AdminActionFailure {
 }
 
 export interface AdminActionListQuery {
-  targetCollection: string;
+  targetCollection?: string;
   targetId?: string;
+  sources?: AdminActionSource[];
   statuses?: AdminActionStatus[];
   limit?: number;
 }
@@ -116,8 +117,8 @@ export interface AdminActionStore {
     failure: AdminActionFailure,
     now: string,
   ): Promise<AdminActionRecord>;
-  list(query: Required<Pick<AdminActionListQuery, "targetCollection" | "limit">> &
-    Omit<AdminActionListQuery, "targetCollection" | "limit">): Promise<AdminActionRecord[]>;
+  list(query: Required<Pick<AdminActionListQuery, "limit">> &
+    Omit<AdminActionListQuery, "limit">): Promise<AdminActionRecord[]>;
 }
 
 export type AdminActionStartResult =
@@ -187,6 +188,12 @@ function assertRequest(request: AdminActionRequest): void {
   assertIdentifier(request.targetCollection, "Admin Action target collection");
   assertIdentifier(request.targetId, "Admin Action target ID");
   assertIdentifier(request.operationId, "Admin Action operation ID");
+  if (
+    /wts_mcp_[a-f0-9]{24}_[a-z0-9_-]{20,}/i.test(request.operationId) ||
+    /(^|[^a-f0-9])[a-f0-9]{64}([^a-f0-9]|$)/i.test(request.operationId)
+  ) {
+    throw new Error("Admin Action operation ID cannot contain credential or hash material.");
+  }
   if (request.source !== "admin_ui" && request.source !== "mcp") {
     throw new Error("Admin Action source must be admin_ui or mcp.");
   }

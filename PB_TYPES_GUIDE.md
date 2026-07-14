@@ -24,7 +24,8 @@ This project uses manually defined TypeScript types for PocketBase collections t
 
 ### MCP Tokens Collection
 - Location: `McpTokenRecord` interface in `src/lib/pocketbase-types.ts`
-- Fields: `name`, `token_id`, `token_prefix`, `secret_hash`, `scopes`, `created_by`, `expires_at`, `revoked_at`, `revoked_by`, `last_used_at`
+- Fields: `name`, `token_id`, `token_prefix`, `secret_hash`, `scopes`, `created_by`, `expires_at`, `revoked_at`, `revoked_by`, `revocation_reason`, `last_used_at`, `created`, `updated`
+- API rules are private; current admins use safe server DTOs and audited mutation routes rather than reading credential hashes directly
 
 ### Admin Actions Collection
 - Location: `AdminActionRecord` interface in `src/lib/pocketbase-types.ts`

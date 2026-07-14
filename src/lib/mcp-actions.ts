@@ -1,59 +1,36 @@
 import { requireAdmin } from "~/lib/server-auth";
-import { getAdminPB } from "~/lib/pocketbase-admin-service";
-import type { McpTokenRecord } from "~/lib/pocketbase-types";
-import { createMcpTokenMaterial } from "~/lib/mcp-token-utils";
-import { MCP_SCOPES, type McpScope, normalizeMcpScopes } from "~/lib/mcp-auth";
-import { normalizeNewMcpTokenExpiry } from "~/lib/mcp-token-policy";
+import { AdminActions } from "~/lib/admin-action-ledger";
+import { createPocketBaseAdminActionStore } from "~/lib/admin-action-store";
+import {
+  McpTokenAdministration,
+  type McpActivityFilters,
+  type McpTokenCreateRequest,
+  type McpTokenSnapshot,
+} from "~/lib/mcp-token-administration";
+import { createPocketBaseMcpTokenAdministrationStore } from "~/lib/mcp-token-administration-store";
 
-export type McpTokenInput = {
-  name: string;
-  scopes: McpScope[];
-  expires_at?: string | null;
-};
+export type McpTokenInput = McpTokenCreateRequest;
+export type { McpActivityFilters, McpTokenSnapshot };
 
-export type McpTokenSnapshot = {
-  id: string;
-  name: string;
-  token_prefix: string;
-  scopes: McpScope[];
-  created_by: string;
-  expires_at?: string;
-  revoked_at?: string;
-  revoked_by?: string;
-  last_used_at?: string;
-};
-
-function pbMcpErrorMessage(error: unknown): string {
-  const response = (error as { response?: { data?: Record<string, { message?: string }> } })
-    ?.response;
-  const data = response?.data;
-  if (data && typeof data === "object") {
-    const parts = Object.entries(data)
-      .map(([field, detail]) => {
-        const message =
-          detail && typeof detail === "object" && "message" in detail
-            ? String(detail.message)
-            : JSON.stringify(detail);
-        return `${field}: ${message}`;
-      })
-      .filter(Boolean);
-    if (parts.length > 0) return parts.join("; ");
-  }
-  if (error instanceof Error && error.message) return error.message;
-  return "Request failed";
+function administration(user: { id: string; name?: string }): McpTokenAdministration {
+  return new McpTokenAdministration(
+    createPocketBaseMcpTokenAdministrationStore(),
+    { userId: user.id, name: user.name || "Unknown User" },
+    new AdminActions(createPocketBaseAdminActionStore()),
+  );
 }
 
-function tokenSnapshot(record: McpTokenRecord): McpTokenSnapshot {
+function actionFailure(error: unknown) {
+  const value = error as { name?: string; status?: number };
+  console.error(JSON.stringify({
+    event: "mcp_token_administration_failed",
+    status: Number.isFinite(value?.status) ? value.status : undefined,
+    errorType: value?.name || (error instanceof Error ? error.name : "UnknownError"),
+  }));
   return {
-    id: record.id,
-    name: record.name,
-    token_prefix: record.token_prefix,
-    scopes: normalizeMcpScopes(record.scopes),
-    created_by: record.created_by,
-    expires_at: record.expires_at,
-    revoked_at: record.revoked_at,
-    revoked_by: record.revoked_by,
-    last_used_at: record.last_used_at,
+    success: false as const,
+    code: "infrastructure" as const,
+    error: "MCP token request failed.",
   };
 }
 
@@ -61,86 +38,45 @@ export const adminFetchMcpTokens = async () => {
   "use server";
   try {
     const user = await requireAdmin();
-    const adminService = getAdminPB();
-    const records = (await adminService.fetchAllRecords("mcp_tokens", {
-      filter: `created_by = "${user.id}"`,
-      sort: "name",
-    })) as McpTokenRecord[];
-    return { success: true, data: records.map(tokenSnapshot) };
+    return { success: true as const, data: await administration(user).listTokens() };
   } catch (error) {
-    console.error("Admin fetch MCP tokens error:", error);
-    return { success: false, error: pbMcpErrorMessage(error) };
+    return actionFailure(error);
   }
 };
 
-export const adminCreateMcpToken = async (input: McpTokenInput) => {
+export const adminFetchMcpActivity = async (filters: McpActivityFilters = {}) => {
   "use server";
   try {
     const user = await requireAdmin();
-    const name = input.name?.trim();
-    if (!name) return { success: false, error: "Token name is required." };
-
-    const scopes = normalizeMcpScopes(input.scopes);
-    if (scopes.length === 0) {
-      return { success: false, error: "Choose at least one MCP scope." };
-    }
-
-    const unknownScope = input.scopes.find((scope) => !MCP_SCOPES.includes(scope));
-    if (unknownScope) return { success: false, error: "Choose a valid MCP scope." };
-
-    const expiry = normalizeNewMcpTokenExpiry(input.expires_at);
-    if (!expiry.success) {
-      return {
-        success: false,
-        error:
-          expiry.reason === "too_long"
-            ? "Token expiry cannot be more than 90 days away."
-            : "Choose a future expiry date.",
-      };
-    }
-
-    const material = createMcpTokenMaterial();
-    const adminService = getAdminPB();
-    const record = (await adminService.createRecord("mcp_tokens", {
-      name,
-      token_id: material.tokenId,
-      token_prefix: material.tokenPrefix,
-      secret_hash: material.secretHash,
-      scopes,
-      created_by: user.id,
-      expires_at: expiry.expiresAt,
-    })) as McpTokenRecord;
-
-    return {
-      success: true,
-      token: material.token,
-      data: tokenSnapshot(record),
-    };
+    return { success: true as const, data: await administration(user).listActivity(filters) };
   } catch (error) {
-    console.error("Admin create MCP token error:", error);
-    return { success: false, error: pbMcpErrorMessage(error) };
+    return actionFailure(error);
   }
 };
 
-export const adminRevokeMcpToken = async (id: string) => {
+export const adminCreateMcpToken = async (
+  operationId: string,
+  input: McpTokenInput,
+) => {
   "use server";
   try {
     const user = await requireAdmin();
-    if (!id?.trim()) return { success: false, error: "Choose a token to revoke." };
-
-    const adminService = getAdminPB();
-    const existing = (await adminService.fetchRecordById("mcp_tokens", id)) as McpTokenRecord;
-    if (existing.created_by !== user.id) {
-      return { success: false, error: "You can only revoke your own MCP tokens." };
-    }
-
-    const record = (await adminService.updateRecord("mcp_tokens", id, {
-      revoked_at: new Date().toISOString(),
-      revoked_by: user.id,
-    })) as McpTokenRecord;
-    return { success: true, data: tokenSnapshot(record) };
+    return await administration(user).createToken(input, operationId);
   } catch (error) {
-    console.error("Admin revoke MCP token error:", error);
-    return { success: false, error: pbMcpErrorMessage(error) };
+    return actionFailure(error);
+  }
+};
+
+export const adminRevokeMcpToken = async (
+  operationId: string,
+  id: string,
+  reason: string,
+) => {
+  "use server";
+  try {
+    const user = await requireAdmin();
+    return await administration(user).revokeToken(id, reason, operationId);
+  } catch (error) {
+    return actionFailure(error);
   }
 };

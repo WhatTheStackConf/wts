@@ -200,15 +200,21 @@ export function createPocketBaseAdminActionStore(client?: PocketBase): AdminActi
     },
     async list(query) {
       const pb = await pocketBase();
-      const filters = [pb.filter("target_collection = {:collection}", { collection: query.targetCollection })];
+      const filters: string[] = [];
+      if (query.targetCollection !== undefined) {
+        filters.push(pb.filter("target_collection = {:collection}", { collection: query.targetCollection }));
+      }
       if (query.targetId !== undefined) {
         filters.push(pb.filter("target_id = {:targetId}", { targetId: query.targetId }));
+      }
+      if (query.sources?.length) {
+        filters.push(`(${query.sources.map((source) => pb.filter("source = {:source}", { source })).join(" || ")})`);
       }
       if (query.statuses?.length) {
         filters.push(`(${query.statuses.map((status) => pb.filter("status = {:status}", { status })).join(" || ")})`);
       }
       const records = await pb.collection(ADMIN_ACTIONS_COLLECTION).getList<PocketBaseAdminActionRecord>(1, query.limit, {
-        filter: filters.join(" && "),
+        filter: filters.join(" && ") || undefined,
         sort: "-created,-id",
       });
       return records.items.map(adminActionRecord);
