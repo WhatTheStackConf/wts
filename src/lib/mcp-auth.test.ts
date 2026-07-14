@@ -44,9 +44,17 @@ describe("MCP bearer authentication", () => {
         "programme:read",
         "cfp:read",
         "programme:read",
+        "partners:draft:write",
+        "partners:read",
+        "partners:read",
         "unknown:read",
       ]),
-    ).toEqual(["programme:read", "cfp:read"]);
+    ).toEqual([
+      "programme:read",
+      "cfp:read",
+      "partners:read",
+      "partners:draft:write",
+    ]);
   });
 
   it("revalidates the owning User's current admin role on every request", async () => {

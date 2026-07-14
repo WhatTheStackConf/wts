@@ -139,6 +139,61 @@ Hooks run inside the PocketBase container. Pass variables through `docker-compos
 
 HiEvents vars (`HIEVENTS_*`) are passed to both the web app evidence service and PocketBase ticket-report hooks. `GAMIFICATION_CODE_PEPPER` is passed only to the web app; never expose it through a `PUBLIC_` or `VITE_` variable.
 
+## Administrative MCP
+
+Admins create one-time MCP credentials at `/admin/mcp`. Select only the scopes the client needs:
+
+- `partners:read` lists private Partner summaries and reads a Partner Note only after a human approves its current version for agent visibility.
+- `partners:draft:write` creates and patches drafts. It cannot upload logos, publish, delete, approve notes, or modify Published Partners.
+
+The authenticated Streamable HTTP endpoint is `/api/mcp`. Native clients send the generated credential as a bearer token. Browser clients must also use an allowed Origin as described under [Environment](#environment).
+
+### OpenCode
+
+Keep the one-time credential in an environment variable, then add the remote server to `opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "wts-admin": {
+      "type": "remote",
+      "url": "http://localhost:3000/api/mcp",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:WTS_MCP_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Start OpenCode with `WTS_MCP_TOKEN` set in its environment. Use the deployed `https://wts.sh/api/mcp` URL outside local development.
+
+### MCP Inspector
+
+Inspector's CLI can verify discovery or call a tool directly:
+
+```bash
+export WTS_MCP_TOKEN='wts_mcp_...'
+
+npx -y @modelcontextprotocol/inspector --cli \
+  http://localhost:3000/api/mcp \
+  --transport http \
+  --method tools/list \
+  --header "Authorization: Bearer $WTS_MCP_TOKEN"
+```
+
+### Partner Workflow
+
+1. Call `list_partners` before creating a record. Exact normalized names and canonical URLs are blocked; similar names and shared hosts produce warnings.
+2. Call `create_partner_draft` with allowlisted metadata and a unique `operation_id`. Retrying the exact input with the same ID safely replays the result.
+3. Read the current `expected_updated_at` from `get_partner`, then pass it with a new `operation_id` and an allowlisted `patch` to `update_partner_draft`.
+4. If a write is pending or failed, retry the exact input and operation ID. Use a new operation ID whenever input changes.
+5. A human admin reviews the draft, uploads the official logo, optionally approves the current Partner Note for agent visibility, and publishes it.
+
+Partner tools return JSON structured content plus a text fallback. Safe errors include a code, retry guidance, and the current record where relevant. MCP mutations appear in Admin Action activity without storing Partner Note text or token secrets.
+
 ## Architecture
 
 Two-tier per PocketBase guidance:

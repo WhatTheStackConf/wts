@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   authenticateMcpBearer,
   hasMcpScope,
+  MCP_SCOPES,
   type AuthenticatedMcpToken,
   type McpScope,
 } from "~/lib/mcp-auth";
@@ -19,6 +20,12 @@ import {
   fetchMcpSessions,
   fetchMcpSpeakers,
 } from "~/lib/mcp-program-data";
+import {
+  hasValidPartnerMcpToolInput,
+  invalidPartnerArgumentsToolResult,
+  PARTNER_MCP_TOOL_SCOPES,
+  registerPartnerMcpTools,
+} from "~/lib/mcp-partner-tools";
 
 const TOOL_SCOPES = {
   get_program_snapshot: ["programme:read", "cfp:read"],
@@ -26,6 +33,7 @@ const TOOL_SCOPES = {
   list_speakers: ["programme:read"],
   list_proposals: ["cfp:read"],
   get_proposal_context: ["cfp:read"],
+  ...PARTNER_MCP_TOOL_SCOPES,
 } as const satisfies Record<string, readonly McpScope[]>;
 
 type AdministrativeMcpTool = keyof typeof TOOL_SCOPES;
@@ -79,14 +87,92 @@ function deniedToolCall(value: unknown, auth: AuthenticatedMcpToken): Administra
     if (!message || typeof message !== "object") continue;
     const request = message as { method?: unknown; params?: { name?: unknown } };
     if (request.method !== "tools/call" || typeof request.params?.name !== "string") continue;
-    if (!(request.params.name in TOOL_SCOPES)) continue;
+    if (!Object.hasOwn(TOOL_SCOPES, request.params.name)) continue;
     const tool = request.params.name as AdministrativeMcpTool;
     if (!hasRequiredScopes(auth, tool)) return tool;
   }
   return null;
 }
 
-function buildProgramMcpServer(auth: AuthenticatedMcpToken) {
+function requestIdKey(value: unknown): string | undefined {
+  if (typeof value === "string" || typeof value === "number" || value === null) {
+    return JSON.stringify(value);
+  }
+  return undefined;
+}
+
+interface PartnerToolCall {
+  tool: keyof typeof PARTNER_MCP_TOOL_SCOPES;
+  invalidArguments: boolean;
+}
+
+function partnerToolCalls(value: unknown): Map<string, PartnerToolCall> {
+  const calls = new Map<string, PartnerToolCall>();
+  for (const message of Array.isArray(value) ? value : [value]) {
+    if (!message || typeof message !== "object") continue;
+    const request = message as {
+      id?: unknown;
+      method?: unknown;
+      params?: { name?: unknown; arguments?: unknown };
+    };
+    const id = requestIdKey(request.id);
+    const name = request.params?.name;
+    if (
+      id === undefined ||
+      request.method !== "tools/call" ||
+      typeof name !== "string" ||
+      !Object.hasOwn(PARTNER_MCP_TOOL_SCOPES, name)
+    ) continue;
+    const tool = name as keyof typeof PARTNER_MCP_TOOL_SCOPES;
+    calls.set(id, {
+      tool,
+      invalidArguments: !hasValidPartnerMcpToolInput(tool, request.params?.arguments),
+    });
+  }
+  return calls;
+}
+
+async function withStructuredPartnerValidationErrors(
+  parsedBody: unknown,
+  response: Response,
+): Promise<Response> {
+  const calls = partnerToolCalls(parsedBody);
+  if (calls.size === 0 || !response.headers.get("Content-Type")?.includes("application/json")) {
+    return response;
+  }
+
+  let body: unknown;
+  try {
+    body = await response.clone().json();
+  } catch {
+    return response;
+  }
+
+  let changed = false;
+  const messages = Array.isArray(body) ? body : [body];
+  const updated = messages.map((message) => {
+    if (!message || typeof message !== "object") return message;
+    const rpc = message as {
+      id?: unknown;
+      result?: { content?: Array<{ type?: unknown; text?: unknown }>; isError?: unknown };
+    };
+    const call = calls.get(requestIdKey(rpc.id) || "");
+    if (!call?.invalidArguments || rpc.result?.isError !== true) return message;
+    changed = true;
+    return { ...rpc, result: invalidPartnerArgumentsToolResult() };
+  });
+  if (!changed) return response;
+
+  const headers = new Headers(response.headers);
+  headers.delete("Content-Length");
+  return new Response(JSON.stringify(Array.isArray(body) ? updated : updated[0]), {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function buildAdministrativeMcpServer(auth: AuthenticatedMcpToken) {
   const server = new McpServer({
     name: "whatthestack-programme",
     version: "1.0.0",
@@ -198,6 +284,8 @@ function buildProgramMcpServer(auth: AuthenticatedMcpToken) {
     );
   }
 
+  registerPartnerMcpTools(server, auth);
+
   server.server.onerror = (error) => {
     console.error(`MCP error for token ${auth.id}:`, error);
   };
@@ -225,10 +313,7 @@ async function handleMcpRequest(request: Request) {
   if (!auth.success) return authErrorResponse(auth.status, auth.error, origin);
 
   if (auth.token.scopes.length === 0) {
-    return authErrorResponse(403, "MCP token has no authorized scopes", origin, [
-      "programme:read",
-      "cfp:read",
-    ]);
+    return authErrorResponse(403, "MCP token has no authorized scopes", origin, MCP_SCOPES);
   }
 
   if (request.method !== "POST") {
@@ -265,7 +350,7 @@ async function handleMcpRequest(request: Request) {
     );
   }
 
-  const server = buildProgramMcpServer(auth.token);
+  const server = buildAdministrativeMcpServer(auth.token);
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -284,7 +369,7 @@ async function handleMcpRequest(request: Request) {
           : undefined,
       },
     });
-    return withMcpCors(response, origin);
+    return withMcpCors(await withStructuredPartnerValidationErrors(parsedBody, response), origin);
   } finally {
     await server.close();
   }

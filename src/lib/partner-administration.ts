@@ -10,7 +10,7 @@ import type {
 import { AdminActions } from "~/lib/admin-action-ledger";
 import type { PartnerRecord } from "~/lib/pocketbase-types";
 
-const PARTNER_TYPES = [
+export const PARTNER_TYPES = [
   "organizer",
   "sponsor",
   "supporter",
@@ -19,7 +19,7 @@ const PARTNER_TYPES = [
   "catering",
   "other",
 ] as const satisfies readonly PartnerRecord["type"][];
-const PARTNER_TIERS = ["platinum", "gold", "silver", "bronze"] as const;
+export const PARTNER_TIERS = ["platinum", "gold", "silver", "bronze"] as const;
 const PARTNER_LOGO_TYPES = [
   "image/svg+xml",
   "image/png",
@@ -632,6 +632,13 @@ class PartnerAdministrationDomain {
       }));
   }
 
+  async getPartner(id: string): Promise<PartnerAdminListItem | undefined> {
+    const record = await this.store.get(id);
+    return record
+      ? { partner: snapshot(record, this.actor), publication: publicationReadiness(record) }
+      : undefined;
+  }
+
   async createDraft(
     input: PartnerDraftInput,
   ): Promise<PartnerDomainResult<{
@@ -726,8 +733,9 @@ class PartnerAdministrationDomain {
 
   async updatePartner(
     id: string,
-    expectedVersion: string,
+    expectedConcurrencyValue: string,
     patch: PartnerPatch,
+    concurrencyField: "version" | "updated_at" = "version",
   ): Promise<PartnerDomainResult<{
     partner: PartnerAdminSnapshot;
     warnings: PartnerWarning[];
@@ -763,7 +771,8 @@ class PartnerAdministrationDomain {
         error: "Only a human admin can edit a Published Partner.",
       };
     }
-    if (!expectedVersion || current.version !== expectedVersion) {
+    const currentValue = concurrencyField === "version" ? current.version : current.updatedAt;
+    if (!expectedConcurrencyValue || currentValue !== expectedConcurrencyValue) {
       return {
         success: false,
         code: "stale",
@@ -1291,6 +1300,10 @@ export class PartnerAdministration {
     return new PartnerAdministrationDomain(this.readOnlyStore(), this.actor.mode).listPartners();
   }
 
+  async getPartner(id: string): Promise<PartnerAdminListItem | undefined> {
+    return new PartnerAdministrationDomain(this.readOnlyStore(), this.actor.mode).getPartner(id);
+  }
+
   async listHistory(targetId?: string, limit = 50): Promise<PartnerAdminHistoryItem[]> {
     const actions = await this.adminActions.list({ targetCollection: "partners", targetId, limit });
     return actions.map((action) => ({
@@ -1337,26 +1350,7 @@ export class PartnerAdministration {
     patch: PartnerPatch,
     operationId: string,
   ): Promise<PartnerAdministrationResult<Extract<PartnerMutationData, { partner: unknown }>>> {
-    const normalizedPatch: Record<string, AdminActionValue> = {};
-    for (const key of Object.keys(patch).sort()) {
-      if (key === "name") {
-        const normalizedName = normalizePartnerName(patch.name || "");
-        normalizedPatch.name = normalizedName.name;
-        normalizedPatch.normalizedName = normalizedName.identity;
-      }
-      else if (key === "url") {
-        const normalized = normalizePartnerUrl(patch.url || undefined);
-        normalizedPatch.url = normalized.success
-          ? normalized.canonicalUrl || null
-          : patch.url?.trim() || null;
-        normalizedPatch.urlValue = patch.url?.trim() || null;
-      } else if (key === "notes") normalizedPatch.partnerNote = actionNote(patch.notes);
-      else if (key === "logo") normalizedPatch.logo = actionLogo(patch.logo);
-      else if (key === "type") normalizedPatch.type = patch.type || null;
-      else if (key === "tier") normalizedPatch.tier = patch.tier || null;
-      else normalizedPatch[key] = null;
-    }
-    if (hasOwn(patch, "type") && patch.type !== "sponsor") normalizedPatch.tier = null;
+    const normalizedPatch = this.normalizedPatch(patch);
     return this.runMutation(
       this.request("partner.patch", operationId, id, {
         id,
@@ -1364,6 +1358,23 @@ export class PartnerAdministration {
         patch: normalizedPatch,
       }),
       (domain) => domain.updatePartner(id, expectedVersion, patch),
+    );
+  }
+
+  async updatePartnerDraft(
+    id: string,
+    expectedUpdatedAt: string,
+    patch: PartnerPatch,
+    operationId: string,
+  ): Promise<PartnerAdministrationResult<Extract<PartnerMutationData, { partner: unknown }>>> {
+    const normalizedPatch = this.normalizedPatch(patch);
+    return this.runMutation(
+      this.request("partner.patch", operationId, id, {
+        id,
+        expectedUpdatedAt,
+        patch: normalizedPatch,
+      }),
+      (domain) => domain.updatePartner(id, expectedUpdatedAt, patch, "updated_at"),
     );
   }
 
@@ -1432,6 +1443,29 @@ export class PartnerAdministration {
       operationId,
       normalizedInput,
     };
+  }
+
+  private normalizedPatch(patch: PartnerPatch): Record<string, AdminActionValue> {
+    const normalizedPatch: Record<string, AdminActionValue> = {};
+    for (const key of Object.keys(patch).sort()) {
+      if (key === "name") {
+        const normalizedName = normalizePartnerName(patch.name || "");
+        normalizedPatch.name = normalizedName.name;
+        normalizedPatch.normalizedName = normalizedName.identity;
+      } else if (key === "url") {
+        const normalized = normalizePartnerUrl(patch.url || undefined);
+        normalizedPatch.url = normalized.success
+          ? normalized.canonicalUrl || null
+          : patch.url?.trim() || null;
+        normalizedPatch.urlValue = patch.url?.trim() || null;
+      } else if (key === "notes") normalizedPatch.partnerNote = actionNote(patch.notes);
+      else if (key === "logo") normalizedPatch.logo = actionLogo(patch.logo);
+      else if (key === "type") normalizedPatch.type = patch.type || null;
+      else if (key === "tier") normalizedPatch.tier = patch.tier || null;
+      else normalizedPatch[key] = null;
+    }
+    if (hasOwn(patch, "type") && patch.type !== "sponsor") normalizedPatch.tier = null;
+    return normalizedPatch;
   }
 
   private async replay<T>(

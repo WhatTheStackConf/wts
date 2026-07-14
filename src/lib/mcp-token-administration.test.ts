@@ -43,6 +43,43 @@ async function waitForPocketBase(url: string): Promise<void> {
 }
 
 describe("MCP token administration", () => {
+  it("issues and displays explicit least-privilege Partner scopes", async () => {
+    const actionStore = createInMemoryAdminActionStore();
+    const store = createInMemoryMcpTokenAdministrationStore({
+      users: [{ id: "admin", name: "Ada Admin", role: "admin" }],
+    });
+    const administration = new McpTokenAdministration(
+      store,
+      { userId: "admin", name: "Ada Admin" },
+      new AdminActions(actionStore),
+      { now: () => new Date("2026-07-13T12:00:00.000Z") },
+    );
+
+    const created = await administration.createToken({
+      name: "Partner drafting client",
+      scopes: ["partners:read", "partners:draft:write"],
+      expires_at: "2026-08-01",
+    }, "create-partner-client");
+
+    expect(created).toMatchObject({
+      success: true,
+      data: {
+        token: { scopes: ["partners:read", "partners:draft:write"] },
+      },
+    });
+    expect(await administration.listTokens()).toEqual([
+      expect.objectContaining({ scopes: ["partners:read", "partners:draft:write"] }),
+    ]);
+    const actions = await new AdminActions(actionStore).list({ targetCollection: "mcp_tokens" });
+    expect(actions).toEqual([
+      expect.objectContaining({
+        afterSummary: expect.objectContaining({
+          scopes: ["partners:read", "partners:draft:write"],
+        }),
+      }),
+    ]);
+  });
+
   it("lets every current admin inspect safe metadata for every owner's token", async () => {
     const store = createInMemoryMcpTokenAdministrationStore({
       users: [

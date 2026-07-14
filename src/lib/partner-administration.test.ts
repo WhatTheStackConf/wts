@@ -1623,6 +1623,42 @@ describe("Partner Administration", () => {
       if (!ignoredTier.success) throw new Error(ignoredTier.error);
       expect(ignoredTier.data.partner.tier).toBeUndefined();
 
+      const agentAdministration = new AuditedPartnerAdministration(
+        productionStore,
+        { mode: "agent", userId: actor.id, source: "mcp" },
+        productionActions,
+      );
+      const timestampPatch = await agentAdministration.updatePartnerDraft(
+        ignoredTier.data.partner.id,
+        ignoredTier.data.partner.updatedAt,
+        { notes: "Production timestamp patch" },
+        "production-agent-timestamp-patch",
+      );
+      expect(timestampPatch, serverLogs).toMatchObject({
+        success: true,
+        action: { replayed: false },
+      });
+      if (!timestampPatch.success) throw new Error(timestampPatch.error);
+      const timestampReplay = await agentAdministration.updatePartnerDraft(
+        ignoredTier.data.partner.id,
+        ignoredTier.data.partner.updatedAt,
+        { notes: "Production timestamp patch" },
+        "production-agent-timestamp-patch",
+      );
+      expect(timestampReplay).toMatchObject({
+        success: true,
+        data: { partner: { id: timestampPatch.data.partner.id } },
+        action: { id: timestampPatch.action.id, replayed: true },
+      });
+      await expect(
+        agentAdministration.updatePartnerDraft(
+          ignoredTier.data.partner.id,
+          ignoredTier.data.partner.updatedAt,
+          { name: "Stale Production Patch" },
+          "production-agent-stale-patch",
+        ),
+      ).resolves.toMatchObject({ success: false, code: "stale" });
+
       const withLogo = await administration.updatePartner(
         created.data.partner.id,
         created.data.partner.version,

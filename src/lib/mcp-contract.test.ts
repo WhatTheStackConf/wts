@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createMcpTokenMaterial } from "~/lib/mcp-token-utils";
+import { PARTNER_TYPES } from "~/lib/partner-administration";
 
 const adminService = vi.hoisted(() => ({
   fetchAllRecords: vi.fn(),
@@ -16,11 +17,109 @@ const programmeData = vi.hoisted(() => ({
   fetchMcpSpeakers: vi.fn(async () => []),
 }));
 
+const partnerAdministration = vi.hoisted(() => ({
+  listPartners: vi.fn(async () => ({
+    success: true,
+    data: {
+      partners: [{
+        id: "partner-1",
+        name: "Safe Partner",
+        state: "draft",
+        type: "supporter",
+        logo_present: false,
+        updated_at: "2026-07-14 08:00:00.000Z",
+        expected_updated_at: "2026-07-14 08:00:00.000Z",
+        publication: { ready: false, issues: [{ field: "logo", message: "Upload a logo." }] },
+      }],
+      duplicate_check: {
+        exact_name: "Exact normalized Partner names are blocked.",
+        exact_url: "Exact canonical full Partner URLs are blocked.",
+        fuzzy: "Similar names warn.",
+      },
+    },
+  })),
+  getPartner: vi.fn(async () => ({
+    success: true,
+    data: {
+      partner: {
+        id: "partner-1",
+        name: "Safe Partner",
+        state: "draft",
+        type: "supporter",
+        logo_present: false,
+        updated_at: "2026-07-14 08:00:00.000Z",
+        expected_updated_at: "2026-07-14 08:00:00.000Z",
+        created_at: "2026-07-14 08:00:00.000Z",
+        note_agent_visible: false,
+      },
+    },
+  })),
+  createPartnerDraft: vi.fn(async (input: { operation_id: string; name: string }) => ({
+    success: true,
+    data: {
+      partner: {
+        id: "partner-created",
+        name: input.name,
+        state: "draft",
+        type: "supporter",
+        logo_present: false,
+        updated_at: "2026-07-14 08:00:00.000Z",
+        expected_updated_at: "2026-07-14 08:00:00.000Z",
+      },
+      warnings: [],
+      publication: { ready: false, issues: [{ field: "logo", message: "Upload a logo." }] },
+      action: {
+        id: "action-create",
+        operation_id: input.operation_id,
+        operation_kind: "partner.create",
+        status: "applied",
+        replayed: false,
+      },
+    },
+  })),
+  updatePartnerDraft: vi.fn(async (input: { operation_id: string }) => ({
+    success: true,
+    data: {
+      partner: {
+        id: "partner-1",
+        name: "Updated Partner",
+        state: "draft",
+        type: "supporter",
+        logo_present: false,
+        updated_at: "2026-07-14 09:00:00.000Z",
+        expected_updated_at: "2026-07-14 09:00:00.000Z",
+      },
+      warnings: [],
+      publication: { ready: false, issues: [{ field: "logo", message: "Upload a logo." }] },
+      action: {
+        id: "action-update",
+        operation_id: input.operation_id,
+        operation_kind: "partner.patch",
+        status: "applied",
+        replayed: false,
+      },
+    },
+  })),
+}));
+
 vi.mock("~/lib/pocketbase-admin-service", () => ({
   getAdminPB: () => adminService,
 }));
 
 vi.mock("~/lib/mcp-program-data", () => programmeData);
+
+vi.mock("~/lib/mcp-partner-administration", () => ({
+  createMcpPartnerAdministration: () => partnerAdministration,
+  mcpPartnerInfrastructureError: () => ({
+    success: false,
+    error: {
+      code: "infrastructure",
+      message: "Partner administration is temporarily unavailable.",
+      next_step: "Retry later.",
+      retryable: true,
+    },
+  }),
+}));
 
 import { DELETE, GET, OPTIONS, POST } from "~/routes/api/mcp";
 
@@ -94,6 +193,13 @@ function postRequest(headers: HeadersInit = {}) {
   });
 }
 
+function toolText(result: unknown): string {
+  const content = (result as { content?: unknown }).content as
+    | Array<{ type?: string; text?: string }>
+    | undefined;
+  return content?.[0]?.type === "text" ? content[0].text || "" : "";
+}
+
 describe("administrative MCP protocol contract", () => {
   beforeEach(() => {
     vi.stubEnv("PUBLIC_SITE_URL", "https://wts.sh");
@@ -111,6 +217,7 @@ describe("administrative MCP protocol contract", () => {
       return Promise.resolve([]);
     });
     for (const mock of Object.values(programmeData)) mock.mockClear();
+    for (const mock of Object.values(partnerAdministration)) mock.mockClear();
   });
 
   afterEach(() => {
@@ -120,6 +227,8 @@ describe("administrative MCP protocol contract", () => {
   it.each([
     ["programme", ["programme:read"], ["list_sessions", "list_speakers"]],
     ["CFP", ["cfp:read"], ["list_proposals", "get_proposal_context"]],
+    ["Partner read", ["partners:read"], ["list_partners", "get_partner"]],
+    ["Partner draft write", ["partners:draft:write"], ["create_partner_draft", "update_partner_draft"]],
     ["aggregate", ["programme:read", "cfp:read"], PREVIOUS_TOOL_NAMES],
   ])("filters %s tool discovery by current scopes", async (_label, scopes, expectedTools) => {
     const client = await openClient(issueToken(scopes));
@@ -128,6 +237,217 @@ describe("administrative MCP protocol contract", () => {
       expect(result.tools.map((tool) => tool.name)).toEqual(expectedTools);
     } finally {
       await client.close();
+    }
+  });
+
+  it("publishes strict least-privilege Partner tool contracts", async () => {
+    const client = await openClient(issueToken(["partners:read", "partners:draft:write"]));
+    try {
+      const result = await client.listTools();
+      const tools = Object.fromEntries(result.tools.map((tool) => [tool.name, tool]));
+
+      expect(Object.keys(tools)).toEqual([
+        "list_partners",
+        "get_partner",
+        "create_partner_draft",
+        "update_partner_draft",
+      ]);
+      expect(tools.list_partners).toMatchObject({
+        title: "List Partners",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: { state: { enum: ["draft", "published"] }, type: { enum: [...PARTNER_TYPES] } },
+        },
+        outputSchema: { type: "object", required: ["success"], additionalProperties: false },
+      });
+      expect(tools.get_partner).toMatchObject({
+        title: "Get Partner",
+        inputSchema: {
+          required: ["partner_id"],
+          additionalProperties: false,
+        },
+      });
+      expect(tools.create_partner_draft).toMatchObject({
+        title: "Create Partner Draft",
+        inputSchema: {
+          required: ["operation_id", "name", "type"],
+          additionalProperties: false,
+        },
+      });
+      expect(tools.create_partner_draft.inputSchema.properties).not.toHaveProperty("logo");
+      expect(tools.create_partner_draft.inputSchema.properties).not.toHaveProperty("published");
+      expect(tools.create_partner_draft.inputSchema.properties).not.toHaveProperty("note_agent_visible");
+      expect(tools.update_partner_draft).toMatchObject({
+        title: "Update Partner Draft",
+        inputSchema: {
+          required: ["operation_id", "partner_id", "expected_updated_at", "patch"],
+          additionalProperties: false,
+          properties: {
+            patch: { additionalProperties: false },
+          },
+        },
+      });
+      expect(tools.update_partner_draft.inputSchema.properties?.patch).not.toHaveProperty("logo");
+      expect(Object.keys(tools)).not.toEqual(expect.arrayContaining([
+        "publish_partner",
+        "delete_partner",
+        "upload_partner_logo",
+        "approve_partner_note",
+      ]));
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("returns matching structured content and text fallback with safe actionable errors", async () => {
+    const client = await openClient(issueToken(["partners:read"]));
+    try {
+      const listed = await client.callTool({ name: "list_partners", arguments: {} });
+      expect(listed.isError).not.toBe(true);
+      expect(listed.structuredContent).toMatchObject({
+        success: true,
+        data: { partners: [{ name: "Safe Partner" }] },
+      });
+      expect(JSON.parse(toolText(listed))).toEqual(listed.structuredContent);
+      expect(JSON.stringify(listed)).not.toContain("Partner Note text");
+
+      partnerAdministration.getPartner.mockResolvedValueOnce({
+        success: false,
+        error: {
+          code: "not_found",
+          message: "Partner was not found.",
+          next_step: "Check partner_id with list_partners, then retry.",
+          retryable: false,
+        },
+      } as never);
+      const missing = await client.callTool({
+        name: "get_partner",
+        arguments: { partner_id: "missing" },
+      });
+      expect(missing).toMatchObject({
+        isError: true,
+        structuredContent: {
+          success: false,
+          error: { code: "not_found", retryable: false, next_step: expect.any(String) },
+        },
+      });
+      expect(JSON.parse(toolText(missing))).toEqual(missing.structuredContent);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("returns structured validation errors before invoking the administration module", async () => {
+    const client = await openClient(issueToken(["partners:read", "partners:draft:write"]));
+    try {
+      const invalidList = await client.callTool({
+        name: "list_partners",
+        arguments: { state: "deleted" },
+      });
+      const invalidGet = await client.callTool({
+        name: "get_partner",
+        arguments: { partner_id: "partner/1" },
+      });
+      const forbiddenCreate = await client.callTool({
+        name: "create_partner_draft",
+        arguments: {
+          operation_id: "forbidden-create",
+          name: "Forbidden Partner",
+          type: "other",
+          published: true,
+          logo: "https://attacker.example/logo.svg",
+          note_agent_visible: true,
+        },
+      });
+      const forbiddenUpdate = await client.callTool({
+        name: "update_partner_draft",
+        arguments: {
+          operation_id: "forbidden-update",
+          partner_id: "partner-1",
+          expected_updated_at: "2026-07-14 08:00:00.000Z",
+          patch: { published: true, logo: "logo.svg", note_agent_visible: true },
+        },
+      });
+
+      for (const result of [invalidList, invalidGet, forbiddenCreate, forbiddenUpdate]) {
+        expect(result).toMatchObject({
+          isError: true,
+          structuredContent: {
+            success: false,
+            error: {
+              code: "invalid_arguments",
+              next_step: expect.any(String),
+              retryable: false,
+            },
+          },
+        });
+        expect(JSON.parse(toolText(result))).toEqual(result.structuredContent);
+      }
+      expect(partnerAdministration.listPartners).not.toHaveBeenCalled();
+      expect(partnerAdministration.getPartner).not.toHaveBeenCalled();
+      expect(partnerAdministration.createPartnerDraft).not.toHaveBeenCalled();
+      expect(partnerAdministration.updatePartnerDraft).not.toHaveBeenCalled();
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("rejects unsafe operation IDs as non-retryable structured input errors", async () => {
+    const client = await openClient(issueToken(["partners:draft:write"]));
+    try {
+      for (const operationId of [
+        " padded-operation-id",
+        "wts_mcp_0123456789abcdef01234567_abcdefghijklmnopqrstuvwxyz",
+      ]) {
+        const result = await client.callTool({
+          name: "create_partner_draft",
+          arguments: {
+            operation_id: operationId,
+            name: "Unsafe Operation Partner",
+            type: "other",
+          },
+        });
+        expect(result).toMatchObject({
+          isError: true,
+          structuredContent: {
+            success: false,
+            error: { code: "invalid_arguments", retryable: false },
+          },
+        });
+        expect(JSON.parse(toolText(result))).toEqual(result.structuredContent);
+      }
+      expect(partnerAdministration.createPartnerDraft).not.toHaveBeenCalled();
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("gives Partner scopes no programme, CFP, or opposite Partner authority", async () => {
+    const readClient = await openClient(issueToken(["partners:read"]));
+    try {
+      await expect(
+        readClient.callTool({
+          name: "create_partner_draft",
+          arguments: { operation_id: "denied", name: "Denied", type: "other" },
+        }),
+      ).rejects.toMatchObject({ code: 403 });
+    } finally {
+      await readClient.close();
+    }
+
+    const writeClient = await openClient(issueToken(["partners:draft:write"]));
+    try {
+      await expect(writeClient.callTool({ name: "list_partners", arguments: {} }))
+        .rejects.toMatchObject({ code: 403 });
+      await expect(writeClient.callTool({ name: "list_sessions", arguments: {} }))
+        .rejects.toMatchObject({ code: 403 });
+      await expect(writeClient.callTool({ name: "list_proposals", arguments: {} }))
+        .rejects.toMatchObject({ code: 403 });
+      expect(programmeData.fetchMcpSessions).not.toHaveBeenCalled();
+      expect(programmeData.fetchMcpProposals).not.toHaveBeenCalled();
+    } finally {
+      await writeClient.close();
     }
   });
 
@@ -238,6 +558,55 @@ describe("administrative MCP protocol contract", () => {
 
     expect(response.status).toBe(403);
     expect(programmeData.fetchMcpProposals).not.toHaveBeenCalled();
+  });
+
+  it("preserves structured Partner validation errors inside a mixed JSON-RPC batch", async () => {
+    const token = issueToken(["partners:read", "partners:draft:write"]);
+    const request = new Request(MCP_URL, {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "create_partner_draft",
+            arguments: { operation_id: "batch-invalid", name: "Invalid", type: "other", logo: "x" },
+          },
+        },
+        {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name: "list_partners", arguments: {} },
+        },
+      ]),
+    });
+
+    const response = await POST({ request });
+    const messages = await response.json() as Array<{
+      id: number;
+      result: { structuredContent?: Record<string, unknown>; isError?: boolean };
+    }>;
+    const byId = Object.fromEntries(messages.map((message) => [message.id, message.result]));
+
+    expect(byId[1]).toMatchObject({
+      isError: true,
+      structuredContent: {
+        success: false,
+        error: { code: "invalid_arguments", retryable: false },
+      },
+    });
+    expect(byId[2]).toMatchObject({
+      structuredContent: { success: true, data: { partners: expect.any(Array) } },
+    });
+    expect(partnerAdministration.createPartnerDraft).not.toHaveBeenCalled();
+    expect(partnerAdministration.listPartners).toHaveBeenCalledOnce();
   });
 
   it("lets a migrated legacy token call every tool it could call before", async () => {

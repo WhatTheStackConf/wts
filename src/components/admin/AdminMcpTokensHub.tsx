@@ -320,6 +320,38 @@ export default function AdminMcpTokensHub() {
                     </span>
                   </span>
                 </label>
+                <label class="flex items-start gap-3 cursor-pointer min-h-12 py-2" for="mcp-scope-partners-read">
+                  <input
+                    id="mcp-scope-partners-read"
+                    name="scope_partners_read"
+                    type="checkbox"
+                    class="checkbox checkbox-secondary mt-1"
+                    checked={scopes().includes("partners:read")}
+                    onChange={(event) => toggleScope("partners:read", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <span class="block text-sm font-bold text-white font-mono">partners:read</span>
+                    <span class="block text-xs text-base-content/45 mt-1 leading-relaxed">
+                      List private Partner summaries and inspect a human-approved Partner Note.
+                    </span>
+                  </span>
+                </label>
+                <label class="flex items-start gap-3 cursor-pointer min-h-12 py-2" for="mcp-scope-partners-draft-write">
+                  <input
+                    id="mcp-scope-partners-draft-write"
+                    name="scope_partners_draft_write"
+                    type="checkbox"
+                    class="checkbox checkbox-secondary mt-1"
+                    checked={scopes().includes("partners:draft:write")}
+                    onChange={(event) => toggleScope("partners:draft:write", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <span class="block text-sm font-bold text-white font-mono">partners:draft:write</span>
+                    <span class="block text-xs text-base-content/45 mt-1 leading-relaxed">
+                      Create and patch Partner drafts only. No logo, publication, deletion, or note-approval authority.
+                    </span>
+                  </span>
+                </label>
               </fieldset>
 
               <button type="submit" class="btn btn-secondary font-mono w-full gap-2 min-h-12" disabled={saving()}>

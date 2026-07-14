@@ -2,7 +2,12 @@ import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import type { McpTokenRecord, UserRecord } from "~/lib/pocketbase-types";
 import { parseMcpToken, verifyMcpTokenSecret } from "~/lib/mcp-token-utils";
 
-export const MCP_SCOPES = ["programme:read", "cfp:read"] as const;
+export const MCP_SCOPES = [
+  "programme:read",
+  "cfp:read",
+  "partners:read",
+  "partners:draft:write",
+] as const;
 
 export type McpScope = (typeof MCP_SCOPES)[number];
 

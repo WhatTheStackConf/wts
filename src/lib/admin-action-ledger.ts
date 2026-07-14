@@ -181,6 +181,11 @@ function assertFiniteValues(value: AdminActionValue): void {
   for (const item of Object.values(value)) assertFiniteValues(item);
 }
 
+export function containsAdminActionSecretMaterial(value: string): boolean {
+  return /wts_mcp_[a-f0-9]{24}_[a-z0-9_-]{20,}/i.test(value) ||
+    /(^|[^a-f0-9])[a-f0-9]{64}([^a-f0-9]|$)/i.test(value);
+}
+
 function assertRequest(request: AdminActionRequest): void {
   assertIdentifier(request.actorUserId, "Admin Action actor User ID");
   assertIdentifier(request.mcpTokenId, "Admin Action MCP token ID");
@@ -188,10 +193,7 @@ function assertRequest(request: AdminActionRequest): void {
   assertIdentifier(request.targetCollection, "Admin Action target collection");
   assertIdentifier(request.targetId, "Admin Action target ID");
   assertIdentifier(request.operationId, "Admin Action operation ID");
-  if (
-    /wts_mcp_[a-f0-9]{24}_[a-z0-9_-]{20,}/i.test(request.operationId) ||
-    /(^|[^a-f0-9])[a-f0-9]{64}([^a-f0-9]|$)/i.test(request.operationId)
-  ) {
+  if (containsAdminActionSecretMaterial(request.operationId)) {
     throw new Error("Admin Action operation ID cannot contain credential or hash material.");
   }
   if (request.source !== "admin_ui" && request.source !== "mcp") {

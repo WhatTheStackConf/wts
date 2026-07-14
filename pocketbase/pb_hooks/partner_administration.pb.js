@@ -217,10 +217,19 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
     const sameText = (field) => String(body[field] || "") === record.getString(field);
     const sameBool = (field) => requestBool(body[field]) === record.getBool(field);
     if (kind === "partner.patch") {
+      const requestedVersion = String(requestBody.expected_version || "");
+      const versionSeparator = requestedVersion.lastIndexOf("|");
+      const requestedUpdatedAt = versionSeparator > 0
+        ? requestedVersion.slice(0, versionSeparator)
+        : requestedVersion;
+      const expectedConcurrencyMatches =
+        normalizedInput &&
+        (normalizedInput.expectedVersion === requestedVersion ||
+          normalizedInput.expectedUpdatedAt === requestedUpdatedAt);
       if (
         !normalizedInput || typeof normalizedInput !== "object" || Array.isArray(normalizedInput) ||
         normalizedInput.id !== record.id ||
-        normalizedInput.expectedVersion !== String(requestBody.expected_version || "") ||
+        !expectedConcurrencyMatches ||
         !normalizedInput.patch || typeof normalizedInput.patch !== "object" || Array.isArray(normalizedInput.patch)
       ) {
         throw new BadRequestError("Partner patch input is invalid.");
