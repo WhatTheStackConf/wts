@@ -1,8 +1,9 @@
-import { createSignal, createResource, onMount } from "solid-js";
+import { createEffect, createSignal, createResource } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 // Removed Layout
 // import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
+import { useRequireAuth } from "~/lib/route-guards";
 import { useCfpStore } from "~/lib/cfp-store";
 import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
 import { clientOnly } from "@solidjs/start";
@@ -12,25 +13,19 @@ import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
 
 const Intro = () => {
   const auth = useAuth();
+  const guard = useRequireAuth();
   const navigate = useNavigate();
   const [cfpStore, setCfpStore] = useCfpStore();
   const [errors, setErrors] = createSignal<Record<string, string>>({});
   const [cfpConfig] = createResource(fetchCfpConfig);
-
-  if (!auth || !auth.record) {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("redirect_url", location.pathname);
-    }
-    navigate("/login");
-  }
 
   if (!isCfpOpen()) {
     navigate("/cfp/closed");
   }
 
   // Initialize form data with user's info if not already set
-  onMount(() => {
-    if (!cfpStore?.formData?.email && auth?.record) {
+  createEffect(() => {
+    if (guard.authorized() && !cfpStore?.formData?.email && auth.record) {
       setCfpStore("formData", {
         ...cfpStore.formData,
         email: auth.record.email || "",

@@ -39,6 +39,16 @@ export const Navbar = () => {
     setIsDrawerOpen(false);
     window.setTimeout(() => document.querySelector<HTMLButtonElement>("#mobile-navigation-open")?.focus(), 0);
   };
+  const handleLogout = async () => {
+    closeDrawer();
+    try {
+      await auth.logout();
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Logout failed.", error);
+      window.alert("Logout failed. Please try again.");
+    }
+  };
 
   return (
     <div class="drawer z-[9999]">
@@ -392,7 +402,7 @@ export const Navbar = () => {
                   </a>
                 </li>
                 <li>
-                  <button onClick={() => { auth.logout(); closeDrawer(); window.location.href = "/"; }} class="text-error hover:bg-error/10">
+                  <button onClick={() => void handleLogout()} class="text-error hover:bg-error/10">
                     Logout
                   </button>
                 </li>

@@ -5,13 +5,14 @@ import { Icon } from "@iconify-icon/solid";
 import { Layout } from "~/layouts/Layout";
 import { useRequireReviewer } from "~/lib/route-guards";
 import type { ReviewerLeaderboardRow } from "~/lib/reviewer-actions";
+import { authorizedResourceSource } from "~/lib/route-authorization";
 
 const ReviewerLeaderboard = () => {
     const guard = useRequireReviewer();
     const navigate = useNavigate();
 
     const [leaderboard] = createResource(
-        () => (guard.authorized() ? true : undefined),
+        () => authorizedResourceSource(guard.authorized()),
         async () => {
             const { fetchReviewerLeaderboard } = await import("~/lib/reviewer-actions");
             const res = await fetchReviewerLeaderboard();

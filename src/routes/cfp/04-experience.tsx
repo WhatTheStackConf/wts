@@ -1,6 +1,6 @@
 import { Navigate, useNavigate } from "@solidjs/router";
 // import { Layout } from "~/layouts/Layout";
-import { useAuth } from "~/lib/auth-context";
+import { useRequireAuth } from "~/lib/route-guards";
 import { useCfpStore } from "~/lib/cfp-store";
 import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
 import { clientOnly } from "@solidjs/start";
@@ -10,12 +10,11 @@ import { Icon } from "@iconify-icon/solid";
 import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
 
 const Experience = () => {
-  const auth = useAuth();
+  useRequireAuth();
   const navigate = useNavigate();
   const [cfpStore, setCfpStore] = useCfpStore();
   const [cfpConfig] = createResource(fetchCfpConfig);
 
-  if (!auth || !auth.record) return <Navigate href="/login" />;
   if (!isCfpOpen()) return <Navigate href="/cfp/closed" />;
 
   const handleNext = () => {

@@ -1,7 +1,7 @@
 import { Show, createSignal, createResource } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 // import { Layout } from "~/layouts/Layout";
-import { useAuth } from "~/lib/auth-context";
+import { useRequireAuth } from "~/lib/route-guards";
 import { useCfpStore, submitProposal } from "~/lib/cfp-store";
 import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
 import { clientOnly } from "@solidjs/start";
@@ -10,18 +10,12 @@ import { Icon } from "@iconify-icon/solid";
 import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
 
 const Confirmation = () => {
-  const auth = useAuth();
+  useRequireAuth();
   const navigate = useNavigate();
   const [errors, setErrors] = createSignal<string[]>([]);
   const [cfpStore] = useCfpStore();
   const [cfpConfig] = createResource(fetchCfpConfig);
 
-  if (!auth || !auth.record) {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("redirect_url", location.pathname);
-    }
-    navigate("/login");
-  }
   if (!isCfpOpen()) {
     navigate("/cfp/closed");
   }

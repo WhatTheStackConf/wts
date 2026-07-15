@@ -1,22 +1,22 @@
-import { Show, createSignal, onMount } from "solid-js";
+import { Show, createResource, createSignal } from "solid-js";
 import { Layout } from "~/layouts/Layout";
 import { clientOnly } from "@solidjs/start";
 import { Icon } from "@iconify-icon/solid";
 import { useRequireAdmin } from "~/lib/route-guards";
 import { adminUpdateCfpConfig, adminFetchCfpConfig } from "~/lib/admin-actions";
+import { authorizedResourceSource } from "~/lib/route-authorization";
 
 const AdminDashboard = () => {
     const guard = useRequireAdmin();
 
-    const [cfpData, setCfpData] = createSignal<{ cfp_open: boolean; cfp_deadline: string | null } | null>(null);
     const [toggling, setToggling] = createSignal(false);
-
-    onMount(async () => {
-      const result = await adminFetchCfpConfig();
-      if (result.success && result.data) {
-        setCfpData(result.data);
-      }
-    });
+    const [cfpData, { mutate: setCfpData }] = createResource(
+      () => authorizedResourceSource(guard.authorized()),
+      async () => {
+        const result = await adminFetchCfpConfig();
+        return result.success && result.data ? result.data : null;
+      },
+    );
 
     const handleCfpToggle = async () => {
       const current = cfpData();

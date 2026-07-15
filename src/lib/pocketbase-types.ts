@@ -21,6 +21,7 @@ export interface CfpApplicantRecord extends RecordModel {
   bio: string;
   social_handles?: any; // JSON field
   preferred_contact_method: string;
+  previous_talks?: string;
   user: string; // relation to users collection
   created: string;
   updated: string;
@@ -652,6 +653,19 @@ export interface CfpReviewRecord extends RecordModel {
   updated: string;
 }
 
+export interface CfpWeightVoteRecord extends RecordModel {
+  id: string;
+  user: string;
+  relevance: number;
+  originality: number;
+  depth: number;
+  clarity: number;
+  takeaways: number;
+  engagement: number;
+  created: string;
+  updated: string;
+}
+
 // Type for authentication data
 export interface AuthData {
   record: UserRecord;
@@ -664,6 +678,7 @@ export type CollectionRecord =
   | CfpApplicantRecord
   | CfpSubmissionRecord
   | CfpReviewRecord
+  | CfpWeightVoteRecord
   | SpeakerRecord
   | SessionRecord
   | ConferenceDayRecord

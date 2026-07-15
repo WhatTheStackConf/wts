@@ -6,7 +6,6 @@ import {
   CollectionRecord,
 } from "./pocketbase-types";
 import pb from "./pocketbase";
-import { setAuthCookie, clearAuthCookie } from "./auth-cookie";
 
 // Initialize PocketBase client instance
 
@@ -19,54 +18,11 @@ export function initPocketBase(url?: string) {
 // Export initialized PocketBase instance
 export { pb };
 
-// Authentication functions
-export const login = async (
-  email: string,
-  password: string,
-): Promise<AuthData> => {
-  try {
-    const authData: AuthData = await pb
-      .collection("users")
-      .authWithPassword(email, password);
-
-    // Sync cookie for server actions
-    setAuthCookie(authData.token, authData.record);
-
-    return authData;
-  } catch (error) {
-    console.error("Login error:", error);
-    throw error;
-  }
-};
-
 export const loginWithGithub = async (): Promise<AuthData> => {
   try {
     const authData: AuthData = await pb.collection("users").authWithOAuth2({
       provider: "github",
     });
-
-    // Extract name from GitHub metadata if user's name is empty
-    const meta = (authData as any).meta;
-    const record = authData.record;
-
-    if (record && !record.name && meta && (meta.name || meta.username)) {
-      const nameToUse = meta.name || meta.username;
-
-      try {
-        await pb.collection("users").update(record.id, {
-          name: nameToUse,
-        });
-        // Update the local record with the new name
-        authData.record.name = nameToUse;
-      } catch (updateError) {
-        console.warn("Failed to auto-update GitHub name:", updateError);
-        // We continue even if update fails, as login was successful
-      }
-    }
-
-
-    // Sync cookie for server actions
-    setAuthCookie(authData.token, authData.record);
 
     return authData;
   } catch (error) {
@@ -101,9 +57,6 @@ export const loginWithGoogle = async (): Promise<AuthData> => {
       provider: "google",
     });
 
-    // Sync cookie for server actions
-    setAuthCookie(authData.token, authData.record);
-
     return authData;
   } catch (error) {
     console.error("Login with Google error:", error);
@@ -132,22 +85,6 @@ export const register = async (
     console.error("Error data:", JSON.stringify(error.response?.data, null, 2));
     throw error;
   }
-};
-
-export const logout = () => {
-  pb.authStore.clear();
-  clearAuthCookie();
-  // Optionally navigate to home or login page
-};
-
-// Check if user is authenticated
-export const isAuthenticated = (): boolean => {
-  return pb.authStore.isValid;
-};
-
-// Get current user
-export const getCurrentUser = (): UserRecord | null => {
-  return pb.authStore.record as UserRecord | null;
 };
 
 // CFP Applicant functions

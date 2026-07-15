@@ -4,6 +4,7 @@ import { Layout } from "~/layouts/Layout";
 import { clientOnly } from "@solidjs/start";
 import { Icon } from "@iconify-icon/solid";
 import { useRequireReviewer } from "~/lib/route-guards";
+import { authorizedResourceSource } from "~/lib/route-authorization";
 
 const ReviewerDashboard = () => {
     const guard = useRequireReviewer();
@@ -19,7 +20,7 @@ const ReviewerDashboard = () => {
     };
 
     const [data] = createResource(
-        () => (guard.authorized() ? true : undefined),
+        () => authorizedResourceSource(guard.authorized()),
         fetchSubmissions,
     );
 

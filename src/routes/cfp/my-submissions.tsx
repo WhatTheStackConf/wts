@@ -2,6 +2,7 @@ import { createResource, For, Show } from "solid-js";
 import { useNavigate, A } from "@solidjs/router";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
+import { useRequireAuth } from "~/lib/route-guards";
 import { fetchProposals, loadSubmissionToStore } from "~/lib/cfp-store";
 import { Icon } from "@iconify-icon/solid";
 import { sanitizeHtml } from "~/lib/sanitize-html";
@@ -9,18 +10,23 @@ import { clientOnly } from "@solidjs/start";
 
 const MyProposals = () => {
   const auth = useAuth();
+  const guard = useRequireAuth();
   const navigate = useNavigate();
 
   // We use your existing fetchProposals, but we filter for the current user
-  const [proposals] = createResource(async () => {
-    const all = await fetchProposals();
-    // Filter locally if your API doesn't handle the user filter in the helper
-    return all;
-  });
+  const [proposals] = createResource(
+    () => (guard.authorized() ? true : undefined),
+    fetchProposals,
+  );
 
   const handleEdit = (proposal: any) => {
-    // Uses your store's helper to populate the form
-    loadSubmissionToStore(proposal);
+    const reusableProposal = proposal.status === "pending"
+      ? proposal
+      : { ...proposal, id: "" };
+    loadSubmissionToStore(reusableProposal, {
+      email: auth.record?.email,
+      name: auth.record?.name,
+    });
     navigate("/cfp/03-proposal"); // Jump straight to proposal step
   };
 
@@ -95,13 +101,15 @@ const MyProposals = () => {
                             class="btn btn-sm btn-ghost hover:bg-primary hover:text-primary-content gap-2"
                           >
                             <Icon icon="material-symbols:edit-square-outline" />{" "}
-                            Edit / Reuse
+                            <Show when={proposal.status === "pending"} fallback="Reuse">
+                              Edit
+                            </Show>
                           </button>
                         </div>
                       </div>
 
                       <h2 class="text-2xl font-bold mb-4 group-hover:text-primary transition-colors">
-                        {proposal.session_title || proposal.talk_title}
+                        {proposal.session_title}
                       </h2>
 
                       {/* Render formatted abstract preview */}

@@ -5,7 +5,7 @@ import { useAuth } from "~/lib/auth-context";
 import { useRequireReviewer } from "~/lib/route-guards";
 import { Icon } from "@iconify-icon/solid";
 import { sanitizeHtml } from "~/lib/sanitize-html";
-import { CfpReviewRecord } from "~/lib/pocketbase-types";
+import type { ReviewerReviewDto } from "~/lib/reviewer-actions";
 import { Layout } from "~/layouts/Layout";
 import { TouchSafeSlider } from "~/components/TouchSafeSlider";
 
@@ -25,8 +25,8 @@ const ReviewPage = () => {
     const guard = useRequireReviewer();
     const navigate = useNavigate();
     const [submission, setSubmission] = createSignal<any>(null);
-    const [myReview, setMyReview] = createSignal<CfpReviewRecord | null>(null);
-    const [allReviews, setAllReviews] = createSignal<CfpReviewRecord[]>([]); // For Admins
+    const [myReview, setMyReview] = createSignal<ReviewerReviewDto | null>(null);
+    const [allReviews, setAllReviews] = createSignal<any[]>([]); // Admin-only expanded records
     const [loading, setLoading] = createSignal(true);
     const [saving, setSaving] = createSignal(false);
 
@@ -57,13 +57,13 @@ const ReviewPage = () => {
                     setSubmission(res.data.submission);
 
                     if (res.data.userRole === "admin") {
-                        setAllReviews(res.data.reviews || []);
+                        setAllReviews((res.data.reviews || []) as any[]);
                     } else {
                         // Reviewer mode - find my review
                         // The server returns only MY review in reviews array for non-admins
                         if (res.data.reviews && res.data.reviews.length > 0) {
                             const r = res.data.reviews[0];
-                            setMyReview(r);
+                            setMyReview(r as ReviewerReviewDto);
                             // Populate form
                             const newScores: any = {};
                             CRITERIA.forEach(c => newScores[c.id] = (r as any)[c.id]);
@@ -116,7 +116,7 @@ const ReviewPage = () => {
             if (res.success) {
                 if (!myReview()) {
                     // If it was a create, update local state with returned record
-                    setMyReview(res.data as unknown as CfpReviewRecord);
+                    setMyReview(res.data as ReviewerReviewDto);
                 }
                 alert("Review saved!");
             } else {

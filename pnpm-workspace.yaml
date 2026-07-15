@@ -10,3 +10,10 @@ onlyBuiltDependencies:
   - node-sqlite3
   - sharp
   - sqlite3
+overrides:
+  '@babel/core': 7.29.6
+  '@mapbox/node-pre-gyp>tar': 7.5.16
+  '@solidjs/start>esbuild': 0.28.1
+  '@solidjs/start>h3': 2.0.1-rc.25
+  '@solidjs/vite-plugin-nitro-2>nitropack': 2.13.4
+  'brace-expansion@>=5.0.0 <5.0.6': 5.0.6

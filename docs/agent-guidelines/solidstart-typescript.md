@@ -4,7 +4,7 @@ Use this when changing `.ts`, `.tsx`, SolidStart server functions, or browser/se
 
 ## Imports And Components
 
-- SolidStart uses `@solidjs/start` `2.0.0-alpha.2`; prefer existing local patterns over assumptions from stable docs.
+- SolidStart uses `@solidjs/start` `2.0.0-alpha.3`; prefer existing local patterns over assumptions from stable docs.
 - Use named imports from `solid-js`.
 - Use the `~/*` alias for imports from `src/*`.
 - For component prop types, prefer interfaces.

@@ -1,24 +1,16 @@
 import { createEffect } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { clientOnly } from "@solidjs/start";
-import { useAuth } from "~/lib/auth-context";
+import { useRequireAdmin } from "~/lib/route-guards";
 
 const AdminWeightsRedirect = () => {
-    const auth = useAuth();
+    const guard = useRequireAdmin();
     const navigate = useNavigate();
 
     createEffect(() => {
-        if (auth.isLoading()) return;
-        if (!auth.isAuthenticated()) {
-            navigate("/login");
-            return;
-        }
-        const role = auth.user?.role;
-        if (role === "reviewer" || role === "admin") {
+        if (guard.authorized()) {
             navigate("/reviewer/weights", { replace: true });
-            return;
         }
-        navigate("/");
     });
 
     return null;

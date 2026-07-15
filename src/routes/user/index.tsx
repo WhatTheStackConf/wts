@@ -1,15 +1,15 @@
 import { Navigate } from "@solidjs/router";
+import { Show } from "solid-js";
 import { useAuth } from "~/lib/auth-context";
 
 const UserIndex = () => {
   const auth = useAuth();
   
-  // If user is authenticated, redirect to profile; otherwise, to login
-  if (auth && auth.isAuthenticated()) {
-    return <Navigate href="/user/profile" />;
-  } else {
-    return <Navigate href="/login" />;
-  }
+  return (
+    <Show when={!auth.isLoading()}>
+      <Navigate href={auth.isAuthenticated() ? "/user/profile" : "/login"} />
+    </Show>
+  );
 };
 
 export default UserIndex;

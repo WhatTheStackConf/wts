@@ -1,5 +1,5 @@
 import { useNavigate } from "@solidjs/router";
-import { useAuth } from "~/lib/auth-context";
+import { useRequireAuth } from "~/lib/route-guards";
 import { useCfpStore } from "~/lib/cfp-store";
 import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
 import { clientOnly } from "@solidjs/start";
@@ -10,13 +10,12 @@ import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
 const RichEditor = clientOnly(() => import("../../components/RichEditor"));
 
 const Proposal = () => {
-  const auth = useAuth();
+  useRequireAuth();
   const navigate = useNavigate();
   const [cfpStore, setCfpStore] = useCfpStore();
   const [errors, setErrors] = createSignal<Record<string, string>>({});
   const [cfpConfig] = createResource(fetchCfpConfig);
 
-  if (!auth || !auth.record) navigate("/login");
   if (!isCfpOpen()) navigate("/cfp/closed");
 
   const handleNext = () => {

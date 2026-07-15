@@ -1,6 +1,7 @@
-import { createSignal, createResource, onMount, Show } from "solid-js";
+import { createEffect, createSignal, createResource, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { useAuth } from "~/lib/auth-context";
+import { useRequireAuth } from "~/lib/route-guards";
 import {
   fetchApplicantData,
   useCfpStore,
@@ -14,15 +15,16 @@ import { SmartArea } from "../../components/SmartArea";
 
 const Personal = () => {
   const auth = useAuth();
+  const guard = useRequireAuth();
   const navigate = useNavigate();
   const [cfpStore, setCfpStore] = useCfpStore();
   const [errors, setErrors] = createSignal<Record<string, string>>({});
   const [cfpConfig] = createResource(fetchCfpConfig);
 
-  if (!auth || !auth.record) navigate("/login");
   if (!isCfpOpen()) navigate("/cfp/closed");
 
-  onMount(async () => {
+  createEffect(async () => {
+    if (!guard.authorized()) return;
     const applicantData = await fetchApplicantData();
     const data = applicantData?.[0];
 
@@ -65,7 +67,6 @@ const Personal = () => {
     }
 
     await updateApplicant({
-      user: user.id,
       affiliation: cfpStore.formData.affiliation,
       bio: cfpStore.formData.short_bio,
       social_handles: cfpStore.formData.social_handles.filter(

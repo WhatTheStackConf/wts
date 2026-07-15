@@ -1,18 +1,11 @@
-import { createSignal, Show, onMount } from "solid-js";
-import pb from "../lib/pocketbase";
+import { createSignal, Show } from "solid-js";
 import SparkMD5 from "spark-md5";
 import { Icon } from "@iconify-icon/solid";
 import { useAuth } from "~/lib/auth-context";
 
 const LoginMenu = () => {
-  const [isLoggedIn, setIsLoggedIn] = createSignal(pb.authStore.isValid);
   const [imgError, setImgError] = createSignal(false);
-
-  onMount(() => {
-    return pb.authStore.onChange(() => {
-      setIsLoggedIn(pb.authStore.isValid);
-    });
-  });
+  const auth = useAuth();
 
   const getGravatarUrl = (email: string) => {
     const trimmedEmail = email.trim().toLowerCase();
@@ -21,16 +14,16 @@ const LoginMenu = () => {
   };
 
   const getDisplayName = () => {
-    const name = pb.authStore.record?.name;
+    const name = auth.record?.name;
     if (name) {
       return name.split(" ")[0]; // First name only
     }
-    return pb.authStore.record?.email?.split("@")[0] || "Agent";
+    return auth.record?.email?.split("@")[0] || "Agent";
   };
 
   const getInitials = () => {
-    const name = pb.authStore.record?.name;
-    const email = pb.authStore.record?.email;
+    const name = auth.record?.name;
+    const email = auth.record?.email;
     if (name) {
       return name.charAt(0).toUpperCase();
     }
@@ -40,16 +33,24 @@ const LoginMenu = () => {
     return "A"; // Agent
   };
 
-  const { logout } = useAuth();
+  const handleLogout = async () => {
+    try {
+      await auth.logout();
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Logout failed.", error);
+      window.alert("Logout failed. Please try again.");
+    }
+  };
 
   return (
     <div class="fade-in relative">
-      <Show when={!isLoggedIn()}>
+      <Show when={!auth.isLoading() && !auth.isAuthenticated()}>
         <a class="btn btn-ghost btn-lg" href="/login">
           Log in
         </a>
       </Show>
-      <Show when={isLoggedIn()}>
+      <Show when={auth.isAuthenticated()}>
         <button
           class="btn btn-ghost btn-lg gap-3 font-mono text-primary-300 hover:text-primary-100 hover:bg-primary-900/20"
           popovertarget="user-menu"
@@ -68,7 +69,7 @@ const LoginMenu = () => {
             >
               <div class="w-8 h-8 rounded-full overflow-hidden border border-primary-500/50 shadow-[0_0_10px_rgba(var(--color-primary-500),0.3)]">
                 <img
-                  src={getGravatarUrl(pb.authStore.record?.email || "")}
+                  src={getGravatarUrl(auth.record?.email || "")}
                   alt="Avatar"
                   onError={() => setImgError(true)}
                 />
@@ -95,7 +96,7 @@ const LoginMenu = () => {
           </li>
           <div class="divider my-0 border-white/10"></div>
           <li>
-            <button onClick={() => { logout(); window.location.href = "/"; }} class="text-error hover:bg-error/10 hover:text-error">
+            <button onClick={() => void handleLogout()} class="text-error hover:bg-error/10 hover:text-error">
               <Icon icon="ph:sign-out-bold" class="text-lg" />
               Logout
             </button>

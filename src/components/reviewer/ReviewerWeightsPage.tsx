@@ -41,7 +41,7 @@ export default function ReviewerWeightsPage() {
             const res = await fetchWeightVotes();
             if (!res.success) return;
 
-            const records = res.data as any[];
+            const records = res.data || [];
             setUserRole(res.userRole === "admin" ? "admin" : "reviewer");
 
             const serverAverages =
@@ -54,7 +54,7 @@ export default function ReviewerWeightsPage() {
             setAverages(tempAvg);
 
             if (res.userRole === "reviewer") {
-                const myVote = records.find((r: any) => r.user === res.userId);
+                const myVote = records[0];
                 if (myVote) {
                     setVoteId(myVote.id);
                     const v: Record<string, number> = {};
@@ -197,12 +197,14 @@ export default function ReviewerWeightsPage() {
                                                         <span class="label-text font-bold text-lg text-white group-hover:text-primary-300 transition-colors uppercase tracking-wide">
                                                             {item.label}
                                                         </span>
-                                                        <span class="label-text-alt text-gray-500 font-mono text-xs mt-1">
-                                                            GLOBAL AVG:{" "}
-                                                            <span class="text-secondary-400">
-                                                                {averages()[item.id] || "-"}
+                                                        <Show when={!isReviewer()}>
+                                                            <span class="label-text-alt text-gray-500 font-mono text-xs mt-1">
+                                                                GLOBAL AVG:{" "}
+                                                                <span class="text-secondary-400">
+                                                                    {averages()[item.id] || "-"}
+                                                                </span>
                                                             </span>
-                                                        </span>
+                                                        </Show>
                                                     </label>
                                                     <div class="flex flex-col items-end">
                                                         <span class="font-mono text-3xl font-black text-transparent bg-clip-text bg-gradient-to-br from-primary-400 to-white drop-shadow-sm">

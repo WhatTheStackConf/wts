@@ -3,7 +3,6 @@ import { useNavigate } from "@solidjs/router";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
 import { clientOnly } from "@solidjs/start";
-import pb from "~/lib/pocketbase";
 import { Icon } from "@iconify-icon/solid";
 
 import SparkMD5 from "spark-md5";
@@ -23,14 +22,13 @@ import {
   getMyHiEventsEvidenceStatus,
   refreshMyHiEventsEvidence,
 } from "~/lib/gamification-hievents-actions";
-import { syncCookieFromToken } from "~/lib/server-auth";
+import { updateMyProfile } from "~/lib/profile-actions";
+import type { SessionUser } from "~/lib/session-policy";
 
 const ProfilePage = () => {
   const auth = useAuth();
   const navigate = useNavigate();
-  const [user, setUser] = createSignal<typeof pb.authStore.record | null>(
-    pb.authStore.record,
-  );
+  const [user, setUser] = createSignal<SessionUser | null>(auth.record);
   const [isUpdating, setIsUpdating] = createSignal(false);
   const [imgError, setImgError] = createSignal(false);
   const [message, setMessage] = createSignal<{
@@ -38,12 +36,14 @@ const ProfilePage = () => {
     text: string;
   } | null>(null);
 
-  const [proposals] = createResource(fetchProposals);
+  const [proposals] = createResource(
+    () => !auth.isLoading() && auth.isAuthenticated() ? true : undefined,
+    fetchProposals,
+  );
   const [gamification, { refetch: refetchGamification }] = createResource(
     () => auth.isAuthenticated(),
     async (authenticated) => {
       if (!authenticated) return undefined;
-      if (pb.authStore.token) await syncCookieFromToken(pb.authStore.token);
       return getMyGamificationProfileSummary();
     },
   );
@@ -68,14 +68,12 @@ const ProfilePage = () => {
     () => auth.isAuthenticated(),
     async (authenticated) => {
       if (!authenticated) return [];
-      if (pb.authStore.token) await syncCookieFromToken(pb.authStore.token);
       return getMyPartnerContactConsentSummaries();
     },
   );
   const [ticketStatus] = createResource(
     () => auth.isAuthenticated() ? ticketRefreshRequest() : undefined,
     async (request) => {
-      if (pb.authStore.token) await syncCookieFromToken(pb.authStore.token);
       if (request > 0) {
         const status = await refreshMyHiEventsEvidence();
         await refetchGamification();
@@ -90,15 +88,19 @@ const ProfilePage = () => {
   );
 
   const handleEditProposal = (proposal: any) => {
-    loadSubmissionToStore(proposal);
+    loadSubmissionToStore(proposal, {
+      email: auth.record?.email,
+      name: auth.record?.name,
+    });
     navigate("/cfp/03-proposal");
   };
 
-  // Redirect if not authenticated
-  if (!auth || !auth.isAuthenticated()) {
-    navigate("/login");
-    return null;
-  }
+  createEffect(() => {
+    setUser(auth.record);
+    if (!auth.isLoading() && !auth.isAuthenticated()) {
+      navigate("/login", { replace: true });
+    }
+  });
 
   const getGravatarUrl = (email: string) => {
     const trimmedEmail = email.trim().toLowerCase();
@@ -137,14 +139,9 @@ const ProfilePage = () => {
     setMessage(null);
 
     try {
-      // Update user profile in PocketBase
-      const updatedUser = await pb.collection("users").update(user()!.id, {
-        name: user()!.name,
-        // email: user()!.email, // Email usually handled separately in PB
-      });
-
-      // Update auth store with new data
-      pb.authStore.save(pb.authStore.token, updatedUser);
+      const updatedUser = await updateMyProfile({ name: user()!.name });
+      setUser(updatedUser);
+      await auth.refresh();
 
       setMessage({ type: "success", text: "Identity updated successfully." });
     } catch (error) {
@@ -158,10 +155,14 @@ const ProfilePage = () => {
     }
   };
 
-  const handleLogout = () => {
-    pb.authStore.clear();
-    // Force reload/redirect to clear state properly
-    window.location.href = "/";
+  const handleLogout = async () => {
+    try {
+      await auth.logout();
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Logout failed.", error);
+      setMessage({ type: "error", text: "Logout failed. Please try again." });
+    }
   };
 
   const refreshTicketStatus = () => setTicketRefreshRequest((request) => request + 1);
@@ -171,7 +172,6 @@ const ProfilePage = () => {
     setVisibilityBusy(true);
     setVisibilityMessage("");
     try {
-      if (pb.authStore.token) await syncCookieFromToken(pb.authStore.token);
       const summary = await updateMyGamificationVisibility({
         opsBoardVisible: opsBoardVisible(),
         opsBoardDisplayName: opsBoardDisplayName(),
@@ -195,7 +195,6 @@ const ProfilePage = () => {
     setVisibilityBusy(true);
     setVisibilityMessage("");
     try {
-      if (pb.authStore.token) await syncCookieFromToken(pb.authStore.token);
       await updateMyGamificationBadgeVisibility(badgeId, publicVisible);
       await refetchGamification();
       setVisibilityMessage("Badge snippet visibility saved.");
@@ -219,7 +218,6 @@ const ProfilePage = () => {
     setConsentBusy(true);
     setConsentMessage("");
     try {
-      if (pb.authStore.token) await syncCookieFromToken(pb.authStore.token);
       await grantMyPartnerContactConsent(activityId);
       await refetchPartnerConsents();
       setConsentMessage("Partner follow-up consent recorded. You can withdraw it before any future WTS handoff.");
@@ -236,7 +234,6 @@ const ProfilePage = () => {
     setConsentBusy(true);
     setConsentMessage("");
     try {
-      if (pb.authStore.token) await syncCookieFromToken(pb.authStore.token);
       await withdrawMyPartnerContactConsent(consentId);
       await refetchPartnerConsents();
       setConsentMessage("Partner follow-up consent withdrawn. Existing gamification progress is unchanged.");
@@ -313,7 +310,7 @@ const ProfilePage = () => {
                     <div class="w-full h-px bg-white/10 mb-6"></div>
 
                     <button
-                      onClick={handleLogout}
+                      onClick={() => void handleLogout()}
                       class="btn btn-outline btn-error w-full font-mono gap-2 hover:bg-error/10"
                     >
                       <Icon icon="material-symbols:logout" />
@@ -747,7 +744,7 @@ const ProfilePage = () => {
                         <div class="flex flex-col md:flex-row justify-between gap-4">
                           <div class="flex-grow">
                             <div class="flex items-center gap-3 mb-2">
-                              <span class={`badge font-mono text-xs ${proposal.status === 'Accepted' ? 'badge-success' : 'badge-neutral badge-outline'}`}>
+                              <span class={`badge font-mono text-xs ${proposal.status === 'accepted' ? 'badge-success' : 'badge-neutral badge-outline'}`}>
                                 {proposal.status || "RECEIVED"}
                               </span>
                               <span class="text-xs font-mono text-white/30">
@@ -755,20 +752,22 @@ const ProfilePage = () => {
                               </span>
                             </div>
                             <h4 class="text-xl font-bold text-white mb-2 group-hover:text-primary-300 transition-colors">
-                              {proposal.session_title || proposal.talk_title}
+                              {proposal.session_title}
                             </h4>
                             <div class="line-clamp-2 text-sm text-secondary-300/80 font-mono mb-4">
                               <div innerHTML={sanitizeHtml(proposal.abstract)} />
                             </div>
                           </div>
                           <div class="flex items-start">
-                            <button
-                              onClick={() => handleEditProposal(proposal)}
-                              class="btn btn-outline btn-sm font-mono gap-2 hover:bg-primary-500 hover:text-white"
-                            >
-                              <Icon icon="material-symbols:edit-square-outline" />
-                              EDIT
-                            </button>
+                            <Show when={proposal.status === "pending"}>
+                              <button
+                                onClick={() => handleEditProposal(proposal)}
+                                class="btn btn-outline btn-sm font-mono gap-2 hover:bg-primary-500 hover:text-white"
+                              >
+                                <Icon icon="material-symbols:edit-square-outline" />
+                                EDIT
+                              </button>
+                            </Show>
                           </div>
                         </div>
                       </div>

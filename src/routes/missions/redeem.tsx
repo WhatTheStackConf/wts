@@ -13,8 +13,6 @@ import {
   savePendingMissionCode,
   setMissionCodeLoginResume,
 } from "~/lib/mission-code-resume";
-import pb from "~/lib/pocketbase";
-import { syncCookieFromToken } from "~/lib/server-auth";
 
 const RedeemMissionPage = () => {
   const auth = useAuth();
@@ -54,7 +52,6 @@ const RedeemMissionPage = () => {
     setRequestError("");
     setResult(undefined);
     try {
-      if (pb.authStore.token) await syncCookieFromToken(pb.authStore.token);
       const redemption = await redeemMissionCode(trimmedCode, sourceHint);
       setResult(redemption);
       if (redemption.status !== "rate_limited" && redemption.status !== "unavailable") {
@@ -100,7 +97,6 @@ const RedeemMissionPage = () => {
     setConsentBusy(true);
     setConsentMessage("");
     try {
-      if (pb.authStore.token) await syncCookieFromToken(pb.authStore.token);
       const partnerFollowUp = await grantMyPartnerContactConsent(activityId);
       setResult((current) => current ? { ...current, partnerFollowUp } : current);
       setConsentMessage("Partner follow-up consent recorded. You can withdraw it in your profile before any future WTS handoff.");

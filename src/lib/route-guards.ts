@@ -1,7 +1,12 @@
 import { createEffect, createMemo } from "solid-js";
-import { useNavigate } from "@solidjs/router";
+import { useLocation, useNavigate } from "@solidjs/router";
 import { useAuth } from "~/lib/auth-context";
 import type { UserRecord } from "~/lib/pocketbase-types";
+import {
+    adminAuthorized,
+    authenticated,
+    reviewerAuthorized,
+} from "~/lib/route-authorization";
 
 export function useRequireAdmin() {
     const auth = useAuth();
@@ -10,18 +15,21 @@ export function useRequireAdmin() {
     const isLoading = () => auth.isLoading();
 
     const authorized = createMemo(() => {
-        if (auth.isLoading()) return false;
-        return auth.isAuthenticated() && auth.user?.role === "admin";
+        return adminAuthorized({
+            loading: auth.isLoading(),
+            authenticated: auth.isAuthenticated(),
+            role: auth.user?.role,
+        });
     });
 
     createEffect(() => {
         if (auth.isLoading()) return;
         if (!auth.isAuthenticated()) {
-            navigate("/login");
+            navigate("/login", { replace: true });
             return;
         }
         if (auth.user?.role !== "admin") {
-            navigate("/");
+            navigate("/", { replace: true });
         }
     });
 
@@ -39,21 +47,22 @@ export function useRequireReviewer() {
     const isLoading = () => auth.isLoading();
 
     const authorized = createMemo(() => {
-        if (auth.isLoading()) return false;
-        if (!auth.isAuthenticated()) return false;
-        const role = auth.user?.role;
-        return role === "reviewer" || role === "admin";
+        return reviewerAuthorized({
+            loading: auth.isLoading(),
+            authenticated: auth.isAuthenticated(),
+            role: auth.user?.role,
+        });
     });
 
     createEffect(() => {
         if (auth.isLoading()) return;
         if (!auth.isAuthenticated()) {
-            navigate("/login");
+            navigate("/login", { replace: true });
             return;
         }
         const role = auth.user?.role;
         if (role !== "reviewer" && role !== "admin") {
-            navigate("/");
+            navigate("/", { replace: true });
         }
     });
 
@@ -62,4 +71,32 @@ export function useRequireReviewer() {
     );
 
     return { isLoading, authorized, user };
+}
+
+export function useRequireAuth() {
+    const auth = useAuth();
+    const location = useLocation();
+    const navigate = useNavigate();
+    const authorized = createMemo(() => authenticated({
+        loading: auth.isLoading(),
+        authenticated: auth.isAuthenticated(),
+        role: auth.user?.role,
+    }));
+
+    createEffect(() => {
+        if (!auth.isLoading() && !auth.isAuthenticated()) {
+            const destination = `${location.pathname}${location.search}${location.hash}`;
+            try {
+                window.localStorage.setItem("redirect_url", destination);
+            } catch {
+                // Login still works when browser storage is unavailable.
+            }
+            navigate("/login", { replace: true });
+        }
+    });
+
+    const user = createMemo((): UserRecord | null =>
+        authorized() ? (auth.user as UserRecord) : null,
+    );
+    return { isLoading: auth.isLoading, authorized, user };
 }

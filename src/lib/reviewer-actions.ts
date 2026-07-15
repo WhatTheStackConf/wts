@@ -1,283 +1,46 @@
-import { requireReviewer } from "~/lib/admin-security";
-import { getAdminPB } from "~/lib/pocketbase-admin-service";
-import { CfpReviewRecord, CfpSubmissionRecord } from "~/lib/pocketbase-types";
+import {
+  fetchReviewerLeaderboardCore,
+  fetchReviewerSubmissionDetailCore,
+  fetchReviewerSubmissionsCore,
+  fetchWeightVotesCore,
+  saveWeightVoteCore,
+  submitReviewCore,
+} from "~/lib/reviewer-actions-core";
 
-const WEIGHT_CRITERIA = [
-    "relevance",
-    "originality",
-    "depth",
-    "clarity",
-    "takeaways",
-    "engagement",
-] as const;
+export type {
+  ReviewerLeaderboardRow,
+  ReviewerReviewDto,
+  ReviewerSubmissionDetailDto,
+  ReviewerSubmissionListDto,
+  ReviewerWeightVoteDto,
+} from "~/lib/reviewer-actions-core";
 
-function calculateWeightAverages(votes: any[]) {
-    const averages: Record<string, number> = {};
-
-    for (const criterion of WEIGHT_CRITERIA) {
-        const values = votes
-            .map((vote) => Number(vote[criterion]))
-            .filter((value) => Number.isFinite(value) && value > 0);
-        const sum = values.reduce((acc, value) => acc + value, 0);
-        averages[criterion] = values.length > 0 ? sum / values.length : 1;
-    }
-
-    return averages;
-}
-
-export type ReviewerLeaderboardRow = {
-    reviewerId: string;
-    reviewerName: string;
-    reviewCount: number;
-};
-
-// PocketBase record IDs are 15-char alphanumeric strings
-const VALID_ID = /^[a-zA-Z0-9]{15}$/;
-
-function validateRecordId(id: string): string {
-    if (!VALID_ID.test(id)) {
-        throw new Error("Invalid record ID");
-    }
-    return id;
-}
-
-// Fetch all submissions split into reviewed/unreviewed for the current reviewer
 export const fetchReviewerSubmissions = async () => {
-    "use server";
-    try {
-        const user = await requireReviewer();
-        const adminService = getAdminPB();
-
-        const isAdmin = user.role === "admin";
-
-        const [submissions, myReviews] = await Promise.all([
-            adminService.fetchAllRecords("cfp_submissions", {
-                expand: isAdmin ? "applicant" : undefined,
-            }),
-            adminService.fetchAllRecords("cfp_reviews", {
-                filter: `reviewer = "${user.id}"`,
-            }),
-        ]);
-
-        const reviewedIds = new Set(myReviews.map((r: any) => r.submission));
-
-        const reviewed = submissions.filter((s: any) => reviewedIds.has(s.id));
-        const unreviewed = submissions.filter((s: any) => !reviewedIds.has(s.id));
-
-        // Strip sensitive fields for non-admin reviewers
-        const sanitizeForReviewer = (sub: any) => {
-            if (isAdmin) return sub;
-            const { applicant, meta, notes, ...safe } = sub;
-            return safe;
-        };
-
-        return {
-            success: true,
-            data: {
-                reviewed: reviewed.map(sanitizeForReviewer) as CfpSubmissionRecord[],
-                unreviewed: unreviewed.map(sanitizeForReviewer) as CfpSubmissionRecord[],
-                totalLeft: unreviewed.length,
-            },
-        };
-    } catch (error) {
-        console.error("Fetch reviewer submissions error:", error);
-        return { success: false, error: (error as Error).message };
-    }
+  "use server";
+  return fetchReviewerSubmissionsCore();
 };
 
-// Fetch a single submission and its reviews
 export const fetchReviewerSubmissionDetail = async (id: string) => {
-    "use server";
-    try {
-        const user = await requireReviewer();
-        const safeId = validateRecordId(id);
-        const adminService = getAdminPB();
-        const isAdmin = user.role === "admin";
-
-        // 1. Fetch Submission
-        const submission = await adminService.fetchRecordById("cfp_submissions", safeId, {
-            expand: isAdmin ? "applicant.user" : undefined
-        });
-
-        // 2. Fetch Reviews
-        // Admin sees ALL reviews for this submission
-        // Reviewer sees ONLY their own review
-        let reviews = [];
-        if (isAdmin) {
-            reviews = await adminService.fetchAllRecords("cfp_reviews", {
-                filter: `submission = "${safeId}"`,
-                expand: "reviewer"
-            });
-        } else {
-            reviews = await adminService.fetchAllRecords("cfp_reviews", {
-                filter: `submission = "${safeId}" && reviewer = "${user.id}"`
-            });
-        }
-
-        // Strip sensitive fields for non-admin reviewers
-        const sanitizedSubmission = isAdmin ? submission : (() => {
-            const { applicant, meta, notes, ...safe } = submission as any;
-            return safe;
-        })();
-
-        return {
-            success: true,
-            data: {
-                submission: sanitizedSubmission as CfpSubmissionRecord,
-                reviews: reviews as CfpReviewRecord[],
-                userRole: user.role,
-                userId: user.id
-            }
-        };
-    } catch (error) {
-        console.error("Fetch reviewer submission detail error:", error);
-        return { success: false, error: (error as Error).message };
-    }
+  "use server";
+  return fetchReviewerSubmissionDetailCore(id);
 };
 
-// Fetch weight votes: reviewers see only their vote; admins see all (for aggregates).
 export const fetchWeightVotes = async () => {
-    "use server";
-    try {
-        const user = await requireReviewer();
-        const adminService = getAdminPB();
-        const allRecords = await adminService.fetchAllRecords("cfp_weight_votes");
-        const records =
-            user.role === "admin"
-                ? allRecords
-                : allRecords.filter((record: any) => record.user === user.id);
-        return {
-            success: true,
-            data: records,
-            averages: calculateWeightAverages(allRecords),
-            userId: user.id,
-            userRole: user.role,
-        };
-    } catch (error) {
-        console.error("Fetch weight votes error:", error);
-        return { success: false, error: (error as Error).message };
-    }
+  "use server";
+  return fetchWeightVotesCore();
 };
 
-// Fetch reviewer activity counts without exposing submission details.
 export const fetchReviewerLeaderboard = async () => {
-    "use server";
-    try {
-        await requireReviewer();
-        const adminService = getAdminPB();
-
-        const [reviewers, reviews] = await Promise.all([
-            adminService.fetchAllRecords("users", {
-                filter: 'role = "reviewer"',
-                fields: "id,name,username",
-            }),
-            adminService.fetchAllRecords("cfp_reviews", {
-                fields: "reviewer,submission",
-            }),
-        ]);
-
-        const reviewedSubmissionsByReviewer = new Map<string, Set<string>>();
-        for (const review of reviews as any[]) {
-            if (!review.reviewer || !review.submission) continue;
-            const reviewed = reviewedSubmissionsByReviewer.get(review.reviewer) || new Set<string>();
-            reviewed.add(review.submission);
-            reviewedSubmissionsByReviewer.set(review.reviewer, reviewed);
-        }
-
-        const leaderboard = (reviewers as any[])
-            .map((reviewer): ReviewerLeaderboardRow => ({
-                reviewerId: reviewer.id,
-                reviewerName:
-                    reviewer.name ||
-                    reviewer.username ||
-                    `Reviewer ${reviewer.id.slice(-4).toUpperCase()}`,
-                reviewCount: reviewedSubmissionsByReviewer.get(reviewer.id)?.size || 0,
-            }))
-            .sort((a, b) => {
-                if (b.reviewCount !== a.reviewCount) return b.reviewCount - a.reviewCount;
-                return a.reviewerName.localeCompare(b.reviewerName);
-            });
-
-        return { success: true, data: leaderboard };
-    } catch (error) {
-        console.error("Fetch reviewer leaderboard error:", error);
-        return { success: false, error: (error as Error).message };
-    }
+  "use server";
+  return fetchReviewerLeaderboardCore();
 };
 
-// Save or update a weight vote (reviewer only)
-export const saveWeightVote = async (voteId: string | null, votes: Record<string, number>) => {
-    "use server";
-    try {
-        const user = await requireReviewer();
-        if (user.role !== "reviewer") {
-            throw new Error("Only reviewers can submit weight votes");
-        }
-        const adminService = getAdminPB();
-        const data = { user: user.id, ...votes };
-
-        if (voteId) {
-            validateRecordId(voteId);
-            // Verify ownership
-            const existing = await adminService.fetchRecordById("cfp_weight_votes", voteId);
-            if (existing.user !== user.id) {
-                throw new Error("Unauthorized: Cannot edit another user's vote");
-            }
-            const result = await adminService.updateRecord("cfp_weight_votes", voteId, data);
-            return { success: true, data: result };
-        } else {
-            // Check for duplicate vote
-            const existing = await adminService.fetchAllRecords("cfp_weight_votes", {
-                filter: `user = "${user.id}"`
-            });
-            if (existing.length > 0) {
-                throw new Error("You have already submitted weight votes");
-            }
-            const result = await adminService.createRecord("cfp_weight_votes", data);
-            return { success: true, data: result };
-        }
-    } catch (error) {
-        console.error("Save weight vote error:", error);
-        return { success: false, error: (error as Error).message };
-    }
+export const saveWeightVote = async (voteId: string | null, input: unknown) => {
+  "use server";
+  return saveWeightVoteCore(voteId, input);
 };
 
-// Create or Update a Review
-export const submitReview = async (data: any) => {
-    "use server";
-    try {
-        const user = await requireReviewer();
-        if (user.role !== "reviewer") {
-            throw new Error("Only reviewers can submit reviews");
-        }
-        const adminService = getAdminPB();
-
-        // Force reviewer ID to be the authenticated user (prevent spoofing)
-        data.reviewer = user.id;
-
-        if (data.id) {
-            // Update existing — verify ownership
-            validateRecordId(data.id);
-            const existing = await adminService.fetchRecordById("cfp_reviews", data.id);
-            if (existing.reviewer !== user.id) {
-                throw new Error("Unauthorized: Cannot edit another user's review");
-            }
-            const result = await adminService.updateRecord("cfp_reviews", data.id, data);
-            return { success: true, data: result };
-        } else {
-            // Create new — check for duplicate review first
-            validateRecordId(data.submission);
-            const existing = await adminService.fetchAllRecords("cfp_reviews", {
-                filter: `submission = "${data.submission}" && reviewer = "${user.id}"`
-            });
-            if (existing.length > 0) {
-                throw new Error("You have already reviewed this submission");
-            }
-            const result = await adminService.createRecord("cfp_reviews", data);
-            return { success: true, data: result };
-        }
-    } catch (error) {
-        console.error("Submit review error:", error);
-        return { success: false, error: (error as Error).message };
-    }
+export const submitReview = async (input: unknown) => {
+  "use server";
+  return submitReviewCore(input);
 };

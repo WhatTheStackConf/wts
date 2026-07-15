@@ -11,6 +11,7 @@ import { HiEventsAttendee } from "~/lib/hievents";
 import { adminFetchAttendeesWithAccounts } from "~/lib/admin-actions";
 import { getGravatarUrl } from "~/lib/gravatar";
 import { useRequireAdmin } from "~/lib/route-guards";
+import { authorizedResourceSource } from "~/lib/route-authorization";
 
 type EnrichedAttendee = HiEventsAttendee & { account: { id: string; name: string } | null };
 
@@ -19,7 +20,7 @@ const AdminTickets = () => {
     const [searchTerm, setSearchTerm] = createSignal("");
 
     const [attendees] = createResource(
-        () => (guard.authorized() ? true : undefined),
+        () => authorizedResourceSource(guard.authorized()),
         async () => {
             const res = await adminFetchAttendeesWithAccounts();
             if (res.success) return res.data as EnrichedAttendee[];

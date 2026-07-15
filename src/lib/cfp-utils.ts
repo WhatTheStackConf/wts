@@ -1,11 +1,13 @@
 import pb from "./pocketbase";
+import {
+  FALLBACK_CFP_DEADLINE,
+  cfpDeadlineTimestamp,
+} from "~/lib/cfp-deadline";
 
 export interface CfpConfig {
   cfp_open: boolean;
   cfp_deadline: string | null;
 }
-
-const FALLBACK_DEADLINE = "2026-07-30T23:59:59Z";
 
 let cachedConfig: CfpConfig | null = null;
 
@@ -19,7 +21,7 @@ export const fetchCfpConfig = async (): Promise<CfpConfig> => {
       cfp_deadline: record.cfp_deadline ?? null,
     };
   } catch {
-    cachedConfig = { cfp_open: true, cfp_deadline: FALLBACK_DEADLINE };
+    cachedConfig = { cfp_open: true, cfp_deadline: FALLBACK_CFP_DEADLINE };
   }
   return cachedConfig;
 };
@@ -28,18 +30,15 @@ export const isCfpOpen = (): boolean => {
   if (cachedConfig) {
     if (!cachedConfig.cfp_open) return false;
     if (cachedConfig.cfp_deadline) {
-      return new Date() < new Date(cachedConfig.cfp_deadline);
+      return Date.now() < cfpDeadlineTimestamp(cachedConfig.cfp_deadline);
     }
     return true;
   }
-  return new Date() < new Date(FALLBACK_DEADLINE);
+  return Date.now() < cfpDeadlineTimestamp(FALLBACK_CFP_DEADLINE);
 };
 
 export const getCfpDeadline = (): Date => {
-  if (cachedConfig?.cfp_deadline) {
-    return new Date(cachedConfig.cfp_deadline);
-  }
-  return new Date(FALLBACK_DEADLINE);
+  return new Date(cfpDeadlineTimestamp(cachedConfig?.cfp_deadline));
 };
 
 export const getTimeUntilCfpCloses = (): {

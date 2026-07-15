@@ -1,7 +1,12 @@
 import { createStore } from "solid-js/store";
 import { makePersisted } from "@solid-primitives/storage";
-import pb from "./pocketbase";
 import { CfpApplicantRecord } from "./pocketbase-types";
+import {
+  fetchMyCfpApplicant,
+  fetchMyCfpSubmissions,
+  saveMyCfpApplicant,
+  saveMyCfpSubmission,
+} from "~/lib/cfp-actions";
 
 // Define the structure of our CFP form data
 export interface CfpFormData {
@@ -64,22 +69,13 @@ export const [cfpStore, setCfpStore] = makePersisted(
 export const useCfpStore = () => [cfpStore, setCfpStore] as const;
 
 export const fetchApplicantData = async () => {
-  if (!pb.authStore.isValid) return null;
-  if (pb.authStore && pb.authStore.record) {
-    const res = await pb.collection("cfp_applicants").getFullList({
-      filter: `user.id = '${pb.authStore.record.id}'`,
-    });
-
-    return res;
-  }
-
-  return [];
+  const applicant = await fetchMyCfpApplicant();
+  return applicant ? [applicant] : [];
 };
 
 export const updateApplicant = async (
   data: Pick<
     CfpApplicantRecord,
-    | "user"
     | "affiliation"
     | "bio"
     | "social_handles"
@@ -87,15 +83,10 @@ export const updateApplicant = async (
     | "previous_talks"
   >,
 ) => {
-  let res;
-
-  if (cfpStore.formData.applicant_id) {
-    res = await pb
-      .collection("cfp_applicants")
-      .update(cfpStore.formData.applicant_id, data);
-  } else {
-    res = await pb.collection("cfp_applicants").create(data);
-  }
+  const res = await saveMyCfpApplicant({
+    ...data,
+    social_handles: data.social_handles || [],
+  });
 
   // Update store with the new applicant ID
   setCfpStore("formData", "applicant_id", res.id);
@@ -104,7 +95,10 @@ export const updateApplicant = async (
 };
 
 // Function to load a submission into the store for editing
-export const loadSubmissionToStore = (submission: any) => {
+export const loadSubmissionToStore = (
+  submission: any,
+  identity?: { email?: string; name?: string },
+) => {
   // Convert social handles from string to array if needed
   const socialHandles = submission.social_handles;
   const socialHandlesArray = Array.isArray(socialHandles)
@@ -123,8 +117,8 @@ export const loadSubmissionToStore = (submission: any) => {
 
   setCfpStore("formData", {
     id: submission.id || "",
-    email: submission.email || pb.authStore.record?.email || "",
-    full_name: submission.full_name || pb.authStore.record?.name || "",
+    email: submission.email || identity?.email || cfpStore.formData.email,
+    full_name: submission.full_name || identity?.name || cfpStore.formData.full_name,
     affiliation: submission.affiliation || applicant.affiliation || "",
     short_bio: submission.bio || applicant.bio || "",
     social_handles:
@@ -177,22 +171,13 @@ export const resetProposalData = () => {
 export const submitProposal = async () => {
   const formData = cfpStore.formData;
 
-  if (formData.applicant_id) {
-    try {
-      await pb.collection("cfp_applicants").update(formData.applicant_id, {
-        previous_talks: formData.previous_talks,
-      });
-    } catch (e) {
-      console.error("Failed to update applicant", e);
-    }
-  }
-
   const payload = {
+    id: formData.id || undefined,
     session_title: formData.talk_title,
     abstract: formData.abstract,
     key_takeaways: formData.key_takeaways,
     technical_requirements: formData.technical_requirements,
-    applicant: formData.applicant_id,
+    previous_talks: formData.previous_talks,
     meta: {
       company_cover_expenses: formData.company_cover_expenses,
       previous_presentation: formData.previous_presentation,
@@ -201,14 +186,7 @@ export const submitProposal = async () => {
     },
   };
 
-  let res;
-  if (formData.id) {
-    // Update existing submission
-    res = await pb.collection("cfp_submissions").update(formData.id, payload);
-  } else {
-    // Create new submission
-    res = await pb.collection("cfp_submissions").create(payload);
-  }
+  const res = await saveMyCfpSubmission(payload);
 
   resetProposalData();
 
@@ -217,23 +195,7 @@ export const submitProposal = async () => {
 
 export const fetchProposals = async () => {
   try {
-    if (!pb.authStore.isValid || !pb.authStore.record) return [];
-
-    // Find the current user's applicant profile
-    const applicants = await pb.collection("cfp_applicants").getFullList({
-      filter: `user.id = '${pb.authStore.record.id}'`,
-    });
-
-    if (applicants.length === 0) return [];
-
-    // Fetch only this applicant's submissions
-    const res = await pb.collection("cfp_submissions").getFullList({
-      sort: "-created",
-      filter: `applicant = "${applicants[0].id}"`,
-      expand: "applicant",
-    });
-
-    return res;
+    return await fetchMyCfpSubmissions();
   } catch (error) {
     console.error("Error fetching proposals:", error);
     return [];
