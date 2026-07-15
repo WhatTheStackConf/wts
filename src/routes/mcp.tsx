@@ -20,6 +20,21 @@ const INSPECTOR_COMMAND = `npx -y @modelcontextprotocol/inspector --cli \\
   --tool-name search_sessions \\
   --tool-arg query=systems`;
 
+const INSPECTOR_PLAN_COMMAND = `npx -y @modelcontextprotocol/inspector --cli \\
+  https://wts.sh/api/mcp/public \\
+  --transport http \\
+  --method tools/call \\
+  --tool-name plan_proposed_schedule \\
+  --tool-arg 'ranked_session_slugs=["session-slug-a","session-slug-b"]' \\
+  --tool-arg 'must_attend_slugs=["session-slug-a"]'`;
+
+const INSPECTOR_PROMPT_COMMAND = `npx -y @modelcontextprotocol/inspector --cli \\
+  https://wts.sh/api/mcp/public \\
+  --transport http \\
+  --method prompts/get \\
+  --prompt-name compare_sessions \\
+  --prompt-args session_slugs=session-slug-a,session-slug-b`;
+
 const sectionClasses = "border-t border-white/15 py-10 md:py-14";
 
 export default function McpConferenceGuidePage() {
@@ -78,9 +93,17 @@ export default function McpConferenceGuidePage() {
               <figure>
                 <figcaption class="mb-3 text-lg font-bold text-secondary-300">MCP Inspector</figcaption>
                 <p class="mb-4 max-w-[70ch] text-sm leading-6 text-base-content/70">
-                  Call deterministic Session search from Inspector's CLI. Use <code class="font-mono text-base-content">resources/list</code> to discover the fixed resources; Session and Speaker patterns appear under resource templates.
+                  Search first to obtain current public slugs, then pass those slugs to the planner. Use <code class="font-mono text-base-content">resources/list</code>, <code class="font-mono text-base-content">tools/list</code>, and <code class="font-mono text-base-content">prompts/list</code> for discovery.
                 </p>
                 <pre tabindex="0" class="max-w-full overflow-x-auto border border-white/15 bg-black/55 p-5 text-sm leading-6 text-base-content"><code>{INSPECTOR_COMMAND}</code></pre>
+                <p class="mb-3 mt-5 max-w-[70ch] text-sm leading-6 text-base-content/70">
+                  Replace the placeholder slugs with search results. Add the Agenda's current <code class="font-mono text-base-content">programme_version</code> as <code class="font-mono text-base-content">prior_programme_version</code> when checking for changes.
+                </p>
+                <pre tabindex="0" class="max-w-full overflow-x-auto border border-white/15 bg-black/55 p-5 text-sm leading-6 text-base-content"><code>{INSPECTOR_PLAN_COMMAND}</code></pre>
+                <p class="mb-3 mt-5 max-w-[70ch] text-sm leading-6 text-base-content/70">
+                  Retrieve the comparison workflow as an MCP prompt. The compatible client performs the reasoning and tool calls.
+                </p>
+                <pre tabindex="0" class="max-w-full overflow-x-auto border border-white/15 bg-black/55 p-5 text-sm leading-6 text-base-content"><code>{INSPECTOR_PROMPT_COMMAND}</code></pre>
               </figure>
             </div>
           </section>
@@ -108,6 +131,14 @@ export default function McpConferenceGuidePage() {
                 <dt class="font-mono text-sm font-bold text-accent-300">search_sessions</dt>
                 <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Deterministic text search with a 1-160 character query and at most 20 results across Published Session titles and abstracts, public Speaker names and affiliations, formats, Tracks, and locations. Optional date, format, Track, Speaker, and location filters are exact and case-insensitive.</dd>
               </div>
+              <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
+                <dt class="font-mono text-sm font-bold text-accent-300">plan_proposed_schedule</dt>
+                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Plans only from current Published Sessions with Published Agenda Slots. Accepts ranked, must-attend, and excluded public slugs, Europe/Skopje availability windows, and an optional prior programme version. Results contain non-overlapping selected Sessions, fixed all-attendee Slots, unresolved hard constraints, conflict reasons, and alternatives.</dd>
+              </div>
+              <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
+                <dt class="font-mono text-sm font-bold text-accent-300">Public prompts</dt>
+                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0"><code class="font-mono text-sm">plan_conference_day</code> and <code class="font-mono text-sm">compare_sessions</code> guide compatible clients through resources, search, and planning. They return workflow instructions; they do not invoke a WTS-hosted LLM.</dd>
+              </div>
             </dl>
             <p class="mt-6 text-sm leading-6 text-base-content/70">
               Human-readable sources: <a class="link text-primary-300" href="/agenda">Agenda</a>,{" "}
@@ -126,6 +157,8 @@ export default function McpConferenceGuidePage() {
                   <li>Deploy-validated conference facts and explicit <code class="font-mono text-sm">not_announced</code> states.</li>
                   <li>Current Published Agenda, Sessions, Speakers, and Partners.</li>
                   <li>Bounded Session search with matched fields, plain-text snippets, canonical Session and Speaker links, and transparent ranking signals.</li>
+                  <li>Ephemeral Proposed Schedules based only on caller priorities and schedule fit, with fixed all-attendee context and explicit trade-offs.</li>
+                  <li>Client-side planning and comparison prompt workflows.</li>
                   <li>Plain text, canonical website links, stable public keys, and content/programme versions.</li>
                 </ul>
               </div>
@@ -134,8 +167,8 @@ export default function McpConferenceGuidePage() {
                 <ul class="mt-4 list-disc space-y-3 pl-5 leading-7 text-base-content/80 marker:text-primary-400">
                   <li>Drafts, PocketBase IDs, publication flags, raw storage timestamps, or Speaker origin.</li>
                   <li>CFP provenance, submissions, reviews, Partner Notes, Admin Actions, or administrative tools.</li>
-                  <li>Proposed Schedule planning and public prompts are deferred to later public MCP releases.</li>
-                  <li>Saved schedules, reservations, and attendance guarantees are not part of the Conference Guide.</li>
+                  <li>Saved schedules, User schedule collections, reservations, capacity, waitlists, calendar export, and attendance guarantees.</li>
+                  <li>Attendee authentication, behavioral recommendations, and ranking from sponsorship, Speaker origin, CFP/review data, internal scores, prestige, popularity, publication order, or editorial boosts.</li>
                 </ul>
               </div>
             </div>
@@ -149,14 +182,15 @@ export default function McpConferenceGuidePage() {
             <div class="mt-6 max-w-[72ch] space-y-4 leading-7 text-base-content/80">
               <p><code class="font-mono text-sm text-secondary-300">not_announced</code> means organizers have not published that logistics fact. It is not permission to infer or guess a value.</p>
               <p><code class="font-mono text-sm text-secondary-300">programme_unavailable</code> means the live Published programme could not be loaded. Static logistics remain readable, while programme resources fail clearly rather than extending expired cached data.</p>
-              <p>Every successful resource and Session search reports the deploy-content version, live programme version, generation time, canonical URL, and <code class="font-mono text-sm">Europe/Skopje</code>.</p>
+              <p>Every successful resource, Session search, and Proposed Schedule reports the deploy-content version, live programme version, generation time, canonical URL, and <code class="font-mono text-sm">Europe/Skopje</code>. A supplied older programme version is reported as changed; the planner uses only current Published facts.</p>
+              <p>Missing or unpublished, unscheduled, excluded, unavailable, malformed, overlong, duplicate, and mutually conflicting inputs produce bounded explicit outcomes rather than inferred replacements. Invalid calls distinguish <code class="font-mono text-sm">malformed_arguments</code>, <code class="font-mono text-sm">overlong_arguments</code>, and <code class="font-mono text-sm">duplicate_arguments</code>. Equal must-attend conflicts use stable Published Agenda order, disclose the tie-break, and return the rejected choice as an equal alternative.</p>
             </div>
           </section>
 
           <section aria-labelledby="privacy-heading" class={sectionClasses}>
             <h2 id="privacy-heading" class="text-3xl font-bold text-white">Endpoint privacy</h2>
             <div class="mt-6 max-w-[72ch] space-y-4 leading-7 text-base-content/80">
-              <p>Public MCP request bodies, resource choices, Session query text, filters, and results are processed in memory and are not retained in request logs or behavioral analytics. The endpoint does not set a visitor identity, fingerprint clients, or create public API keys.</p>
+              <p>Public MCP request bodies, resource choices, Session query text, filters, planner priorities, exclusions, availability windows, and results are processed in memory and are not retained as User state, request logs, or behavioral analytics. The endpoint does not set a visitor identity, fingerprint clients, or create public API keys.</p>
               <p>Operations may contribute to aggregate service metrics. Abuse protection uses only short-lived in-memory counters, including a salted per-IP burst counter when the deployment supplies a trusted client address, plus global rate and concurrency limits.</p>
               <p>Capacity responses use HTTP <code class="font-mono text-sm">429</code> with <code class="font-mono text-sm">Retry-After</code>. The counters expire automatically and are not added to attendee profiles or Admin Actions.</p>
             </div>
@@ -168,6 +202,8 @@ export default function McpConferenceGuidePage() {
               <li class="border-b border-white/10 pb-4">“What has WhatTheStack announced about the main venue and accessibility?”</li>
               <li class="border-b border-white/10 pb-4">“What is on the current Published Agenda in local Skopje time?”</li>
               <li class="border-b border-white/10 pb-4">“Search Published Sessions for systems reliability on the Systems Track, explain which public fields matched, and link me to each Session and Speaker.”</li>
+              <li class="border-b border-white/10 pb-4">“Plan my conference day: rank these Sessions, treat this one as must-attend, exclude that one, and explain every schedule conflict and alternative.”</li>
+              <li class="border-b border-white/10 pb-4">“Compare these two Sessions using their public content and my availability, then disclose whether the programme changed.”</li>
               <li>“Which conference Partners are currently Published?”</li>
             </ul>
           </section>

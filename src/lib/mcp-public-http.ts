@@ -8,8 +8,8 @@ import {
 import { publicMcpProtection } from "~/lib/mcp-public-protection";
 import {
   buildPublicMcpServer,
-  hasValidPublicSearchInput,
-  invalidPublicSearchArgumentsToolResult,
+  invalidPublicToolArgumentsResult,
+  PUBLIC_PROPOSED_SCHEDULE_TOOL,
   PUBLIC_SESSION_SEARCH_TOOL,
 } from "~/lib/mcp-public-server";
 
@@ -20,6 +20,10 @@ export interface PublicMcpRequestEvent {
 
 const MAX_REQUEST_BYTES = 64 * 1_024;
 const MAX_BATCH_MESSAGES = 8;
+const PUBLIC_TOOL_REQUEST_WEIGHTS: Record<string, number> = {
+  [PUBLIC_SESSION_SEARCH_TOOL]: 4,
+  [PUBLIC_PROPOSED_SCHEDULE_TOOL]: 6,
+};
 
 class PublicMcpRequestTooLargeError extends Error {}
 
@@ -58,13 +62,13 @@ function requestWeight(parsedBody: unknown): number {
       continue;
     }
     const request = message as { method?: unknown; params?: { name?: unknown } };
+    const toolWeight = request.method === "tools/call" && typeof request.params?.name === "string"
+      ? PUBLIC_TOOL_REQUEST_WEIGHTS[request.params.name]
+      : undefined;
     if (request.method === "resources/read") {
       weight += 3;
-    } else if (
-      request.method === "tools/call" &&
-      request.params?.name === PUBLIC_SESSION_SEARCH_TOOL
-    ) {
-      weight += 4;
+    } else if (toolWeight) {
+      weight += toolWeight;
     } else {
       weight += 1;
     }
@@ -79,8 +83,10 @@ function requestIdKey(value: unknown): string | undefined {
   return undefined;
 }
 
-function invalidSearchCallIds(value: unknown): Set<string> {
-  const calls = new Set<string>();
+function invalidPublicToolCalls(
+  value: unknown,
+): Map<string, NonNullable<ReturnType<typeof invalidPublicToolArgumentsResult>>> {
+  const calls = new Map<string, NonNullable<ReturnType<typeof invalidPublicToolArgumentsResult>>>();
   for (const message of Array.isArray(value) ? value : [value]) {
     if (!message || typeof message !== "object") continue;
     const request = message as {
@@ -89,12 +95,12 @@ function invalidSearchCallIds(value: unknown): Set<string> {
       params?: { name?: unknown; arguments?: unknown };
     };
     const id = requestIdKey(request.id);
-    if (
-      id !== undefined &&
-      request.method === "tools/call" &&
-      request.params?.name === PUBLIC_SESSION_SEARCH_TOOL &&
-      !hasValidPublicSearchInput(request.params.arguments)
-    ) calls.add(id);
+    if (id === undefined || request.method !== "tools/call") continue;
+    const result = invalidPublicToolArgumentsResult(
+      request.params?.name,
+      request.params?.arguments,
+    );
+    if (result) calls.set(id, result);
   }
   return calls;
 }
@@ -103,7 +109,7 @@ async function withStructuredPublicValidationErrors(
   parsedBody: unknown,
   response: Response,
 ): Promise<Response> {
-  const invalidCalls = invalidSearchCallIds(parsedBody);
+  const invalidCalls = invalidPublicToolCalls(parsedBody);
   if (
     invalidCalls.size === 0 ||
     !response.headers.get("Content-Type")?.includes("application/json")
@@ -122,9 +128,10 @@ async function withStructuredPublicValidationErrors(
     if (!message || typeof message !== "object") return message;
     const rpc = message as { id?: unknown; result?: { isError?: unknown } };
     const id = requestIdKey(rpc.id);
-    if (!id || !invalidCalls.has(id) || rpc.result?.isError !== true) return message;
+    const validationResult = id ? invalidCalls.get(id) : undefined;
+    if (!validationResult || rpc.result?.isError !== true) return message;
     changed = true;
-    return { ...rpc, result: invalidPublicSearchArgumentsToolResult() };
+    return { ...rpc, result: validationResult };
   });
   if (!changed) return response;
 

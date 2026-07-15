@@ -185,7 +185,332 @@ function searchablePublishedData(): ConferenceGuidePublishedData {
   return data;
 }
 
+function plannablePublishedData(): ConferenceGuidePublishedData {
+  const data = publishedData();
+  data.agenda.days[0].slots.push(
+    {
+      kind: "session",
+      startAt: "2026-09-19T08:00:00.000Z",
+      endAt: "2026-09-19T08:35:00.000Z",
+      locationLabel: "Workshop room",
+      track: { key: "platforms", name: "Platforms", locationLabel: "Workshop room" },
+      session: { slug: "reliable-runtime", title: "Reliable Runtime", format: "Talk" },
+    },
+    {
+      kind: "session",
+      startAt: "2026-09-19T08:15:00.000Z",
+      endAt: "2026-09-19T09:00:00.000Z",
+      locationLabel: "Studio",
+      track: { key: "architecture", name: "Architecture", locationLabel: "Studio" },
+      session: { slug: "platform-depth", title: "Platform Depth", format: "Workshop" },
+    },
+    {
+      kind: "break",
+      startAt: "2026-09-19T09:00:00.000Z",
+      endAt: "2026-09-19T09:15:00.000Z",
+      title: "Coffee break",
+    },
+    {
+      kind: "meal",
+      startAt: "2026-09-19T10:00:00.000Z",
+      endAt: "2026-09-19T11:00:00.000Z",
+      title: "Lunch",
+    },
+    {
+      kind: "networking",
+      startAt: "2026-09-19T11:00:00.000Z",
+      endAt: "2026-09-19T11:30:00.000Z",
+      title: "Hallway conversations",
+    },
+    {
+      kind: "other",
+      startAt: "2026-09-19T12:00:00.000Z",
+      endAt: "2026-09-19T12:15:00.000Z",
+      title: "Community update",
+    },
+    {
+      kind: "closing",
+      startAt: "2026-09-19T15:00:00.000Z",
+      endAt: "2026-09-19T15:30:00.000Z",
+      title: "Closing",
+    },
+    {
+      kind: "session",
+      startAt: "2026-09-19T13:00:00.000Z",
+      endAt: "2026-09-19T14:00:00.000Z",
+      locationLabel: "Studio",
+      track: { key: "architecture", name: "Architecture", locationLabel: "Studio" },
+      session: { slug: "late-architecture", title: "Late Architecture", format: "Talk" },
+    },
+    {
+      kind: "session",
+      startAt: "2026-09-19T07:15:00.000Z",
+      endAt: "2026-09-19T07:45:00.000Z",
+      locationLabel: "Main stage",
+      session: { slug: "opening-overlap", title: "Opening Overlap", format: "Talk" },
+    },
+  );
+  data.sessions.push(
+    {
+      slug: "reliable-runtime",
+      title: "Reliable Runtime",
+      abstract: "Runtime design without surprises.",
+      format: "Talk",
+      speakers: [{
+        slug: "grace-example",
+        displayName: "Grace Example",
+        affiliation: "Runtime Guild",
+        sessionCount: 1,
+      } as never],
+      relatedSessions: [],
+      popularity: 100,
+      review_score: 5,
+    } as never,
+    {
+      slug: "platform-depth",
+      title: "Platform Depth",
+      abstract: "Detailed platform architecture.",
+      format: "Workshop",
+      speakers: [{
+        slug: "lin-example",
+        displayName: "Lin Example",
+        affiliation: "Platform Group",
+        sessionCount: 1,
+      } as never],
+      relatedSessions: [],
+      popularity: 1,
+      review_score: 1,
+    } as never,
+    {
+      slug: "published-unscheduled",
+      title: "Published but Unscheduled",
+      abstract: "A Published Session without a Published Agenda Slot.",
+      speakers: [],
+      relatedSessions: [],
+    },
+    {
+      slug: "late-architecture",
+      title: "Late Architecture",
+      abstract: "Architecture at the end of the day.",
+      format: "Talk",
+      speakers: [],
+      relatedSessions: [],
+    },
+    {
+      slug: "opening-overlap",
+      title: "Opening Overlap",
+      abstract: "A malformed Published placement overlapping fixed context.",
+      format: "Talk",
+      speakers: [],
+      relatedSessions: [],
+    },
+  );
+  return data;
+}
+
 describe("Conference Guide", () => {
+  it("plans ranked Published Sessions without overlap and returns unscored fixed context", async () => {
+    const guide = createConferenceGuide({
+      content: conferenceGuideContent,
+      loadPublishedData: async () => plannablePublishedData(),
+      canonicalOrigin: "https://wts.sh",
+      now: () => new Date("2026-07-14T18:00:00.000Z"),
+    });
+
+    const proposal = await guide.planProposedSchedule({
+      ranked_session_slugs: [
+        "platform-depth",
+        "safe-systems",
+        "reliable-runtime",
+        "late-architecture",
+      ],
+    });
+
+    expect(proposal).toMatchObject({
+      metadata: {
+        schema_version: "1",
+        content_version: "2026-07-14",
+        programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+        generated_at: "2026-07-14T18:00:00.000Z",
+        time_zone: "Europe/Skopje",
+        canonical_url: "https://wts.sh/agenda",
+      },
+      outcome: "planned_with_issues",
+      version_check: { status: "not_provided" },
+      policy: {
+        method: "caller_priorities_and_schedule_fit_v1",
+        equal_priority_tie_break: "published_agenda_order",
+      },
+      ephemeral: {
+        saved: false,
+        reserves_attendance: false,
+      },
+      selected_sessions: [
+        {
+          slug: "platform-depth",
+          priority: { kind: "ranked", rank: 1 },
+          canonical_url: "https://wts.sh/sessions/platform-depth",
+          speaker_count: 1,
+          speakers_truncated: false,
+          speakers: [{
+            slug: "lin-example",
+            canonical_url: "https://wts.sh/speakers/lin-example",
+          }],
+        },
+        {
+          slug: "late-architecture",
+          priority: { kind: "ranked", rank: 4 },
+          canonical_url: "https://wts.sh/sessions/late-architecture",
+        },
+      ],
+    });
+    expect(proposal.selected_sessions.map((session) => session.slug)).toEqual([
+      "platform-depth",
+      "late-architecture",
+    ]);
+    expect(proposal.selected_sessions[0].end_time <= proposal.selected_sessions[1].start_time).toBe(true);
+    expect(proposal.fixed_context.map((slot) => slot.kind)).toEqual([
+      "opening",
+      "break",
+      "meal",
+      "networking",
+      "other",
+      "closing",
+    ]);
+    for (const slot of proposal.fixed_context) {
+      expect(slot).not.toHaveProperty("priority");
+      expect(slot).not.toHaveProperty("score");
+    }
+    expect(proposal.ranked_alternatives.map((alternative) => alternative.slug)).toEqual([
+      "safe-systems",
+      "reliable-runtime",
+    ]);
+    const serialized = JSON.stringify(proposal);
+    for (const forbidden of [
+      '"popularity":100',
+      '"review_score":5',
+      "private-session-id",
+      "private-submission-id",
+      "Private Key Takeaways",
+      "Private review summary",
+      '"published":',
+      '"origin":"cfp"',
+      "<script>",
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
+  it("discloses stale and unresolved inputs without retaining Proposed Schedule state", async () => {
+    const guide = createConferenceGuide({
+      content: conferenceGuideContent,
+      loadPublishedData: async () => plannablePublishedData(),
+      canonicalOrigin: "https://wts.sh",
+      now: () => new Date("2026-07-14T18:00:00.000Z"),
+    });
+    const input = {
+      ranked_session_slugs: ["late-architecture", "platform-depth"],
+      must_attend_slugs: [
+        "reliable-runtime",
+        "safe-systems",
+        "published-unscheduled",
+        "not-published-or-missing",
+      ],
+      excluded_session_slugs: ["platform-depth", "excluded-only"],
+      availability_windows: [{
+        local_date: "2026-09-19",
+        start_time: "10:00",
+        end_time: "11:00",
+      }],
+      prior_programme_version: `sha256:${"0".repeat(64)}`,
+    };
+
+    const proposal = await guide.planProposedSchedule(input);
+    await guide.planProposedSchedule({ ranked_session_slugs: ["platform-depth"] });
+    const repeated = await guide.planProposedSchedule(input);
+
+    expect(repeated).toEqual(proposal);
+    expect(proposal).toMatchObject({
+      outcome: "planned_with_issues",
+      version_check: {
+        status: "changed",
+        prior_programme_version: `sha256:${"0".repeat(64)}`,
+        current_programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      },
+      selected_sessions: [{
+        slug: "safe-systems",
+        priority: { kind: "must_attend" },
+      }],
+      unresolved_hard_constraints: expect.arrayContaining([
+        expect.objectContaining({
+          slug: "reliable-runtime",
+          reason: "conflicts_with_selected",
+          conflicting_session_slugs: ["safe-systems"],
+        }),
+        expect.objectContaining({ slug: "published-unscheduled", reason: "unscheduled" }),
+        expect.objectContaining({
+          slug: "not-published-or-missing",
+          reason: "not_published_or_missing",
+        }),
+      ]),
+      ranked_alternatives: [expect.objectContaining({
+        slug: "reliable-runtime",
+        relationship: "equal_priority",
+        contested_with: ["safe-systems"],
+      })],
+      input_outcomes: expect.arrayContaining([
+        expect.objectContaining({ slug: "safe-systems", outcome: "selected" }),
+        expect.objectContaining({ slug: "reliable-runtime", outcome: "not_selected_conflict" }),
+        expect.objectContaining({ slug: "published-unscheduled", outcome: "unscheduled" }),
+        expect.objectContaining({
+          slug: "not-published-or-missing",
+          outcome: "not_published_or_missing",
+        }),
+        expect.objectContaining({ slug: "late-architecture", outcome: "unavailable" }),
+        expect.objectContaining({ slug: "platform-depth", outcome: "conflicting_input" }),
+        expect.objectContaining({ slug: "excluded-only", outcome: "excluded" }),
+      ]),
+    });
+    expect(proposal.policy.equal_priority_tie_break).toBe("published_agenda_order");
+    expect(proposal.ranked_alternatives[0].priority).toEqual({ kind: "must_attend" });
+  });
+
+  it("reports mutually conflicting inputs and Sessions blocked by fixed all-attendee context", async () => {
+    const guide = createConferenceGuide({
+      content: conferenceGuideContent,
+      loadPublishedData: async () => plannablePublishedData(),
+      canonicalOrigin: "https://wts.sh",
+      now: () => new Date("2026-07-14T18:00:00.000Z"),
+    });
+
+    const proposal = await guide.planProposedSchedule({
+      must_attend_slugs: ["platform-depth", "opening-overlap"],
+      excluded_session_slugs: ["platform-depth"],
+    });
+
+    expect(proposal).toMatchObject({
+      outcome: "no_sessions_selected",
+      selected_sessions: [],
+      input_outcomes: expect.arrayContaining([
+        expect.objectContaining({ slug: "platform-depth", outcome: "conflicting_input" }),
+        expect.objectContaining({ slug: "opening-overlap", outcome: "not_selected_conflict" }),
+      ]),
+      unresolved_hard_constraints: expect.arrayContaining([
+        expect.objectContaining({ slug: "platform-depth", reason: "conflicting_input" }),
+        expect.objectContaining({
+          slug: "opening-overlap",
+          reason: "conflicts_with_fixed_context",
+          fixed_context: [expect.objectContaining({ kind: "opening", title: "Opening" })],
+        }),
+      ]),
+      conflicts: [expect.objectContaining({
+        slug: "opening-overlap",
+        reason: "overlaps_fixed_context",
+        fixed_context: [expect.objectContaining({ kind: "opening", title: "Opening" })],
+      })],
+    });
+  });
+
   it("ranks Published Session data deterministically with explainable bounded matches", async () => {
     const guide = createConferenceGuide({
       content: conferenceGuideContent,
@@ -464,6 +789,8 @@ describe("Conference Guide", () => {
     await expect(guide.getSession("safe-systems")).rejects.toBeInstanceOf(ProgrammeUnavailableError);
     await expect(guide.getSpeaker("ada-example")).rejects.toBeInstanceOf(ProgrammeUnavailableError);
     await expect(guide.getPartners()).rejects.toBeInstanceOf(ProgrammeUnavailableError);
+    await expect(guide.planProposedSchedule({ ranked_session_slugs: ["safe-systems"] }))
+      .rejects.toBeInstanceOf(ProgrammeUnavailableError);
   });
 
   it("never serves expired programme data after a failed refresh", async () => {

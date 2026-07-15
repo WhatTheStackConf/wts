@@ -73,6 +73,53 @@ const guide = vi.hoisted(() => ({
       matches: [{ field: "title", snippet: "Safe Systems", score: 80 }],
     }],
   })),
+  planProposedSchedule: vi.fn(async () => ({
+    metadata: {
+      schema_version: "1",
+      content_version: "2026-07-14",
+      programme_version: "sha256:programme",
+      generated_at: "2026-07-14T18:00:00.000Z",
+      time_zone: "Europe/Skopje",
+      canonical_url: "https://wts.sh/agenda",
+    },
+    outcome: "planned_with_issues",
+    version_check: {
+      status: "changed",
+      prior_programme_version: `sha256:${"0".repeat(64)}`,
+      current_programme_version: "sha256:programme",
+    },
+    policy: {
+      method: "caller_priorities_and_schedule_fit_v1",
+      equal_priority_tie_break: "published_agenda_order",
+    },
+    ephemeral: { saved: false, reserves_attendance: false },
+    selected_sessions: [{
+      slug: "safe-systems",
+      canonical_url: "https://wts.sh/sessions/safe-systems",
+      speakers: [{
+        slug: "ada-example",
+        canonical_url: "https://wts.sh/speakers/ada-example",
+      }],
+    }],
+    fixed_context: [{ kind: "opening", title: "Opening", start_time: "09:00", end_time: "09:30" }],
+    unresolved_hard_constraints: [{
+      slug: "reliable-runtime",
+      reason: "conflicts_with_selected",
+      conflicting_session_slugs: ["safe-systems"],
+    }],
+    conflicts: [{
+      slug: "reliable-runtime",
+      reason: "overlaps_selected_session",
+      selected_session_slugs: ["safe-systems"],
+    }],
+    ranked_alternatives: [{
+      slug: "reliable-runtime",
+      relationship: "equal_priority",
+      contested_with: ["safe-systems"],
+      canonical_url: "https://wts.sh/sessions/reliable-runtime",
+    }],
+    input_outcomes: [],
+  })),
 }));
 
 vi.mock("~/lib/conference-guide-data", () => ({ publicConferenceGuide: guide }));
@@ -156,12 +203,13 @@ describe("public Conference Guide MCP contract", () => {
     vi.unstubAllEnvs();
   });
 
-  it("discovers only Conference Guide resources and deterministic Session search", async () => {
+  it("discovers only Conference Guide resources, deterministic public tools, and planning prompts", async () => {
     const client = await openClient();
     try {
       const resources = await client.listResources();
       const templates = await client.listResourceTemplates();
       const tools = await client.listTools();
+      const prompts = await client.listPrompts();
 
       expect(resources.resources.map((resource) => resource.uri)).toEqual([
         "wts://conference-guide/index",
@@ -172,7 +220,7 @@ describe("public Conference Guide MCP contract", () => {
         "wts://conference-guide/sessions/{slug}",
         "wts://conference-guide/speakers/{slug}",
       ]);
-      expect(tools.tools).toHaveLength(1);
+      expect(tools.tools).toHaveLength(2);
       expect(tools.tools[0]).toMatchObject({
         name: "search_sessions",
         annotations: {
@@ -186,7 +234,110 @@ describe("public Conference Guide MCP contract", () => {
           additionalProperties: false,
         },
       });
-      await expect(client.listPrompts()).rejects.toMatchObject({ code: -32601 });
+      expect(tools.tools[1]).toMatchObject({
+        name: "plan_proposed_schedule",
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+        },
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            ranked_session_slugs: { type: "array", maxItems: 50 },
+            must_attend_slugs: { type: "array", maxItems: 20 },
+            excluded_session_slugs: { type: "array", maxItems: 50 },
+            availability_windows: { type: "array", maxItems: 16 },
+            prior_programme_version: { type: "string" },
+          },
+        },
+      });
+      expect(prompts.prompts.map((prompt) => prompt.name)).toEqual([
+        "plan_conference_day",
+        "compare_sessions",
+      ]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("plans with structured content and a compatible text fallback", async () => {
+    const client = await openClient();
+    try {
+      const arguments_ = {
+        ranked_session_slugs: ["safe-systems", "reliable-runtime"],
+        must_attend_slugs: ["safe-systems"],
+        excluded_session_slugs: ["excluded-session"],
+        availability_windows: [{
+          local_date: "2026-09-19",
+          start_time: "10:00",
+          end_time: "17:00",
+        }],
+        prior_programme_version: `sha256:${"0".repeat(64)}`,
+      };
+      const result = await client.callTool({
+        name: "plan_proposed_schedule",
+        arguments: arguments_,
+      });
+      const structured = result.structuredContent as Record<string, unknown>;
+      const fallback = JSON.parse(((result.content as Array<{ text: string }>)[0]).text);
+
+      expect(result.isError).not.toBe(true);
+      expect(structured).toMatchObject({
+        success: true,
+        data: {
+          metadata: { time_zone: "Europe/Skopje", programme_version: "sha256:programme" },
+          outcome: "planned_with_issues",
+          version_check: { status: "changed" },
+          ephemeral: { saved: false, reserves_attendance: false },
+          selected_sessions: [{
+            slug: "safe-systems",
+            canonical_url: "https://wts.sh/sessions/safe-systems",
+            speakers: [{ canonical_url: "https://wts.sh/speakers/ada-example" }],
+          }],
+          fixed_context: [{ kind: "opening" }],
+          unresolved_hard_constraints: [{ slug: "reliable-runtime" }],
+          ranked_alternatives: [{ slug: "reliable-runtime", relationship: "equal_priority" }],
+        },
+      });
+      expect(fallback).toEqual(structured);
+      expect(guide.planProposedSchedule).toHaveBeenCalledWith(arguments_);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("returns client-side planning and comparison prompt workflows", async () => {
+    const client = await openClient();
+    try {
+      const planning = await client.getPrompt({
+        name: "plan_conference_day",
+        arguments: {
+          preferences: "I prefer systems sessions and must attend Safe Systems.",
+          local_date: "2026-09-19",
+        },
+      });
+      const comparison = await client.getPrompt({
+        name: "compare_sessions",
+        arguments: {
+          session_slugs: "safe-systems,reliable-runtime",
+          comparison_goal: "Compare schedule fit and public content.",
+        },
+      });
+      const promptText = JSON.stringify({ planning, comparison });
+
+      expect(promptText).toContain("wts://conference-guide/agenda");
+      expect(promptText).toContain("search_sessions");
+      expect(promptText).toContain("plan_proposed_schedule");
+      expect(promptText).toContain("wts://conference-guide/sessions/{slug}");
+      expect(promptText).toContain("caller-supplied");
+      expect(promptText).toContain("not saved");
+      expect(promptText).toContain("does not reserve attendance");
+      expect(promptText).toContain("client");
+      expect(promptText).not.toContain("WTS-hosted LLM call");
+      expect(guide.searchSessions).not.toHaveBeenCalled();
+      expect(guide.planProposedSchedule).not.toHaveBeenCalled();
     } finally {
       await client.close();
     }
@@ -305,6 +456,94 @@ describe("public Conference Guide MCP contract", () => {
     }
   });
 
+  it("returns bounded safe outcomes for invalid Proposed Schedule arguments", async () => {
+    const client = await openClient();
+    try {
+      const validWindow = {
+        local_date: "2026-09-19",
+        start_time: "10:00",
+        end_time: "17:00",
+      };
+      const invalidArguments = [
+        { arguments: { ranked_session_slugs: ["Not-A-Slug"] }, code: "malformed_arguments" },
+        {
+          arguments: { ranked_session_slugs: ["safe-systems", "safe-systems"] },
+          code: "duplicate_arguments",
+        },
+        {
+          arguments: {
+            ranked_session_slugs: Array.from({ length: 51 }, (_, index) => `session-${index}`),
+          },
+          code: "overlong_arguments",
+        },
+        {
+          arguments: {
+            must_attend_slugs: Array.from({ length: 21 }, (_, index) => `session-${index}`),
+          },
+          code: "overlong_arguments",
+        },
+        {
+          arguments: {
+            excluded_session_slugs: Array.from({ length: 51 }, (_, index) => `session-${index}`),
+          },
+          code: "overlong_arguments",
+        },
+        { arguments: { availability_windows: [] }, code: "malformed_arguments" },
+        {
+          arguments: { availability_windows: [{ ...validWindow, local_date: "2026-02-30" }] },
+          code: "malformed_arguments",
+        },
+        {
+          arguments: { availability_windows: [{ ...validWindow, start_time: "25:00" }] },
+          code: "malformed_arguments",
+        },
+        {
+          arguments: {
+            availability_windows: [{ ...validWindow, start_time: "17:00", end_time: "10:00" }],
+          },
+          code: "malformed_arguments",
+        },
+        {
+          arguments: {
+            availability_windows: [{ ...validWindow, start_time: "100:00" }],
+          },
+          code: "overlong_arguments",
+        },
+        {
+          arguments: { availability_windows: [{ ...validWindow, private_field: "secret" }] },
+          code: "malformed_arguments",
+        },
+        { arguments: { prior_programme_version: "latest" }, code: "malformed_arguments" },
+        { arguments: { saved_schedule: true }, code: "malformed_arguments" },
+      ];
+      for (const invalid of invalidArguments) {
+        const result = await client.callTool({
+          name: "plan_proposed_schedule",
+          arguments: invalid.arguments,
+        });
+        const structured = result.structuredContent as Record<string, unknown>;
+        const fallbackText = ((result.content as Array<{ text: string }>)[0]).text;
+        expect(result.isError).toBe(true);
+        expect(structured).toMatchObject({
+          success: false,
+          error: {
+            code: invalid.code,
+            retryable: false,
+            next_step: expect.stringContaining("input schema"),
+          },
+        });
+        expect(JSON.parse(fallbackText)).toEqual(structured);
+        expect(fallbackText.length).toBeLessThan(1_200);
+        expect(fallbackText).not.toContain("Zod");
+        expect(fallbackText).not.toContain("private_field");
+        expect(fallbackText).not.toContain("session-49");
+      }
+      expect(guide.planProposedSchedule).not.toHaveBeenCalled();
+    } finally {
+      await client.close();
+    }
+  });
+
   it("returns a safe structured search outage without exposing implementation details", async () => {
     guide.searchSessions.mockRejectedValueOnce(new ProgrammeUnavailableError());
     const client = await openClient();
@@ -331,6 +570,33 @@ describe("public Conference Guide MCP contract", () => {
     }
   });
 
+  it("returns a safe structured planning outage without exposing implementation details", async () => {
+    guide.planProposedSchedule.mockRejectedValueOnce(new ProgrammeUnavailableError());
+    const client = await openClient();
+    try {
+      const result = await client.callTool({
+        name: "plan_proposed_schedule",
+        arguments: { ranked_session_slugs: ["safe-systems"] },
+      });
+      const fallbackText = ((result.content as Array<{ text: string }>)[0]).text;
+      expect(result).toMatchObject({
+        isError: true,
+        structuredContent: {
+          success: false,
+          error: {
+            code: "programme_unavailable",
+            retryable: true,
+          },
+        },
+      });
+      expect(JSON.parse(fallbackText)).toEqual(result.structuredContent);
+      expect(fallbackText).not.toContain("stack");
+      expect(fallbackText).not.toContain("PocketBase");
+    } finally {
+      await client.close();
+    }
+  });
+
   it("reads every documented anonymous resource through the official client", async () => {
     const client = await openClient();
     try {
@@ -350,6 +616,179 @@ describe("public Conference Guide MCP contract", () => {
       expect(partners).toMatchObject({ groups: [{ key: "supporters" }] });
       expect(guide.getSession).toHaveBeenCalledWith("safe-systems");
       expect(guide.getSpeaker).toHaveBeenCalledWith("ada-example");
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("traces anonymous discovery, search, versioned planning, trade-offs, and canonical links", async () => {
+    const tracerGuide = createConferenceGuide({
+      content: conferenceGuideContent,
+      canonicalOrigin: "https://wts.sh",
+      now: () => new Date("2026-07-14T18:00:00.000Z"),
+      loadPublishedData: async () => ({
+        agenda: {
+          days: [{
+            key: "conference-day",
+            localDate: "2026-09-19",
+            title: "Conference Day",
+            slots: [
+              {
+                kind: "opening",
+                startAt: "2026-09-19T07:00:00.000Z",
+                endAt: "2026-09-19T08:00:00.000Z",
+                title: "Opening",
+              },
+              {
+                kind: "session",
+                startAt: "2026-09-19T08:00:00.000Z",
+                endAt: "2026-09-19T08:35:00.000Z",
+                locationLabel: "Main stage",
+                track: { key: "systems", name: "Systems" },
+                session: { slug: "safe-systems", title: "Safe Systems", format: "Talk" },
+              },
+              {
+                kind: "session",
+                startAt: "2026-09-19T08:00:00.000Z",
+                endAt: "2026-09-19T08:35:00.000Z",
+                locationLabel: "Workshop room",
+                track: { key: "platforms", name: "Platforms" },
+                session: {
+                  slug: "reliable-systems",
+                  title: "Reliable Systems",
+                  format: "Talk",
+                },
+              },
+            ],
+          }],
+        },
+        sessions: [
+          {
+            slug: "safe-systems",
+            title: "Safe Systems",
+            abstract: "Practical systems safety.",
+            format: "Talk",
+            speakers: [{
+              slug: "ada-example",
+              displayName: "Ada Example",
+              affiliation: "Example Labs",
+              sessionCount: 1,
+            } as never],
+            relatedSessions: [],
+          },
+          {
+            slug: "reliable-systems",
+            title: "Reliable Systems",
+            abstract: "Practical systems reliability.",
+            format: "Talk",
+            speakers: [{
+              slug: "grace-example",
+              displayName: "Grace Example",
+              affiliation: "Runtime Guild",
+              sessionCount: 1,
+            } as never],
+            relatedSessions: [],
+          },
+        ],
+        speakers: [],
+        partnerGroups: [],
+      }),
+    });
+    const tracerDispatch = (request: Request) => handlePublicMcpRequest(
+      { request, clientAddress: "198.51.100.31" },
+      tracerGuide,
+    );
+    const client = await openClient(undefined, tracerDispatch);
+    try {
+      const [resources, tools, prompts] = await Promise.all([
+        client.listResources(),
+        client.listTools(),
+        client.listPrompts(),
+      ]);
+      expect(resources.resources.map((resource) => resource.uri)).toContain(
+        "wts://conference-guide/index",
+      );
+      expect(tools.tools.map((tool) => tool.name)).toEqual([
+        "search_sessions",
+        "plan_proposed_schedule",
+      ]);
+      expect(prompts.prompts.map((prompt) => prompt.name)).toEqual([
+        "plan_conference_day",
+        "compare_sessions",
+      ]);
+
+      const index = resourceJson(await client.readResource({ uri: "wts://conference-guide/index" }));
+      const programmeVersion = (index.metadata as { programme_version: string }).programme_version;
+      const searched = await client.callTool({
+        name: "search_sessions",
+        arguments: { query: "systems" },
+      });
+      const searchData = (searched.structuredContent as {
+        success: true;
+        data: { results: Array<{ slug: string; canonical_url: string }> };
+      }).data;
+      expect(searchData.results.map((session) => session.slug)).toEqual(expect.arrayContaining([
+        "reliable-systems",
+        "safe-systems",
+      ]));
+      expect(searchData.results).toHaveLength(2);
+
+      const planArguments = {
+        must_attend_slugs: ["reliable-systems", "safe-systems"],
+        prior_programme_version: programmeVersion,
+      };
+      const planned = await client.callTool({
+        name: "plan_proposed_schedule",
+        arguments: planArguments,
+      });
+      const repeated = await client.callTool({
+        name: "plan_proposed_schedule",
+        arguments: planArguments,
+      });
+      const planData = (planned.structuredContent as {
+        success: true;
+        data: {
+          version_check: { status: string };
+          selected_sessions: Array<{
+            slug: string;
+            start_time: string;
+            end_time: string;
+            canonical_url: string;
+            speakers: Array<{ canonical_url: string }>;
+          }>;
+          fixed_context: Array<{ kind: string }>;
+          conflicts: Array<{ slug: string; reason: string }>;
+          ranked_alternatives: Array<{
+            slug: string;
+            relationship: string;
+            canonical_url: string;
+          }>;
+          ephemeral: { saved: boolean; reserves_attendance: boolean };
+        };
+      }).data;
+
+      expect(repeated.structuredContent).toEqual(planned.structuredContent);
+      expect(planData).toMatchObject({
+        version_check: { status: "current" },
+        selected_sessions: [{
+          slug: "safe-systems",
+          canonical_url: "https://wts.sh/sessions/safe-systems",
+          speakers: [{ canonical_url: "https://wts.sh/speakers/ada-example" }],
+        }],
+        fixed_context: [{ kind: "opening" }],
+        conflicts: [{ slug: "reliable-systems", reason: "overlaps_selected_session" }],
+        ranked_alternatives: [{
+          slug: "reliable-systems",
+          relationship: "equal_priority",
+          canonical_url: "https://wts.sh/sessions/reliable-systems",
+        }],
+        ephemeral: { saved: false, reserves_attendance: false },
+      });
+      expect(planData.selected_sessions.every((session, index, sessions) =>
+        sessions.slice(index + 1).every((other) =>
+          session.end_time <= other.start_time || other.end_time <= session.start_time
+        )
+      )).toBe(true);
     } finally {
       await client.close();
     }

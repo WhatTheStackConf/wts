@@ -26,9 +26,9 @@ const DEFAULT_PROGRAMME_TTL_MS = 60_000;
 const DEFAULT_SESSION_SEARCH_LIMIT = 10;
 const MAX_SESSION_SEARCH_LIMIT = 20;
 const MAX_SESSION_SEARCH_MATCHES = 8;
-const MAX_SESSION_SEARCH_SPEAKERS = 8;
+const MAX_PUBLIC_SESSION_SPEAKERS = 8;
 const MAX_SESSION_SEARCH_SNIPPET_LENGTH = 240;
-const MAX_SESSION_SEARCH_LABEL_LENGTH = 160;
+const MAX_PUBLIC_LABEL_LENGTH = 160;
 
 const SESSION_SEARCH_FIELD_WEIGHTS = {
   title: 8,
@@ -52,6 +52,18 @@ export interface SessionSearchInput {
     location?: string;
   };
   limit?: number;
+}
+
+export interface ProposedScheduleInput {
+  ranked_session_slugs?: string[];
+  must_attend_slugs?: string[];
+  excluded_session_slugs?: string[];
+  availability_windows?: Array<{
+    local_date: string;
+    start_time: string;
+    end_time: string;
+  }>;
+  prior_programme_version?: string;
 }
 
 export interface ConferenceGuidePublishedData {
@@ -330,6 +342,30 @@ function mapProgramme(data: ConferenceGuidePublishedData, origin: string) {
 
 type GuideProgramme = ReturnType<typeof mapProgramme>;
 type GuideSession = GuideProgramme["sessions"][number];
+type GuideAgendaDay = GuideProgramme["agenda"]["days"][number];
+type GuideAgendaSlot = GuideAgendaDay["slots"][number];
+
+interface PlanningCandidate {
+  session: GuideSession;
+  day: GuideAgendaDay;
+  slot: GuideAgendaSlot;
+  agendaOrder: number;
+  priority: { kind: "must_attend" } | { kind: "ranked"; rank: number };
+}
+
+interface PlanningInputOutcome {
+  slug: string;
+  requested_as: Array<"must_attend" | "ranked" | "excluded">;
+  outcome:
+    | "pending"
+    | "conflicting_input"
+    | "excluded"
+    | "not_published_or_missing"
+    | "unscheduled"
+    | "unavailable"
+    | "selected"
+    | "not_selected_conflict";
+}
 
 interface SearchableField {
   field: SessionSearchField;
@@ -376,10 +412,10 @@ function boundedSearchSnippet(value: string, terms: string[]): string {
   return `${prefix}${snippet}`.slice(0, MAX_SESSION_SEARCH_SNIPPET_LENGTH);
 }
 
-function boundedSearchLabel(value: string): string {
+function boundedPublicLabel(value: string): string {
   const characters = Array.from(value);
-  if (characters.length <= MAX_SESSION_SEARCH_LABEL_LENGTH) return value;
-  return `${characters.slice(0, MAX_SESSION_SEARCH_LABEL_LENGTH - 3).join("").trimEnd()}...`;
+  if (characters.length <= MAX_PUBLIC_LABEL_LENGTH) return value;
+  return `${characters.slice(0, MAX_PUBLIC_LABEL_LENGTH - 3).join("").trimEnd()}...`;
 }
 
 function searchableSessionFields(session: GuideSession): SearchableField[] {
@@ -490,15 +526,129 @@ function searchResultSchedule(schedule: GuideSession["schedule"]) {
   if (schedule.status === "not_scheduled") return schedule;
   return {
     ...schedule,
-    day_key: boundedSearchLabel(schedule.day_key),
-    day_title: boundedSearchLabel(schedule.day_title),
-    location: schedule.location ? boundedSearchLabel(schedule.location) : undefined,
+    day_key: boundedPublicLabel(schedule.day_key),
+    day_title: boundedPublicLabel(schedule.day_title),
+    location: schedule.location ? boundedPublicLabel(schedule.location) : undefined,
     track: schedule.track
       ? {
-          key: boundedSearchLabel(schedule.track.key),
-          name: boundedSearchLabel(schedule.track.name),
+          key: boundedPublicLabel(schedule.track.key),
+          name: boundedPublicLabel(schedule.track.name),
         }
       : undefined,
+  };
+}
+
+function scheduleIntervalsOverlap(left: PlanningCandidate, right: PlanningCandidate): boolean {
+  return left.day.local_date === right.day.local_date &&
+    left.slot.start_time < right.slot.end_time &&
+    right.slot.start_time < left.slot.end_time;
+}
+
+function fixedSlotOverlaps(candidate: PlanningCandidate, day: GuideAgendaDay, slot: GuideAgendaSlot) {
+  return candidate.day.local_date === day.local_date &&
+    candidate.slot.start_time < slot.end_time &&
+    slot.start_time < candidate.slot.end_time;
+}
+
+function planningSession(candidate: PlanningCandidate) {
+  return {
+    slug: candidate.session.slug,
+    title: boundedPublicLabel(candidate.session.title),
+    format: candidate.session.format ? boundedPublicLabel(candidate.session.format) : undefined,
+    resource_uri: slugUri("sessions", candidate.session.slug),
+    canonical_url: candidate.session.canonical_url,
+    day_key: candidate.day.key,
+    local_date: candidate.day.local_date,
+    day_title: boundedPublicLabel(candidate.day.title),
+    start_time: candidate.slot.start_time,
+    end_time: candidate.slot.end_time,
+    location: candidate.slot.location ? boundedPublicLabel(candidate.slot.location) : undefined,
+    track: candidate.slot.track
+      ? {
+          key: boundedPublicLabel(candidate.slot.track.key),
+          name: boundedPublicLabel(candidate.slot.track.name),
+        }
+      : undefined,
+    priority: candidate.priority,
+    speaker_count: candidate.session.speakers.length,
+    speakers: candidate.session.speakers.slice(0, MAX_PUBLIC_SESSION_SPEAKERS).map((speaker) => ({
+      slug: speaker.slug,
+      display_name: boundedPublicLabel(speaker.display_name),
+      affiliation: speaker.affiliation ? boundedPublicLabel(speaker.affiliation) : undefined,
+      resource_uri: speaker.resource_uri,
+      canonical_url: speaker.canonical_url,
+    })),
+    speakers_truncated: candidate.session.speakers.length > MAX_PUBLIC_SESSION_SPEAKERS,
+  };
+}
+
+function planningScheduleIndex(programme: GuideProgramme) {
+  const sessionsBySlug = new Map(programme.sessions.map((session) => [session.slug, session]));
+  const scheduledBySlug = new Map<string, Omit<PlanningCandidate, "priority">>();
+  let agendaOrder = 0;
+  for (const day of programme.agenda.days) {
+    for (const slot of day.slots) {
+      if (slot.kind === "session" && slot.session) {
+        const session = sessionsBySlug.get(slot.session.slug);
+        if (session && !scheduledBySlug.has(session.slug)) {
+          scheduledBySlug.set(session.slug, { session, day, slot, agendaOrder });
+        }
+      }
+      agendaOrder += 1;
+    }
+  }
+
+  return { sessionsBySlug, scheduledBySlug };
+}
+
+function planningCandidates(
+  scheduledBySlug: Map<string, Omit<PlanningCandidate, "priority">>,
+  input: ProposedScheduleInput,
+  eligibleSlugs: Set<string>,
+) {
+  const mustAttend = new Set(input.must_attend_slugs ?? []);
+  const candidates: PlanningCandidate[] = [];
+  for (const slug of input.must_attend_slugs ?? []) {
+    if (!eligibleSlugs.has(slug)) continue;
+    const scheduled = scheduledBySlug.get(slug);
+    if (scheduled) candidates.push({ ...scheduled, priority: { kind: "must_attend" } });
+  }
+  for (const [index, slug] of (input.ranked_session_slugs ?? []).entries()) {
+    if (mustAttend.has(slug) || !eligibleSlugs.has(slug)) continue;
+    const scheduled = scheduledBySlug.get(slug);
+    if (scheduled) candidates.push({ ...scheduled, priority: { kind: "ranked", rank: index + 1 } });
+  }
+  return candidates.sort((left, right) => {
+    if (left.priority.kind !== right.priority.kind) {
+      return left.priority.kind === "must_attend" ? -1 : 1;
+    }
+    if (left.priority.kind === "ranked" && right.priority.kind === "ranked") {
+      return left.priority.rank - right.priority.rank || left.agendaOrder - right.agendaOrder;
+    }
+    return left.agendaOrder - right.agendaOrder;
+  });
+}
+
+function candidateIsAvailable(
+  candidate: Omit<PlanningCandidate, "priority">,
+  windows: ProposedScheduleInput["availability_windows"],
+): boolean {
+  if (!windows || windows.length === 0) return true;
+  return windows.some((window) =>
+    window.local_date === candidate.day.local_date &&
+    window.start_time <= candidate.slot.start_time &&
+    candidate.slot.end_time <= window.end_time
+  );
+}
+
+function fixedContextReference(day: GuideAgendaDay, slot: GuideAgendaSlot) {
+  return {
+    kind: slot.kind,
+    day_key: day.key,
+    local_date: day.local_date,
+    start_time: slot.start_time,
+    end_time: slot.end_time,
+    title: slot.title ? boundedPublicLabel(slot.title) : undefined,
   };
 }
 
@@ -648,18 +798,18 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
         .sort((left, right) => right.score - left.score || stableSlugOrder(left.session.slug, right.session.slug));
       const results = matches.slice(0, limit).map(({ session, score, matches: fieldMatches }) => ({
         slug: session.slug,
-        title: boundedSearchLabel(session.title),
-        format: session.format ? boundedSearchLabel(session.format) : undefined,
+        title: boundedPublicLabel(session.title),
+        format: session.format ? boundedPublicLabel(session.format) : undefined,
         resource_uri: slugUri("sessions", session.slug),
         canonical_url: session.canonical_url,
         schedule: searchResultSchedule(session.schedule),
         speaker_count: session.speakers.length,
-        speakers: session.speakers.slice(0, MAX_SESSION_SEARCH_SPEAKERS).map((speaker) => ({
+        speakers: session.speakers.slice(0, MAX_PUBLIC_SESSION_SPEAKERS).map((speaker) => ({
           ...speaker,
-          display_name: boundedSearchLabel(speaker.display_name),
-          affiliation: speaker.affiliation ? boundedSearchLabel(speaker.affiliation) : undefined,
+          display_name: boundedPublicLabel(speaker.display_name),
+          affiliation: speaker.affiliation ? boundedPublicLabel(speaker.affiliation) : undefined,
         })),
-        speakers_truncated: session.speakers.length > MAX_SESSION_SEARCH_SPEAKERS,
+        speakers_truncated: session.speakers.length > MAX_PUBLIC_SESSION_SPEAKERS,
         score,
         matches: fieldMatches,
       }));
@@ -679,6 +829,184 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
         ...(results.length === 0
           ? { next_step: "Try fewer or broader search terms, or remove a structured filter." }
           : {}),
+      };
+    },
+
+    async planProposedSchedule(input: ProposedScheduleInput) {
+      const snapshot = await loadProgramme();
+      const { sessionsBySlug, scheduledBySlug } = planningScheduleIndex(snapshot.programme);
+      const mustAttendSlugs = new Set(input.must_attend_slugs ?? []);
+      const rankedSlugs = new Set(input.ranked_session_slugs ?? []);
+      const excludedSlugs = new Set(input.excluded_session_slugs ?? []);
+      const requestedSlugs = [...new Set([
+        ...(input.must_attend_slugs ?? []),
+        ...(input.ranked_session_slugs ?? []),
+        ...(input.excluded_session_slugs ?? []),
+      ])];
+      const eligibleSlugs = new Set<string>();
+      const inputOutcomes = requestedSlugs.map((slug): PlanningInputOutcome => {
+        const requestedAs = [
+          ...(mustAttendSlugs.has(slug) ? ["must_attend" as const] : []),
+          ...(rankedSlugs.has(slug) ? ["ranked" as const] : []),
+          ...(excludedSlugs.has(slug) ? ["excluded" as const] : []),
+        ];
+        let outcome: PlanningInputOutcome["outcome"];
+        if ((mustAttendSlugs.has(slug) || rankedSlugs.has(slug)) && excludedSlugs.has(slug)) {
+          outcome = "conflicting_input";
+        } else if (excludedSlugs.has(slug)) {
+          outcome = "excluded";
+        } else if (!sessionsBySlug.has(slug)) {
+          outcome = "not_published_or_missing";
+        } else {
+          const scheduled = scheduledBySlug.get(slug);
+          if (!scheduled) {
+            outcome = "unscheduled";
+          } else if (!candidateIsAvailable(scheduled, input.availability_windows)) {
+            outcome = "unavailable";
+          } else {
+            outcome = "pending";
+            eligibleSlugs.add(slug);
+          }
+        }
+        return { slug, requested_as: requestedAs, outcome };
+      });
+      const inputOutcomeBySlug = new Map(inputOutcomes.map((outcome) => [outcome.slug, outcome]));
+      const fixedContext = snapshot.programme.agenda.days.flatMap((day) =>
+        day.slots
+          .filter((slot) => slot.kind !== "session")
+          .map((slot) => ({
+            kind: slot.kind,
+            day_key: day.key,
+            local_date: day.local_date,
+            day_title: boundedPublicLabel(day.title),
+            start_time: slot.start_time,
+            end_time: slot.end_time,
+            location: slot.location ? boundedPublicLabel(slot.location) : undefined,
+            track: slot.track
+              ? {
+                  key: boundedPublicLabel(slot.track.key),
+                  name: boundedPublicLabel(slot.track.name),
+                }
+              : undefined,
+            title: slot.title ? boundedPublicLabel(slot.title) : undefined,
+            summary: slot.summary ? boundedPublicLabel(slot.summary) : undefined,
+          })),
+      );
+      const fixedSlots = snapshot.programme.agenda.days.flatMap((day) =>
+        day.slots
+          .filter((slot) => slot.kind !== "session")
+          .map((slot) => ({ day, slot })),
+      );
+      const selected: PlanningCandidate[] = [];
+      const rejected: Array<{
+        candidate: PlanningCandidate;
+        selectedConflicts: PlanningCandidate[];
+        fixedConflicts: Array<{ day: GuideAgendaDay; slot: GuideAgendaSlot }>;
+      }> = [];
+
+      for (const candidate of planningCandidates(scheduledBySlug, input, eligibleSlugs)) {
+        const selectedConflicts = selected.filter((chosen) => scheduleIntervalsOverlap(candidate, chosen));
+        const fixedConflicts = fixedSlots.filter(({ day, slot }) => fixedSlotOverlaps(candidate, day, slot));
+        if (selectedConflicts.length === 0 && fixedConflicts.length === 0) {
+          selected.push(candidate);
+          const outcome = inputOutcomeBySlug.get(candidate.session.slug);
+          if (outcome) outcome.outcome = "selected";
+        } else {
+          rejected.push({ candidate, selectedConflicts, fixedConflicts });
+          const outcome = inputOutcomeBySlug.get(candidate.session.slug);
+          if (outcome) outcome.outcome = "not_selected_conflict";
+        }
+      }
+
+      const rejectedBySlug = new Map(rejected.map((entry) => [entry.candidate.session.slug, entry]));
+      const unresolvedHardConstraints = inputOutcomes
+        .filter((outcome) => mustAttendSlugs.has(outcome.slug) && outcome.outcome !== "selected")
+        .map((outcome) => {
+          const conflict = rejectedBySlug.get(outcome.slug);
+          const reason = outcome.outcome === "not_selected_conflict"
+            ? conflict?.selectedConflicts.length
+              ? "conflicts_with_selected" as const
+              : "conflicts_with_fixed_context" as const
+            : outcome.outcome;
+          return {
+            slug: outcome.slug,
+            reason,
+            conflicting_session_slugs: conflict?.selectedConflicts.map((entry) => entry.session.slug) ?? [],
+            fixed_context: conflict?.fixedConflicts.map(({ day, slot }) =>
+              fixedContextReference(day, slot)
+            ) ?? [],
+          };
+        });
+      const versionChanged = Boolean(
+        input.prior_programme_version && input.prior_programme_version !== snapshot.version,
+      );
+      const hasInputIssues = inputOutcomes.some((outcome) => outcome.outcome !== "selected");
+      const selectionRequested = (input.must_attend_slugs?.length ?? 0) > 0 ||
+        (input.ranked_session_slugs?.length ?? 0) > 0;
+
+      return {
+        metadata: metadata("/agenda", snapshot.version, snapshot.generatedAt),
+        outcome: selectionRequested && selected.length === 0
+          ? "no_sessions_selected" as const
+          : versionChanged || hasInputIssues
+            ? "planned_with_issues" as const
+            : "planned" as const,
+        version_check: input.prior_programme_version
+          ? {
+              status: input.prior_programme_version === snapshot.version ? "current" as const : "changed" as const,
+              prior_programme_version: input.prior_programme_version,
+              current_programme_version: snapshot.version,
+            }
+          : { status: "not_provided" as const, current_programme_version: snapshot.version },
+        policy: {
+          method: "caller_priorities_and_schedule_fit_v1" as const,
+          priority_order: ["must_attend", "ranked_position"] as const,
+          equal_priority_tie_break: "published_agenda_order" as const,
+          excluded_signals: [
+            "sponsorship",
+            "speaker_origin",
+            "cfp_or_review_data",
+            "internal_scores",
+            "prestige",
+            "popularity",
+            "publication_order",
+            "editorial_boosts",
+          ] as const,
+        },
+        ephemeral: {
+          saved: false,
+          reserves_attendance: false,
+          notice: "This Proposed Schedule is ephemeral, is not saved, and does not reserve attendance.",
+        },
+        selected_sessions: selected
+          .sort((left, right) => left.agendaOrder - right.agendaOrder)
+          .map(planningSession),
+        fixed_context: fixedContext,
+        unresolved_hard_constraints: unresolvedHardConstraints,
+        conflicts: rejected.map(({ candidate, selectedConflicts, fixedConflicts }) => ({
+          slug: candidate.session.slug,
+          reason: selectedConflicts.length > 0
+            ? "overlaps_selected_session" as const
+            : "overlaps_fixed_context" as const,
+          selected_session_slugs: selectedConflicts.map((conflict) => conflict.session.slug),
+          fixed_context: fixedConflicts.map(({ day, slot }) => fixedContextReference(day, slot)),
+        })),
+        ranked_alternatives: rejected
+          .filter(({ selectedConflicts }) => selectedConflicts.length > 0)
+          .map(({ candidate, selectedConflicts }) => ({
+            ...planningSession(candidate),
+            relationship: selectedConflicts.some((conflict) =>
+              conflict.priority.kind === candidate.priority.kind &&
+              conflict.priority.kind === "must_attend"
+            ) ? "equal_priority" as const : "lower_priority" as const,
+            contested_with: selectedConflicts.map((conflict) => conflict.session.slug),
+            contested_window: {
+              local_date: candidate.day.local_date,
+              start_time: candidate.slot.start_time,
+              end_time: candidate.slot.end_time,
+            },
+          })),
+        input_outcomes: inputOutcomes,
       };
     },
   };

@@ -512,6 +512,24 @@ describe("administrative MCP protocol contract", () => {
     }
   });
 
+  it("keeps public planning tools and prompts off the authenticated administrative MCP", async () => {
+    const client = await openClient(issueToken(["programme:read", "cfp:read"]));
+    try {
+      const tools = await client.listTools();
+      expect(tools.tools.map((tool) => tool.name)).not.toEqual(expect.arrayContaining([
+        "search_sessions",
+        "plan_proposed_schedule",
+      ]));
+      await expect(client.listPrompts()).rejects.toMatchObject({ code: -32601 });
+      await expect(client.callTool({
+        name: "plan_proposed_schedule",
+        arguments: { ranked_session_slugs: ["safe-systems"] },
+      })).resolves.toMatchObject({ isError: true });
+    } finally {
+      await client.close();
+    }
+  });
+
   it("denies a direct call when discovery omitted the tool", async () => {
     const client = await openClient(issueToken(["programme:read"]));
     try {
