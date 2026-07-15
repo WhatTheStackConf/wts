@@ -49,6 +49,7 @@ describe("Conference Guide deploy content", () => {
   it("keeps structured fact components in generated website content", () => {
     const about = pages.find((page) => page.slug === "about");
     const convince = pages.find((page) => page.slug === "convince-your-boss");
+    const speakerGuide = pages.find((page) => page.slug === "speaker-guide");
 
     expect(about?.content).toContain("ConferenceLocation");
     expect(about?.content).toContain("ConferenceDate");
@@ -56,5 +57,9 @@ describe("Conference Guide deploy content", () => {
     expect(convince?.content).toContain("RegularTicketPrice");
     expect(convince?.content).toContain("StudentTicketPrice");
     expect(convince?.content).toContain("GeneralContactEmail");
+    expect(speakerGuide?.title).toBe("Speaker Guide");
+    expect(speakerGuide?.content).toContain("ConferenceLocation");
+    expect(speakerGuide?.content).toContain("ConferenceDate");
+    expect(speakerGuide?.content).toContain("GeneralContactEmail");
   });
 });
