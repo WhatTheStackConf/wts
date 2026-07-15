@@ -181,7 +181,10 @@ function ownerSnapshot(
   return { id, name: safeDisplayText(user?.name, "Unknown User", "Redacted User name") };
 }
 
-function safeTokenSummary(token: McpTokenStoredRecord): AdminActionValue {
+function safeTokenSummary(
+  token: McpTokenStoredRecord,
+  status: McpTokenStatus = token.revokedAt ? "revoked" : "active",
+): AdminActionValue {
   return {
     id: token.id,
     name: safeDisplayText(token.name, "Unnamed token", "Redacted token name"),
@@ -189,7 +192,7 @@ function safeTokenSummary(token: McpTokenStoredRecord): AdminActionValue {
     tokenPrefix: safeTokenPrefix(token.tokenPrefix),
     scopes: token.scopes,
     expiresAt: token.expiresAt || null,
-    status: token.revokedAt ? "revoked" : "active",
+    status,
     lastUsedAt: token.lastUsedAt || null,
     createdByUserId: token.ownerUserId,
     revokedAt: token.revokedAt || null,
@@ -592,11 +595,12 @@ export class McpTokenAdministration {
     const [token, userRecords] = await Promise.all([this.store.get(id), this.store.listUsers()]);
     if (!token) return { success: false, code: "not_found", error: "MCP token was not found." };
     const users = new Map(userRecords.map((user) => [user.id, user]));
-    if (statusFor(token, users.get(token.ownerUserId), this.now().getTime()) !== "active") {
+    const currentStatus = statusFor(token, users.get(token.ownerUserId), this.now().getTime());
+    if (currentStatus === "revoked") {
       return {
         success: false,
         code: "not_active",
-        error: "Only an active MCP token can be revoked.",
+        error: "This MCP token is already revoked.",
       };
     }
 
@@ -610,7 +614,7 @@ export class McpTokenAdministration {
     };
     const completion: AdminActionCompletion = {
       targetId: id,
-      beforeSummary: safeTokenSummary(token),
+      beforeSummary: safeTokenSummary(token, currentStatus),
       afterSummary: safeTokenSummary(candidate),
       replayResult: {
         kind: "mcp_token_revoke",

@@ -29,6 +29,13 @@ export function normalizeMcpScopes(value: unknown): McpScope[] {
   return MCP_SCOPES.filter((scope) => value.includes(scope));
 }
 
+function expandLegacyMcpScopes(value: unknown): unknown {
+  if (!Array.isArray(value) || !value.includes("program:read")) return value;
+  return [...new Set(value.flatMap((scope) =>
+    scope === "program:read" ? ["programme:read", "cfp:read"] : [scope]
+  ))];
+}
+
 export function hasMcpScope(token: AuthenticatedMcpToken, scope: McpScope) {
   return token.scopes.includes(scope);
 }
@@ -81,7 +88,6 @@ export async function authenticateMcpBearer(
     return { success: false, status: 401, error: "MCP token expiry is invalid" };
   }
 
-  const scopes = normalizeMcpScopes(record.scopes);
   const owners = (await adminService.fetchAllRecords("users", {
     filter: `id = "${record.created_by}"`,
   })) as UserRecord[];
@@ -93,7 +99,10 @@ export async function authenticateMcpBearer(
     };
   }
 
+  const persistedScopes = expandLegacyMcpScopes(record.scopes);
+  const scopes = normalizeMcpScopes(persistedScopes);
   await adminService.updateRecord("mcp_tokens", record.id, {
+    ...(persistedScopes !== record.scopes ? { scopes: persistedScopes } : {}),
     last_used_at: new Date().toISOString(),
   });
 

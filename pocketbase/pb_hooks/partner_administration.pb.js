@@ -69,12 +69,21 @@ routerAdd("POST", "/api/wts/partners", (e) => {
       if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
       return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
     }
+    function hasSecretMaterial(item) {
+      const text = String(item || "");
+      return /wts_mcp_[a-f0-9]{24}_[a-z0-9_-]{20,}/i.test(text) ||
+        /(^|[^a-f0-9])[a-f0-9]{64}([^a-f0-9]|$)/i.test(text);
+    }
+    function safeReplayText(value, redacted) {
+      return hasSecretMaterial(value) ? redacted : value;
+    }
     function assertPayload(value, label, maximumBytes) {
       if (toBytes(JSON.stringify(value)).length > maximumBytes) throw new BadRequestError(`${label} is too large.`);
       const blocked = ["accesstoken", "authorization", "bearertoken", "clientsecret", "notes", "password", "payload", "rawbody", "rawrequest", "refreshtoken", "requestbody", "secret", "secrethash"];
       const safeNoteMetadata = ["noteagentvisible", "notechanged", "notelength", "notepresent"];
       function visit(item, depth) {
         if (depth > 6) throw new BadRequestError(`${label} is too deeply nested.`);
+        if (typeof item === "string" && hasSecretMaterial(item)) throw new BadRequestError(`${label} contains credential or hash material.`);
         if (!item || typeof item !== "object") return;
         if (Array.isArray(item)) {
           if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
@@ -157,13 +166,13 @@ routerAdd("POST", "/api/wts/partners", (e) => {
     if (replayResult && typeof replayResult === "object" && !Array.isArray(replayResult) && replayResult.kind === "partner_mutation" && replayResult.data && typeof replayResult.data === "object" && !Array.isArray(replayResult.data)) {
       const stored = responseRecord(partnerRecord);
       const replayPartner = {
-        id: stored.id, name: stored.name, published: stored.published, type: stored.type,
-        logo: stored.logo,
+        id: stored.id, name: safeReplayText(stored.name, "Redacted Partner name"), published: stored.published, type: stored.type,
+        logo: safeReplayText(stored.logo, "Redacted Partner logo"),
         noteAgentVisible: stored.note_agent_visible, createdAt: stored.created, updatedAt: stored.updated,
         version: `${stored.updated}|${stored.mutation_token}`,
       };
       if (stored.tier) replayPartner.tier = stored.tier;
-      if (stored.url) replayPartner.url = stored.url;
+      if (stored.url) replayPartner.url = safeReplayText(stored.url, "[redacted credential or hash]");
       replayResult.data.partner = replayPartner;
     }
     assertPayload(beforeSummary, "Admin Action before summary", 2048);
@@ -384,12 +393,21 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
       if (value === undefined || value === null || value === "") return fallback;
       return typeof value === "string" ? JSON.parse(value) : value;
     }
+    function hasSecretMaterial(item) {
+      const text = String(item || "");
+      return /wts_mcp_[a-f0-9]{24}_[a-z0-9_-]{20,}/i.test(text) ||
+        /(^|[^a-f0-9])[a-f0-9]{64}([^a-f0-9]|$)/i.test(text);
+    }
+    function safeReplayText(value, redacted) {
+      return hasSecretMaterial(value) ? redacted : value;
+    }
     function assertPayload(value, label, maximumBytes) {
       if (toBytes(JSON.stringify(value)).length > maximumBytes) throw new BadRequestError(`${label} is too large.`);
       const blocked = ["accesstoken", "authorization", "bearertoken", "clientsecret", "notes", "password", "payload", "rawbody", "rawrequest", "refreshtoken", "requestbody", "secret", "secrethash"];
       const safeNoteMetadata = ["noteagentvisible", "notechanged", "notelength", "notepresent"];
       function visit(item, depth) {
         if (depth > 6) throw new BadRequestError(`${label} is too deeply nested.`);
+        if (typeof item === "string" && hasSecretMaterial(item)) throw new BadRequestError(`${label} contains credential or hash material.`);
         if (!item || typeof item !== "object") return;
         if (Array.isArray(item)) {
           if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
@@ -428,13 +446,13 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
     if (replayResult && typeof replayResult === "object" && !Array.isArray(replayResult) && replayResult.kind === "partner_mutation" && replayResult.data && typeof replayResult.data === "object" && !Array.isArray(replayResult.data)) {
       const stored = responseRecord(partnerRecord);
       const replayPartner = {
-        id: stored.id, name: stored.name, published: stored.published, type: stored.type,
-        logo: stored.logo,
+        id: stored.id, name: safeReplayText(stored.name, "Redacted Partner name"), published: stored.published, type: stored.type,
+        logo: safeReplayText(stored.logo, "Redacted Partner logo"),
         noteAgentVisible: stored.note_agent_visible, createdAt: stored.created, updatedAt: stored.updated,
         version: `${stored.updated}|${stored.mutation_token}`,
       };
       if (stored.tier) replayPartner.tier = stored.tier;
-      if (stored.url) replayPartner.url = stored.url;
+      if (stored.url) replayPartner.url = safeReplayText(stored.url, "[redacted credential or hash]");
       replayResult.data.partner = replayPartner;
     }
     assertPayload(beforeSummary, "Admin Action before summary", 2048);
@@ -514,8 +532,14 @@ routerAdd("DELETE", "/api/wts/partners/{id}", (e) => {
       if (toBytes(JSON.stringify(value)).length > maximumBytes) throw new BadRequestError(`${label} is too large.`);
       const blocked = ["accesstoken", "authorization", "bearertoken", "clientsecret", "notes", "password", "payload", "rawbody", "rawrequest", "refreshtoken", "requestbody", "secret", "secrethash"];
       const safeNoteMetadata = ["noteagentvisible", "notechanged", "notelength", "notepresent"];
+      function hasSecretMaterial(item) {
+        const text = String(item || "");
+        return /wts_mcp_[a-f0-9]{24}_[a-z0-9_-]{20,}/i.test(text) ||
+          /(^|[^a-f0-9])[a-f0-9]{64}([^a-f0-9]|$)/i.test(text);
+      }
       function visit(item, depth) {
         if (depth > 6) throw new BadRequestError(`${label} is too deeply nested.`);
+        if (typeof item === "string" && hasSecretMaterial(item)) throw new BadRequestError(`${label} contains credential or hash material.`);
         if (!item || typeof item !== "object") return;
         if (Array.isArray(item)) {
           if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);

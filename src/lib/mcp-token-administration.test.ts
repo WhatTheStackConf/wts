@@ -255,6 +255,64 @@ describe("MCP token administration", () => {
     });
   });
 
+  it("permanently revokes expired and owner-disabled tokens", async () => {
+    const actionStore = createInMemoryAdminActionStore();
+    const administration = new McpTokenAdministration(
+      createInMemoryMcpTokenAdministrationStore({
+        users: [
+          { id: "former-admin", name: "Former Admin", role: "user" },
+          { id: "revoker", name: "Incident Admin", role: "admin" },
+        ],
+        tokens: [
+          {
+            id: "owner-disabled-token",
+            name: "Former admin client",
+            tokenPrefix: "wts_mcp_disabled",
+            scopes: ["programme:read"],
+            ownerUserId: "former-admin",
+            expiresAt: "2026-08-01T23:59:59.999Z",
+            createdAt: "2026-07-01T10:00:00.000Z",
+            updatedAt: "2026-07-01T10:00:00.000Z",
+          },
+          {
+            id: "expired-token",
+            name: "Expired client",
+            tokenPrefix: "wts_mcp_expired",
+            scopes: ["cfp:read"],
+            ownerUserId: "revoker",
+            expiresAt: "2026-07-01T23:59:59.999Z",
+            createdAt: "2026-06-01T10:00:00.000Z",
+            updatedAt: "2026-06-01T10:00:00.000Z",
+          },
+        ],
+      }),
+      { userId: "revoker", name: "Incident Admin" },
+      new AdminActions(actionStore),
+      { now: () => new Date("2026-07-13T12:00:00.000Z") },
+    );
+
+    await expect(
+      administration.revokeToken(
+        "owner-disabled-token",
+        "Owner access was removed during incident response.",
+        "revoke-owner-disabled-token",
+      ),
+    ).resolves.toMatchObject({ success: true, data: { token: { status: "revoked" } } });
+    await expect(
+      administration.revokeToken(
+        "expired-token",
+        "Permanently retiring the expired credential.",
+        "revoke-expired-token",
+      ),
+    ).resolves.toMatchObject({ success: true, data: { token: { status: "revoked" } } });
+
+    const actions = await new AdminActions(actionStore).list({ targetCollection: "mcp_tokens" });
+    expect(actions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ beforeSummary: expect.objectContaining({ status: "owner_disabled" }) }),
+      expect.objectContaining({ beforeSummary: expect.objectContaining({ status: "expired" }) }),
+    ]));
+  });
+
   it("creates one unrecoverable credential and safely replays only metadata", async () => {
     const actionStore = createInMemoryAdminActionStore();
     const store = createInMemoryMcpTokenAdministrationStore({
@@ -702,6 +760,10 @@ describe("MCP token administration", () => {
       );
       expect(await revokerAdministration.listTokens()).toEqual([
         expect.objectContaining({ id: created.data.token.id, owner: { id: owner.id, name: "Token Owner" } }),
+      ]);
+      await pb.collection("users").update(owner.id, { role: "user" });
+      expect(await revokerAdministration.listTokens()).toEqual([
+        expect.objectContaining({ id: created.data.token.id, status: "owner_disabled" }),
       ]);
       const revoked = await revokerAdministration.revokeToken(
         created.data.token.id,

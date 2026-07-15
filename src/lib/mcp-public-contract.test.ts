@@ -499,7 +499,7 @@ describe("public Conference Guide MCP contract", () => {
         },
         {
           arguments: {
-            availability_windows: [{ ...validWindow, start_time: "17:00", end_time: "10:00" }],
+            availability_windows: [{ ...validWindow, start_time: "17:00", end_time: "17:00" }],
           },
           code: "malformed_arguments",
         },
@@ -539,6 +539,20 @@ describe("public Conference Guide MCP contract", () => {
         expect(fallbackText).not.toContain("session-49");
       }
       expect(guide.planProposedSchedule).not.toHaveBeenCalled();
+
+      const overnightWindow = {
+        local_date: "2026-09-19",
+        start_time: "22:00",
+        end_time: "02:00",
+      };
+      const overnight = await client.callTool({
+        name: "plan_proposed_schedule",
+        arguments: { availability_windows: [overnightWindow] },
+      });
+      expect(overnight.isError).toBe(false);
+      expect(guide.planProposedSchedule).toHaveBeenCalledWith({
+        availability_windows: [overnightWindow],
+      });
     } finally {
       await client.close();
     }

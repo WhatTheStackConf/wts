@@ -78,8 +78,14 @@ routerAdd("POST", "/api/wts/admin-actions/{id}/complete", (e) => {
     if (toBytes(JSON.stringify(value)).length > maximumBytes) throw new BadRequestError(`${label} is too large.`);
     const blocked = ["accesstoken", "authorization", "bearertoken", "clientsecret", "notes", "password", "payload", "rawbody", "rawrequest", "refreshtoken", "requestbody", "secret", "secrethash"];
     const safeNoteMetadata = ["noteagentvisible", "notechanged", "notelength", "notepresent"];
+    function hasSecretMaterial(item) {
+      const text = String(item || "");
+      return /wts_mcp_[a-f0-9]{24}_[a-z0-9_-]{20,}/i.test(text) ||
+        /(^|[^a-f0-9])[a-f0-9]{64}([^a-f0-9]|$)/i.test(text);
+    }
     function visit(item, depth) {
       if (depth > 6) throw new BadRequestError(`${label} is too deeply nested.`);
+      if (typeof item === "string" && hasSecretMaterial(item)) throw new BadRequestError(`${label} contains credential or hash material.`);
       if (!item || typeof item !== "object") return;
       if (Array.isArray(item)) {
         if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
@@ -152,8 +158,14 @@ routerAdd("POST", "/api/wts/admin-actions/{id}/fail", (e) => {
     if (toBytes(JSON.stringify(value)).length > maximumBytes) throw new BadRequestError(`${label} is too large.`);
     const blocked = ["accesstoken", "authorization", "bearertoken", "clientsecret", "notes", "password", "payload", "rawbody", "rawrequest", "refreshtoken", "requestbody", "secret", "secrethash"];
     const safeNoteMetadata = ["noteagentvisible", "notechanged", "notelength", "notepresent"];
+    function hasSecretMaterial(item) {
+      const text = String(item || "");
+      return /wts_mcp_[a-f0-9]{24}_[a-z0-9_-]{20,}/i.test(text) ||
+        /(^|[^a-f0-9])[a-f0-9]{64}([^a-f0-9]|$)/i.test(text);
+    }
     function visit(item, depth) {
       if (depth > 6) throw new BadRequestError(`${label} is too deeply nested.`);
+      if (typeof item === "string" && hasSecretMaterial(item)) throw new BadRequestError(`${label} contains credential or hash material.`);
       if (!item || typeof item !== "object") return;
       if (Array.isArray(item)) {
         if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
@@ -175,6 +187,11 @@ routerAdd("POST", "/api/wts/admin-actions/{id}/fail", (e) => {
   const body = e.requestInfo().body;
   const metadata = parseJson(body.failure_metadata, null);
   assertPayload(metadata, "Admin Action failure metadata", 1024);
+  const failureText = `${String(body.failure_code || "")} ${String(body.failure_message || "")}`;
+  if (
+    /wts_mcp_[a-f0-9]{24}_[a-z0-9_-]{20,}/i.test(failureText) ||
+    /(^|[^a-f0-9])[a-f0-9]{64}([^a-f0-9]|$)/i.test(failureText)
+  ) throw new BadRequestError("Admin Action failure contains credential or hash material.");
   let result;
   $app.runInTransaction((txApp) => {
     const record = txApp.findRecordById("admin_actions", e.request.pathValue("id"));

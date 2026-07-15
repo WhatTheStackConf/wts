@@ -574,7 +574,10 @@ export default function AdminSessionsHub() {
                       aria-pressed={session.published}
                       onClick={() => togglePublished(session)}
                     >
-                      <Show when={busyId() === session.id} fallback={session.published ? "Published" : "Draft"}>
+                      <Show
+                        when={busyId() === session.id}
+                        fallback={<Show when={session.published} fallback="Draft">Published</Show>}
+                      >
                         <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
                         Updating
                       </Show>
@@ -652,7 +655,10 @@ export default function AdminSessionsHub() {
                           aria-pressed={session.published}
                           onClick={() => togglePublished(session)}
                         >
-                          <Show when={busyId() === session.id} fallback={session.published ? "Published" : "Draft"}>
+                          <Show
+                            when={busyId() === session.id}
+                            fallback={<Show when={session.published} fallback="Draft">Published</Show>}
+                          >
                             <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
                             Updating
                           </Show>

@@ -516,7 +516,7 @@ export default function AdminPartnersHub() {
       <span
         class={`badge badge-sm font-mono ${partner.published ? "badge-success" : "badge-ghost"}`}
       >
-        {partner.published ? "Published" : "Draft"}
+        <Show when={partner.published} fallback="Draft">Published</Show>
       </span>
       <button
         type="button"
@@ -524,7 +524,7 @@ export default function AdminPartnersHub() {
         disabled={saving() || busyId() === partner.id}
         onClick={() => togglePublished(partner)}
       >
-        {partner.published ? "Unpublish" : "Publish"}
+        <Show when={partner.published} fallback="Publish">Unpublish</Show>
       </button>
       <button
         type="button"
@@ -550,7 +550,7 @@ export default function AdminPartnersHub() {
           aria-pressed={partner.noteAgentVisible}
           onClick={() => toggleNoteApproval(partner)}
         >
-          {partner.noteAgentVisible ? "Revoke note approval" : "Approve note"}
+          <Show when={partner.noteAgentVisible} fallback="Approve note">Revoke note approval</Show>
         </button>
       </Show>
       <button
@@ -765,9 +765,12 @@ export default function AdminPartnersHub() {
                             }
                           }}
                         />
-                        {editingOriginal()?.published
-                          ? "Unpublish this Partner before removing its current logo"
-                          : "Remove the current logo and keep this Partner as an incomplete draft"}
+                        <Show
+                          when={editingOriginal()?.published}
+                          fallback="Remove the current logo and keep this Partner as an incomplete draft"
+                        >
+                          Unpublish this Partner before removing its current logo
+                        </Show>
                       </label>
                     </div>
                   </Show>
@@ -840,9 +843,12 @@ export default function AdminPartnersHub() {
                 </AdminFormField>
                 <Show when={editingOriginal()?.notes}>
                   <div class={`mt-3 badge badge-outline h-auto py-2 font-mono text-xs ${editingOriginal()?.noteAgentVisible ? "badge-success" : "badge-warning"}`}>
-                    {editingOriginal()?.noteAgentVisible
-                      ? "Current note is approved for agent visibility"
-                      : "Current note requires human approval"}
+                    <Show
+                      when={editingOriginal()?.noteAgentVisible}
+                      fallback="Current note requires human approval"
+                    >
+                      Current note is approved for agent visibility
+                    </Show>
                   </div>
                 </Show>
               </AdminFormSection>
@@ -860,7 +866,7 @@ export default function AdminPartnersHub() {
                       <>
                         <div class="flex flex-wrap items-center gap-2">
                           <span class={`badge font-mono ${partner().published ? "badge-success" : "badge-ghost"}`}>
-                            {partner().published ? "Published" : "Draft"}
+                            <Show when={partner().published} fallback="Draft">Published</Show>
                           </span>
                           <span class="text-xs font-mono text-base-content/60">
                             Save edits before changing publication state.

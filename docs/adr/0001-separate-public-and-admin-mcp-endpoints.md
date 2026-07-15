@@ -1,0 +1,3 @@
+# Separate public and administrative MCP endpoints
+
+WTS serves the anonymous **Conference Guide** from `/api/mcp/public` and preserves `/api/mcp` for authenticated administrative tools. MCP does not advertise authorization after a successful anonymous initialization, so a single conditional endpoint would not provide discoverable progressive authorization and would couple public and private tool registration without a client-interoperability benefit. The public endpoint rejects supplied credentials rather than consuming or ignoring them; the endpoints may share domain services, but public and administrative DTOs, tool contracts, caching, and access controls remain separate. See `docs/research/mcp-progressive-authorization.md`.

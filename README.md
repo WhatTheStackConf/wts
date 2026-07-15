@@ -143,8 +143,12 @@ HiEvents vars (`HIEVENTS_*`) are passed to both the web app evidence service and
 
 Admins create one-time MCP credentials at `/admin/mcp`. Select only the scopes the client needs:
 
+- `programme:read` reads private Session and Speaker programme data.
+- `cfp:read` reads private CFP Submissions and review context. Aggregate programme snapshots require both private read scopes.
 - `partners:read` lists private Partner summaries and reads a Partner Note only after a human approves its current version for agent visibility.
 - `partners:draft:write` creates and patches drafts. It cannot upload logos, publish, delete, approve notes, or modify Published Partners.
+
+Every current admin can inspect safe team-wide token metadata and recent Admin Actions. Any current admin can revoke an active token with a required reason; token material remains visible only in the creation response.
 
 The authenticated Streamable HTTP endpoint is `/api/mcp`. Native clients send the generated credential as a bearer token. Browser clients must also use an allowed Origin as described under [Environment](#environment).
 
@@ -234,6 +238,10 @@ pnpm docker:up
 ```
 
 `docker-compose.yml` spins up the web app + PocketBase with persistent volume for `pb_data`. Deploys to Coolify. Superuser auto-provisions on first run from env.
+
+Drain every web replica running the `2cce0be` baseline before converting persisted MCP scopes, then deploy the PocketBase image and its migrations before or together with the new web image. Migration `1787000005_migrate_mcp_token_scopes.js` expands persisted `program:read` grants before the new runtime scope allowlist is used; authenticated MCP also durably expands a legacy grant on first use as a web-first rollout safeguard. Do not run baseline and new web replicas concurrently during that conversion, and do not treat the safeguard as a substitute for deploying the remaining Partner, Admin Action, and token-governance migrations and hooks.
+
+The public MCP burst, process-wide rate, and concurrency counters are in-memory per web process. Keep `/api/mcp/public` on one serving web replica unless the reverse proxy or another shared layer enforces equivalent aggregate limits across replicas.
 
 The September gamification award, redemption, code-operation, score-schedule, and rate-limit paths coordinate through PocketBase-backed locks and uniqueness constraints. Multiple `webapp` replicas must share the same PocketBase database and the same `GAMIFICATION_CODE_PEPPER`; do not split these services across independent PocketBase databases.
 

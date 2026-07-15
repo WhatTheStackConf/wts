@@ -117,6 +117,85 @@ function logoFingerprint(data: number[]): string {
 }
 
 describe("Partner Administration", () => {
+  it("rejects credential and secret-hash material before Partner or Admin Action persistence", async () => {
+    const partnerStore = createInMemoryPartnerAdministrationStore();
+    const actions = new AdminActions(createInMemoryAdminActionStore());
+    const administration = new PartnerAdministration(
+      partnerStore,
+      { mode: "agent", userId: "admin-user", source: "mcp", mcpTokenId: "mcp-token" },
+      actions,
+    );
+    const bearer = `wts_mcp_${"a".repeat(24)}_${"b".repeat(32)}`;
+
+    for (const [operationId, input] of [
+      ["unsafe-name", { name: bearer, type: "other" as const }],
+      ["unsafe-url", { name: "Unsafe URL", type: "other" as const, url: `https://example.com/${"c".repeat(64)}` }],
+      ["unsafe-note", { name: "Unsafe Note", type: "other" as const, notes: bearer }],
+    ] as const) {
+      await expect(administration.createDraft(input, operationId)).resolves.toMatchObject({
+        success: false,
+        code: "validation",
+        error: "Partner fields cannot contain credentials or secret hashes.",
+      });
+    }
+
+    await expect(partnerStore.list()).resolves.toEqual([]);
+    await expect(actions.list({})).resolves.toEqual([]);
+  });
+
+  it("keeps unsafe legacy Partner Notes hidden and prevents human approval", async () => {
+    const baseStore = createInMemoryPartnerAdministrationStore();
+    const actions = new AdminActions(createInMemoryAdminActionStore());
+    const seed = new PartnerAdministration(
+      baseStore,
+      { mode: "human_admin", userId: "admin-user", source: "admin_ui" },
+      actions,
+    );
+    const created = await seed.createDraft({ name: "Legacy Note", type: "other" }, "seed-legacy-note");
+    if (!created.success) throw new Error(created.error);
+    const bearer = `wts_mcp_${"a".repeat(24)}_${"b".repeat(32)}`;
+    const legacyStore: AuditedPartnerAdministrationStore = {
+      ...baseStore,
+      async list() {
+        return (await baseStore.list()).map((record) => ({
+          ...record,
+          notes: bearer,
+          noteAgentVisible: true,
+        }));
+      },
+      async get(id) {
+        const record = await baseStore.get(id);
+        return record ? { ...record, notes: bearer, noteAgentVisible: true } : undefined;
+      },
+    };
+    const agent = new PartnerAdministration(
+      legacyStore,
+      { mode: "agent", userId: "admin-user", source: "mcp", mcpTokenId: "mcp-token" },
+      actions,
+    );
+    const human = new PartnerAdministration(
+      legacyStore,
+      { mode: "human_admin", userId: "admin-user", source: "admin_ui" },
+      actions,
+    );
+
+    await expect(agent.getPartner(created.data.partner.id)).resolves.toMatchObject({
+      partner: { noteAgentVisible: false, notes: undefined },
+    });
+    await expect(
+      human.setNoteApproval(
+        created.data.partner.id,
+        created.data.partner.version,
+        true,
+        "approve-unsafe-legacy-note",
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      code: "validation",
+      error: "Remove credentials or secret hashes from the Partner Note before approving agent visibility.",
+    });
+  });
+
   it("applies and exactly replays an audited Partner mutation without storing Partner Note text", async () => {
     const actions = new AdminActions(createInMemoryAdminActionStore());
     const administration = new PartnerAdministration(
@@ -1197,11 +1276,24 @@ describe("Partner Administration", () => {
       "1783000000_create_mcp_tokens.js",
       "1787000000_normalize_partner_vocabulary.js",
       "1787000002_partner_draft_lifecycle.js",
+      "1787000003_repair_partner_draft_fields.js",
       "1787000004_create_admin_actions.js",
     ]) {
+      let source = readFileSync(
+        new URL(`../../pocketbase/pb_migrations/${migration}`, import.meta.url),
+        "utf8",
+      );
+      if (migration === "1787000002_partner_draft_lifecycle.js") {
+        source = source
+          .replace('    partners.fields.add(new Field({ name: "mutation_token", type: "text", required: false }));\n', "")
+          .replace('    partners.fields.add(new Field({ name: "logo_uploaded_by_human", type: "bool", required: false }));\n', "")
+          .replace('      partner.set("mutation_token", partner.id);\n', "")
+          .replace('      partner.set("logo_uploaded_by_human", Boolean(partner.getString("logo")));\n', "")
+          .replace('    partners.fields.getByName("mutation_token").required = true;\n', "");
+      }
       writeFileSync(
         join(migrationsDir, migration),
-        readFileSync(new URL(`../../pocketbase/pb_migrations/${migration}`, import.meta.url), "utf8"),
+        source,
       );
     }
 
@@ -1349,6 +1441,8 @@ describe("Partner Administration", () => {
 
       const current = await productionStore.get(created.data.partner.id);
       if (!current) throw new Error("Expected the created Partner.");
+      expect(current.version).toMatch(/\|[^|]+$/);
+      expect(current.logoUploadedByHuman).toBe(false);
       for (const request of [
         () => ordinaryClient.collection("partners").create({
           name: "Bypassed Partner",

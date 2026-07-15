@@ -7,7 +7,10 @@ import type {
   AdminActionSource,
   AdminActionValue,
 } from "~/lib/admin-action-ledger";
-import { AdminActions } from "~/lib/admin-action-ledger";
+import {
+  AdminActions,
+  containsAdminActionSecretMaterial,
+} from "~/lib/admin-action-ledger";
 import type { PartnerRecord } from "~/lib/pocketbase-types";
 
 export const PARTNER_TYPES = [
@@ -311,6 +314,7 @@ function snapshot(
   record: PartnerStoredRecord,
   actor: PartnerAdministrationActor,
 ): PartnerAdminSnapshot {
+  const noteAgentVisible = record.noteAgentVisible && !unsafePartnerText(record.notes);
   return {
     id: record.id,
     name: record.name,
@@ -319,8 +323,8 @@ function snapshot(
     tier: record.tier,
     logo: record.logo,
     url: record.url,
-    notes: actor === "human_admin" || record.noteAgentVisible ? record.notes : undefined,
-    noteAgentVisible: record.noteAgentVisible,
+    notes: actor === "human_admin" || noteAgentVisible ? record.notes : undefined,
+    noteAgentVisible: actor === "human_admin" ? record.noteAgentVisible : noteAgentVisible,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     version: record.version,
@@ -578,6 +582,10 @@ function warningMessage(value: string): string {
   return value.slice(0, 500);
 }
 
+function unsafePartnerText(value: string | null | undefined): boolean {
+  return Boolean(value && containsAdminActionSecretMaterial(value));
+}
+
 function similarityWarnings(
   existing: PartnerStoredRecord[],
   normalizedName: string,
@@ -653,6 +661,9 @@ class PartnerAdministrationDomain {
     if (name.length > 200) {
       return { success: false, code: "validation", error: "Partner name must be 200 characters or shorter." };
     }
+    if (unsafePartnerText(name)) {
+      return { success: false, code: "validation", error: "Partner fields cannot contain credentials or secret hashes." };
+    }
     if (!PARTNER_TYPES.includes(input.type)) {
       return {
         success: false,
@@ -675,6 +686,9 @@ class PartnerAdministrationDomain {
     }
     const logoError = validatePartnerLogo(input.logo);
     if (logoError) return { success: false, code: "validation", error: logoError };
+    if (unsafePartnerText(input.logo?.name) || unsafePartnerText(input.notes)) {
+      return { success: false, code: "validation", error: "Partner fields cannot contain credentials or secret hashes." };
+    }
     if ((input.url?.trim().length || 0) > 2_000) {
       return { success: false, code: "validation", error: "Partner URL must be 2,000 characters or shorter." };
     }
@@ -685,6 +699,9 @@ class PartnerAdministrationDomain {
         code: "validation",
         error: "Partner URL must be an absolute HTTPS URL.",
       };
+    }
+    if (unsafePartnerText(normalizedUrl.url)) {
+      return { success: false, code: "validation", error: "Partner fields cannot contain credentials or secret hashes." };
     }
 
     const existing = await this.store.list();
@@ -790,6 +807,9 @@ class PartnerAdministrationDomain {
     if (normalizedName.name.length > 200) {
       return { success: false, code: "validation", error: "Partner name must be 200 characters or shorter." };
     }
+    if (hasOwn(patch, "name") && unsafePartnerText(normalizedName.name)) {
+      return { success: false, code: "validation", error: "Partner fields cannot contain credentials or secret hashes." };
+    }
     const type = hasOwn(patch, "type") ? patch.type : current.type;
     if (!type || !PARTNER_TYPES.includes(type)) {
       return {
@@ -817,6 +837,13 @@ class PartnerAdministrationDomain {
         code: "validation",
         error: "Partner URL must be an absolute HTTPS URL.",
       };
+    }
+    if (
+      (hasOwn(patch, "url") && unsafePartnerText(normalizedUrl.url)) ||
+      (hasOwn(patch, "notes") && unsafePartnerText(patch.notes)) ||
+      (hasOwn(patch, "logo") && unsafePartnerText(patch.logo?.name))
+    ) {
+      return { success: false, code: "validation", error: "Partner fields cannot contain credentials or secret hashes." };
     }
     const logoError = hasOwn(patch, "logo") ? validatePartnerLogo(patch.logo) : undefined;
     if (logoError) return { success: false, code: "validation", error: logoError };
@@ -939,6 +966,13 @@ class PartnerAdministrationDomain {
         success: false,
         code: "validation",
         error: "Add a Partner Note before approving agent visibility.",
+      };
+    }
+    if (approved && unsafePartnerText(current.notes)) {
+      return {
+        success: false,
+        code: "validation",
+        error: "Remove credentials or secret hashes from the Partner Note before approving agent visibility.",
       };
     }
 
@@ -1095,6 +1129,19 @@ function actionLogo(value?: PartnerLogoPayload | null): AdminActionValue {
   };
 }
 
+function safeAdminActionText(value: string, redacted: string): string {
+  return containsAdminActionSecretMaterial(value) ? redacted : value;
+}
+
+function redactAdminActionSecretMaterial(value: AdminActionValue): AdminActionValue {
+  if (typeof value === "string") return safeAdminActionText(value, "[redacted credential or hash]");
+  if (Array.isArray(value)) return value.map(redactAdminActionSecretMaterial);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, redactAdminActionSecretMaterial(item)]),
+  );
+}
+
 function safePartnerSummary(
   partner: Pick<
     PartnerStoredRecord,
@@ -1112,7 +1159,7 @@ function safePartnerSummary(
 ): AdminActionValue {
   return {
     id: partner.id,
-    name: partner.name,
+    name: safeAdminActionText(partner.name, "Redacted Partner name"),
     published: partner.published,
     type: partner.type,
     tier: partner.tier || null,
@@ -1126,7 +1173,7 @@ function safePartnerSummary(
 
 function safeCreateSummary(input: PartnerStoreCreateInput): AdminActionValue {
   return {
-    name: input.name,
+    name: safeAdminActionText(input.name, "Redacted Partner name"),
     published: false,
     type: input.type,
     tier: input.tier || null,
@@ -1156,12 +1203,14 @@ function replayPartnerSnapshot(
 ): Omit<PartnerAdminSnapshot, "notes"> {
   return {
     id: partner.id,
-    name: partner.name.slice(0, 200),
+    name: safeAdminActionText(partner.name.slice(0, 200), "Redacted Partner name"),
     published: partner.published,
     type: partner.type,
     tier: partner.tier,
-    logo: partner.logo.slice(0, 255),
-    url: partner.url?.slice(0, 2_000),
+    logo: safeAdminActionText(partner.logo.slice(0, 255), "Redacted Partner logo"),
+    url: partner.url
+      ? safeAdminActionText(partner.url.slice(0, 2_000), "[redacted credential or hash]")
+      : undefined,
     noteAgentVisible: partner.noteAgentVisible,
     createdAt: partner.createdAt,
     updatedAt: partner.updatedAt,
@@ -1178,14 +1227,14 @@ function partnerMutationReplayResult(
   warnings: PartnerWarning[],
   publication: PartnerPublicationReadiness,
 ): AdminActionValue {
-  return toAdminActionValue({
+  return redactAdminActionSecretMaterial(toAdminActionValue({
     kind: "partner_mutation",
     data: {
       partner: replayPartnerSnapshot(partner),
       warnings,
       publication,
     },
-  });
+  }));
 }
 
 export function completePartnerMutationAdminAction(
@@ -1209,13 +1258,13 @@ export function completePartnerMutationAdminAction(
     typeof replayResult.data === "object" &&
     !Array.isArray(replayResult.data)
   ) {
-    completedReplayResult = toAdminActionValue({
+    completedReplayResult = redactAdminActionSecretMaterial(toAdminActionValue({
       ...replayResult,
       data: {
         ...replayResult.data,
         partner: replayPartnerSnapshot(record),
       },
-    });
+    }));
   }
   return {
     ...completion,
@@ -1228,14 +1277,14 @@ export function completePartnerMutationAdminAction(
 function replayResultFromData(data: PartnerMutationData): AdminActionValue {
   if ("id" in data) return { kind: "partner_delete", data: { id: data.id } };
   const { notes: _notes, ...partner } = data.partner;
-  return toAdminActionValue({
+  return redactAdminActionSecretMaterial(toAdminActionValue({
     kind: "partner_mutation",
     data: {
       partner,
       warnings: data.warnings.slice(0, 3),
       publication: data.publication,
     },
-  });
+  }));
 }
 
 function updatedStoredRecord(

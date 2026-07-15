@@ -173,7 +173,6 @@ export default function AdminMcpTokensHub() {
 
   const revoke = async (event: Event, token: McpTokenSnapshot) => {
     event.preventDefault();
-    if (token.status !== "active") return;
     const storageKey = `wts:admin:mcp:revoke-operation:${token.id}`;
     setBusyId(token.id);
     const result = await adminRevokeMcpToken(
@@ -211,7 +210,7 @@ export default function AdminMcpTokensHub() {
       layoutDescription="Govern MCP access tokens and activity"
       title="MCP Access"
       subtitle="TEAM TOKEN GOVERNANCE"
-      hint="Every current admin can inspect safe credential metadata, review activity, and revoke an active token. Token material remains one-time and unrecoverable."
+      hint="Every current admin can inspect safe credential metadata, review activity, and permanently revoke any token. Token material remains one-time and unrecoverable."
       count={activeCount()}
       countLoading={tokens.loading}
       accent="secondary"
@@ -404,7 +403,7 @@ export default function AdminMcpTokensHub() {
               <div>
                 <h2 class="text-lg font-bold text-white">Team tokens</h2>
                 <p class="text-xs text-base-content/45 font-mono mt-1">
-                  Ownership stays recorded. Any current admin can revoke an active credential with a reason.
+                  Ownership stays recorded. Any current admin can permanently revoke any credential with a reason.
                 </p>
               </div>
               <button type="button" class="btn btn-sm btn-ghost font-mono min-h-12" onClick={() => refetchTokens()}>Refresh</button>
@@ -445,7 +444,7 @@ export default function AdminMcpTokensHub() {
                               <p class="mt-3 text-xs text-base-content/65"><span class="font-mono uppercase">Reason:</span> {token.revocationReason}</p>
                             </Show>
                           </div>
-                          <Show when={token.status === "active"}>
+                          <Show when={token.status !== "revoked"}>
                             <button
                               type="button"
                               class="btn btn-sm btn-outline btn-error font-mono min-h-12"

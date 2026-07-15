@@ -244,6 +244,9 @@ function assertSafeValue(
     throw new Error(`${label} must be ${maximumBytes.toLocaleString("en-US")} bytes or smaller.`);
   }
   if (depth > 6) throw new Error(`${label} is too deeply nested.`);
+  if (typeof value === "string" && containsAdminActionSecretMaterial(value)) {
+    throw new Error(`${label} contains credential or hash material.`);
+  }
   if (typeof value === "number" && !Number.isFinite(value)) {
     throw new Error(`${label} contains a non-finite number.`);
   }
@@ -336,6 +339,12 @@ export class AdminActions {
     }
     if (!failure.message.trim() || Buffer.byteLength(failure.message, "utf8") > 256) {
       throw new Error("Admin Action failure message must be between 1 and 256 bytes.");
+    }
+    if (
+      containsAdminActionSecretMaterial(failure.code) ||
+      containsAdminActionSecretMaterial(failure.message)
+    ) {
+      throw new Error("Admin Action failure cannot contain credential or hash material.");
     }
     if (failure.metadata !== undefined) {
       assertSafeValue(failure.metadata, "Admin Action failure metadata", 1_024);

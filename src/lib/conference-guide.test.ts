@@ -211,6 +211,13 @@ function plannablePublishedData(): ConferenceGuidePublishedData {
       title: "Coffee break",
     },
     {
+      kind: "break",
+      startAt: "2026-09-19T08:00:00.000Z",
+      endAt: "2026-09-19T08:35:00.000Z",
+      title: "Track break",
+      track: { key: "workshops", name: "Workshops", locationLabel: "Workshop room" },
+    },
+    {
       kind: "meal",
       startAt: "2026-09-19T10:00:00.000Z",
       endAt: "2026-09-19T11:00:00.000Z",
@@ -300,6 +307,65 @@ function plannablePublishedData(): ConferenceGuidePublishedData {
       slug: "opening-overlap",
       title: "Opening Overlap",
       abstract: "A malformed Published placement overlapping fixed context.",
+      format: "Talk",
+      speakers: [],
+      relatedSessions: [],
+    },
+  );
+  return data;
+}
+
+function overnightPlannablePublishedData(): ConferenceGuidePublishedData {
+  const data = publishedData();
+  data.agenda.days[0].slots.push(
+    {
+      kind: "session",
+      startAt: "2026-09-19T21:00:00.000Z",
+      endAt: "2026-09-19T23:30:00.000Z",
+      track: { key: "systems", name: "Systems", locationLabel: "Hall A" },
+      session: { slug: "overnight-primary", title: "Overnight Primary", format: "Talk" },
+    },
+    {
+      kind: "session",
+      startAt: "2026-09-19T21:30:00.000Z",
+      endAt: "2026-09-19T22:30:00.000Z",
+      track: { key: "platforms", name: "Platforms", locationLabel: "Hall B" },
+      session: { slug: "overnight-overlap", title: "Overnight Overlap", format: "Talk" },
+    },
+  );
+  data.agenda.days.push({
+    key: "conference-day-two",
+    localDate: "2026-09-20",
+    title: "Conference day two",
+    slots: [{
+      kind: "session",
+      startAt: "2026-09-19T22:30:00.000Z",
+      endAt: "2026-09-19T23:00:00.000Z",
+      track: { key: "community", name: "Community", locationLabel: "Hall C" },
+      session: { slug: "next-day-overlap", title: "Next Day Overlap", format: "Talk" },
+    }],
+  });
+  data.sessions.push(
+    {
+      slug: "overnight-primary",
+      title: "Overnight Primary",
+      abstract: "A Session crossing midnight.",
+      format: "Talk",
+      speakers: [],
+      relatedSessions: [],
+    },
+    {
+      slug: "overnight-overlap",
+      title: "Overnight Overlap",
+      abstract: "An overlapping Session on the first Conference Day.",
+      format: "Talk",
+      speakers: [],
+      relatedSessions: [],
+    },
+    {
+      slug: "next-day-overlap",
+      title: "Next Day Overlap",
+      abstract: "An overlapping Session assigned to the following Conference Day.",
       format: "Talk",
       speakers: [],
       relatedSessions: [],
@@ -511,6 +577,72 @@ describe("Conference Guide", () => {
     });
   });
 
+  it("handles overnight intervals across Conference Days and excludes tracked Slots from fixed context", async () => {
+    const guide = createConferenceGuide({
+      content: conferenceGuideContent,
+      loadPublishedData: async () => overnightPlannablePublishedData(),
+      canonicalOrigin: "https://wts.sh",
+      now: () => new Date("2026-07-14T18:00:00.000Z"),
+    });
+
+    const proposal = await guide.planProposedSchedule({
+      ranked_session_slugs: ["overnight-primary", "overnight-overlap", "next-day-overlap"],
+    });
+
+    expect(proposal.selected_sessions).toEqual([
+      expect.objectContaining({
+        slug: "overnight-primary",
+        local_date: "2026-09-19",
+        start_time: "23:00",
+        end_time: "01:30",
+        end_local_date: "2026-09-20",
+      }),
+    ]);
+    expect(proposal.conflicts).toEqual([
+      expect.objectContaining({ slug: "overnight-overlap", reason: "overlaps_selected_session" }),
+      expect.objectContaining({ slug: "next-day-overlap", reason: "overlaps_selected_session" }),
+    ]);
+
+    const available = await guide.planProposedSchedule({
+      must_attend_slugs: ["overnight-primary"],
+      availability_windows: [{
+        local_date: "2026-09-19",
+        start_time: "22:00",
+        end_time: "02:00",
+      }],
+    });
+    expect(available.selected_sessions).toEqual([
+      expect.objectContaining({ slug: "overnight-primary" }),
+    ]);
+
+    const unavailable = await guide.planProposedSchedule({
+      must_attend_slugs: ["overnight-primary"],
+      availability_windows: [{
+        local_date: "2026-09-19",
+        start_time: "22:00",
+        end_time: "23:59",
+      }],
+    });
+    expect(unavailable).toMatchObject({
+      selected_sessions: [],
+      unresolved_hard_constraints: [{ slug: "overnight-primary", reason: "unavailable" }],
+    });
+
+    const trackedData = plannablePublishedData();
+    const trackedGuide = createConferenceGuide({
+      content: conferenceGuideContent,
+      loadPublishedData: async () => trackedData,
+      canonicalOrigin: "https://wts.sh",
+    });
+    const trackedProposal = await trackedGuide.planProposedSchedule({
+      ranked_session_slugs: ["reliable-runtime"],
+    });
+    expect(trackedProposal.selected_sessions).toEqual([
+      expect.objectContaining({ slug: "reliable-runtime" }),
+    ]);
+    expect(trackedProposal.fixed_context.map((slot) => slot.title)).not.toContain("Track break");
+  });
+
   it("ranks Published Session data deterministically with explainable bounded matches", async () => {
     const guide = createConferenceGuide({
       content: conferenceGuideContent,
@@ -714,11 +846,12 @@ describe("Conference Guide", () => {
     expect(agenda.days[0]).toMatchObject({
       key: "conference-day",
       slots: [
-        { kind: "opening", start_time: "09:00", end_time: "09:30", title: "Opening" },
+        { kind: "opening", start_time: "09:00", end_time: "09:30", end_local_date: "2026-09-19", title: "Opening" },
         {
           kind: "session",
           start_time: "10:00",
           end_time: "10:35",
+          end_local_date: "2026-09-19",
           track: { key: "systems", name: "Systems" },
           session: { slug: "safe-systems", resource_uri: "wts://conference-guide/sessions/safe-systems" },
         },

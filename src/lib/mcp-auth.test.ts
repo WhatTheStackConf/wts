@@ -85,6 +85,26 @@ describe("MCP bearer authentication", () => {
     ).toHaveLength(2);
   });
 
+  it("durably expands a persisted legacy grant before runtime scope normalization", async () => {
+    const { material, record } = authFixture({ scopes: ["program:read"] });
+    adminService.fetchAllRecords.mockImplementation((collection: string) => {
+      if (collection === "mcp_tokens") return Promise.resolve([record]);
+      if (collection === "users") return Promise.resolve([{ id: "admin-user", role: "admin" }]);
+      return Promise.resolve([]);
+    });
+
+    await expect(authenticateMcpBearer(`Bearer ${material.token}`)).resolves.toMatchObject({
+      success: true,
+      token: { scopes: ["programme:read", "cfp:read"] },
+    });
+    expect(adminService.updateRecord).toHaveBeenCalledWith(
+      "mcp_tokens",
+      "mcp-token-record",
+      expect.objectContaining({ scopes: ["programme:read", "cfp:read"] }),
+    );
+    expect(normalizeMcpScopes(["program:read"])).toEqual([]);
+  });
+
   it.each([
     ["revoked", { revoked_at: "2026-01-01 00:00:00.000Z" }, "MCP token has been revoked"],
     ["expired", { expires_at: "2020-01-01 00:00:00.000Z" }, "MCP token has expired"],

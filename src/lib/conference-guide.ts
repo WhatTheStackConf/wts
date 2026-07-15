@@ -149,6 +149,18 @@ function localTime(instant: string): string {
   }).format(new Date(instant));
 }
 
+function localDate(instant: string): string {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: conferenceTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(instant));
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value || "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
 function slugUri(kind: "sessions" | "speakers", slug: string): string {
   return `wts://conference-guide/${kind}/${encodeURIComponent(slug)}`;
 }
@@ -171,6 +183,7 @@ function mapAgendaSlot(
     day_key: dayKey,
     start_time: localTime(slot.startAt),
     end_time: localTime(slot.endAt),
+    end_local_date: localDate(slot.endAt),
     location: optionalGuideText(slot.locationLabel),
     track: slot.track
       ? {
@@ -203,6 +216,7 @@ function sessionSchedule(agenda: PublicAgenda, slug: string, origin: string) {
       day_title: normalizeGuideText(day.title),
       start_time: localTime(slot.startAt),
       end_time: localTime(slot.endAt),
+      end_local_date: localDate(slot.endAt),
       location: optionalGuideText(slot.locationLabel),
       track: slot.track
         ? { key: normalizeGuideText(slot.track.key), name: normalizeGuideText(slot.track.name) }
@@ -538,16 +552,27 @@ function searchResultSchedule(schedule: GuideSession["schedule"]) {
   };
 }
 
+function localDateTimeValue(localDate: string, localTime: string): number {
+  return Date.parse(`${localDate}T${localTime}:00.000Z`);
+}
+
+function scheduleInterval(day: GuideAgendaDay, slot: GuideAgendaSlot) {
+  return {
+    start: localDateTimeValue(day.local_date, slot.start_time),
+    end: localDateTimeValue(slot.end_local_date, slot.end_time),
+  };
+}
+
 function scheduleIntervalsOverlap(left: PlanningCandidate, right: PlanningCandidate): boolean {
-  return left.day.local_date === right.day.local_date &&
-    left.slot.start_time < right.slot.end_time &&
-    right.slot.start_time < left.slot.end_time;
+  const leftInterval = scheduleInterval(left.day, left.slot);
+  const rightInterval = scheduleInterval(right.day, right.slot);
+  return leftInterval.start < rightInterval.end && rightInterval.start < leftInterval.end;
 }
 
 function fixedSlotOverlaps(candidate: PlanningCandidate, day: GuideAgendaDay, slot: GuideAgendaSlot) {
-  return candidate.day.local_date === day.local_date &&
-    candidate.slot.start_time < slot.end_time &&
-    slot.start_time < candidate.slot.end_time;
+  const candidateInterval = scheduleInterval(candidate.day, candidate.slot);
+  const fixedInterval = scheduleInterval(day, slot);
+  return candidateInterval.start < fixedInterval.end && fixedInterval.start < candidateInterval.end;
 }
 
 function planningSession(candidate: PlanningCandidate) {
@@ -562,6 +587,7 @@ function planningSession(candidate: PlanningCandidate) {
     day_title: boundedPublicLabel(candidate.day.title),
     start_time: candidate.slot.start_time,
     end_time: candidate.slot.end_time,
+    end_local_date: candidate.slot.end_local_date,
     location: candidate.slot.location ? boundedPublicLabel(candidate.slot.location) : undefined,
     track: candidate.slot.track
       ? {
@@ -634,10 +660,26 @@ function candidateIsAvailable(
   windows: ProposedScheduleInput["availability_windows"],
 ): boolean {
   if (!windows || windows.length === 0) return true;
-  return windows.some((window) =>
-    window.local_date === candidate.day.local_date &&
-    window.start_time <= candidate.slot.start_time &&
-    candidate.slot.end_time <= window.end_time
+  const candidateInterval = scheduleInterval(candidate.day, candidate.slot);
+  const availableIntervals = windows.map((window) => {
+    const windowStart = localDateTimeValue(window.local_date, window.start_time);
+    const sameDayEnd = localDateTimeValue(window.local_date, window.end_time);
+    return {
+      start: windowStart,
+      end: sameDayEnd > windowStart ? sameDayEnd : sameDayEnd + 24 * 60 * 60 * 1_000,
+    };
+  }).sort((left, right) => left.start - right.start);
+  const mergedIntervals: Array<{ start: number; end: number }> = [];
+  for (const interval of availableIntervals) {
+    const previous = mergedIntervals[mergedIntervals.length - 1];
+    if (previous && interval.start <= previous.end) {
+      previous.end = Math.max(previous.end, interval.end);
+    } else {
+      mergedIntervals.push({ ...interval });
+    }
+  }
+  return mergedIntervals.some((window) =>
+    window.start <= candidateInterval.start && candidateInterval.end <= window.end
   );
 }
 
@@ -648,6 +690,7 @@ function fixedContextReference(day: GuideAgendaDay, slot: GuideAgendaSlot) {
     local_date: day.local_date,
     start_time: slot.start_time,
     end_time: slot.end_time,
+    end_local_date: slot.end_local_date,
     title: slot.title ? boundedPublicLabel(slot.title) : undefined,
   };
 }
@@ -873,7 +916,7 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
       const inputOutcomeBySlug = new Map(inputOutcomes.map((outcome) => [outcome.slug, outcome]));
       const fixedContext = snapshot.programme.agenda.days.flatMap((day) =>
         day.slots
-          .filter((slot) => slot.kind !== "session")
+          .filter((slot) => slot.kind !== "session" && !slot.track)
           .map((slot) => ({
             kind: slot.kind,
             day_key: day.key,
@@ -881,6 +924,7 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
             day_title: boundedPublicLabel(day.title),
             start_time: slot.start_time,
             end_time: slot.end_time,
+            end_local_date: slot.end_local_date,
             location: slot.location ? boundedPublicLabel(slot.location) : undefined,
             track: slot.track
               ? {
@@ -894,7 +938,7 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
       );
       const fixedSlots = snapshot.programme.agenda.days.flatMap((day) =>
         day.slots
-          .filter((slot) => slot.kind !== "session")
+          .filter((slot) => slot.kind !== "session" && !slot.track)
           .map((slot) => ({ day, slot })),
       );
       const selected: PlanningCandidate[] = [];
@@ -1004,6 +1048,7 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
               local_date: candidate.day.local_date,
               start_time: candidate.slot.start_time,
               end_time: candidate.slot.end_time,
+              end_local_date: candidate.slot.end_local_date,
             },
           })),
         input_outcomes: inputOutcomes,

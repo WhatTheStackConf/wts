@@ -217,6 +217,31 @@ describe("Admin Actions", () => {
         replayResult: { value: "x".repeat(33_000) },
       }),
     ).rejects.toThrow("32,768 bytes");
+
+    const bearer = `wts_mcp_${"a".repeat(24)}_${"b".repeat(32)}`;
+    const hash = "c".repeat(64);
+    for (const unsafeValue of [bearer, hash]) {
+      await expect(
+        actions.complete(started.handle, {
+          beforeSummary: null,
+          afterSummary: { name: unsafeValue },
+          replayResult: { partnerId: "partner-1" },
+        }),
+      ).rejects.toThrow("credential or hash material");
+      await expect(
+        actions.complete(started.handle, {
+          beforeSummary: null,
+          afterSummary: { name: "Example Partner" },
+          replayResult: { partner: { name: unsafeValue } },
+        }),
+      ).rejects.toThrow("credential or hash material");
+      await expect(
+        actions.fail(started.handle, {
+          code: "unsafe_failure",
+          message: `Persistence failed for ${unsafeValue}`,
+        }),
+      ).rejects.toThrow("credential or hash material");
+    }
   });
 
   it("rejects non-finite normalized input before fingerprinting", async () => {

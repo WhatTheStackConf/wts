@@ -1,0 +1,3 @@
+# Admin Actions for administrative mutations
+
+Ordinary administrative mutations use a shared domain service and reserve an idempotent **Admin Action** before changing state, finishing it as `applied` or `failed`; exact retries replay safely, while changed input cannot reuse an operation ID. An MCP token acts under its current admin owner, Partner Note text and token secrets are excluded from append-only snapshots, and direct Partner changes, MCP Partner writes, and MCP token creation or revocation use this path. This generic ledger does not replace gamification's domain-specific audit records.

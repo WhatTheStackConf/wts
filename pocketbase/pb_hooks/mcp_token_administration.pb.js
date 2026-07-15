@@ -239,10 +239,11 @@ routerAdd("POST", "/api/wts/mcp-tokens/{id}/revoke", (e) => {
     if (actor.getString("role") !== "admin") throw new ForbiddenError("Current admin access is required.");
     const record = txApp.findRecordById("mcp_tokens", id);
     const owner = txApp.findRecordById("users", record.getString("created_by"));
-    if (record.getString("revoked_at") || Date.parse(record.getString("expires_at")) <= Date.now() || owner.getString("role") !== "admin") {
-      throw new BadRequestError("Only an active MCP token can be revoked.");
-    }
-    const beforeSummary = summary(record, "active", "");
+    if (record.getString("revoked_at")) throw new BadRequestError("This MCP token is already revoked.");
+    const beforeStatus = Date.parse(record.getString("expires_at")) <= Date.now()
+      ? "expired"
+      : owner.getString("role") !== "admin" ? "owner_disabled" : "active";
+    const beforeSummary = summary(record, beforeStatus, "");
     const revokedAt = new Date().toISOString();
     record.set("revoked_at", revokedAt);
     record.set("revoked_by", action.getString("actor_user"));

@@ -81,7 +81,7 @@ const availabilityWindowSchema = z.object({
   local_date: z.string().length(CALENDAR_DATE_LENGTH).refine(isCalendarDate),
   start_time: z.string().length(LOCAL_TIME_LENGTH).refine(isLocalTime),
   end_time: z.string().length(LOCAL_TIME_LENGTH).refine(isLocalTime),
-}).strict().refine((window) => window.start_time < window.end_time);
+}).strict().refine((window) => window.start_time !== window.end_time);
 
 const proposedScheduleInputSchema = z.object({
   ranked_session_slugs: rankedSlugListSchema.optional(),

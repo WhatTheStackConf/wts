@@ -133,7 +133,7 @@ export default function McpConferenceGuidePage() {
               </div>
               <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
                 <dt class="font-mono text-sm font-bold text-accent-300">plan_proposed_schedule</dt>
-                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Plans only from current Published Sessions with Published Agenda Slots. Accepts ranked, must-attend, and excluded public slugs, Europe/Skopje availability windows, and an optional prior programme version. Results contain non-overlapping selected Sessions, fixed all-attendee Slots, unresolved hard constraints, conflict reasons, and alternatives.</dd>
+                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Plans only from current Published Sessions with Published Agenda Slots. Accepts ranked, must-attend, and excluded public slugs, Europe/Skopje availability windows (including windows that cross midnight), and an optional prior programme version. Results contain non-overlapping selected Sessions, fixed all-attendee Slots, unresolved hard constraints, conflict reasons, and alternatives.</dd>
               </div>
               <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
                 <dt class="font-mono text-sm font-bold text-accent-300">Public prompts</dt>
@@ -191,7 +191,7 @@ export default function McpConferenceGuidePage() {
             <h2 id="privacy-heading" class="text-3xl font-bold text-white">Endpoint privacy</h2>
             <div class="mt-6 max-w-[72ch] space-y-4 leading-7 text-base-content/80">
               <p>Public MCP request bodies, resource choices, Session query text, filters, planner priorities, exclusions, availability windows, and results are processed in memory and are not retained as User state, request logs, or behavioral analytics. The endpoint does not set a visitor identity, fingerprint clients, or create public API keys.</p>
-              <p>Operations may contribute to aggregate service metrics. Abuse protection uses only short-lived in-memory counters, including a salted per-IP burst counter when the deployment supplies a trusted client address, plus global rate and concurrency limits.</p>
+              <p>Operations may contribute to aggregate service metrics. Abuse protection uses only short-lived in-memory counters, including a salted per-IP burst counter when the deployment supplies a trusted client address, plus process-wide rate and concurrency limits. Multi-replica deployments require equivalent aggregate limits at a shared proxy layer.</p>
               <p>Capacity responses use HTTP <code class="font-mono text-sm">429</code> with <code class="font-mono text-sm">Retry-After</code>. The counters expire automatically and are not added to attendee profiles or Admin Actions.</p>
             </div>
           </section>
