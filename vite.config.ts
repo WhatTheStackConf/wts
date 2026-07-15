@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 export default defineConfig({
   envPrefix: ["VITE_", "PUBLIC_"],
   plugins: [
-    solidStart(),
+    solidStart({ middleware: "./src/middleware.ts" }),
     solidSvg(),
     nitroV2Plugin({
       preset: "node-server",

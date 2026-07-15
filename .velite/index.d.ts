@@ -7,6 +7,9 @@ type Collections = typeof __vc.collections
 export type ConferenceGuide = Collections['conferenceGuide']['schema']['_output']
 export declare const conferenceGuide: ConferenceGuide
 
+export type SpeakerGuide = Collections['speakerGuide']['schema']['_output']
+export declare const speakerGuide: SpeakerGuide
+
 export type Page = Collections['pages']['schema']['_output']
 export declare const pages: Page[]
 

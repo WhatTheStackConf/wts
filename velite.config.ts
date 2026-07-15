@@ -74,6 +74,15 @@ export default defineConfig({
                 }),
             }),
         },
+        speakerGuide: {
+            name: "SpeakerGuide",
+            pattern: "speaker-guide.mdx",
+            single: true,
+            schema: s.object({
+                title: s.string(),
+                content: s.mdx(),
+            }),
+        },
         pages: {
             name: "Page",
             pattern: "pages/**/*.{md,mdx}",
