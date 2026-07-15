@@ -85,7 +85,270 @@ function publishedData(): ConferenceGuidePublishedData {
   };
 }
 
+function searchablePublishedData(): ConferenceGuidePublishedData {
+  const data = publishedData();
+  data.agenda.days[0].slots.push(
+    {
+      kind: "session",
+      startAt: "2026-09-19T09:00:00.000Z",
+      endAt: "2026-09-19T10:00:00.000Z",
+      locationLabel: "Workshop room",
+      track: { key: "platforms", name: "Platforms", locationLabel: "Workshop room" },
+      session: { slug: "resilient-platforms", title: "Resilient Platforms", format: "Workshop" },
+    },
+    {
+      kind: "session",
+      startAt: "2026-09-19T10:00:00.000Z",
+      endAt: "2026-09-19T10:35:00.000Z",
+      locationLabel: "Hall A-B",
+      track: { key: "systems", name: "Systems", locationLabel: "Stage A" },
+      session: { slug: "beta-operations", title: "Operations at Scale", format: "C#" },
+    },
+    {
+      kind: "session",
+      startAt: "2026-09-19T11:00:00.000Z",
+      endAt: "2026-09-19T11:35:00.000Z",
+      locationLabel: "Hall A/B",
+      track: { key: "systems", name: "Systems", locationLabel: "Stage A" },
+      session: { slug: "alpha-operations", title: "Operations at Scale", format: "C++" },
+    },
+  );
+  data.sessions.push(
+    {
+      slug: "resilient-platforms",
+      title: "Resilient Platforms",
+      abstract: `<p>${"Recovery needs context. ".repeat(20)}Safe systems recover without guesswork.</p>`,
+      format: "Workshop",
+      speakers: [{
+        slug: "grace-example",
+        displayName: "Grace Example",
+        affiliation: "Platform Guild",
+        sessionCount: 1,
+      } as never],
+      relatedSessions: [],
+      id: "private-resilient-session-id",
+      reviews: ["private-resilient-review"],
+    } as never,
+    {
+      slug: "beta-operations",
+      title: "Operations at Scale",
+      abstract: "Practical operations patterns.",
+      format: "C#",
+      speakers: [{
+        slug: "lin-example",
+        displayName: "Lin Example",
+        affiliation: "Operations Group",
+        sessionCount: 2,
+      } as never],
+      relatedSessions: [],
+    },
+    {
+      slug: "alpha-operations",
+      title: "Operations at Scale",
+      abstract: "Practical operations patterns.",
+      format: "C++",
+      speakers: [{
+        slug: "lin-example",
+        displayName: "Lin Example",
+        affiliation: "Operations Group",
+        sessionCount: 2,
+      } as never],
+      relatedSessions: [],
+    },
+  );
+  data.agenda.days.push({
+    key: "community-day",
+    localDate: "2026-09-20",
+    title: "Community Day",
+    slots: [{
+      kind: "session",
+      startAt: "2026-09-20T08:00:00.000Z",
+      endAt: "2026-09-20T08:35:00.000Z",
+      locationLabel: "Community hall",
+      track: { key: "community", name: "Community", locationLabel: "Community hall" },
+      session: { slug: "future-community", title: "Future Community", format: "Panel" },
+    }],
+  });
+  data.sessions.push({
+    slug: "future-community",
+    title: "Future Community",
+    abstract: "How communities prepare for tomorrow.",
+    format: "Panel",
+    speakers: [{
+      slug: "sam-example",
+      displayName: "Sam Example",
+      affiliation: "Community Hub",
+      sessionCount: 1,
+    } as never],
+    relatedSessions: [],
+  });
+  return data;
+}
+
 describe("Conference Guide", () => {
+  it("ranks Published Session data deterministically with explainable bounded matches", async () => {
+    const guide = createConferenceGuide({
+      content: conferenceGuideContent,
+      loadPublishedData: async () => searchablePublishedData(),
+      canonicalOrigin: "https://wts.sh",
+      now: () => new Date("2026-07-14T18:00:00.000Z"),
+    });
+
+    const ranked = await guide.searchSessions({ query: "safe systems", limit: 10 });
+    const repeated = await guide.searchSessions({ query: "safe systems", limit: 10 });
+    const tied = await guide.searchSessions({ query: "operations", limit: 10 });
+
+    expect(ranked).toMatchObject({
+      metadata: {
+        schema_version: "1",
+        content_version: "2026-07-14",
+        programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+        generated_at: "2026-07-14T18:00:00.000Z",
+        time_zone: "Europe/Skopje",
+        canonical_url: "https://wts.sh/sessions",
+      },
+      outcome: "results",
+      ranking: {
+        method: "deterministic_lexical_v1",
+        tie_break: "session_slug_ascending",
+      },
+      total_matches: 2,
+      results: [
+        {
+          slug: "safe-systems",
+          canonical_url: "https://wts.sh/sessions/safe-systems",
+          speakers: [{
+            slug: "ada-example",
+            canonical_url: "https://wts.sh/speakers/ada-example",
+          }],
+        },
+        {
+          slug: "resilient-platforms",
+          canonical_url: "https://wts.sh/sessions/resilient-platforms",
+          speakers: [{
+            slug: "grace-example",
+            canonical_url: "https://wts.sh/speakers/grace-example",
+          }],
+        },
+      ],
+    });
+    expect(ranked.results[0].matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "title", snippet: "Safe Systems" }),
+    ]));
+    expect(ranked.results[1].matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "abstract", snippet: expect.stringContaining("Safe systems") }),
+    ]));
+    expect(ranked.results[1].matches[0].snippet.length).toBeLessThanOrEqual(240);
+    expect(repeated).toEqual(ranked);
+    expect(tied.results.map((result) => result.slug)).toEqual([
+      "alpha-operations",
+      "beta-operations",
+    ]);
+
+    const fieldCases = [
+      { query: "Grace Example", field: "speaker_name", slug: "resilient-platforms" },
+      { query: "Platform Guild", field: "speaker_affiliation", slug: "resilient-platforms" },
+      { query: "Workshop", field: "format", slug: "resilient-platforms" },
+      { query: "Platforms", field: "track", slug: "resilient-platforms" },
+      { query: "Workshop room", field: "location", slug: "resilient-platforms" },
+    ] as const;
+    for (const fieldCase of fieldCases) {
+      const result = await guide.searchSessions({ query: fieldCase.query, limit: 10 });
+      expect(result.results[0]).toMatchObject({ slug: fieldCase.slug });
+      expect(result.results[0].matches).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: fieldCase.field }),
+      ]));
+    }
+
+    const serialized = JSON.stringify({ ranked, tied });
+    for (const forbidden of [
+      "private-resilient-session-id",
+      "private-resilient-review",
+      '"published"',
+      '"origin"',
+      "<p>",
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
+  it("applies every structured Session filter and returns bounded actionable no-result outcomes", async () => {
+    const guide = createConferenceGuide({
+      content: conferenceGuideContent,
+      loadPublishedData: async () => searchablePublishedData(),
+      canonicalOrigin: "https://wts.sh",
+      now: () => new Date("2026-07-14T18:00:00.000Z"),
+    });
+
+    const filterCases = [
+      { query: "future", filters: { date: "2026-09-20" }, slug: "future-community" },
+      { query: "systems", filters: { format: "workshop" }, slug: "resilient-platforms" },
+      { query: "systems", filters: { track: "platforms" }, slug: "resilient-platforms" },
+      { query: "systems", filters: { speaker: "grace-example" }, slug: "resilient-platforms" },
+      { query: "systems", filters: { location: "WORKSHOP ROOM" }, slug: "resilient-platforms" },
+    ] as const;
+
+    for (const filterCase of filterCases) {
+      const result = await guide.searchSessions({
+        query: filterCase.query,
+        filters: filterCase.filters,
+        limit: 20,
+      });
+      expect(result.results.map((session) => session.slug)).toEqual([filterCase.slug]);
+    }
+
+    const noResults = await guide.searchSessions({
+      query: "systems",
+      filters: { location: "Room that does not exist" },
+      limit: 20,
+    });
+    expect(noResults).toMatchObject({
+      outcome: "no_results",
+      total_matches: 0,
+      result_count: 0,
+      results: [],
+      next_step: expect.stringContaining("remove a structured filter"),
+      metadata: { programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/) },
+    });
+
+    const bounded = await guide.searchSessions({ query: "operations", limit: 1 });
+    expect(bounded).toMatchObject({
+      outcome: "results",
+      total_matches: 2,
+      result_count: 1,
+      results: [{ slug: "alpha-operations" }],
+    });
+
+    const punctuationCases = [
+      { filters: { format: "C++" }, slug: "alpha-operations" },
+      { filters: { format: "C#" }, slug: "beta-operations" },
+      { filters: { location: "Hall A/B" }, slug: "alpha-operations" },
+      { filters: { location: "Hall A-B" }, slug: "beta-operations" },
+    ] as const;
+    for (const punctuationCase of punctuationCases) {
+      const result = await guide.searchSessions({
+        query: "operations",
+        filters: punctuationCase.filters,
+        limit: 20,
+      });
+      expect(result.results.map((session) => session.slug)).toEqual([punctuationCase.slug]);
+    }
+
+    const punctuationQueryCases = [
+      { query: "C++", field: "format", slug: "alpha-operations" },
+      { query: "C#", field: "format", slug: "beta-operations" },
+      { query: "Hall A/B", field: "location", slug: "alpha-operations" },
+      { query: "Hall A-B", field: "location", slug: "beta-operations" },
+    ] as const;
+    for (const punctuationCase of punctuationQueryCases) {
+      const result = await guide.searchSessions({ query: punctuationCase.query, limit: 20 });
+      expect(result.results.map((session) => session.slug)).toEqual([punctuationCase.slug]);
+      expect(result.results[0].matches).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: punctuationCase.field }),
+      ]));
+    }
+  });
+
   it("combines deploy facts and Published DTOs into strict versioned resources", async () => {
     const guide = createConferenceGuide({
       content: conferenceGuideContent,

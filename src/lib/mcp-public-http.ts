@@ -6,7 +6,12 @@ import {
   withMcpCors,
 } from "~/lib/mcp-http-security";
 import { publicMcpProtection } from "~/lib/mcp-public-protection";
-import { buildPublicMcpServer } from "~/lib/mcp-public-server";
+import {
+  buildPublicMcpServer,
+  hasValidPublicSearchInput,
+  invalidPublicSearchArgumentsToolResult,
+  PUBLIC_SESSION_SEARCH_TOOL,
+} from "~/lib/mcp-public-server";
 
 export interface PublicMcpRequestEvent {
   request: Request;
@@ -52,10 +57,84 @@ function requestWeight(parsedBody: unknown): number {
       weight += 1;
       continue;
     }
-    const method = (message as { method?: unknown }).method;
-    weight += method === "resources/read" ? 3 : 1;
+    const request = message as { method?: unknown; params?: { name?: unknown } };
+    if (request.method === "resources/read") {
+      weight += 3;
+    } else if (
+      request.method === "tools/call" &&
+      request.params?.name === PUBLIC_SESSION_SEARCH_TOOL
+    ) {
+      weight += 4;
+    } else {
+      weight += 1;
+    }
   }
   return Math.max(weight, 1);
+}
+
+function requestIdKey(value: unknown): string | undefined {
+  if (typeof value === "string" || typeof value === "number" || value === null) {
+    return JSON.stringify(value);
+  }
+  return undefined;
+}
+
+function invalidSearchCallIds(value: unknown): Set<string> {
+  const calls = new Set<string>();
+  for (const message of Array.isArray(value) ? value : [value]) {
+    if (!message || typeof message !== "object") continue;
+    const request = message as {
+      id?: unknown;
+      method?: unknown;
+      params?: { name?: unknown; arguments?: unknown };
+    };
+    const id = requestIdKey(request.id);
+    if (
+      id !== undefined &&
+      request.method === "tools/call" &&
+      request.params?.name === PUBLIC_SESSION_SEARCH_TOOL &&
+      !hasValidPublicSearchInput(request.params.arguments)
+    ) calls.add(id);
+  }
+  return calls;
+}
+
+async function withStructuredPublicValidationErrors(
+  parsedBody: unknown,
+  response: Response,
+): Promise<Response> {
+  const invalidCalls = invalidSearchCallIds(parsedBody);
+  if (
+    invalidCalls.size === 0 ||
+    !response.headers.get("Content-Type")?.includes("application/json")
+  ) return response;
+
+  let body: unknown;
+  try {
+    body = await response.clone().json();
+  } catch {
+    return response;
+  }
+
+  let changed = false;
+  const messages = Array.isArray(body) ? body : [body];
+  const updated = messages.map((message) => {
+    if (!message || typeof message !== "object") return message;
+    const rpc = message as { id?: unknown; result?: { isError?: unknown } };
+    const id = requestIdKey(rpc.id);
+    if (!id || !invalidCalls.has(id) || rpc.result?.isError !== true) return message;
+    changed = true;
+    return { ...rpc, result: invalidPublicSearchArgumentsToolResult() };
+  });
+  if (!changed) return response;
+
+  const headers = new Headers(response.headers);
+  headers.delete("Content-Length");
+  return new Response(JSON.stringify(Array.isArray(body) ? updated : updated[0]), {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function clientAddress(event: PublicMcpRequestEvent): string | undefined {
@@ -176,8 +255,9 @@ export async function handlePublicMcpRequest(
     });
     try {
       await server.connect(transport);
+      const response = await transport.handleRequest(request, { parsedBody });
       return withPublicMcpCors(
-        await transport.handleRequest(request, { parsedBody }),
+        await withStructuredPublicValidationErrors(parsedBody, response),
         origin,
       );
     } finally {

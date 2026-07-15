@@ -16,7 +16,9 @@ const OPEN_CODE_CONFIG = `{
 const INSPECTOR_COMMAND = `npx -y @modelcontextprotocol/inspector --cli \\
   https://wts.sh/api/mcp/public \\
   --transport http \\
-  --method resources/list`;
+  --method tools/call \\
+  --tool-name search_sessions \\
+  --tool-arg query=systems`;
 
 const sectionClasses = "border-t border-white/15 py-10 md:py-14";
 
@@ -71,14 +73,14 @@ export default function McpConferenceGuidePage() {
                 <p class="mb-4 max-w-[70ch] text-sm leading-6 text-base-content/70">
                   Add this remote server to <code class="font-mono text-base-content">opencode.json</code>, then restart OpenCode.
                 </p>
-                <pre class="max-w-full overflow-x-auto border border-white/15 bg-black/55 p-5 text-sm leading-6 text-base-content"><code>{OPEN_CODE_CONFIG}</code></pre>
+                <pre tabindex="0" class="max-w-full overflow-x-auto border border-white/15 bg-black/55 p-5 text-sm leading-6 text-base-content"><code>{OPEN_CODE_CONFIG}</code></pre>
               </figure>
               <figure>
                 <figcaption class="mb-3 text-lg font-bold text-secondary-300">MCP Inspector</figcaption>
                 <p class="mb-4 max-w-[70ch] text-sm leading-6 text-base-content/70">
-                  List the fixed resources from Inspector's CLI. Session and Speaker patterns appear under resource templates.
+                  Call deterministic Session search from Inspector's CLI. Use <code class="font-mono text-base-content">resources/list</code> to discover the fixed resources; Session and Speaker patterns appear under resource templates.
                 </p>
-                <pre class="max-w-full overflow-x-auto border border-white/15 bg-black/55 p-5 text-sm leading-6 text-base-content"><code>{INSPECTOR_COMMAND}</code></pre>
+                <pre tabindex="0" class="max-w-full overflow-x-auto border border-white/15 bg-black/55 p-5 text-sm leading-6 text-base-content"><code>{INSPECTOR_COMMAND}</code></pre>
               </figure>
             </div>
           </section>
@@ -102,6 +104,10 @@ export default function McpConferenceGuidePage() {
                 <dt class="font-mono text-sm font-bold text-accent-300">Published Partners</dt>
                 <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Published Partner names, classifications, tiers, and validated public website links. Partner Notes are never included.</dd>
               </div>
+              <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
+                <dt class="font-mono text-sm font-bold text-accent-300">search_sessions</dt>
+                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Deterministic text search with a 1-160 character query and at most 20 results across Published Session titles and abstracts, public Speaker names and affiliations, formats, Tracks, and locations. Optional date, format, Track, Speaker, and location filters are exact and case-insensitive.</dd>
+              </div>
             </dl>
             <p class="mt-6 text-sm leading-6 text-base-content/70">
               Human-readable sources: <a class="link text-primary-300" href="/agenda">Agenda</a>,{" "}
@@ -119,6 +125,7 @@ export default function McpConferenceGuidePage() {
                 <ul class="mt-4 list-disc space-y-3 pl-5 leading-7 text-base-content/80 marker:text-accent-400">
                   <li>Deploy-validated conference facts and explicit <code class="font-mono text-sm">not_announced</code> states.</li>
                   <li>Current Published Agenda, Sessions, Speakers, and Partners.</li>
+                  <li>Bounded Session search with matched fields, plain-text snippets, canonical Session and Speaker links, and transparent ranking signals.</li>
                   <li>Plain text, canonical website links, stable public keys, and content/programme versions.</li>
                 </ul>
               </div>
@@ -127,13 +134,13 @@ export default function McpConferenceGuidePage() {
                 <ul class="mt-4 list-disc space-y-3 pl-5 leading-7 text-base-content/80 marker:text-primary-400">
                   <li>Drafts, PocketBase IDs, publication flags, raw storage timestamps, or Speaker origin.</li>
                   <li>CFP provenance, submissions, reviews, Partner Notes, Admin Actions, or administrative tools.</li>
-                  <li>Session search, Proposed Schedule planning, and public prompts are deferred to later public MCP releases.</li>
+                  <li>Proposed Schedule planning and public prompts are deferred to later public MCP releases.</li>
                   <li>Saved schedules, reservations, and attendance guarantees are not part of the Conference Guide.</li>
                 </ul>
               </div>
             </div>
             <aside class="mt-9 border border-warning/45 bg-warning/10 p-5 text-sm leading-6 text-warning-content md:p-6">
-              MCP clients generate their own answers from these resources. WhatTheStack does not run an LLM for this endpoint. Verify time-sensitive details through the canonical links before relying on them.
+              MCP clients generate their own answers from this data. WhatTheStack does not run an LLM, hosted model, or embedding search for this endpoint. Conference copy is returned as data, not instructions. Verify time-sensitive details through the canonical links before relying on them.
             </aside>
           </section>
 
@@ -142,14 +149,14 @@ export default function McpConferenceGuidePage() {
             <div class="mt-6 max-w-[72ch] space-y-4 leading-7 text-base-content/80">
               <p><code class="font-mono text-sm text-secondary-300">not_announced</code> means organizers have not published that logistics fact. It is not permission to infer or guess a value.</p>
               <p><code class="font-mono text-sm text-secondary-300">programme_unavailable</code> means the live Published programme could not be loaded. Static logistics remain readable, while programme resources fail clearly rather than extending expired cached data.</p>
-              <p>Every successful resource reports the deploy-content version, live programme version, generation time, canonical URL, and <code class="font-mono text-sm">Europe/Skopje</code>.</p>
+              <p>Every successful resource and Session search reports the deploy-content version, live programme version, generation time, canonical URL, and <code class="font-mono text-sm">Europe/Skopje</code>.</p>
             </div>
           </section>
 
           <section aria-labelledby="privacy-heading" class={sectionClasses}>
             <h2 id="privacy-heading" class="text-3xl font-bold text-white">Endpoint privacy</h2>
             <div class="mt-6 max-w-[72ch] space-y-4 leading-7 text-base-content/80">
-              <p>Public MCP request bodies and resource choices are not retained as behavioral analytics. The endpoint does not set a visitor identity, fingerprint clients, or create public API keys.</p>
+              <p>Public MCP request bodies, resource choices, Session query text, filters, and results are processed in memory and are not retained in request logs or behavioral analytics. The endpoint does not set a visitor identity, fingerprint clients, or create public API keys.</p>
               <p>Operations may contribute to aggregate service metrics. Abuse protection uses only short-lived in-memory counters, including a salted per-IP burst counter when the deployment supplies a trusted client address, plus global rate and concurrency limits.</p>
               <p>Capacity responses use HTTP <code class="font-mono text-sm">429</code> with <code class="font-mono text-sm">Retry-After</code>. The counters expire automatically and are not added to attendee profiles or Admin Actions.</p>
             </div>
@@ -160,7 +167,7 @@ export default function McpConferenceGuidePage() {
             <ul class="mt-7 space-y-4 text-lg leading-7 text-base-content/85">
               <li class="border-b border-white/10 pb-4">“What has WhatTheStack announced about the main venue and accessibility?”</li>
               <li class="border-b border-white/10 pb-4">“What is on the current Published Agenda in local Skopje time?”</li>
-              <li class="border-b border-white/10 pb-4">“Use a Session slug from the Guide index to read its details and link me to its page.”</li>
+              <li class="border-b border-white/10 pb-4">“Search Published Sessions for systems reliability on the Systems Track, explain which public fields matched, and link me to each Session and Speaker.”</li>
               <li>“Which conference Partners are currently Published?”</li>
             </ul>
           </section>
