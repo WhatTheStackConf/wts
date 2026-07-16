@@ -15,7 +15,7 @@ describe("reviewer hardening migration", () => {
     expect(source).toMatch(/e\.isNewRecord[\s\S]+e\.createData\.role = "user"/);
   });
 
-  it("keeps the newest legacy duplicate before adding the unique index", { timeout: 20_000 }, () => {
+  it("repairs legacy users and keeps the newest duplicate review", { timeout: 20_000 }, () => {
     const root = mkdtempSync(join(tmpdir(), "wts-reviewer-migration-"));
     const migrationsDir = join(root, "pb_migrations");
     const dataDir = join(root, "pb_data");
@@ -45,6 +45,13 @@ describe("reviewer hardening migration", () => {
 
       writeFileSync(join(migrationsDir, "1787000006_seed_duplicate_reviews.js"), `
 migrate((app) => {
+  const legacyUser = new Record(app.findCollectionByNameOrId('users'));
+  legacyUser.set('email', 'legacy-user@example.test');
+  legacyUser.set('verified', true);
+  legacyUser.set('role', 'user');
+  legacyUser.setPassword('temporary-password');
+  app.save(legacyUser);
+
   app.db().newQuery(\`
     INSERT INTO cfp_reviews (id, submission, reviewer, created, updated)
     VALUES
@@ -56,8 +63,37 @@ migrate((app) => {
 }, () => {});
 `);
       copyMigration("1787000007_harden_reviewer_ownership.js");
-      writeFileSync(join(migrationsDir, "1787000008_assert_review_deduplication.js"), `
+      const migrate = () => spawnSync(
+        fileURLToPath(new URL("../../pocketbase/pocketbase", import.meta.url)),
+        ["migrate", "up", `--dir=${dataDir}`, `--migrationsDir=${migrationsDir}`],
+        { cwd: root, encoding: "utf8" },
+      );
+      const initial = migrate();
+      expect(initial.status, `${initial.stdout}\n${initial.stderr}`).toBe(0);
+
+      writeFileSync(join(migrationsDir, "1787000008_seed_empty_user_role.js"), `
 migrate((app) => {
+  app.db().newQuery(
+    "UPDATE users SET role = '' WHERE email = 'legacy-user@example.test'"
+  ).execute();
+  const seededUser = new DynamicModel({ role: 'user' });
+  app.db().newQuery(
+    "SELECT role FROM users WHERE email = 'legacy-user@example.test'"
+  ).one(seededUser);
+  if (seededUser.role !== '') throw new Error('empty user role fixture was not created');
+}, () => {});
+`);
+      copyMigration("1787000009_backfill_empty_user_roles.js");
+      writeFileSync(join(migrationsDir, "1787000010_assert_hardening_migrations.js"), `
+migrate((app) => {
+  const legacyUser = new DynamicModel({ role: '' });
+  app.db().newQuery(
+    "SELECT role FROM users WHERE email = 'legacy-user@example.test'"
+  ).one(legacyUser);
+  if (legacyUser.role !== 'user') {
+    throw new Error('legacy user role was not repaired');
+  }
+
   const records = app.findAllRecords('cfp_reviews');
   if (records.length !== 1 || records[0].getString('id') !== 'reviewdupnew001') {
     throw new Error('legacy review duplicates were not resolved deterministically');
@@ -65,11 +101,7 @@ migrate((app) => {
 }, () => {});
 `);
 
-      const result = spawnSync(
-        fileURLToPath(new URL("../../pocketbase/pocketbase", import.meta.url)),
-        ["migrate", "up", `--dir=${dataDir}`, `--migrationsDir=${migrationsDir}`],
-        { cwd: root, encoding: "utf8" },
-      );
+      const result = migrate();
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     } finally {
       rmSync(root, { recursive: true, force: true });
