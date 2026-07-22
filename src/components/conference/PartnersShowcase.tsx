@@ -51,9 +51,9 @@ function logoCardClass(group: PublicPartnerGroup): string {
   let size = "min-h-[9rem] p-3 md:p-4";
   if (group.tier === "gold") size = "min-h-[11rem] p-4 md:p-5";
   if (group.tier === "platinum") size = "min-h-[13rem] p-5 md:p-6";
-  const hover = "hover:-translate-y-1 focus-visible:-translate-y-1 hover:bg-white focus-visible:bg-white";
+  const hover = "hover:-translate-y-1 focus-visible:-translate-y-1";
 
-  return `group relative flex w-full items-center justify-center overflow-hidden rounded-2xl border bg-slate-200/95 ${size} ${groupToneClass(group)} shadow-sm transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-accent-400/60 motion-reduce:transform-none motion-reduce:transition-none ${hover}`;
+  return `partner-logo-card group relative flex w-full items-center justify-center overflow-hidden rounded-2xl border ${size} ${groupToneClass(group)} shadow-sm transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-accent-400/60 motion-reduce:transform-none motion-reduce:transition-none ${hover}`;
 }
 
 function logoStageClass(group: PublicPartnerGroup): string {
@@ -85,7 +85,7 @@ function PartnerLogo(props: PartnerLogoProps) {
           width={320}
           height={160}
           loading="lazy"
-          class="block h-full w-full object-contain drop-shadow-[0_1px_1px_rgba(15,23,42,0.5)] transition-transform duration-300 group-hover:scale-[1.03] group-focus-visible:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none"
+          class="partner-logo-image block h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.03] group-focus-visible:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none"
         />
       </span>
     </Dynamic>

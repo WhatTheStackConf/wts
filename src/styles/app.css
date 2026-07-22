@@ -859,6 +859,19 @@ main {
   overflow: hidden;
 }
 
+.partner-logo-card {
+  background: oklch(0.56 0.025 260);
+}
+
+.partner-logo-image {
+  filter:
+    drop-shadow(0 1px 0 rgb(2 6 23 / 0.95))
+    drop-shadow(0 -1px 0 rgb(2 6 23 / 0.72))
+    drop-shadow(1px 0 0 rgb(2 6 23 / 0.72))
+    drop-shadow(-1px 0 0 rgb(2 6 23 / 0.72))
+    drop-shadow(0 3px 3px rgb(2 6 23 / 0.35));
+}
+
 .admin-field .admin-control {
   caret-color: var(--color-primary-300);
   min-height: 3rem;
