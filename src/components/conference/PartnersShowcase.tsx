@@ -63,6 +63,8 @@ function logoStageClass(group: PublicPartnerGroup): string {
 
 function PartnerLogo(props: PartnerLogoProps) {
   const component = () => (props.partner.url ? "a" : "div");
+  const logoArtboard = () =>
+    /\.jpe?g(?:\?|$)/i.test(props.partner.logoUrl) ? "opaque" : "transparent";
 
   return (
     <Dynamic
@@ -73,7 +75,10 @@ function PartnerLogo(props: PartnerLogoProps) {
       class={logoCardClass(props.group)}
     >
       <span class="cyber-scan-line" aria-hidden="true" />
-      <span class={`partner-logo-stage relative z-10 flex w-full items-center justify-center overflow-hidden rounded-xl ${logoStageClass(props.group)}`}>
+      <span
+        class={`partner-logo-stage relative z-10 flex w-full items-center justify-center ${logoStageClass(props.group)}`}
+        data-artboard={logoArtboard()}
+      >
         <img
           src={props.partner.logoUrl}
           alt=""
