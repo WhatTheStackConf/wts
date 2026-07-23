@@ -395,7 +395,7 @@ describe("Conference Guide", () => {
     expect(proposal).toMatchObject({
       metadata: {
         schema_version: "1",
-        content_version: "2026-07-14",
+        content_version: "2026-07-23",
         programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         generated_at: "2026-07-14T18:00:00.000Z",
         time_zone: "Europe/Skopje",
@@ -658,7 +658,7 @@ describe("Conference Guide", () => {
     expect(ranked).toMatchObject({
       metadata: {
         schema_version: "1",
-        content_version: "2026-07-14",
+        content_version: "2026-07-23",
         programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         generated_at: "2026-07-14T18:00:00.000Z",
         time_zone: "Europe/Skopje",
@@ -823,7 +823,7 @@ describe("Conference Guide", () => {
     expect(index).toMatchObject({
       metadata: {
         schema_version: "1",
-        content_version: "2026-07-14",
+        content_version: "2026-07-23",
         programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         generated_at: "2026-07-14T18:00:00.000Z",
         time_zone: "Europe/Skopje",
@@ -832,7 +832,11 @@ describe("Conference Guide", () => {
       programme_status: "available",
       logistics: {
         event: { date: { status: "announced", local_date: "2026-09-19" } },
-        main_venue: { status: "not_announced" },
+        main_venue: {
+          status: "announced",
+          name: "Technical Campus",
+          spaces: { outdoor_stages: 3, indoor_stages: 2 },
+        },
         accessibility: { status: "not_announced" },
         accommodation: { status: "not_announced" },
       },
@@ -916,7 +920,9 @@ describe("Conference Guide", () => {
     await expect(guide.getIndex()).resolves.toMatchObject({
       programme_status: "programme_unavailable",
       metadata: { programme_version: "programme_unavailable" },
-      logistics: { main_venue: { status: "not_announced" } },
+      logistics: {
+        main_venue: { status: "announced", name: "Technical Campus" },
+      },
     });
     await expect(guide.getAgenda()).rejects.toBeInstanceOf(ProgrammeUnavailableError);
     await expect(guide.getSession("safe-systems")).rejects.toBeInstanceOf(ProgrammeUnavailableError);

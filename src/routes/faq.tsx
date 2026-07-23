@@ -25,7 +25,7 @@ const faqSections: FAQSection[] = [
     items: [
       {
         question: "When and where is the conference taking place?",
-        answer: `WhatTheStack 2026 will be held on <strong>${conferenceLongDate}</strong> in <strong>${conferenceLocation}</strong>. The main venue has not been announced yet. Workshops and pre-conference events will be held at <strong>${conferenceGuideContent.preConferenceVenue.name}</strong> (${conferenceGuideContent.preConferenceVenue.address}).`,
+        answer: `WhatTheStack 2026 will be held on <strong>${conferenceLongDate}</strong> at the <strong>${conferenceGuideContent.mainVenue.name}</strong> in ${conferenceLocation}. The conference will span the FINKI, FEIT, and Mechanical Engineering campuses, with ${conferenceGuideContent.mainVenue.spaces.outdoorStages} outdoor stages and ${conferenceGuideContent.mainVenue.spaces.indoorStages} indoor stages. Workshops and pre-conference events will also be held at <strong>${conferenceGuideContent.preConferenceVenue.name}</strong> (${conferenceGuideContent.preConferenceVenue.address}).`,
       },
       {
         question: "What can I expect at WhatTheStack?",

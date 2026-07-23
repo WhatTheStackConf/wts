@@ -300,7 +300,16 @@ function mapLogistics(content: ConferenceGuide, origin: string) {
         iana: content.event.timeZone.iana,
       },
     },
-    main_venue: { status: content.mainVenue.status },
+    main_venue: {
+      status: content.mainVenue.status,
+      name: normalizeGuideText(content.mainVenue.name),
+      campuses: content.mainVenue.campuses.map(normalizeGuideText),
+      spaces: {
+        outdoor_stages: content.mainVenue.spaces.outdoorStages,
+        indoor_stages: content.mainVenue.spaces.indoorStages,
+        amenities: content.mainVenue.spaces.amenities.map(normalizeGuideText),
+      },
+    },
     pre_conference_venue: {
       status: content.preConferenceVenue.status,
       name: normalizeGuideText(content.preConferenceVenue.name),

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1",
-  "contentVersion": "2026-07-14",
+  "contentVersion": "2026-07-23",
   "event": {
     "name": "WhatTheStack 2026",
     "date": {
@@ -18,7 +18,23 @@
     }
   },
   "mainVenue": {
-    "status": "not_announced"
+    "status": "announced",
+    "name": "Technical Campus",
+    "campuses": [
+      "Faculty of Computer Science and Engineering (FINKI)",
+      "Faculty of Electrical Engineering and Information Technologies (FEIT)",
+      "Faculty of Mechanical Engineering"
+    ],
+    "spaces": {
+      "outdoorStages": 3,
+      "indoorStages": 2,
+      "amenities": [
+        "Expo area",
+        "Game corner",
+        "Food and coffee corner",
+        "Outdoor after-party stage"
+      ]
+    }
   },
   "preConferenceVenue": {
     "status": "announced",

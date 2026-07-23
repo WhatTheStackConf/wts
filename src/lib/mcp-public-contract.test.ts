@@ -11,38 +11,40 @@ const guide = vi.hoisted(() => ({
   getIndex: vi.fn(async () => ({
     metadata: {
       schema_version: "1",
-      content_version: "2026-07-14",
+      content_version: "2026-07-23",
       programme_version: "sha256:programme",
       generated_at: "2026-07-14T18:00:00.000Z",
       time_zone: "Europe/Skopje",
       canonical_url: "https://wts.sh/mcp",
     },
     programme_status: "available",
-    logistics: { main_venue: { status: "not_announced" } },
+    logistics: {
+      main_venue: { status: "announced", name: "Technical Campus" },
+    },
     programme: { sessions: [{ slug: "safe-systems" }] },
   })),
   getAgenda: vi.fn(async () => ({
-    metadata: { content_version: "2026-07-14", programme_version: "sha256:programme" },
+    metadata: { content_version: "2026-07-23", programme_version: "sha256:programme" },
     days: [{ key: "conference-day" }],
   })),
   getSession: vi.fn(async (slug: string) => slug === "safe-systems" ? ({
-    metadata: { content_version: "2026-07-14", programme_version: "sha256:programme" },
+    metadata: { content_version: "2026-07-23", programme_version: "sha256:programme" },
     slug,
     title: "Safe Systems",
   }) : null),
   getSpeaker: vi.fn(async (slug: string) => slug === "ada-example" ? ({
-    metadata: { content_version: "2026-07-14", programme_version: "sha256:programme" },
+    metadata: { content_version: "2026-07-23", programme_version: "sha256:programme" },
     slug,
     display_name: "Ada Example",
   }) : null),
   getPartners: vi.fn(async () => ({
-    metadata: { content_version: "2026-07-14", programme_version: "sha256:programme" },
+    metadata: { content_version: "2026-07-23", programme_version: "sha256:programme" },
     groups: [{ key: "supporters", partners: [{ name: "Example Partner" }] }],
   })),
   searchSessions: vi.fn(async () => ({
     metadata: {
       schema_version: "1",
-      content_version: "2026-07-14",
+      content_version: "2026-07-23",
       programme_version: "sha256:programme",
       generated_at: "2026-07-14T18:00:00.000Z",
       time_zone: "Europe/Skopje",
@@ -76,7 +78,7 @@ const guide = vi.hoisted(() => ({
   planProposedSchedule: vi.fn(async () => ({
     metadata: {
       schema_version: "1",
-      content_version: "2026-07-14",
+      content_version: "2026-07-23",
       programme_version: "sha256:programme",
       generated_at: "2026-07-14T18:00:00.000Z",
       time_zone: "Europe/Skopje",
@@ -622,7 +624,9 @@ describe("public Conference Guide MCP contract", () => {
 
       expect(index).toMatchObject({
         programme_status: "available",
-        logistics: { main_venue: { status: "not_announced" } },
+        logistics: {
+          main_venue: { status: "announced", name: "Technical Campus" },
+        },
       });
       expect(agenda).toMatchObject({ days: [{ key: "conference-day" }] });
       expect(session).toMatchObject({ slug: "safe-systems", title: "Safe Systems" });
@@ -888,7 +892,7 @@ describe("public Conference Guide MCP contract", () => {
       for (const value of values) {
         expect(value.metadata).toMatchObject({
           schema_version: "1",
-          content_version: "2026-07-14",
+          content_version: "2026-07-23",
           programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
           generated_at: "2026-07-14T18:00:00.000Z",
           time_zone: "Europe/Skopje",

@@ -12,7 +12,7 @@ describe("Conference Guide deploy content", () => {
   it("provides validated announced logistics and explicit unknown states", () => {
     expect(conferenceGuideContent).toMatchObject({
       schemaVersion: "1",
-      contentVersion: "2026-07-14",
+      contentVersion: "2026-07-23",
       event: {
         name: "WhatTheStack 2026",
         date: { status: "announced", localDate: "2026-09-19" },
@@ -23,7 +23,16 @@ describe("Conference Guide deploy content", () => {
         },
         timeZone: { status: "announced", iana: "Europe/Skopje" },
       },
-      mainVenue: { status: "not_announced" },
+      mainVenue: {
+        status: "announced",
+        name: "Technical Campus",
+        campuses: [
+          "Faculty of Computer Science and Engineering (FINKI)",
+          "Faculty of Electrical Engineering and Information Technologies (FEIT)",
+          "Faculty of Mechanical Engineering",
+        ],
+        spaces: { outdoorStages: 3, indoorStages: 2 },
+      },
       accessibility: { status: "not_announced", contactEmail: "what@wts.sh" },
       accommodation: { status: "not_announced" },
       tickets: {

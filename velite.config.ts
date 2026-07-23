@@ -35,7 +35,14 @@ export default defineConfig({
                     }),
                 }),
                 mainVenue: s.strictObject({
-                    status: s.literal("not_announced"),
+                    status: s.literal("announced"),
+                    name: s.string().min(1),
+                    campuses: s.array(s.string().min(1)).min(1),
+                    spaces: s.strictObject({
+                        outdoorStages: s.number().int().positive(),
+                        indoorStages: s.number().int().positive(),
+                        amenities: s.array(s.string().min(1)).min(1),
+                    }),
                 }),
                 preConferenceVenue: s.strictObject({
                     status: s.literal("announced"),

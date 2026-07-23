@@ -11,6 +11,7 @@ import {
   PartnersShowcaseSkeleton,
 } from "~/components/conference/PartnersShowcase";
 import { fetchPublicPartnerGroups } from "~/lib/partners-public";
+import { conferenceGuideContent } from "~/lib/conference-guide-content";
 
 export default function Home() {
   const [speakers] = createResource(fetchPublicSpeakerTeaser);
@@ -82,40 +83,53 @@ export default function Home() {
           </div>
         </section>
 
-        <section class="max-w-6xl mx-auto pt-8 md:pt-12 pb-24 px-6">
-          <div class="glass-panel p-12 rounded-3xl grid-scan fade-in-delay-3">
-            <h2 class="text-3xl font-star text-primary-500 mb-6 uppercase tracking-widest">
-              More info coming soon!
-            </h2>
-            <div class="text-lg text-secondary-200 font-light leading-relaxed max-w-3xl">
-              Meanwhile:
-              <ul class="flex flex-col gap-4 pt-4 text-xl font-black">
-                <li>
-                  <a href="/tickets" class="link  text-primary-200">
-                    {`>`} Grab a ticket
-                  </a>
-                </li>
-                <li>
-                  <a href="/cfp/01-intro" class="link  text-primary-200">
-                    {`>`} Apply to speak
-                  </a>
-                </li>
-                <li>
-                  <a href="/partnerships" class="link  text-primary-200">
-                    {`>`} Partner with us
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://www.youtube.com/@WhatTheStackConference"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="link  text-primary-200"
-                  >
-                    {`>`} Watch previous year's talks
-                  </a>
-                </li>
-              </ul>
+        <section class="w-full max-w-6xl mx-auto pt-8 md:pt-12 pb-24 px-3 md:px-0 fade-in-delay-3">
+          <div class="border-y border-primary-500/40 py-10 md:py-14">
+            <div class="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)] lg:gap-16">
+              <div>
+                <p class="mb-4 font-mono text-sm font-bold uppercase tracking-[0.18em] text-secondary-300">
+                  Venue announced
+                </p>
+                <h2 class="max-w-3xl text-balance font-star text-4xl font-bold uppercase leading-tight text-primary-500 md:text-5xl">
+                  We're taking over the {conferenceGuideContent.mainVenue.name}
+                </h2>
+                <p class="mt-6 max-w-2xl text-pretty text-lg font-light leading-relaxed text-dark-50">
+                  One conference across three neighboring faculties in Skopje, built as a full campus experience with talks, workshops, an expo, games, food, coffee, and an outdoor after-party.
+                </p>
+
+                <div class="mt-8 flex flex-wrap gap-x-8 gap-y-3 border-t border-white/15 pt-6 text-lg font-black text-secondary-200">
+                  <span>{conferenceGuideContent.mainVenue.spaces.outdoorStages} outdoor stages</span>
+                  <span aria-hidden="true" class="hidden text-primary-500 sm:inline">//</span>
+                  <span>{conferenceGuideContent.mainVenue.spaces.indoorStages} indoor stages</span>
+                </div>
+              </div>
+
+              <div class="lg:border-l lg:border-white/15 lg:pl-10">
+                <h3 class="mb-5 text-xl font-bold text-secondary-300">Across the campus</h3>
+                <ul class="border-t border-white/15">
+                  <For each={conferenceGuideContent.mainVenue.campuses}>
+                    {(campus) => (
+                      <li class="border-b border-white/15 py-4 text-base leading-snug text-dark-50">
+                        {campus}
+                      </li>
+                    )}
+                  </For>
+                </ul>
+                <h3 class="mb-3 mt-7 text-xl font-bold text-secondary-300">On site</h3>
+                <ul class="flex flex-wrap gap-x-5 gap-y-2 text-sm text-dark-50">
+                  <For each={conferenceGuideContent.mainVenue.spaces.amenities}>
+                    {(amenity) => <li>{`>`} {amenity}</li>}
+                  </For>
+                </ul>
+                <a
+                  href="https://www.google.com/maps/search/?api=1&query=Technical+Campus+Skopje"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="link mt-8 inline-block text-lg font-black text-primary-200"
+                >
+                  {`>`} Open in Google Maps
+                </a>
+              </div>
             </div>
           </div>
         </section>
