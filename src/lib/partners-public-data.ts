@@ -3,11 +3,13 @@ import type { PartnerRecord } from "~/lib/pocketbase-types";
 
 export type PublicPartnerType = PartnerRecord["type"];
 export type PublicPartnerTier = NonNullable<PartnerRecord["tier"]>;
+export type PublicPartnerLogoSurface = PartnerRecord["logo_surface"];
 export type PublicPartnerGroupKind = "organizer" | "sponsor" | "partner";
 
 export interface PublicPartner {
   name: string;
   logoUrl: string;
+  logoSurface: PublicPartnerLogoSurface;
   url?: string;
   type: PublicPartnerType;
   tier?: PublicPartnerTier;
@@ -42,6 +44,7 @@ function mapPartner(row: PartnerRecord): PublicPartner {
   return {
     name: row.name,
     logoUrl: getPbFileUrl(row, row.logo || ""),
+    logoSurface: row.logo_surface || "dark",
     url: row.url || undefined,
     type: row.type,
     tier: row.tier || undefined,

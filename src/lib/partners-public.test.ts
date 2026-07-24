@@ -33,6 +33,8 @@ describe("public partner groups", () => {
       "A11y Collective",
       "ZurichJS",
     ]);
+    expect(groups.flatMap((group) => group.partners).every((item) => item.logoSurface === "dark"))
+      .toBe(true);
   });
 
   it("projects only Published Partner fields and excludes Partner Notes", () => {
@@ -47,6 +49,7 @@ describe("public partner groups", () => {
         canonical_url: "https://supporter.example/",
         mutation_token: "private-concurrency-token",
         logo_uploaded_by_human: true,
+        logo_surface: "light",
         created: "2026-07-13 10:00:00.000Z",
         updated: "2026-07-13 11:00:00.000Z",
         url: "https://supporter.example",
@@ -64,6 +67,7 @@ describe("public partner groups", () => {
       {
         name: "Published Supporter",
         logoUrl: "",
+        logoSurface: "light",
         url: "https://supporter.example",
         type: "supporter",
         tier: undefined,
@@ -123,6 +127,7 @@ describe("Partner vocabulary migration", () => {
       copyMigration("1782000001_remove_bank_partner_tier.js");
       copyMigration("1787000000_normalize_partner_vocabulary.js");
       copyMigration("1787000002_partner_draft_lifecycle.js");
+      copyMigration("1788000002_add_partner_logo_surface.js");
 
       writeFileSync(join(migrationsDir, "1786500000_seed_legacy_partners.js"), `
 migrate((app) => {
@@ -202,6 +207,21 @@ migrate((app) => {
   for (const id of ['p00000000000012', 'p00000000000013']) {
     assert(!partner(id).getBool('published'), 'unsafe Partner URL remained Published: ' + id);
     assert(partner(id).getString('canonical_url') === '', 'unsafe Partner URL received a canonical identity: ' + id);
+  }
+}, () => {});
+`);
+
+      writeFileSync(join(migrationsDir, "1788000003_assert_partner_logo_surface.js"), `
+migrate((app) => {
+  const assert = (condition, message) => {
+    if (!condition) throw new Error(message);
+  };
+  const collection = app.findCollectionByNameOrId('partners');
+  const logoSurface = collection.fields.getByName('logo_surface');
+  assert(logoSurface.required, 'Partner logo surface is not required');
+  assert(JSON.stringify(logoSurface.values) === JSON.stringify(['dark', 'light', 'mixed']), 'Partner logo surface values are invalid');
+  for (const partner of app.findAllRecords(collection)) {
+    assert(partner.getString('logo_surface') === 'dark', 'Existing Partner did not retain the dark glass treatment: ' + partner.id);
   }
 }, () => {});
 `);

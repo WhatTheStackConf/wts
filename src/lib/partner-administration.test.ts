@@ -705,6 +705,79 @@ describe("Partner Administration", () => {
     ]);
   });
 
+  it("defaults, validates, updates, and replays Partner logo surfaces", async () => {
+    const administration = new PartnerAdministration(
+      createInMemoryPartnerAdministrationStore(),
+      "human_admin",
+    );
+    const defaulted = await administration.createDraft({
+      name: "Default Surface Partner",
+      type: "supporter",
+    });
+    expect(defaulted).toMatchObject({
+      success: true,
+      data: { partner: { logoSurface: "dark" } },
+    });
+
+    const input = {
+      name: "Adaptive Surface Partner",
+      type: "supporter" as const,
+      logoSurface: "light" as const,
+    };
+    const created = await administration.createDraft(input, "surface-create");
+    const createReplay = await administration.createDraft(input, "surface-create");
+    expect(created).toMatchObject({
+      success: true,
+      data: { partner: { logoSurface: "light" } },
+    });
+    expect(createReplay).toEqual({
+      ...created,
+      action: created.success ? { ...created.action, replayed: true } : undefined,
+    });
+    if (!created.success) throw new Error(created.error);
+
+    const patch = { logoSurface: "mixed" as const };
+    const updated = await administration.updatePartner(
+      created.data.partner.id,
+      created.data.partner.version,
+      patch,
+      "surface-patch",
+    );
+    const updateReplay = await administration.updatePartner(
+      created.data.partner.id,
+      created.data.partner.version,
+      patch,
+      "surface-patch",
+    );
+    expect(updated).toMatchObject({
+      success: true,
+      data: { partner: { logoSurface: "mixed" } },
+    });
+    expect(updateReplay).toEqual({
+      ...updated,
+      action: updated.success ? { ...updated.action, replayed: true } : undefined,
+    });
+    if (!updated.success) throw new Error(updated.error);
+    const patchHistory = (await administration.listHistory(updated.data.partner.id))
+      .find((action) => action.operationKind === "partner.patch");
+    expect(patchHistory?.afterSummary).toMatchObject({
+      logoSurface: "mixed",
+      changedFields: ["logoSurface"],
+    });
+
+    await expect(
+      administration.updatePartner(
+        updated.data.partner.id,
+        updated.data.partner.version,
+        { logoSurface: "neon" as never },
+      ),
+    ).resolves.toEqual({
+      success: false,
+      code: "validation",
+      error: "Choose a valid Partner logo surface.",
+    });
+  });
+
   it("requires one valid Sponsor tier and removes tiers from every non-Sponsor", async () => {
     const administration = new PartnerAdministration(
       createInMemoryPartnerAdministrationStore(),
@@ -1278,6 +1351,7 @@ describe("Partner Administration", () => {
       "1787000002_partner_draft_lifecycle.js",
       "1787000003_repair_partner_draft_fields.js",
       "1787000004_create_admin_actions.js",
+      "1788000002_add_partner_logo_surface.js",
     ]) {
       let source = readFileSync(
         new URL(`../../pocketbase/pb_migrations/${migration}`, import.meta.url),
@@ -1420,7 +1494,7 @@ describe("Partner Administration", () => {
       });
       expect(created, serverLogs).toMatchObject({
         success: true,
-        data: { partner: { logo: "", published: false } },
+        data: { partner: { logo: "", logoSurface: "dark", published: false } },
       });
       if (!created.success) throw new Error(created.error);
 
@@ -1443,6 +1517,7 @@ describe("Partner Administration", () => {
       if (!current) throw new Error("Expected the created Partner.");
       expect(current.version).toMatch(/\|[^|]+$/);
       expect(current.logoUploadedByHuman).toBe(false);
+      expect(current.logoSurface).toBe("dark");
       for (const request of [
         () => ordinaryClient.collection("partners").create({
           name: "Bypassed Partner",
@@ -1485,6 +1560,7 @@ describe("Partner Administration", () => {
             published: current.published,
             type: current.type,
             tier: current.tier,
+            logoSurface: current.logoSurface,
             logoUploadedByHuman: current.logoUploadedByHuman,
             url: current.url,
             canonicalUrl: current.canonicalUrl,
@@ -1515,7 +1591,11 @@ describe("Partner Administration", () => {
       const reservedPatchInput = {
         id: current.id,
         expectedVersion: current.version,
-        patch: { name: "Reserved Partner Name", normalizedName: "reserved partner name" },
+        patch: {
+          name: "Reserved Partner Name",
+          normalizedName: "reserved partner name",
+          logoSurface: "light",
+        },
       };
       const reservedPatch = await productionActions.start({
         actorUserId: actor.id,
@@ -1532,11 +1612,12 @@ describe("Partner Administration", () => {
           current.id,
           current.version,
           {
-            name: "Different Smuggled Name",
-            normalizedName: "different smuggled name",
+            name: "Reserved Partner Name",
+            normalizedName: "reserved partner name",
             published: current.published,
             type: current.type,
             tier: current.tier,
+            logoSurface: "mixed",
             logoUploadedByHuman: current.logoUploadedByHuman,
             url: current.url,
             canonicalUrl: current.canonicalUrl,
@@ -1581,11 +1662,12 @@ describe("Partner Administration", () => {
           currentAfterWrongKind.id,
           currentAfterWrongKind.version,
           {
-            name: "Smuggled Partner Name",
-            normalizedName: "smuggled partner name",
+            name: currentAfterWrongKind.name,
+            normalizedName: currentAfterWrongKind.normalizedName,
             published: true,
             type: currentAfterWrongKind.type,
             tier: currentAfterWrongKind.tier,
+            logoSurface: "light",
             logoUploadedByHuman: currentAfterWrongKind.logoUploadedByHuman,
             url: currentAfterWrongKind.url,
             canonicalUrl: currentAfterWrongKind.canonicalUrl,
@@ -1600,7 +1682,7 @@ describe("Partner Administration", () => {
             completion: {
               targetId: currentAfterWrongKind.id,
               beforeSummary: { id: currentAfterWrongKind.id, name: currentAfterWrongKind.name },
-              afterSummary: { id: currentAfterWrongKind.id, name: "Smuggled Partner Name" },
+              afterSummary: { id: currentAfterWrongKind.id, name: currentAfterWrongKind.name },
               replayResult: { kind: "partner_mutation", data: { partner: { id: currentAfterWrongKind.id } } },
             },
             complete: (completion) => productionActions.complete(smuggledPublish.handle, completion),
@@ -1656,6 +1738,7 @@ describe("Partner Administration", () => {
             published: currentAfterWrongKind.published,
             type: currentAfterWrongKind.type,
             tier: currentAfterWrongKind.tier,
+            logoSurface: currentAfterWrongKind.logoSurface,
             logo: {
               name: "content-bound.png",
               type: "image/png",
@@ -1692,6 +1775,7 @@ describe("Partner Administration", () => {
         name: "Production Sponsor Demotion",
         type: "sponsor",
         tier: "bronze",
+        logoSurface: "light",
       });
       if (!sponsor.success) throw new Error(sponsor.error);
       const demoted = await administration.updatePartner(
@@ -1701,7 +1785,7 @@ describe("Partner Administration", () => {
       );
       expect(demoted).toMatchObject({
         success: true,
-        data: { partner: { type: "supporter" } },
+        data: { partner: { type: "supporter", logoSurface: "light" } },
       });
       if (!demoted.success) throw new Error(demoted.error);
       expect(demoted.data.partner.tier).toBeUndefined();
@@ -1717,14 +1801,25 @@ describe("Partner Administration", () => {
       if (!ignoredTier.success) throw new Error(ignoredTier.error);
       expect(ignoredTier.data.partner.tier).toBeUndefined();
 
+      const surfaced = await administration.updatePartner(
+        ignoredTier.data.partner.id,
+        ignoredTier.data.partner.version,
+        { logoSurface: "mixed" },
+      );
+      expect(surfaced).toMatchObject({
+        success: true,
+        data: { partner: { logoSurface: "mixed" } },
+      });
+      if (!surfaced.success) throw new Error(surfaced.error);
+
       const agentAdministration = new AuditedPartnerAdministration(
         productionStore,
         { mode: "agent", userId: actor.id, source: "mcp" },
         productionActions,
       );
       const timestampPatch = await agentAdministration.updatePartnerDraft(
-        ignoredTier.data.partner.id,
-        ignoredTier.data.partner.updatedAt,
+        surfaced.data.partner.id,
+        surfaced.data.partner.updatedAt,
         { notes: "Production timestamp patch" },
         "production-agent-timestamp-patch",
       );
@@ -1734,24 +1829,28 @@ describe("Partner Administration", () => {
       });
       if (!timestampPatch.success) throw new Error(timestampPatch.error);
       const timestampReplay = await agentAdministration.updatePartnerDraft(
-        ignoredTier.data.partner.id,
-        ignoredTier.data.partner.updatedAt,
+        surfaced.data.partner.id,
+        surfaced.data.partner.updatedAt,
         { notes: "Production timestamp patch" },
         "production-agent-timestamp-patch",
       );
       expect(timestampReplay).toMatchObject({
         success: true,
-        data: { partner: { id: timestampPatch.data.partner.id } },
+        data: { partner: { id: timestampPatch.data.partner.id, logoSurface: "mixed" } },
         action: { id: timestampPatch.action.id, replayed: true },
       });
       await expect(
         agentAdministration.updatePartnerDraft(
-          ignoredTier.data.partner.id,
-          ignoredTier.data.partner.updatedAt,
+          surfaced.data.partner.id,
+          surfaced.data.partner.updatedAt,
           { name: "Stale Production Patch" },
           "production-agent-stale-patch",
         ),
-      ).resolves.toMatchObject({ success: false, code: "stale" });
+      ).resolves.toMatchObject({
+        success: false,
+        code: "stale",
+        current: { logoSurface: "mixed" },
+      });
 
       const withLogo = await administration.updatePartner(
         created.data.partner.id,

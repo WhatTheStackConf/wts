@@ -62,7 +62,7 @@ export interface McpPartnerListInput {
   type?: PartnerAdminSnapshot["type"];
 }
 
-export interface McpPartnerCreateInput extends Omit<PartnerDraftInput, "logo"> {
+export interface McpPartnerCreateInput extends Omit<PartnerDraftInput, "logo" | "logoSurface"> {
   operation_id: string;
 }
 
@@ -70,7 +70,7 @@ export interface McpPartnerUpdateInput {
   partner_id: string;
   operation_id: string;
   expected_updated_at: string;
-  patch: Omit<PartnerPatch, "logo">;
+  patch: Omit<PartnerPatch, "logo" | "logoSurface">;
 }
 
 export interface McpPartnerAdministrationService {

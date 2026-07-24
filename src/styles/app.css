@@ -901,6 +901,14 @@ a.partner-logo-card:active {
   backdrop-filter: blur(12px) saturate(180%);
 }
 
+.partner-logo-stage[data-surface="light"] {
+  background: color-mix(in oklch, var(--color-dark-50), transparent 64%);
+}
+
+.partner-logo-stage[data-surface="mixed"] {
+  background: color-mix(in oklch, var(--color-dark-200), transparent 76%);
+}
+
 .partner-logo-image {
   scale: 1;
   transition: scale 240ms cubic-bezier(0.25, 1, 0.5, 1);

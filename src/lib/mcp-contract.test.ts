@@ -276,6 +276,7 @@ describe("administrative MCP protocol contract", () => {
         },
       });
       expect(tools.create_partner_draft.inputSchema.properties).not.toHaveProperty("logo");
+      expect(tools.create_partner_draft.inputSchema.properties).not.toHaveProperty("logoSurface");
       expect(tools.create_partner_draft.inputSchema.properties).not.toHaveProperty("published");
       expect(tools.create_partner_draft.inputSchema.properties).not.toHaveProperty("note_agent_visible");
       expect(tools.update_partner_draft).toMatchObject({
@@ -289,6 +290,7 @@ describe("administrative MCP protocol contract", () => {
         },
       });
       expect(tools.update_partner_draft.inputSchema.properties?.patch).not.toHaveProperty("logo");
+      expect(tools.update_partner_draft.inputSchema.properties?.patch).not.toHaveProperty("logoSurface");
       expect(Object.keys(tools)).not.toEqual(expect.arrayContaining([
         "publish_partner",
         "delete_partner",
@@ -357,6 +359,7 @@ describe("administrative MCP protocol contract", () => {
           type: "other",
           published: true,
           logo: "https://attacker.example/logo.svg",
+          logoSurface: "light",
           note_agent_visible: true,
         },
       });
@@ -366,7 +369,12 @@ describe("administrative MCP protocol contract", () => {
           operation_id: "forbidden-update",
           partner_id: "partner-1",
           expected_updated_at: "2026-07-14 08:00:00.000Z",
-          patch: { published: true, logo: "logo.svg", note_agent_visible: true },
+          patch: {
+            published: true,
+            logo: "logo.svg",
+            logoSurface: "light",
+            note_agent_visible: true,
+          },
         },
       });
 

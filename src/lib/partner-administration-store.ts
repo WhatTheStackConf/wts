@@ -23,6 +23,7 @@ type PocketBasePartnerRecord = Pick<
   | "type"
   | "tier"
   | "logo"
+  | "logo_surface"
   | "logo_uploaded_by_human"
   | "url"
   | "canonical_url"
@@ -42,6 +43,7 @@ function partnerRecord(record: PocketBasePartnerRecord): PartnerStoredRecord {
     type: record.type,
     tier: record.tier || undefined,
     logo: record.logo || "",
+    logoSurface: record.logo_surface || "dark",
     logoUploadedByHuman: Boolean(record.logo_uploaded_by_human),
     url: record.url || undefined,
     canonicalUrl: record.canonical_url || "",
@@ -97,6 +99,7 @@ function createBody(input: PartnerStoreCreateInput): Record<string, unknown> | F
     published: false,
     type: input.type,
     tier: input.tier || "",
+    logo_surface: input.logoSurface,
     logo_uploaded_by_human: input.logoUploadedByHuman,
     url: input.url || "",
     canonical_url: input.canonicalUrl,
@@ -114,6 +117,7 @@ function updateBody(input: PartnerStoreUpdateInput): Record<string, unknown> | F
     published: input.published,
     type: input.type,
     tier: input.tier || "",
+    logo_surface: input.logoSurface,
     logo_uploaded_by_human: input.logoUploadedByHuman,
     url: input.url || "",
     canonical_url: input.canonicalUrl,

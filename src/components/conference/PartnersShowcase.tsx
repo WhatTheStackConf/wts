@@ -75,6 +75,7 @@ function PartnerLogo(props: PartnerLogoProps) {
       <span class="cyber-scan-line" aria-hidden="true" />
       <span
         class={`partner-logo-stage relative z-10 flex w-full items-center justify-center overflow-hidden rounded-xl ${logoStageClass(props.group)}`}
+        data-surface={props.partner.logoSurface}
       >
         <img
           src={props.partner.logoUrl}

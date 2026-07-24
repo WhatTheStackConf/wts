@@ -11,7 +11,7 @@ import {
   AdminActions,
   containsAdminActionSecretMaterial,
 } from "~/lib/admin-action-ledger";
-import type { PartnerRecord } from "~/lib/pocketbase-types";
+import type { PartnerLogoSurface, PartnerRecord } from "~/lib/pocketbase-types";
 
 export const PARTNER_TYPES = [
   "organizer",
@@ -23,6 +23,7 @@ export const PARTNER_TYPES = [
   "other",
 ] as const satisfies readonly PartnerRecord["type"][];
 export const PARTNER_TIERS = ["platinum", "gold", "silver", "bronze"] as const;
+export const PARTNER_LOGO_SURFACES = ["dark", "light", "mixed"] as const satisfies readonly PartnerLogoSurface[];
 const PARTNER_LOGO_TYPES = [
   "image/svg+xml",
   "image/png",
@@ -65,6 +66,7 @@ export interface PartnerStoredRecord {
   type: PartnerRecord["type"];
   tier?: PartnerRecord["tier"];
   logo: string;
+  logoSurface: PartnerLogoSurface;
   logoUploadedByHuman: boolean;
   url?: string;
   canonicalUrl: string;
@@ -82,6 +84,7 @@ export interface PartnerStoreCreateInput {
   type: PartnerRecord["type"];
   tier?: PartnerRecord["tier"];
   logo?: PartnerLogoPayload;
+  logoSurface: PartnerLogoSurface;
   logoUploadedByHuman: boolean;
   url?: string;
   canonicalUrl: string;
@@ -96,6 +99,7 @@ export interface PartnerStoreUpdateInput {
   type: PartnerRecord["type"];
   tier?: PartnerRecord["tier"];
   logo?: PartnerLogoPayload | null;
+  logoSurface: PartnerLogoSurface;
   logoUploadedByHuman: boolean;
   url?: string;
   canonicalUrl: string;
@@ -164,6 +168,7 @@ export interface PartnerDraftInput {
   url?: string;
   notes?: string;
   logo?: PartnerLogoPayload | null;
+  logoSurface?: PartnerLogoSurface;
 }
 
 export interface PartnerPatch {
@@ -173,6 +178,7 @@ export interface PartnerPatch {
   url?: string | null;
   notes?: string | null;
   logo?: PartnerLogoPayload | null;
+  logoSurface?: PartnerLogoSurface;
 }
 
 export interface PartnerAdminSnapshot {
@@ -182,6 +188,7 @@ export interface PartnerAdminSnapshot {
   type: PartnerRecord["type"];
   tier?: PartnerRecord["tier"];
   logo: string;
+  logoSurface: PartnerLogoSurface;
   url?: string;
   notes?: string;
   noteAgentVisible: boolean;
@@ -322,6 +329,7 @@ function snapshot(
     type: record.type,
     tier: record.tier,
     logo: record.logo,
+    logoSurface: record.logoSurface,
     url: record.url,
     notes: actor === "human_admin" || noteAgentVisible ? record.notes : undefined,
     noteAgentVisible: actor === "human_admin" ? record.noteAgentVisible : noteAgentVisible,
@@ -618,7 +626,15 @@ function similarityWarnings(
   return warnings;
 }
 
-const PARTNER_PATCH_FIELDS = new Set(["name", "type", "tier", "url", "notes", "logo"]);
+const PARTNER_PATCH_FIELDS = new Set([
+  "name",
+  "type",
+  "tier",
+  "url",
+  "notes",
+  "logo",
+  "logoSurface",
+]);
 
 function hasOwn(value: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
@@ -674,6 +690,10 @@ class PartnerAdministrationDomain {
     if (input.tier && !PARTNER_TIERS.includes(input.tier)) {
       return { success: false, code: "validation", error: "Choose a valid Sponsor tier." };
     }
+    const logoSurface = input.logoSurface || "dark";
+    if (!PARTNER_LOGO_SURFACES.includes(logoSurface)) {
+      return { success: false, code: "validation", error: "Choose a valid Partner logo surface." };
+    }
     if (input.type === "sponsor" && !input.tier) {
       return { success: false, code: "validation", error: "Choose a Sponsor tier." };
     }
@@ -721,6 +741,7 @@ class PartnerAdministrationDomain {
         type: input.type,
         tier: input.type === "sponsor" ? input.tier || undefined : undefined,
         logo: input.logo || undefined,
+        logoSurface,
         logoUploadedByHuman: Boolean(input.logo),
         url: normalizedUrl.url,
         canonicalUrl: normalizedUrl.canonicalUrl,
@@ -826,6 +847,12 @@ class PartnerAdministrationDomain {
     if (type === "sponsor" && !tier) {
       return { success: false, code: "validation", error: "Choose a Sponsor tier." };
     }
+    const logoSurface = hasOwn(patch, "logoSurface")
+      ? patch.logoSurface
+      : current.logoSurface;
+    if (!logoSurface || !PARTNER_LOGO_SURFACES.includes(logoSurface)) {
+      return { success: false, code: "validation", error: "Choose a valid Partner logo surface." };
+    }
     const requestedUrl = hasOwn(patch, "url") ? patch.url || undefined : current.url;
     if ((requestedUrl?.trim().length || 0) > 2_000) {
       return { success: false, code: "validation", error: "Partner URL must be 2,000 characters or shorter." };
@@ -865,6 +892,7 @@ class PartnerAdministrationDomain {
       normalizedName: normalizedName.identity,
       type,
       tier,
+      logoSurface,
       logo:
         patch.logo === undefined
           ? current.logo
@@ -897,6 +925,7 @@ class PartnerAdministrationDomain {
         published: current.published,
         type,
         tier,
+        logoSurface,
         logo: hasOwn(patch, "logo") ? patch.logo : undefined,
         logoUploadedByHuman: hasOwn(patch, "logo")
           ? Boolean(patch.logo)
@@ -982,6 +1011,7 @@ class PartnerAdministrationDomain {
       published: current.published,
       type: current.type,
       tier: current.tier,
+      logoSurface: current.logoSurface,
       logoUploadedByHuman: current.logoUploadedByHuman,
       url: current.url,
       canonicalUrl: current.canonicalUrl,
@@ -1051,6 +1081,7 @@ class PartnerAdministrationDomain {
       published,
       type: current.type,
       tier: current.tier,
+      logoSurface: current.logoSurface,
       logoUploadedByHuman: current.logoUploadedByHuman,
       url: current.url,
       canonicalUrl: current.canonicalUrl,
@@ -1151,6 +1182,7 @@ function safePartnerSummary(
     | "type"
     | "tier"
     | "logo"
+    | "logoSurface"
     | "url"
     | "notes"
     | "noteAgentVisible"
@@ -1163,6 +1195,7 @@ function safePartnerSummary(
     published: partner.published,
     type: partner.type,
     tier: partner.tier || null,
+    logoSurface: partner.logoSurface,
     logoPresent: Boolean(partner.logo),
     urlPresent: Boolean(partner.url),
     notePresent: Boolean(partner.notes),
@@ -1177,6 +1210,7 @@ function safeCreateSummary(input: PartnerStoreCreateInput): AdminActionValue {
     published: false,
     type: input.type,
     tier: input.tier || null,
+    logoSurface: input.logoSurface,
     logoPresent: Boolean(input.logo),
     urlPresent: Boolean(input.url),
     notePresent: Boolean(input.notes),
@@ -1194,6 +1228,7 @@ function replayPartnerSnapshot(
     | "type"
     | "tier"
     | "logo"
+    | "logoSurface"
     | "url"
     | "noteAgentVisible"
     | "createdAt"
@@ -1208,6 +1243,7 @@ function replayPartnerSnapshot(
     type: partner.type,
     tier: partner.tier,
     logo: safeAdminActionText(partner.logo.slice(0, 255), "Redacted Partner logo"),
+    logoSurface: partner.logoSurface,
     url: partner.url
       ? safeAdminActionText(partner.url.slice(0, 2_000), "[redacted credential or hash]")
       : undefined,
@@ -1298,6 +1334,7 @@ function updatedStoredRecord(
     published: input.published,
     type: input.type,
     tier: input.tier,
+    logoSurface: input.logoSurface,
     logo:
       input.logo === undefined
         ? current.logo
@@ -1384,6 +1421,7 @@ export class PartnerAdministration {
         normalizedName: normalizedName.identity,
         type: input.type,
         tier: input.type === "sponsor" ? input.tier || null : null,
+        logoSurface: input.logoSurface || "dark",
         url: normalizedUrl.success ? normalizedUrl.canonicalUrl : input.url?.trim() || null,
         urlValue: input.url?.trim() || null,
         partnerNote: actionNote(input.notes),
@@ -1511,6 +1549,7 @@ export class PartnerAdministration {
       else if (key === "logo") normalizedPatch.logo = actionLogo(patch.logo);
       else if (key === "type") normalizedPatch.type = patch.type || null;
       else if (key === "tier") normalizedPatch.tier = patch.tier || null;
+      else if (key === "logoSurface") normalizedPatch.logoSurface = patch.logoSurface || null;
       else normalizedPatch[key] = null;
     }
     if (hasOwn(patch, "type") && patch.type !== "sponsor") normalizedPatch.tier = null;
@@ -1655,6 +1694,7 @@ export class PartnerAdministration {
           published: false,
           type: input.type,
           tier: input.tier,
+          logoSurface: input.logoSurface,
           logo: input.logo?.name || "",
           logoUploadedByHuman: input.logoUploadedByHuman,
           url: input.url,

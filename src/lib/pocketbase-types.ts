@@ -567,6 +567,8 @@ export interface PartnerContactDisclosureRecord extends RecordModel {
 }
 
 // Partner/sponsor collection type (public conference organizations)
+export type PartnerLogoSurface = "dark" | "light" | "mixed";
+
 export interface PartnerRecord extends RecordModel {
   id: string;
   name: string;
@@ -581,6 +583,7 @@ export interface PartnerRecord extends RecordModel {
     | "other";
   tier?: "platinum" | "gold" | "silver" | "bronze";
   logo?: string;
+  logo_surface: PartnerLogoSurface;
   url?: string;
   notes?: string;
   normalized_name: string;

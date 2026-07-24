@@ -7,7 +7,8 @@ routerAdd("POST", "/api/wts/partners", (e) => {
     return {
       id: record.id, name: record.getString("name"), normalized_name: record.getString("normalized_name"),
       published: record.getBool("published"), type: record.getString("type"), tier: record.getString("tier"),
-      logo: record.getString("logo"), logo_uploaded_by_human: record.getBool("logo_uploaded_by_human"),
+      logo: record.getString("logo"), logo_surface: record.getString("logo_surface"),
+      logo_uploaded_by_human: record.getBool("logo_uploaded_by_human"),
       url: record.getString("url"), canonical_url: record.getString("canonical_url"),
       mutation_token: record.getString("mutation_token"), notes: record.getString("notes"),
       note_agent_visible: record.getBool("note_agent_visible"), created: record.getString("created"),
@@ -127,6 +128,7 @@ routerAdd("POST", "/api/wts/partners", (e) => {
       String(body.normalized_name || "") !== String(normalizedInput.normalizedName || "") ||
       String(body.type || "") !== String(normalizedInput.type || "") ||
       String(body.tier || "") !== String(normalizedInput.tier || "") ||
+      String(body.logo_surface || "") !== String(normalizedInput.logoSurface || "") ||
       String(body.url || "") !== String(normalizedInput.urlValue || "") ||
       String(body.canonical_url || "") !== String(normalizedInput.url || "") ||
       requestBool(body.published) || requestBool(body.note_agent_visible)
@@ -167,7 +169,7 @@ routerAdd("POST", "/api/wts/partners", (e) => {
       const stored = responseRecord(partnerRecord);
       const replayPartner = {
         id: stored.id, name: safeReplayText(stored.name, "Redacted Partner name"), published: stored.published, type: stored.type,
-        logo: safeReplayText(stored.logo, "Redacted Partner logo"),
+        logo: safeReplayText(stored.logo, "Redacted Partner logo"), logoSurface: stored.logo_surface,
         noteAgentVisible: stored.note_agent_visible, createdAt: stored.created, updatedAt: stored.updated,
         version: `${stored.updated}|${stored.mutation_token}`,
       };
@@ -244,7 +246,7 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
         throw new BadRequestError("Partner patch input is invalid.");
       }
       const patch = normalizedInput.patch;
-      const allowed = ["logo", "name", "normalizedName", "partnerNote", "tier", "type", "url", "urlValue"];
+      const allowed = ["logo", "logoSurface", "name", "normalizedName", "partnerNote", "tier", "type", "url", "urlValue"];
       if (Object.keys(patch).some((field) => !allowed.includes(field))) {
         throw new BadRequestError("Partner patch input contains an unsupported field.");
       }
@@ -260,6 +262,7 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
         !expectedText("normalized_name", "normalized_name", "normalizedName") ||
         !expectedText("type", "type", "type") ||
         !expectedText("tier", "tier", "tier") ||
+        !expectedText("logo_surface", "logo_surface", "logoSurface") ||
         !expectedText("url", "url", "urlValue") ||
         !expectedText("canonical_url", "canonical_url", "url")
       ) {
@@ -314,7 +317,7 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
     ) {
       throw new BadRequestError("Specialized Partner operation input is invalid.");
     }
-    for (const field of ["name", "normalized_name", "type", "tier", "url", "canonical_url", "notes"]) {
+    for (const field of ["name", "normalized_name", "type", "tier", "logo_surface", "url", "canonical_url", "notes"]) {
       if (!sameText(field)) throw new BadRequestError("Specialized Partner operation changed unrelated fields.");
     }
     if (!sameBool("logo_uploaded_by_human") || body.logo !== undefined) {
@@ -339,7 +342,8 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
     return {
       id: record.id, name: record.getString("name"), normalized_name: record.getString("normalized_name"),
       published: record.getBool("published"), type: record.getString("type"), tier: record.getString("tier"),
-      logo: record.getString("logo"), logo_uploaded_by_human: record.getBool("logo_uploaded_by_human"),
+      logo: record.getString("logo"), logo_surface: record.getString("logo_surface"),
+      logo_uploaded_by_human: record.getBool("logo_uploaded_by_human"),
       url: record.getString("url"), canonical_url: record.getString("canonical_url"),
       mutation_token: record.getString("mutation_token"), notes: record.getString("notes"),
       note_agent_visible: record.getBool("note_agent_visible"), created: record.getString("created"),
@@ -447,7 +451,7 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
       const stored = responseRecord(partnerRecord);
       const replayPartner = {
         id: stored.id, name: safeReplayText(stored.name, "Redacted Partner name"), published: stored.published, type: stored.type,
-        logo: safeReplayText(stored.logo, "Redacted Partner logo"),
+        logo: safeReplayText(stored.logo, "Redacted Partner logo"), logoSurface: stored.logo_surface,
         noteAgentVisible: stored.note_agent_visible, createdAt: stored.created, updatedAt: stored.updated,
         version: `${stored.updated}|${stored.mutation_token}`,
       };
@@ -511,7 +515,8 @@ routerAdd("DELETE", "/api/wts/partners/{id}", (e) => {
     return {
       id: record.id, name: record.getString("name"), normalized_name: record.getString("normalized_name"),
       published: record.getBool("published"), type: record.getString("type"), tier: record.getString("tier"),
-      logo: record.getString("logo"), logo_uploaded_by_human: record.getBool("logo_uploaded_by_human"),
+      logo: record.getString("logo"), logo_surface: record.getString("logo_surface"),
+      logo_uploaded_by_human: record.getBool("logo_uploaded_by_human"),
       url: record.getString("url"), canonical_url: record.getString("canonical_url"),
       mutation_token: record.getString("mutation_token"), notes: record.getString("notes"),
       note_agent_visible: record.getBool("note_agent_visible"), created: record.getString("created"),

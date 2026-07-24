@@ -58,6 +58,15 @@ const TIER_OPTIONS: { value: NonNullable<PartnerRecord["tier"]>; label: string }
   { value: "bronze", label: "Bronze" },
 ];
 
+const LOGO_SURFACE_OPTIONS: {
+  value: PartnerRecord["logo_surface"];
+  label: string;
+}[] = [
+  { value: "dark", label: "Dark glass - for light logos" },
+  { value: "light", label: "Light glass - for dark logos" },
+  { value: "mixed", label: "Neutral glass - for mixed logos" },
+];
+
 const TYPE_FILTER_OPTIONS: { value: PartnerTypeFilter; label: string }[] = [
   { value: "all", label: "All" },
   ...PARTNER_TYPE_OPTIONS,
@@ -212,6 +221,7 @@ export default function AdminPartnersHub() {
   const [url, setUrl] = createSignal("");
   const [notes, setNotes] = createSignal("");
   const [logo, setLogo] = createSignal<File | null>(null);
+  const [logoSurface, setLogoSurface] = createSignal<PartnerRecord["logo_surface"]>("dark");
   const [removeLogo, setRemoveLogo] = createSignal(false);
   const [editingOriginal, setEditingOriginal] = createSignal<PartnerAdminSnapshot | null>(null);
   const [saving, setSaving] = createSignal(false);
@@ -302,6 +312,7 @@ export default function AdminPartnersHub() {
     setUrl("");
     setNotes("");
     setLogo(null);
+    setLogoSurface("dark");
     setRemoveLogo(false);
     setEditingOriginal(null);
     setFormWarnings([]);
@@ -322,6 +333,7 @@ export default function AdminPartnersHub() {
     setUrl(partner.url || "");
     setNotes(partner.notes || "");
     setLogo(null);
+    setLogoSurface(partner.logoSurface);
     setRemoveLogo(false);
     setEditingOriginal(partner);
     setFormWarnings([]);
@@ -352,6 +364,7 @@ export default function AdminPartnersHub() {
       url: url(),
       notes: notes(),
       logo: logo(),
+      logoSurface: logoSurface(),
       removeLogo: removeLogo(),
     };
     const operationKey = submitted.id ? `partner.patch:${submitted.id}` : "partner.create";
@@ -369,6 +382,7 @@ export default function AdminPartnersHub() {
         if ((submitted.tier || undefined) !== original.tier) patch.tier = submitted.tier || null;
         if ((submitted.url.trim() || undefined) !== original.url) patch.url = submitted.url.trim() || null;
         if ((submitted.notes.trim() || undefined) !== original.notes) patch.notes = submitted.notes.trim() || null;
+        if (submitted.logoSurface !== original.logoSurface) patch.logoSurface = submitted.logoSurface;
         if (logoPayload) patch.logo = logoPayload;
         else if (submitted.removeLogo) patch.logo = null;
         if (Object.keys(patch).length === 0) {
@@ -384,6 +398,7 @@ export default function AdminPartnersHub() {
           url: submitted.url,
           notes: submitted.notes,
           logo: logoPayload,
+          logoSurface: submitted.logoSurface,
         };
         res = await adminCreatePartner(operationId(operationKey), payload);
       }
@@ -727,7 +742,7 @@ export default function AdminPartnersHub() {
                         ? "Optional while draft. Upload a human-verified official logo to replace the current file."
                         : "Optional while draft. SVG preferred; PNG, JPEG, WebP, or AVIF accepted. Max 5 MB."
                     }
-                    class="min-w-0 lg:col-span-12"
+                    class="min-w-0 lg:col-span-8"
                   >
                     <input
                       id="partner-logo"
@@ -744,6 +759,27 @@ export default function AdminPartnersHub() {
                         if (e.currentTarget.files?.[0]) setRemoveLogo(false);
                       }}
                     />
+                  </AdminFormField>
+                  <AdminFormField
+                    id="partner-logo-surface"
+                    label="Logo surface"
+                    hint="Choose the surface that gives the official logo enough contrast without altering it."
+                    class="min-w-0 lg:col-span-4"
+                  >
+                    <select
+                      id="partner-logo-surface"
+                      name="logoSurface"
+                      class={adminSelectClass()}
+                      value={logoSurface()}
+                      aria-describedby="partner-logo-surface-hint"
+                      onChange={(event) => {
+                        setLogoSurface(event.currentTarget.value as PartnerRecord["logo_surface"]);
+                      }}
+                    >
+                      <For each={LOGO_SURFACE_OPTIONS}>
+                        {(option) => <option value={option.value}>{option.label}</option>}
+                      </For>
+                    </select>
                   </AdminFormField>
                   <Show when={editingOriginal()?.logo}>
                     <div class="min-w-0 lg:col-span-12">
@@ -969,7 +1005,10 @@ export default function AdminPartnersHub() {
               {(partner) => (
                 <div class="bg-white/5 rounded-xl p-4 border border-white/10 space-y-3">
                   <div class="flex items-center gap-4">
-                    <div class="h-16 w-24 shrink-0 rounded-lg border border-white/10 bg-base-300/80 p-2 flex items-center justify-center">
+                    <div
+                      class="partner-logo-stage h-16 w-24 shrink-0 rounded-lg p-2 flex items-center justify-center"
+                      data-surface={partner.logoSurface}
+                    >
                       <Show
                         when={partner.logo}
                         fallback={<Icon icon="ph:image-broken" class="text-2xl text-base-content/30" aria-label="No logo uploaded" />}
@@ -1016,7 +1055,10 @@ export default function AdminPartnersHub() {
                   {(partner) => (
                     <tr class="hover:bg-white/5 border-b border-white/5">
                       <td>
-                        <div class="h-16 w-28 rounded-lg border border-white/10 bg-base-300/80 p-2 flex items-center justify-center">
+                        <div
+                          class="partner-logo-stage h-16 w-28 rounded-lg p-2 flex items-center justify-center"
+                          data-surface={partner.logoSurface}
+                        >
                           <Show
                             when={partner.logo}
                             fallback={<Icon icon="ph:image-broken" class="text-2xl text-base-content/30" aria-label="No logo uploaded" />}

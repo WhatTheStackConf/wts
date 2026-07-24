@@ -57,6 +57,7 @@ export function createInMemoryPartnerAdministrationStore(): AuditedPartnerAdmini
           type: input.type,
           tier: input.tier,
           logo: input.logo?.name || "",
+          logoSurface: input.logoSurface,
           logoUploadedByHuman: input.logoUploadedByHuman,
           url: input.url,
           canonicalUrl: input.canonicalUrl,
@@ -104,6 +105,7 @@ export function createInMemoryPartnerAdministrationStore(): AuditedPartnerAdmini
           published: input.published,
           type: input.type,
           tier: input.tier,
+          logoSurface: input.logoSurface,
           logo:
             input.logo === undefined
               ? existing.logo
