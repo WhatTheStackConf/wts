@@ -897,7 +897,7 @@ a.partner-logo-card:active {
 
 .partner-logo-stage {
   isolation: isolate;
-  background: color-mix(in oklch, var(--color-dark-50), transparent 76%);
+  background: color-mix(in oklch, var(--color-dark-50), transparent 88%);
   backdrop-filter: blur(12px) saturate(180%);
 }
 
