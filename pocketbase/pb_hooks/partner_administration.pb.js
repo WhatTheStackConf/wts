@@ -18,17 +18,23 @@ routerAdd("POST", "/api/wts/partners", (e) => {
   function mutationBody() {
     function base64(bytes) {
       const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-      let encoded = "";
+      const parts = [];
+      let chunk = "";
       for (let index = 0; index < bytes.length; index += 3) {
         const first = bytes[index];
         const second = index + 1 < bytes.length ? bytes[index + 1] : 0;
         const third = index + 2 < bytes.length ? bytes[index + 2] : 0;
-        encoded += alphabet[first >> 2];
-        encoded += alphabet[((first & 3) << 4) | (second >> 4)];
-        encoded += index + 1 < bytes.length ? alphabet[((second & 15) << 2) | (third >> 6)] : "=";
-        encoded += index + 2 < bytes.length ? alphabet[third & 63] : "=";
+        chunk += alphabet[first >> 2];
+        chunk += alphabet[((first & 3) << 4) | (second >> 4)];
+        chunk += index + 1 < bytes.length ? alphabet[((second & 15) << 2) | (third >> 6)] : "=";
+        chunk += index + 2 < bytes.length ? alphabet[third & 63] : "=";
+        if (chunk.length >= 8192) {
+          parts.push(chunk);
+          chunk = "";
+        }
       }
-      return encoded;
+      if (chunk) parts.push(chunk);
+      return parts.join("");
     }
     const result = { body: {}, upload: null };
     for (const key in e.requestInfo().body) {
@@ -353,17 +359,23 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
   function mutationBody() {
     function base64(bytes) {
       const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-      let encoded = "";
+      const parts = [];
+      let chunk = "";
       for (let index = 0; index < bytes.length; index += 3) {
         const first = bytes[index];
         const second = index + 1 < bytes.length ? bytes[index + 1] : 0;
         const third = index + 2 < bytes.length ? bytes[index + 2] : 0;
-        encoded += alphabet[first >> 2];
-        encoded += alphabet[((first & 3) << 4) | (second >> 4)];
-        encoded += index + 1 < bytes.length ? alphabet[((second & 15) << 2) | (third >> 6)] : "=";
-        encoded += index + 2 < bytes.length ? alphabet[third & 63] : "=";
+        chunk += alphabet[first >> 2];
+        chunk += alphabet[((first & 3) << 4) | (second >> 4)];
+        chunk += index + 1 < bytes.length ? alphabet[((second & 15) << 2) | (third >> 6)] : "=";
+        chunk += index + 2 < bytes.length ? alphabet[third & 63] : "=";
+        if (chunk.length >= 8192) {
+          parts.push(chunk);
+          chunk = "";
+        }
       }
-      return encoded;
+      if (chunk) parts.push(chunk);
+      return parts.join("");
     }
     const result = { body: {}, upload: null };
     for (const key in e.requestInfo().body) {

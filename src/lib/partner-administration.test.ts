@@ -1498,6 +1498,27 @@ describe("Partner Administration", () => {
       });
       if (!created.success) throw new Error(created.error);
 
+      const createWithLogo = administration.createDraft({
+        name: "Production SVG Upload",
+        type: "supporter",
+        logo: {
+          name: "official.svg",
+          type: "image/svg+xml",
+          data: Array.from(Buffer.from(
+            `<svg xmlns="http://www.w3.org/2000/svg"><!--${"x".repeat(1024 * 1024)}--></svg>`,
+          )),
+        },
+      });
+      const createWithLogoResult = await Promise.race([
+        createWithLogo,
+        new Promise<"timed_out">((resolve) => setTimeout(() => resolve("timed_out"), 5_000)),
+      ]);
+      expect(createWithLogoResult, serverLogs).not.toBe("timed_out");
+      expect(createWithLogoResult, serverLogs).toMatchObject({
+        success: true,
+        data: { partner: { logo: expect.stringContaining("official") }, publication: { ready: true } },
+      });
+
       const action = await pb.collection("admin_actions").getFirstListItem("");
       const ordinaryClient = new PocketBase(baseUrl);
       await ordinaryClient.collection("users").authWithPassword(
