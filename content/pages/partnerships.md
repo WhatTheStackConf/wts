@@ -59,6 +59,12 @@ Got other ideas for collaboration? We're all ears.
 
 ---
 
+## Press Kit
+
+Media and Partners can download approved WhatTheStack 2026 logo files, event facts, and usage guidance from the [Press Kit](/press-kit).
+
+---
+
 ## Ready?
 
 If you're in, email us your logo and tell us what you'd like to do together.

@@ -218,6 +218,9 @@ export const Navbar = () => {
                     <a href="/about">{`>`} About WTS</a>
                   </li>
                   <li>
+                    <a href="/press-kit">{`>`} Press Kit</a>
+                  </li>
+                  <li>
                     <a href="/faq">{`>`} FAQ</a>
                   </li>
                   <li>
@@ -369,6 +372,9 @@ export const Navbar = () => {
                 <ul>
                   <li>
                     <a href="/about" onClick={closeDrawer}>About WTS</a>
+                  </li>
+                  <li>
+                    <a href="/press-kit" onClick={closeDrawer}>Press Kit</a>
                   </li>
                   <li>
                     <a href="/faq" onClick={closeDrawer}>FAQ</a>

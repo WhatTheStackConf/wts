@@ -406,6 +406,11 @@ body {
   background-size: cover;
 }
 
+/* Keep the Press Kit contents sticky without making the public shell a scroll container. */
+main:has(.press-kit-page) {
+  overflow-x: clip;
+}
+
 /* View Transitions API styles */
 ::view-transition-old(root),
 ::view-transition-new(root) {

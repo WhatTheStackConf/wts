@@ -122,6 +122,12 @@ export const Footer = () => {
             About
           </a>
           <a
+            href="/press-kit"
+            class="link link-hover hover:text-primary-400 transition-colors"
+          >
+            Press Kit
+          </a>
+          <a
             href="/convince-your-boss"
             class="link link-hover hover:text-primary-400 transition-colors"
           >
