@@ -268,7 +268,7 @@ function useCountUp(target: number, duration: number = 2000) {
 export const Hero = () => {
   const workshops = useCountUp(5, 1500);
   const talks = useCountUp(30, 1800);
-  const tracks = useCountUp(4, 1200);
+  const tracks = useCountUp(5, 1200);
   const attendees = useCountUp(800, 2500);
 
   return (
