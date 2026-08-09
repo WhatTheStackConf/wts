@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import type { PublicSpeakerSummary } from "~/lib/speakers-public";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
+import { AppearanceRibbons } from "~/components/conference/AppearanceRibbons";
 
 interface SpeakerCardProps {
   speaker: PublicSpeakerSummary;
@@ -121,6 +122,7 @@ export function SpeakerCard(props: SpeakerCardProps) {
               {props.speaker.affiliation}
             </p>
           </Show>
+          <AppearanceRibbons events={props.speaker.appearanceEvents} variant="listing" />
           <p
             class={`speaker-session-chip mt-4 ${
               isTeaser() ? "speaker-session-chip-teaser" : ""

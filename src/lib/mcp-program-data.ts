@@ -2,8 +2,10 @@ import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import type {
   AgendaSlotRecord,
   AgendaTrackRecord,
+  AppearanceEventRecord,
   CfpApplicantRecord,
   ConferenceDayRecord,
+  EventProgrammeRecord,
   CfpReviewRecord,
   CfpSubmissionRecord,
   SessionRecord,
@@ -46,6 +48,7 @@ type McpSessionSchedule = {
   published: boolean;
   location_label: string | null;
   day: { key: string; local_date: string; title: string } | null;
+  appearance_event: { id: string; name: string; published: boolean } | null;
   track: { key: string; name: string; location_label: string | null } | null;
 };
 
@@ -83,12 +86,16 @@ function speakerDto(speaker: ExpandedSpeaker) {
 function sessionSchedule(
   sessionId: string,
   slots: AgendaSlotRecord[],
+  programmesById: Map<string, EventProgrammeRecord>,
+  eventsById: Map<string, AppearanceEventRecord>,
   daysById: Map<string, ConferenceDayRecord>,
   tracksById: Map<string, AgendaTrackRecord>,
 ): McpSessionSchedule | null {
   const slot = slots.find((item) => item.session === sessionId);
   if (!slot) return null;
-  const day = daysById.get(slot.day);
+  const programme = programmesById.get(slot.programme);
+  const day = programme ? daysById.get(programme.day) : undefined;
+  const appearanceEvent = programme ? eventsById.get(programme.appearance_event) : undefined;
   const track = slot.track ? tracksById.get(slot.track) : undefined;
   return {
     start_at: slot.start_at,
@@ -97,6 +104,9 @@ function sessionSchedule(
     published: Boolean(slot.published),
     location_label: slot.location_label || track?.location_label || null,
     day: day ? { key: day.key, local_date: day.local_date, title: day.title } : null,
+    appearance_event: appearanceEvent
+      ? { id: appearanceEvent.id, name: appearanceEvent.name, published: Boolean(appearanceEvent.published) }
+      : null,
     track: track
       ? { key: track.key, name: track.name, location_label: track.location_label || null }
       : null,
@@ -184,15 +194,22 @@ function reviewsBySubmission(reviews: CfpReviewRecord[]) {
 
 export async function fetchMcpSessions() {
   const adminService = getAdminPB();
-  const [sessions, slots, days, tracks] = await Promise.all([
+  const [sessions, slots, programmes, events, days, tracks] = await Promise.all([
     adminService.fetchAllRecords("sessions", { expand: "speakers", sort: "title" }) as Promise<ExpandedSession[]>,
     adminService.fetchAllRecords("agenda_slots") as Promise<AgendaSlotRecord[]>,
+    adminService.fetchAllRecords("event_programmes") as Promise<EventProgrammeRecord[]>,
+    adminService.fetchAllRecords("appearance_events") as Promise<AppearanceEventRecord[]>,
     adminService.fetchAllRecords("conference_days") as Promise<ConferenceDayRecord[]>,
     adminService.fetchAllRecords("agenda_tracks") as Promise<AgendaTrackRecord[]>,
   ]);
+  const programmesById = new Map(programmes.map((programme) => [programme.id, programme]));
+  const eventsById = new Map(events.map((event) => [event.id, event]));
   const daysById = new Map(days.map((day) => [day.id, day]));
   const tracksById = new Map(tracks.map((track) => [track.id, track]));
-  return sessions.map((session) => sessionDto(session, sessionSchedule(session.id, slots, daysById, tracksById)));
+  return sessions.map((session) => sessionDto(
+    session,
+    sessionSchedule(session.id, slots, programmesById, eventsById, daysById, tracksById),
+  ));
 }
 
 export async function fetchMcpSpeakers() {

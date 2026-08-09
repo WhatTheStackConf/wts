@@ -88,7 +88,7 @@ const AdminDashboard = () => {
                                          <h3 class="text-xl font-bold text-white">AGENDA</h3>
                                      </div>
                                      <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
-                                         Configure Conference Days, day-specific Tracks, time ranges, and public programme Slots.
+                                         Configure Conference Days, Event Programmes, Tracks, time ranges, and public programme Slots.
                                      </p>
                                      <a
                                          href="/admin/agenda"

@@ -1,26 +1,16 @@
 /// <reference path="../pb_data/types.d.ts" />
 
+// PocketBase executes registered callbacks in isolated JS contexts, so callback helpers stay local.
+
 onRecordValidate((e) => {
-  const record = e.record;
-  const original = record.original();
-  if (original.id && original.getString("key") !== record.getString("key")) {
-    throw new BadRequestError("Conference Day key is immutable.");
-  }
-
-  const date = record.getString("local_date");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new BadRequestError("Conference Day date must use YYYY-MM-DD.");
-  }
-
-  function parseInstant(value) {
+  const parseInstant = (value) => {
     if (!value) return null;
     const normalized = value.includes("T") ? value : value.replace(" ", "T");
     const withZone = /(Z|[+-]\d{2}:\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`;
     const instant = new Date(withZone);
     return Number.isNaN(instant.getTime()) ? null : instant;
-  }
-
-  function skopjeLocalDate(instant) {
+  };
+  const skopjeDate = (instant) => {
     const year = instant.getUTCFullYear();
     const lastSunday = (month) => {
       const date = new Date(Date.UTC(year, month + 1, 0));
@@ -32,19 +22,28 @@ onRecordValidate((e) => {
     const dstEnds = lastSunday(9);
     dstEnds.setUTCHours(1, 0, 0, 0);
     const offsetHours = instant >= dstStarts && instant < dstEnds ? 2 : 1;
-    return new Date(instant.getTime() + offsetHours * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
+    return new Date(instant.getTime() + offsetHours * 60 * 60 * 1000).toISOString().slice(0, 10);
+  };
+  const record = e.record;
+  const original = record.original();
+  if (original.id && original.getString("key") !== record.getString("key")) {
+    throw new BadRequestError("Conference Day key is immutable.");
   }
-
-  const daySlots = e.app.findRecordsByFilter("agenda_slots", `day = "${record.id}"`, "", 0, 0);
-  if (!record.getBool("published") && daySlots.some((slot) => slot.getBool("published"))) {
-    throw new BadRequestError("Unpublish this Conference Day's Slots before unpublishing the Day.");
+  const date = record.getString("local_date");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new BadRequestError("Conference Day date must use YYYY-MM-DD.");
   }
-  for (const slot of daySlots) {
-    const start = parseInstant(slot.getString("start_at"));
-    if (start && skopjeLocalDate(start) !== date) {
-      throw new BadRequestError("Move this Day's Slots before changing its local date.");
+  const programmes = e.app.findRecordsByFilter("event_programmes", `day = "${record.id}"`, "", 0, 0);
+  for (const programme of programmes) {
+    const slots = e.app.findRecordsByFilter("agenda_slots", `programme = "${programme.id}"`, "", 0, 0);
+    if (!record.getBool("published") && slots.some((slot) => slot.getBool("published"))) {
+      throw new BadRequestError("Unpublish this Conference Day's Slots before unpublishing the Day.");
+    }
+    for (const slot of slots) {
+      const start = parseInstant(slot.getString("start_at"));
+      if (start && skopjeDate(start) !== date) {
+        throw new BadRequestError("Move this Day's Slots before changing its local date.");
+      }
     }
   }
   return e.next();
@@ -53,43 +52,67 @@ onRecordValidate((e) => {
 onRecordValidate((e) => {
   const record = e.record;
   const original = record.original();
+  if (
+    original.id &&
+    (original.getString("day") !== record.getString("day") ||
+      original.getString("appearance_event") !== record.getString("appearance_event"))
+  ) {
+    throw new BadRequestError("Event Programme Conference Day and Appearance Event are immutable.");
+  }
+  try {
+    e.app.findRecordById("conference_days", record.getString("day"));
+    e.app.findRecordById("appearance_events", record.getString("appearance_event"));
+  } catch {
+    throw new BadRequestError("Event Programme must reference a valid Conference Day and Appearance Event.");
+  }
+  return e.next();
+}, "event_programmes");
+
+onRecordDelete((e) => {
+  const tracks = e.app.findRecordsByFilter("agenda_tracks", `programme = "${e.record.id}"`, "", 1, 0);
+  const slots = e.app.findRecordsByFilter("agenda_slots", `programme = "${e.record.id}"`, "", 1, 0);
+  if (tracks.length || slots.length) {
+    throw new BadRequestError("Remove this Event Programme's Tracks and Slots before deleting it.");
+  }
+  return e.next();
+}, "event_programmes");
+
+onRecordValidate((e) => {
+  const record = e.record;
+  const original = record.original();
   if (original.id && original.getString("key") !== record.getString("key")) {
     throw new BadRequestError("Track key is immutable.");
   }
-  if (original.id && original.getString("day") !== record.getString("day")) {
-    throw new BadRequestError("Track Conference Day is immutable once Slots may reference it.");
+  if (
+    original.id &&
+    original.getString("programme") &&
+    original.getString("programme") !== record.getString("programme")
+  ) {
+    throw new BadRequestError("Track Event Programme is immutable once Slots may reference it.");
   }
-  const dayId = record.getString("day");
-  if (!dayId) throw new BadRequestError("Track must belong to a Conference Day.");
   try {
-    e.app.findRecordById("conference_days", dayId);
+    e.app.findRecordById("event_programmes", record.getString("programme"));
   } catch {
-    throw new BadRequestError("Track must belong to a valid Conference Day.");
+    throw new BadRequestError("Track must belong to a valid Event Programme.");
   }
   return e.next();
 }, "agenda_tracks");
 
+onRecordDelete((e) => {
+  const slots = e.app.findRecordsByFilter("agenda_slots", `track = "${e.record.id}"`, "", 1, 0);
+  if (slots.length) throw new BadRequestError("Move this Track's Slots before deleting it.");
+  return e.next();
+}, "agenda_tracks");
+
 onRecordValidate((e) => {
-  const record = e.record;
-  const dayId = record.getString("day");
-  const trackId = record.getString("track");
-  const sessionId = record.getString("session");
-  const kind = record.getString("kind");
-  const slotKinds = ["session", "break", "meal", "networking", "opening", "closing", "other"];
-
-  function hasText(value) {
-    return typeof value === "string" && value.trim().length > 0;
-  }
-
-  function parseInstant(value) {
-    if (!hasText(value)) return null;
+  const parseInstant = (value) => {
+    if (!value) return null;
     const normalized = value.includes("T") ? value : value.replace(" ", "T");
     const withZone = /(Z|[+-]\d{2}:\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`;
     const instant = new Date(withZone);
     return Number.isNaN(instant.getTime()) ? null : instant;
-  }
-
-  function skopjeLocalDate(instant) {
+  };
+  const skopjeDate = (instant) => {
     const year = instant.getUTCFullYear();
     const lastSunday = (month) => {
       const date = new Date(Date.UTC(year, month + 1, 0));
@@ -101,27 +124,52 @@ onRecordValidate((e) => {
     const dstEnds = lastSunday(9);
     dstEnds.setUTCHours(1, 0, 0, 0);
     const offsetHours = instant >= dstStarts && instant < dstEnds ? 2 : 1;
-    return new Date(instant.getTime() + offsetHours * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
-  }
-
+    return new Date(instant.getTime() + offsetHours * 60 * 60 * 1000).toISOString().slice(0, 10);
+  };
+  const findContext = (programmeId) => {
+    try {
+      const programme = e.app.findRecordById("event_programmes", programmeId);
+      return {
+        programme,
+        day: e.app.findRecordById("conference_days", programme.getString("day")),
+        appearanceEvent: e.app.findRecordById("appearance_events", programme.getString("appearance_event")),
+      };
+    } catch {
+      throw new BadRequestError("Agenda Slot must belong to a valid Event Programme.");
+    }
+  };
+  const requireAppearances = (session, appearanceEventId) => {
+    for (const speakerId of session.getStringSlice("speakers")) {
+      const speaker = e.app.findRecordById("speakers", speakerId);
+      if (!speaker.getStringSlice("appearance_events").includes(appearanceEventId)) {
+        throw new BadRequestError(
+          "Every Session Speaker needs an Event Appearance for this Appearance Event before publishing the Slot.",
+        );
+      }
+    }
+  };
+  const record = e.record;
+  const programmeId = record.getString("programme");
+  const trackId = record.getString("track");
+  const sessionId = record.getString("session");
+  const kind = record.getString("kind");
+  const slotKinds = ["session", "break", "meal", "networking", "opening", "closing", "other"];
+  const hasText = (value) => typeof value === "string" && value.trim().length > 0;
   const start = parseInstant(record.getString("start_at"));
   const end = parseInstant(record.getString("end_at"));
-  let day;
-  try {
-    day = e.app.findRecordById("conference_days", dayId);
-  } catch {
-    throw new BadRequestError("Agenda Slot must belong to a valid Conference Day.");
-  }
+  const context = findContext(programmeId);
+
   if (!start || !end || end <= start) {
     throw new BadRequestError("Agenda Slot end time must be after its start time.");
   }
-  if (skopjeLocalDate(start) !== day.getString("local_date")) {
+  if (skopjeDate(start) !== context.day.getString("local_date")) {
     throw new BadRequestError("Agenda Slot must start on its Conference Day in Europe/Skopje.");
   }
-  if (record.getBool("published") && !day.getBool("published")) {
+  if (record.getBool("published") && !context.day.getBool("published")) {
     throw new BadRequestError("Publish the Conference Day before publishing one of its Slots.");
+  }
+  if (record.getBool("published") && !context.appearanceEvent.getBool("published")) {
+    throw new BadRequestError("Publish the Appearance Event before publishing one of its Slots.");
   }
   if (!slotKinds.includes(kind)) throw new BadRequestError("Agenda Slot kind is invalid.");
 
@@ -132,21 +180,24 @@ onRecordValidate((e) => {
     } catch {
       throw new BadRequestError("Agenda Slot Track must exist.");
     }
-    if (track.getString("day") !== dayId) {
-      throw new BadRequestError("Agenda Slot Track must belong to the same Conference Day.");
+    if (track.getString("programme") !== programmeId) {
+      throw new BadRequestError("Agenda Slot Track must belong to the same Event Programme.");
     }
   }
 
   if (kind === "session") {
     if (!sessionId) throw new BadRequestError("Session Slots must select one Session.");
+    let session;
     try {
-      const session = e.app.findRecordById("sessions", sessionId);
-      if (record.getBool("published") && !session.getBool("published")) {
+      session = e.app.findRecordById("sessions", sessionId);
+    } catch {
+      throw new BadRequestError("Agenda Slot Session must exist.");
+    }
+    if (record.getBool("published")) {
+      if (!session.getBool("published")) {
         throw new BadRequestError("Publish Session Slots through the coordinated programme operation.");
       }
-    } catch (error) {
-      if (error instanceof BadRequestError) throw error;
-      throw new BadRequestError("Agenda Slot Session must exist.");
+      requireAppearances(session, context.appearanceEvent.id);
     }
     if (hasText(record.getString("title")) || hasText(record.getString("summary"))) {
       throw new BadRequestError("Session Slots use their linked Session title and abstract.");
@@ -154,7 +205,7 @@ onRecordValidate((e) => {
   } else {
     if (sessionId) throw new BadRequestError("Non-Session Slots cannot select a Session.");
     if (!hasText(record.getString("title")) || !hasText(record.getString("summary"))) {
-      throw new BadRequestError("Non-Session Slots require a title and summary.");
+      throw new BadRequestError("Non-Session Slots require both a title and summary.");
     }
   }
 
@@ -169,21 +220,22 @@ onRecordValidate((e) => {
   if (
     original.id &&
     original.getBool("published") &&
-    original.getString("kind") === "session" &&
-    (kind !== "session" || original.getString("session") !== sessionId)
+    ((original.getString("programme") && original.getString("programme") !== programmeId) ||
+      original.getString("kind") !== kind ||
+      original.getString("session") !== sessionId)
   ) {
-    throw new BadRequestError("Unpublish this Session Slot before changing its kind or linked Session.");
+    throw new BadRequestError("Unpublish this Slot before changing its Event Programme, kind, or linked Session.");
   }
 
-  const allSlots = e.app.findRecordsByFilter("agenda_slots", "", "", 0, 0);
-  for (const other of allSlots) {
+  const programmeSlots = e.app.findRecordsByFilter("agenda_slots", `programme = "${programmeId}"`, "", 0, 0);
+  for (const other of programmeSlots) {
     if (other.id === record.id) continue;
     const otherStart = parseInstant(other.getString("start_at"));
     const otherEnd = parseInstant(other.getString("end_at"));
     if (!otherStart || !otherEnd || !(start < otherEnd && end > otherStart)) continue;
     const otherTrackId = other.getString("track");
     if (!trackId || !otherTrackId || trackId === otherTrackId) {
-      throw new BadRequestError("Agenda Slot overlaps an all-attendee Slot or another Slot in the same Track.");
+      throw new BadRequestError("Agenda Slot overlaps a Programme-wide Slot or another Slot in the same Track.");
     }
   }
   return e.next();
@@ -197,30 +249,73 @@ onRecordDelete((e) => {
 }, "agenda_slots");
 
 onRecordValidate((e) => {
-  const record = e.record;
+  const findContext = (programmeId) => {
+    try {
+      const programme = e.app.findRecordById("event_programmes", programmeId);
+      return {
+        appearanceEvent: e.app.findRecordById("appearance_events", programme.getString("appearance_event")),
+      };
+    } catch {
+      throw new BadRequestError("Agenda Slot must belong to a valid Event Programme.");
+    }
+  };
+  const requireAppearances = (session, appearanceEventId) => {
+    for (const speakerId of session.getStringSlice("speakers")) {
+      const speaker = e.app.findRecordById("speakers", speakerId);
+      if (!speaker.getStringSlice("appearance_events").includes(appearanceEventId)) {
+        throw new BadRequestError(
+          "Every Session Speaker needs an Event Appearance for this Appearance Event before publishing the Slot.",
+        );
+      }
+    }
+  };
   try {
     e.app.findCollectionByNameOrId("agenda_slots");
   } catch {
-    // The Session collection predates Agenda Slots, so migration rollback restores standalone Sessions.
     return e.next();
   }
   const publishedSlots = e.app.findRecordsByFilter(
     "agenda_slots",
-    `session = "${record.id}" && published = true`,
+    `session = "${e.record.id}" && published = true`,
     "",
     2,
     0,
   );
-  if (!record.getBool("published") && publishedSlots.length > 0) {
+  if (!e.record.getBool("published") && publishedSlots.length > 0) {
     throw new BadRequestError("Unpublish the Agenda Slot before unpublishing its Session.");
   }
   if (publishedSlots.length > 1) {
     throw new BadRequestError("A Session cannot have more than one published Agenda Slot.");
   }
+  for (const slot of publishedSlots) {
+    const context = findContext(slot.getString("programme"));
+    requireAppearances(e.record, context.appearanceEvent.id);
+  }
   return e.next();
 }, "sessions");
 
 routerAdd("POST", "/api/wts/programme/agenda-slots/{id}/publication", (e) => {
+  const findContext = (app, programmeId) => {
+    try {
+      const programme = app.findRecordById("event_programmes", programmeId);
+      return {
+        day: app.findRecordById("conference_days", programme.getString("day")),
+        appearanceEvent: app.findRecordById("appearance_events", programme.getString("appearance_event")),
+      };
+    } catch {
+      throw new BadRequestError("Agenda Slot must belong to a valid Event Programme.");
+    }
+  };
+  const requireAppearances = (app, session, appearanceEventId) => {
+    for (const speakerId of session.getStringSlice("speakers")) {
+      const speaker = app.findRecordById("speakers", speakerId);
+      if (!speaker.getStringSlice("appearance_events").includes(appearanceEventId)) {
+        throw new BadRequestError(
+          "Every Session Speaker needs an Event Appearance for this Appearance Event before publishing the Slot.",
+        );
+      }
+    }
+  };
   const published = e.requestInfo().body.published;
   if (typeof published !== "boolean") {
     throw new BadRequestError("Agenda Slot publication requires a boolean state.");
@@ -228,14 +323,18 @@ routerAdd("POST", "/api/wts/programme/agenda-slots/{id}/publication", (e) => {
   const slotId = e.request.pathValue("id");
   $app.runInTransaction((txApp) => {
     const slot = txApp.findRecordById("agenda_slots", slotId);
-    const day = txApp.findRecordById("conference_days", slot.getString("day"));
-    if (published && !day.getBool("published")) {
+    const context = findContext(txApp, slot.getString("programme"));
+    if (published && !context.day.getBool("published")) {
       throw new BadRequestError("Publish the Conference Day before publishing one of its Slots.");
+    }
+    if (published && !context.appearanceEvent.getBool("published")) {
+      throw new BadRequestError("Publish the Appearance Event before publishing one of its Slots.");
     }
 
     slot.set("published", published);
     if (slot.getString("kind") === "session") {
       const session = txApp.findRecordById("sessions", slot.getString("session"));
+      if (published) requireAppearances(txApp, session, context.appearanceEvent.id);
       session.set("published", published);
       txApp.saveNoValidate(session);
       txApp.saveNoValidate(slot);

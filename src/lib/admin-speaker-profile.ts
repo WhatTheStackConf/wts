@@ -38,6 +38,7 @@ export type SpeakerProfileUpdateInput = {
   affiliation?: string;
   bio?: string;
   social_handles?: string[];
+  appearance_events?: string[];
   photo?: SpeakerProfilePhotoInput;
 };
 
@@ -56,6 +57,7 @@ type NormalizedSpeakerProfile = {
     affiliation: string;
     bio: string;
     social_handles: string[];
+    appearance_events?: string[];
   };
   photo: SpeakerProfilePhotoInput;
 };
@@ -162,6 +164,18 @@ export function normalizeSpeakerProfileUpdateInput(
         affiliation: input.affiliation?.trim() || "",
         bio: input.bio?.trim() || "",
         social_handles: normalizeSpeakerSocialHandles(input.social_handles),
+        ...(Array.isArray(input.appearance_events)
+          ? {
+              appearance_events: Array.from(
+                new Set(
+                  input.appearance_events
+                    .filter((value): value is string => typeof value === "string")
+                    .map((value) => value.trim())
+                    .filter(Boolean),
+                ),
+              ),
+            }
+          : {}),
       },
       photo,
     },
@@ -195,6 +209,9 @@ export function speakerSnapshot(record: SpeakerRecord) {
     affiliation: record.affiliation || "",
     bio: record.bio || "",
     social_handles: normalizeSpeakerSocialHandles(record.social_handles),
+    appearance_events: Array.isArray(record.appearance_events)
+      ? record.appearance_events
+      : [],
   };
 }
 
@@ -206,7 +223,7 @@ export function buildSpeakerCreateBody(
 
   const body = new FormData();
   for (const [key, value] of Object.entries(fields)) {
-    if (key === "social_handles") {
+    if (Array.isArray(value)) {
       body.append(key, JSON.stringify(value));
     } else {
       body.append(key, String(value));

@@ -26,11 +26,18 @@ import type {
   SpeakerProfileUpdateInput,
 } from "~/lib/admin-speaker-profile";
 import type { SessionEditableInput } from "~/lib/admin-session-promotion";
-import type { SpeakerRecord } from "~/lib/pocketbase-types";
+import {
+  createAppearanceEvent,
+  deleteAppearanceEvent,
+  updateAppearanceEvent,
+  type AppearanceEventInput,
+} from "~/lib/appearance-events-admin";
+import type { AppearanceEventRecord, SpeakerRecord } from "~/lib/pocketbase-types";
 
 /** Backwards-compatible alias for the existing invite speaker UI. */
 export type InviteSpeakerPhotoPayload = SpeakerPhotoPayload;
 export type { SpeakerPhotoPayload, SpeakerProfileUpdateInput };
+export type { AppearanceEventInput };
 
 function pbAdminErrorMessage(error: unknown): string {
   const response = (error as { response?: { data?: Record<string, { message?: string }> } })
@@ -440,6 +447,59 @@ export const adminFetchSpeakers = async () => {
     return { success: true, data };
   } catch (error) {
     console.error("Admin fetch speakers error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminFetchAppearanceEvents = async () => {
+  "use server";
+  try {
+    await requireAdmin();
+    const data = (await getAdminPB().fetchAllRecords("appearance_events", {
+      sort: "display_order,name,id",
+    })) as AppearanceEventRecord[];
+    return { success: true, data };
+  } catch (error) {
+    console.error("Admin fetch Appearance Events error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminCreateAppearanceEvent = async (input: AppearanceEventInput) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const data = await createAppearanceEvent(getAdminPB(), input);
+    return { success: true, data };
+  } catch (error) {
+    console.error("Admin create Appearance Event error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminUpdateAppearanceEvent = async (
+  id: string,
+  input: AppearanceEventInput,
+) => {
+  "use server";
+  try {
+    await requireAdmin();
+    const data = await updateAppearanceEvent(getAdminPB(), id, input);
+    return { success: true, data };
+  } catch (error) {
+    console.error("Admin update Appearance Event error:", error);
+    return { success: false, error: pbAdminErrorMessage(error) };
+  }
+};
+
+export const adminDeleteAppearanceEvent = async (id: string) => {
+  "use server";
+  try {
+    await requireAdmin();
+    await deleteAppearanceEvent(getAdminPB(), id);
+    return { success: true };
+  } catch (error) {
+    console.error("Admin delete Appearance Event error:", error);
     return { success: false, error: pbAdminErrorMessage(error) };
   }
 };

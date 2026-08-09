@@ -90,6 +90,10 @@ export default function SessionDetail() {
                     <Show when={hasSchedule()}>
                       <ul class="mt-6 flex flex-wrap gap-3 list-none p-0 m-0 text-sm font-mono text-secondary-300">
                         <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
+                          <span class="text-secondary-500">Event</span>
+                          <span>{s().schedule!.event.name}</span>
+                        </li>
+                        <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
                           <span class="text-secondary-500">Time</span>
                           <span>
                             <time datetime={s().schedule!.startAt}>{formatScheduleDate(s().schedule!.startAt)}</time> -{" "}
@@ -98,7 +102,7 @@ export default function SessionDetail() {
                         </li>
                         <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
                           <span class="text-secondary-500">Audience</span>
-                          <span>{s().schedule?.trackName || "All attendees"}</span>
+                          <span>{s().schedule?.trackName || "Programme-wide"}</span>
                         </li>
                         <Show when={s().schedule?.locationLabel}>
                           <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">

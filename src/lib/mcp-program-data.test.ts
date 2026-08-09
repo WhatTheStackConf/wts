@@ -153,6 +153,47 @@ describe("MCP programme data", () => {
     expect(sessions[0].schedule).toBeNull();
   });
 
+  it("identifies the Appearance Event in an MCP Session schedule", async () => {
+    fetchAllRecords.mockImplementation((collection: string) => {
+      if (collection === "sessions") return Promise.resolve([session("session-1")]);
+      if (collection === "agenda_slots") return Promise.resolve([{
+        id: "slot-1",
+        programme: "programme-1",
+        session: "session-1",
+        start_at: "2026-09-19T08:00:00.000Z",
+        end_at: "2026-09-19T09:00:00.000Z",
+        kind: "session",
+        published: true,
+        display_order: 1,
+      }]);
+      if (collection === "event_programmes") return Promise.resolve([{
+        id: "programme-1",
+        day: "day-1",
+        appearance_event: "event-1",
+        display_order: 1,
+      }]);
+      if (collection === "appearance_events") return Promise.resolve([{
+        id: "event-1",
+        name: "Community Warmup",
+        published: true,
+      }]);
+      if (collection === "conference_days") return Promise.resolve([{
+        id: "day-1",
+        key: "main-day",
+        local_date: "2026-09-19",
+        title: "Main Day",
+      }]);
+      return Promise.resolve([]);
+    });
+
+    const sessions = await fetchMcpSessions();
+
+    expect(sessions[0].schedule).toMatchObject({
+      day: { key: "main-day" },
+      appearance_event: { id: "event-1", name: "Community Warmup", published: true },
+    });
+  });
+
   it("lists every CFP proposal by default instead of filtering to accepted", async () => {
     fetchAllRecords.mockImplementation((collection: string) => {
       if (collection === "cfp_submissions") {

@@ -10,7 +10,7 @@ import { conferenceGuideContent } from "~/lib/conference-guide-content";
 const guide = vi.hoisted(() => ({
   getIndex: vi.fn(async () => ({
     metadata: {
-      schema_version: "1",
+      schema_version: "2",
       content_version: "2026-07-23",
       programme_version: "sha256:programme",
       generated_at: "2026-07-14T18:00:00.000Z",
@@ -43,7 +43,7 @@ const guide = vi.hoisted(() => ({
   })),
   searchSessions: vi.fn(async () => ({
     metadata: {
-      schema_version: "1",
+      schema_version: "2",
       content_version: "2026-07-23",
       programme_version: "sha256:programme",
       generated_at: "2026-07-14T18:00:00.000Z",
@@ -77,7 +77,7 @@ const guide = vi.hoisted(() => ({
   })),
   planProposedSchedule: vi.fn(async () => ({
     metadata: {
-      schema_version: "1",
+      schema_version: "2",
       content_version: "2026-07-23",
       programme_version: "sha256:programme",
       generated_at: "2026-07-14T18:00:00.000Z",
@@ -650,7 +650,9 @@ describe("public Conference Guide MCP contract", () => {
             key: "conference-day",
             localDate: "2026-09-19",
             title: "Conference Day",
-            slots: [
+            programmes: [{
+              event: { name: "WhatTheStack 2026", compactLabel: "WTS 2026" },
+              slots: [
               {
                 kind: "opening",
                 startAt: "2026-09-19T07:00:00.000Z",
@@ -677,7 +679,8 @@ describe("public Conference Guide MCP contract", () => {
                   format: "Talk",
                 },
               },
-            ],
+              ],
+            }],
           }],
         },
         sessions: [
@@ -823,12 +826,15 @@ describe("public Conference Guide MCP contract", () => {
             key: "conference-day",
             localDate: "2026-09-19",
             title: "Conference Day",
-            slots: [{
-              kind: "session",
-              startAt: "2026-09-19T08:00:00.000Z",
-              endAt: "2026-09-19T08:35:00.000Z",
-              track: { key: "main", name: "Main" },
-              session: { slug: "safe-systems", title: "Safe Systems" },
+            programmes: [{
+              event: { name: "WhatTheStack 2026", compactLabel: "WTS 2026" },
+              slots: [{
+                kind: "session",
+                startAt: "2026-09-19T08:00:00.000Z",
+                endAt: "2026-09-19T08:35:00.000Z",
+                track: { key: "main", name: "Main" },
+                session: { slug: "safe-systems", title: "Safe Systems" },
+              }],
             }],
           }],
         },
@@ -891,7 +897,7 @@ describe("public Conference Guide MCP contract", () => {
       ];
       for (const value of values) {
         expect(value.metadata).toMatchObject({
-          schema_version: "1",
+          schema_version: "2",
           content_version: "2026-07-23",
           programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
           generated_at: "2026-07-14T18:00:00.000Z",

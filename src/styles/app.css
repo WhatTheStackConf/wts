@@ -779,6 +779,124 @@ main {
   padding: 0.42rem 0.75rem;
 }
 
+@utility appearance-ribbons {
+  max-inline-size: 100%;
+}
+
+@utility appearance-ribbons-profile {
+  margin-block-start: 1.25rem;
+}
+
+.appearance-ribbons-profile .appearance-ribbons-list {
+  justify-content: center;
+}
+
+@media (min-width: 40rem) {
+  .appearance-ribbons-profile .appearance-ribbons-list {
+    justify-content: flex-start;
+  }
+}
+
+@utility appearance-ribbons-label {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--color-accent-300);
+}
+
+@utility appearance-ribbons-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-inline-size: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@utility appearance-ribbon {
+  --appearance-ribbon-border: color-mix(in oklch, var(--color-primary-400) 58%, transparent);
+  --appearance-ribbon-fill: color-mix(in oklch, var(--color-primary-500) 24%, var(--color-dark-900));
+
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 1.75rem;
+  max-inline-size: 100%;
+  padding: 0.3rem 0.75rem;
+  clip-path: polygon(0.35rem 0, 100% 0, calc(100% - 0.35rem) 50%, 100% 100%, 0.35rem 100%, 0 50%);
+  background: var(--appearance-ribbon-border);
+  color: var(--color-primary-100);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.045em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+
+  &::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 1px;
+    clip-path: inherit;
+    background: var(--appearance-ribbon-fill);
+  }
+}
+
+@utility appearance-corner-ribbon {
+  position: absolute;
+  z-index: 3;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  inline-size: 8rem;
+  block-size: 8rem;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+@utility appearance-corner-ribbon-band {
+  position: absolute;
+  inset-block-start: 1.45rem;
+  inset-inline-end: -2.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  inline-size: 10rem;
+  min-block-size: 1.65rem;
+  padding-inline: 0.65rem;
+  transform: rotate(45deg);
+  transform-origin: center;
+  border-block: 1px solid color-mix(in oklch, var(--color-primary-300) 62%, transparent);
+  background: color-mix(in oklch, var(--color-primary-700) 86%, var(--color-dark-900));
+  color: var(--color-primary-100);
+  font-family: var(--font-sans);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+@utility appearance-corner-ribbon-event {
+  min-inline-size: 0;
+  max-inline-size: 6.6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@utility appearance-corner-ribbon-count {
+  flex: none;
+  color: var(--color-accent-200);
+}
+
 /* Shared hologram surface (Grab a ticket button + speaker cards) */
 @utility cyber-hologram-surface {
   position: relative;

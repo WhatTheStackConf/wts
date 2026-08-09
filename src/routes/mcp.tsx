@@ -117,7 +117,7 @@ export default function McpConferenceGuidePage() {
               </div>
               <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
                 <dt class="font-mono text-sm font-bold text-accent-300">Published Agenda</dt>
-                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Published Conference Days and Agenda Slots with stable Day and Track keys and local times in Europe/Skopje.</dd>
+                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Published Conference Days grouped into Appearance Event Programmes, with Tracks, Agenda Slots, and local times in Europe/Skopje.</dd>
               </div>
               <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
                 <dt class="font-mono text-sm font-bold text-accent-300">Session / Speaker</dt>
@@ -133,7 +133,7 @@ export default function McpConferenceGuidePage() {
               </div>
               <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
                 <dt class="font-mono text-sm font-bold text-accent-300">plan_proposed_schedule</dt>
-                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Plans only from current Published Sessions with Published Agenda Slots. Accepts ranked, must-attend, and excluded public slugs, Europe/Skopje availability windows (including windows that cross midnight), and an optional prior programme version. Results contain non-overlapping selected Sessions, fixed all-attendee Slots, unresolved hard constraints, conflict reasons, and alternatives.</dd>
+                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Plans only from current Published Sessions with Published Agenda Slots. Accepts ranked, must-attend, and excluded public slugs, Europe/Skopje availability windows (including windows that cross midnight), and an optional prior programme version. Results contain non-overlapping selected Sessions, Event-specific Programme-wide Slots, unresolved hard constraints, conflict reasons, and alternatives.</dd>
               </div>
               <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
                 <dt class="font-mono text-sm font-bold text-accent-300">Public prompts</dt>
@@ -157,7 +157,7 @@ export default function McpConferenceGuidePage() {
                   <li>Deploy-validated conference facts and explicit <code class="font-mono text-sm">not_announced</code> states.</li>
                   <li>Current Published Agenda, Sessions, Speakers, and Partners.</li>
                   <li>Bounded Session search with matched fields, plain-text snippets, canonical Session and Speaker links, and transparent ranking signals.</li>
-                  <li>Ephemeral Proposed Schedules based only on caller priorities and schedule fit, with fixed all-attendee context and explicit trade-offs.</li>
+                  <li>Ephemeral Proposed Schedules based only on caller priorities and schedule fit, with fixed Programme-wide context and explicit trade-offs.</li>
                   <li>Client-side planning and comparison prompt workflows.</li>
                   <li>Plain text, canonical website links, stable public keys, and content/programme versions.</li>
                 </ul>

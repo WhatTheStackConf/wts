@@ -16,6 +16,13 @@ This project uses manually defined TypeScript types for PocketBase collections t
 - Location: `CfpSubmissionRecord` interface in `src/lib/pocketbase-types.ts`
 - Fields: `session_title`, `abstract`, `key_takeaways`, `technical_requirements`, `notes`, `applicant` (relation to cfp_applicants)
 
+### Public Programme Collections
+- `AppearanceEventRecord`: named gathering metadata and publication state
+- `ConferenceDayRecord`: local-date public programme container
+- `EventProgrammeRecord`: unique Appearance Event and Conference Day pairing with Day-local order
+- `AgendaTrackRecord`: concurrent stream related to one Event Programme
+- `AgendaSlotRecord`: time-bounded Session or non-Session item related to one Event Programme and optionally one Track
+
 ### Partners Collection
 - Location: `PartnerRecord` interface in `src/lib/pocketbase-types.ts`
 - Fields: `name`, `published`, `type`, `tier`, optional `logo`, required `logo_surface`, `url`, `notes`, `normalized_name`, `canonical_url`, internal `mutation_token`, `logo_uploaded_by_human`, `note_agent_visible`, `created`, `updated`

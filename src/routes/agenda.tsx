@@ -101,53 +101,65 @@ export default function Agenda() {
                         <h2 id={`agenda-day-${day.key}`} class="mt-1 text-2xl font-bold text-white md:text-3xl">{day.title}</h2>
                       </header>
                       <Show
-                        when={day.slots.length > 0}
+                        when={day.programmes.length > 0}
                         fallback={<p class="px-5 py-6 font-mono text-sm text-secondary-200/65 md:px-8">Programme details coming soon.</p>}
                       >
-                        <ol class="divide-y divide-white/10" aria-label={`${day.title} programme`}>
-                          <For each={day.slots}>
-                            {(slot) => (
-                              <li class="grid gap-3 px-5 py-5 sm:grid-cols-[9rem_minmax(0,1fr)] md:px-8">
-                                <p class="font-mono text-sm text-secondary-300">
-                                  <time datetime={slot.startAt}>{formatTime(slot.startAt)}</time> -{" "}
-                                  <time datetime={slot.endAt}>{formatTime(slot.endAt)}</time>
-                                  <Show when={localDateKey(slot.startAt) !== localDateKey(slot.endAt)}>
-                                    <span class="block text-xs text-secondary-200/75">Ends {formatEndDay(slot.endAt)}</span>
-                                  </Show>
-                                </p>
-                                <div class="min-w-0">
-                                  <div class="flex flex-wrap items-center gap-2">
-                                    <Show
-                                      when={slot.session}
-                                      fallback={<h3 class="text-lg font-bold text-white">{agendaTitle(slot)}</h3>}
-                                    >
-                                      {(session) => (
-                                        <a href={`/sessions/${session().slug}`} class="text-lg font-bold text-white transition-colors hover:text-primary-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-primary-300">
-                                          {session().title}
-                                        </a>
-                                      )}
-                                    </Show>
-                                    <span class="badge border-secondary-500/40 bg-secondary-500/10 font-mono text-xs text-secondary-200">
-                                      {slot.track?.name || "All attendees"}
-                                    </span>
-                                    <Show when={!slot.session}>
-                                      <span class="badge badge-ghost font-mono text-xs">{formatKind(slot.kind)}</span>
-                                    </Show>
-                                  </div>
-                                  <Show when={slot.session?.format}>
-                                    <p class="mt-1 font-mono text-xs text-secondary-400">{slot.session?.format}</p>
-                                  </Show>
-                                  <Show when={slot.summary}>
-                                    <p class="mt-2 max-w-3xl text-sm leading-relaxed text-secondary-100/75">{slot.summary}</p>
-                                  </Show>
-                                  <Show when={slot.locationLabel}>
-                                    <p class="mt-2 font-mono text-xs text-secondary-300/75">Location: {slot.locationLabel}</p>
-                                  </Show>
-                                </div>
-                              </li>
+                        <div class="divide-y divide-white/10">
+                          <For each={day.programmes}>
+                            {(eventProgramme, index) => (
+                              <section aria-labelledby={`agenda-programme-${day.key}-${index()}`}>
+                                <header class="bg-black/15 px-5 py-4 md:px-8">
+                                  <p class="font-mono text-xs uppercase tracking-[0.14em] text-primary-300">Event Programme</p>
+                                  <h3 id={`agenda-programme-${day.key}-${index()}`} class="mt-1 text-xl font-bold text-white">{eventProgramme.event.name}</h3>
+                                </header>
+                                <ol class="divide-y divide-white/10" aria-label={`${eventProgramme.event.name} programme`}>
+                                  <For each={eventProgramme.slots}>
+                                    {(slot) => (
+                                      <li class="grid gap-3 px-5 py-5 sm:grid-cols-[9rem_minmax(0,1fr)] md:px-8">
+                                        <p class="font-mono text-sm text-secondary-300">
+                                          <time datetime={slot.startAt}>{formatTime(slot.startAt)}</time> -{" "}
+                                          <time datetime={slot.endAt}>{formatTime(slot.endAt)}</time>
+                                          <Show when={localDateKey(slot.startAt) !== localDateKey(slot.endAt)}>
+                                            <span class="block text-xs text-secondary-200/75">Ends {formatEndDay(slot.endAt)}</span>
+                                          </Show>
+                                        </p>
+                                        <div class="min-w-0">
+                                          <div class="flex flex-wrap items-center gap-2">
+                                            <Show
+                                              when={slot.session}
+                                              fallback={<h4 class="text-lg font-bold text-white">{agendaTitle(slot)}</h4>}
+                                            >
+                                              {(session) => (
+                                                <a href={`/sessions/${session().slug}`} class="text-lg font-bold text-white transition-colors hover:text-primary-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-primary-300">
+                                                  {session().title}
+                                                </a>
+                                              )}
+                                            </Show>
+                                            <span class="badge border-secondary-500/40 bg-secondary-500/10 font-mono text-xs text-secondary-200">
+                                              {slot.track?.name || "Programme-wide"}
+                                            </span>
+                                            <Show when={!slot.session}>
+                                              <span class="badge badge-ghost font-mono text-xs">{formatKind(slot.kind)}</span>
+                                            </Show>
+                                          </div>
+                                          <Show when={slot.session?.format}>
+                                            <p class="mt-1 font-mono text-xs text-secondary-400">{slot.session?.format}</p>
+                                          </Show>
+                                          <Show when={slot.summary}>
+                                            <p class="mt-2 max-w-3xl text-sm leading-relaxed text-secondary-100/75">{slot.summary}</p>
+                                          </Show>
+                                          <Show when={slot.locationLabel}>
+                                            <p class="mt-2 font-mono text-xs text-secondary-300/75">Location: {slot.locationLabel}</p>
+                                          </Show>
+                                        </div>
+                                      </li>
+                                    )}
+                                  </For>
+                                </ol>
+                              </section>
                             )}
                           </For>
-                        </ol>
+                        </div>
                       </Show>
                     </section>
                   )}

@@ -3160,8 +3160,11 @@ describe("Session attendance Missions", () => {
     store.seed("conference_days", {
       id: "day-1", key: "main-day", local_date: "2026-09-19", title: "Main day", display_order: 1, published: true, created: timestamp, updated: timestamp,
     });
+    store.seed("event_programmes", {
+      id: "programme-1", day: "day-1", appearance_event: "event-main", display_order: 1, created: timestamp, updated: timestamp,
+    });
     store.seed("agenda_slots", {
-      id: "slot-1", day: "day-1", start_at: "2026-09-19T08:00:00.000Z", end_at: "2026-09-19T09:00:00.000Z", kind: "session", published: true, display_order: 1, session: "session-1", created: timestamp, updated: timestamp,
+      id: "slot-1", programme: "programme-1", start_at: "2026-09-19T08:00:00.000Z", end_at: "2026-09-19T09:00:00.000Z", kind: "session", published: true, display_order: 1, session: "session-1", created: timestamp, updated: timestamp,
     });
     store.seed(GAMIFICATION_COLLECTIONS.achievements, {
       id: "session-badge", key: "session-badge", badge_name: "Session Badge", badge_description: "Badge", category: "session", rarity: "common", visibility: "public", status: "active", unlock_rule: { kind: "activity_claim", activityKeys: ["session.platform-design.attendance"] }, sort_order: 1, created: timestamp, updated: timestamp,

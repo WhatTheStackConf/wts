@@ -5,12 +5,14 @@ import {
   derivePublicSessionSchedule,
   type PublicAgenda,
   type PublicAgendaDay,
+  type PublicAgendaEvent,
   type PublicAgendaSession,
   type PublicAgendaSlot,
   type PublicAgendaTrack,
+  type PublicEventProgramme,
   type PublicSessionSchedule,
 } from "~/lib/programme-public";
-import type { AgendaSlotRecord, AgendaTrackRecord, ConferenceDayRecord, SpeakerRecord, SessionRecord } from "~/lib/pocketbase-types";
+import type { AgendaSlotRecord, AgendaTrackRecord, AppearanceEventRecord, ConferenceDayRecord, EventProgrammeRecord, SpeakerRecord, SessionRecord } from "~/lib/pocketbase-types";
 import {
   conferenceGuideContent,
   conferenceShortDate,
@@ -20,9 +22,11 @@ export { getPbFileUrl } from "~/lib/pocketbase-public-url";
 export type {
   PublicAgenda,
   PublicAgendaDay,
+  PublicAgendaEvent,
   PublicAgendaSession,
   PublicAgendaSlot,
   PublicAgendaTrack,
+  PublicEventProgramme,
   PublicSessionSchedule,
 } from "~/lib/programme-public";
 
@@ -32,6 +36,12 @@ export interface PublicSpeakerSummary {
   photoUrl: string | null;
   affiliation: string;
   sessionCount: number;
+  appearanceEvents: PublicAppearanceEvent[];
+}
+
+export interface PublicAppearanceEvent {
+  name: string;
+  compactLabel: string;
 }
 
 export interface PublicSpeakerDetail extends PublicSpeakerSummary {
@@ -209,21 +219,26 @@ export function normalizeSocialHandles(raw: unknown): string[] {
 
 type SpeakerRow = SpeakerRecord;
 
-function mapSpeakerSummary(row: SpeakerRow): PublicSpeakerSummary {
+function mapSpeakerSummary(
+  row: SpeakerRow,
+  appearanceEvents: PublicAppearanceEvent[] = [],
+): PublicSpeakerSummary {
   return {
     slug: row.slug,
     displayName: row.display_name || row.slug || "Speaker",
     photoUrl: row.photo ? getPbFileUrl(row, row.photo) : null,
     affiliation: row.affiliation || "",
     sessionCount: 0,
+    appearanceEvents,
   };
 }
 
 function mapSpeakerDetail(
   row: SpeakerRow,
   sessions: PublicSessionCard[],
+  appearanceEvents: PublicAppearanceEvent[] = [],
 ): PublicSpeakerDetail {
-  const summary = mapSpeakerSummary(row);
+  const summary = mapSpeakerSummary(row, appearanceEvents);
 
   return {
     ...summary,
@@ -276,6 +291,33 @@ async function fetchPublishedSessionsRows(): Promise<SessionRecord[]> {
   return rows as SessionRecord[];
 }
 
+async function fetchPublishedAppearanceEventsRows(): Promise<AppearanceEventRecord[]> {
+  const rows = await getAdminPB().fetchAllRecords("appearance_events", {
+    filter: "published = true",
+    fields: "id,name,compact_label,published,display_order",
+    sort: "display_order,name,id",
+  });
+  return (rows as AppearanceEventRecord[]).filter((row) => row.published);
+}
+
+function appearanceEventsForSpeaker(
+  allEvents: AppearanceEventRecord[],
+  speaker: SpeakerRow,
+): PublicAppearanceEvent[] {
+  const assigned = new Set(speaker.appearance_events || []);
+  return allEvents
+    .filter((event) => assigned.has(event.id))
+    .sort(
+      (a, b) =>
+        Number(a.display_order) - Number(b.display_order) ||
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    )
+    .map((event) => ({
+      name: event.name,
+      compactLabel: event.compact_label || event.name,
+    }));
+}
+
 function sessionsForSpeaker(
   allSessions: SessionRecord[],
   speakerId: string,
@@ -293,19 +335,33 @@ function sessionsForSpeaker(
   return sortByTitle(cards);
 }
 
-export const fetchPublicSpeakers = async (limit?: number): Promise<PublicSpeakerSummary[]> => {
-  "use server";
-  const [rows, sessions] = await Promise.all([
+export async function loadPublicSpeakers(limit?: number): Promise<PublicSpeakerSummary[]> {
+  const [rows, sessions, appearanceEvents] = await Promise.all([
     fetchPublishedSpeakersRows(),
     fetchPublishedSessionsRows(),
+    fetchPublishedAppearanceEventsRows(),
   ]);
   const mapped = sortByDisplayName(
     rows.map((row) => ({
-      ...mapSpeakerSummary(row),
+      ...mapSpeakerSummary(row, appearanceEventsForSpeaker(appearanceEvents, row)),
       sessionCount: sessionsForSpeaker(sessions, row.id).length,
     })),
   );
   return limit ? mapped.slice(0, limit) : mapped;
+}
+
+export const fetchPublicSpeakers = async (limit?: number): Promise<PublicSpeakerSummary[]> => {
+  "use server";
+  return loadPublicSpeakers(limit);
+};
+
+export const loadPublicSpeakerTeaser = async (): Promise<{
+  preview: PublicSpeakerSummary[];
+  total: number;
+}> => {
+  const speakers = await loadPublicSpeakers();
+  const preview = shuffleArray(speakers).slice(0, TEASER_SPEAKER_LIMIT);
+  return { preview, total: speakers.length };
 };
 
 export const fetchPublicSpeakerTeaser = async (): Promise<{
@@ -313,22 +369,12 @@ export const fetchPublicSpeakerTeaser = async (): Promise<{
   total: number;
 }> => {
   "use server";
-  const [rows, sessions] = await Promise.all([
-    fetchPublishedSpeakersRows(),
-    fetchPublishedSessionsRows(),
-  ]);
-  const mapped = rows.map((row) => ({
-    ...mapSpeakerSummary(row),
-    sessionCount: sessionsForSpeaker(sessions, row.id).length,
-  }));
-  const preview = shuffleArray(mapped).slice(0, TEASER_SPEAKER_LIMIT);
-  return { preview, total: mapped.length };
+  return loadPublicSpeakerTeaser();
 };
 
-export const fetchPublicSpeakerBySlug = async (
+export const loadPublicSpeakerBySlug = async (
   slug: string,
 ): Promise<PublicSpeakerDetail | null> => {
-  "use server";
   const escaped = slug.replace(/"/g, '\\"');
   const rows = (await getAdminPB().fetchAllRecords("speakers", {
     filter: `published = true && slug = "${escaped}"`,
@@ -336,9 +382,23 @@ export const fetchPublicSpeakerBySlug = async (
   const row = rows[0];
   if (!row) return null;
 
-  const sessions = await fetchPublishedSessionsRows();
+  const [sessions, appearanceEvents] = await Promise.all([
+    fetchPublishedSessionsRows(),
+    fetchPublishedAppearanceEventsRows(),
+  ]);
   const speakerSessions = sessionsForSpeaker(sessions, row.id);
-  return mapSpeakerDetail(row, speakerSessions);
+  return mapSpeakerDetail(
+    row,
+    speakerSessions,
+    appearanceEventsForSpeaker(appearanceEvents, row),
+  );
+};
+
+export const fetchPublicSpeakerBySlug = async (
+  slug: string,
+): Promise<PublicSpeakerDetail | null> => {
+  "use server";
+  return loadPublicSpeakerBySlug(slug);
 };
 
 export const fetchPublicSpeakerPromoBySlug = async (
@@ -370,20 +430,29 @@ export const fetchPublicSessions = async (): Promise<PublicSessionCard[]> => {
 export const fetchPublicAgenda = async (): Promise<PublicAgenda> => {
   "use server";
   const admin = getAdminPB();
-  const [days, tracks, slots, sessions] = await Promise.all([
+  const [days, events, programmes, tracks, slots, sessions] = await Promise.all([
     admin.fetchAllRecords("conference_days", {
       filter: "published = true",
       fields: "id,key,local_date,title,display_order,published",
       sort: "display_order,local_date,id",
     }),
-    admin.fetchAllRecords("agenda_tracks", {
-      fields: "id,day,key,name,location_label,display_order",
+    admin.fetchAllRecords("appearance_events", {
+      filter: "published = true",
+      fields: "id,name,compact_label,destination_url,published,display_order",
+      sort: "display_order,name,id",
+    }),
+    admin.fetchAllRecords("event_programmes", {
+      fields: "id,day,appearance_event,display_order",
       sort: "day,display_order,id",
+    }),
+    admin.fetchAllRecords("agenda_tracks", {
+      fields: "id,programme,key,name,location_label,display_order",
+      sort: "programme,display_order,id",
     }),
     admin.fetchAllRecords("agenda_slots", {
       filter: "published = true",
-      fields: "id,day,track,start_at,end_at,kind,published,display_order,location_label,session,title,summary",
-      sort: "day,start_at,track,display_order,id",
+      fields: "id,programme,track,start_at,end_at,kind,published,display_order,location_label,session,title,summary",
+      sort: "programme,start_at,track,display_order,id",
     }),
     admin.fetchAllRecords("sessions", {
       filter: "published = true",
@@ -393,6 +462,8 @@ export const fetchPublicAgenda = async (): Promise<PublicAgenda> => {
   ]);
   return buildPublicAgenda(
     days as ConferenceDayRecord[],
+    events as AppearanceEventRecord[],
+    programmes as EventProgrammeRecord[],
     tracks as AgendaTrackRecord[],
     slots as AgendaSlotRecord[],
     sessions as SessionRecord[],
@@ -404,16 +475,19 @@ function scheduleFromPublicAgenda(
   sessionSlug: string,
 ): PublicSessionSchedule | undefined {
   for (const day of agenda.days) {
-    const slot = day.slots.find((item) => item.session?.slug === sessionSlug);
-    if (!slot) continue;
-    return {
-      dayDate: day.localDate,
-      dayTitle: day.title,
-      startAt: slot.startAt,
-      endAt: slot.endAt,
-      trackName: slot.track?.name,
-      locationLabel: slot.locationLabel,
-    };
+    for (const programme of day.programmes) {
+      const slot = programme.slots.find((item) => item.session?.slug === sessionSlug);
+      if (!slot) continue;
+      return {
+        dayDate: day.localDate,
+        dayTitle: day.title,
+        event: programme.event,
+        startAt: slot.startAt,
+        endAt: slot.endAt,
+        trackName: slot.track?.name,
+        locationLabel: slot.locationLabel,
+      };
+    }
   }
   return undefined;
 }
@@ -439,7 +513,7 @@ export const fetchPublicConferenceGuideProgramme = async (): Promise<PublicConfe
     speakers: sortByDisplayName(
       (session.expand?.speakers ?? [])
         .filter((speaker) => speaker.published)
-        .map(mapSpeakerSummary),
+        .map((speaker) => mapSpeakerSummary(speaker)),
     ),
     relatedSessions: [],
   })));
@@ -478,12 +552,16 @@ export const fetchPublicSessionBySlug = async (
   if (!session) return null;
 
   const speakerRows = (session.expand?.speakers ?? []).filter((speaker) => speaker.published);
-  const speakers = sortByDisplayName(speakerRows.map(mapSpeakerSummary));
+  const speakers = sortByDisplayName(
+    speakerRows.map((speaker) => mapSpeakerSummary(speaker)),
+  );
 
-  const [slots, days, tracks] = await Promise.all([
+  const [slots, programmes, events, days, tracks] = await Promise.all([
     admin.fetchAllRecords("agenda_slots", {
       filter: `session = "${session.id.replace(/"/g, '\\"')}" && published = true`,
     }),
+    admin.fetchAllRecords("event_programmes"),
+    admin.fetchAllRecords("appearance_events"),
     admin.fetchAllRecords("conference_days"),
     admin.fetchAllRecords("agenda_tracks"),
   ]);
@@ -491,6 +569,8 @@ export const fetchPublicSessionBySlug = async (
   const schedule = scheduleSlot
     ? derivePublicSessionSchedule(
         scheduleSlot,
+        new Map((programmes as EventProgrammeRecord[]).map((programme) => [programme.id, programme])),
+        new Map((events as AppearanceEventRecord[]).map((event) => [event.id, event])),
         new Map((days as ConferenceDayRecord[]).map((day) => [day.id, day])),
         new Map((tracks as AgendaTrackRecord[]).map((track) => [track.id, track])),
       )

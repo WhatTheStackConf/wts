@@ -23,9 +23,22 @@ export interface ProgrammeDayRef {
   published: boolean;
 }
 
-export interface ProgrammeTrackRef {
+export interface ProgrammeEventRef {
+  id: string;
+  name: string;
+  published: boolean;
+}
+
+export interface ProgrammeEventProgrammeRef {
   id: string;
   dayId: string;
+  appearanceEventId: string;
+  displayOrder: number;
+}
+
+export interface ProgrammeTrackRef {
+  id: string;
+  programmeId: string;
   key: string;
   name: string;
   locationLabel?: string;
@@ -35,11 +48,17 @@ export interface ProgrammeTrackRef {
 export interface ProgrammeSessionRef {
   id: string;
   published: boolean;
+  speakerIds: string[];
+}
+
+export interface ProgrammeSpeakerRef {
+  id: string;
+  appearanceEventIds: string[];
 }
 
 export interface ProgrammeSlotRef {
   id: string;
-  dayId: string;
+  programmeId: string;
   trackId?: string;
   startAt: string;
   endAt: string;
@@ -53,14 +72,17 @@ export interface ProgrammeSlotRef {
 }
 
 export interface ProgrammeValidationContext {
+  events: ProgrammeEventRef[];
   days: ProgrammeDayRef[];
+  programmes: ProgrammeEventProgrammeRef[];
   tracks: ProgrammeTrackRef[];
   sessions: ProgrammeSessionRef[];
+  speakers: ProgrammeSpeakerRef[];
   slots: ProgrammeSlotRef[];
 }
 
 export interface AgendaSlotInput {
-  dayId: string;
+  programmeId: string;
   trackId?: string;
   startAt: string;
   endAt: string;
@@ -76,6 +98,30 @@ export interface AgendaSlotInput {
 export type AgendaSlotValidationResult =
   | { success: true; data: ProgrammeSlotRef }
   | { success: false; error: string };
+
+/** Returns the unmet parent or explicit-appearance requirement for Slot publication. */
+export function validateAgendaSlotPublication(
+  slot: ProgrammeSlotRef,
+  context: ProgrammeValidationContext,
+): string | null {
+  const programme = context.programmes.find((candidate) => candidate.id === slot.programmeId);
+  if (!programme) return "Choose a valid Event Programme.";
+  const day = context.days.find((candidate) => candidate.id === programme.dayId);
+  if (!day?.published) return "Publish the Conference Day before publishing one of its Slots.";
+  const appearanceEvent = context.events.find((candidate) => candidate.id === programme.appearanceEventId);
+  if (!appearanceEvent?.published) {
+    return "Publish the Appearance Event before publishing one of its Slots.";
+  }
+  if (slot.kind !== "session") return null;
+  const session = context.sessions.find((candidate) => candidate.id === slot.sessionId);
+  const missingAppearance = session?.speakerIds.find((speakerId) => {
+    const speaker = context.speakers.find((candidate) => candidate.id === speakerId);
+    return !speaker?.appearanceEventIds.includes(programme.appearanceEventId);
+  });
+  return missingAppearance
+    ? "Every Session Speaker needs an Event Appearance for this Appearance Event before publishing the Slot."
+    : null;
+}
 
 const localDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: SCHEDULE_TIME_ZONE,
@@ -191,7 +237,7 @@ export function validateAgendaSlot(
   context: ProgrammeValidationContext,
   existingId = "",
 ): AgendaSlotValidationResult {
-  const dayId = cleanText(input.dayId);
+  const programmeId = cleanText(input.programmeId);
   const trackId = cleanText(input.trackId);
   const startAt = cleanText(input.startAt);
   const endAt = cleanText(input.endAt);
@@ -200,8 +246,10 @@ export function validateAgendaSlot(
   const summary = cleanText(input.summary);
   const locationLabel = cleanText(input.locationLabel);
 
-  const day = context.days.find((item) => item.id === dayId);
-  if (!day) return { success: false, error: "Choose a valid Conference Day." };
+  const programme = context.programmes.find((item) => item.id === programmeId);
+  if (!programme) return { success: false, error: "Choose a valid Event Programme." };
+  const day = context.days.find((item) => item.id === programme.dayId);
+  if (!day) return { success: false, error: "The Event Programme must belong to a valid Conference Day." };
   if (!isAgendaSlotKind(input.kind)) return { success: false, error: "Choose a valid Slot kind." };
   if (!Number.isInteger(input.displayOrder)) {
     return { success: false, error: "Display order must be a whole number." };
@@ -221,8 +269,8 @@ export function validateAgendaSlot(
 
   const track = trackId ? context.tracks.find((item) => item.id === trackId) : undefined;
   if (trackId && !track) return { success: false, error: "Choose a valid Track." };
-  if (track && track.dayId !== day.id) {
-    return { success: false, error: "The selected Track belongs to another Conference Day." };
+  if (track && track.programmeId !== programme.id) {
+    return { success: false, error: "The selected Track belongs to another Event Programme." };
   }
 
   if (input.kind === "session") {
@@ -240,7 +288,7 @@ export function validateAgendaSlot(
 
   const candidate: ProgrammeSlotRef = {
     id: existingId,
-    dayId: day.id,
+    programmeId: programme.id,
     trackId: track?.id || undefined,
     startAt,
     endAt,
@@ -254,12 +302,16 @@ export function validateAgendaSlot(
   };
 
   for (const existing of context.slots) {
-    if (existing.id === existingId || !overlaps(candidate, existing)) continue;
+    if (
+      existing.id === existingId ||
+      existing.programmeId !== candidate.programmeId ||
+      !overlaps(candidate, existing)
+    ) continue;
     const conflicts = !candidate.trackId || !existing.trackId || candidate.trackId === existing.trackId;
     if (conflicts) {
       return {
         success: false,
-        error: "This Slot overlaps an all-attendee Slot or another Slot in the same Track.",
+        error: "This Slot overlaps a Programme-wide Slot or another Slot in the same Track.",
       };
     }
   }

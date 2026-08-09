@@ -18,6 +18,7 @@ import {
   useAdminToast,
 } from "~/components/admin/AdminPageShell";
 import {
+  adminFetchAppearanceEvents,
   adminCreateInviteSpeaker,
   adminPublishFromApplicant,
   adminFetchAcceptedApplicantsWithoutSpeaker,
@@ -26,10 +27,11 @@ import {
   adminUpdateSpeakerProfile,
   type SpeakerProfileUpdateInput,
 } from "~/lib/admin-actions";
-import type { SpeakerRecord } from "~/lib/pocketbase-types";
+import type { AppearanceEventRecord, SpeakerRecord } from "~/lib/pocketbase-types";
 import { slugify } from "~/lib/conference-slug";
 import { speakerFileToPhotoPayload } from "~/lib/admin-speaker-profile";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
+import { AdminAppearanceEventsPanel } from "~/components/admin/AdminAppearanceEventsPanel";
 
 type SpeakerRow = SpeakerRecord & {
   expand?: {
@@ -106,6 +108,7 @@ export default function AdminSpeakersHub() {
   const [editAffiliation, setEditAffiliation] = createSignal("");
   const [editBio, setEditBio] = createSignal("");
   const [editSocial, setEditSocial] = createSignal("");
+  const [editAppearanceEventIds, setEditAppearanceEventIds] = createSignal<string[]>([]);
   const [editPhoto, setEditPhoto] = createSignal<File | null>(null);
   const [editRemovePhoto, setEditRemovePhoto] = createSignal(false);
   const [editPhotoPreview, setEditPhotoPreview] = createSignal<string | null>(null);
@@ -128,6 +131,17 @@ export default function AdminSpeakersHub() {
     }
     setSpeakersError(null);
     return res.data as SpeakerRow[];
+  });
+
+  const [appearanceEventsError, setAppearanceEventsError] = createSignal<string | null>(null);
+  const [appearanceEvents, { refetch: refetchAppearanceEvents }] = createResource(async () => {
+    const res = await adminFetchAppearanceEvents();
+    if (!res.success) {
+      setAppearanceEventsError(res.error || "Could not load Appearance Events.");
+      return [] as AppearanceEventRecord[];
+    }
+    setAppearanceEventsError(null);
+    return res.data as AppearanceEventRecord[];
   });
 
   const [pendingApplicants, { refetch: refetchPending }] = createResource(async () => {
@@ -196,6 +210,7 @@ export default function AdminSpeakersHub() {
     setEditAffiliation("");
     setEditBio("");
     setEditSocial("");
+    setEditAppearanceEventIds([]);
     setEditPhoto(null);
     setEditRemovePhoto(false);
     clearEditFieldErrors();
@@ -210,6 +225,7 @@ export default function AdminSpeakersHub() {
     setEditAffiliation(row.affiliation || "");
     setEditBio(row.bio || "");
     setEditSocial(speakerSocialText(row.social_handles));
+    setEditAppearanceEventIds(Array.isArray(row.appearance_events) ? row.appearance_events : []);
     setEditPhoto(null);
     setEditRemovePhoto(false);
     clearEditFieldErrors();
@@ -219,6 +235,13 @@ export default function AdminSpeakersHub() {
         behavior: reducedMotionPreferred() ? "auto" : "smooth",
         block: "start",
       });
+    });
+  };
+
+  const setEditAppearanceAssignment = (eventId: string, assigned: boolean) => {
+    setEditAppearanceEventIds((current) => {
+      if (assigned) return current.includes(eventId) ? current : [...current, eventId];
+      return current.filter((id) => id !== eventId);
     });
   };
 
@@ -404,6 +427,7 @@ export default function AdminSpeakersHub() {
         affiliation: editAffiliation(),
         bio: editBio(),
         social_handles: handles,
+        appearance_events: editAppearanceEventIds(),
         photo,
       });
 
@@ -512,6 +536,14 @@ export default function AdminSpeakersHub() {
           <span>{pendingWarning()}</span>
         </div>
       </Show>
+
+      <AdminAppearanceEventsPanel
+        events={appearanceEvents() || []}
+        loading={appearanceEvents.loading}
+        error={appearanceEventsError()}
+        onChanged={refetchAppearanceEvents}
+        showToast={showToast}
+      />
 
       <div class="glass-panel p-6 rounded-2xl mb-8 border border-warning-500/20 shadow-xl backdrop-blur-xl bg-black/40">
         <div class="flex flex-wrap justify-between items-start gap-3 mb-4">
@@ -860,6 +892,58 @@ export default function AdminSpeakersHub() {
                         />
                       </AdminFormField>
                     </div>
+                  </AdminFormSection>
+
+                  <AdminFormSection
+                    title="Appearance Events"
+                    description="Select every gathering where this Speaker's participation has been publicly announced. Draft events remain hidden on the public site."
+                  >
+                    <Show when={appearanceEvents.loading}>
+                      <div class="flex justify-center py-5">
+                        <span class="loading loading-spinner loading-sm text-primary-400" />
+                      </div>
+                    </Show>
+                    <Show when={!appearanceEvents.loading && (appearanceEvents()?.length ?? 0) === 0}>
+                      <p class="text-sm font-mono text-base-content/60">
+                        Add an Appearance Event above before assigning appearances.
+                      </p>
+                    </Show>
+                    <Show when={!appearanceEvents.loading && (appearanceEvents()?.length ?? 0) > 0}>
+                      <fieldset class="space-y-2">
+                        <legend class="sr-only">Appearance Event assignments</legend>
+                        <For each={appearanceEvents()}>
+                          {(event) => (
+                            <label class="flex min-h-12 cursor-pointer items-center justify-between gap-4 rounded-lg border border-white/10 bg-black/25 px-4 py-3 hover:border-primary-500/35">
+                              <span class="flex min-w-0 items-center gap-3">
+                                <input
+                                  type="checkbox"
+                                  name="appearance_events"
+                                  value={event.id}
+                                  class="checkbox checkbox-primary checkbox-sm shrink-0"
+                                  checked={editAppearanceEventIds().includes(event.id)}
+                                  onChange={(inputEvent) =>
+                                    setEditAppearanceAssignment(event.id, inputEvent.currentTarget.checked)
+                                  }
+                                />
+                                <span class="min-w-0">
+                                  <span class="block text-sm font-bold text-white [overflow-wrap:anywhere]">
+                                    {event.name}
+                                  </span>
+                                  <span class="block text-xs font-mono text-base-content/55 [overflow-wrap:anywhere]">
+                                    Ribbon: {event.compact_label || event.name}
+                                  </span>
+                                </span>
+                              </span>
+                              <span class={`badge badge-sm shrink-0 font-mono ${event.published ? "badge-success" : "badge-ghost"}`}>
+                                <Show when={event.published} fallback="Draft">
+                                  Published
+                                </Show>
+                              </span>
+                            </label>
+                          )}
+                        </For>
+                      </fieldset>
+                    </Show>
                   </AdminFormSection>
                 </div>
               </div>

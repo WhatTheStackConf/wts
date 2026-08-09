@@ -55,8 +55,20 @@ export interface SpeakerRecord extends RecordModel {
   affiliation?: string;
   bio?: string;
   social_handles?: unknown;
+  appearance_events?: string[];
   /** Optional promo page overrides: statusMessage, roleLine, stack[], ctaHref, ctaLabel, footerText, footerLinks[] */
   promo?: unknown;
+  created: string;
+  updated: string;
+}
+
+export interface AppearanceEventRecord extends RecordModel {
+  id: string;
+  name: string;
+  compact_label?: string;
+  published: boolean;
+  display_order: number;
+  destination_url?: string;
   created: string;
   updated: string;
 }
@@ -92,9 +104,18 @@ export interface ConferenceDayRecord extends RecordModel {
   updated: string;
 }
 
-export interface AgendaTrackRecord extends RecordModel {
+export interface EventProgrammeRecord extends RecordModel {
   id: string;
   day: string;
+  appearance_event: string;
+  display_order: number;
+  created: string;
+  updated: string;
+}
+
+export interface AgendaTrackRecord extends RecordModel {
+  id: string;
+  programme: string;
   key: string;
   name: string;
   location_label?: string;
@@ -114,7 +135,7 @@ export type AgendaSlotKind =
 
 export interface AgendaSlotRecord extends RecordModel {
   id: string;
-  day: string;
+  programme: string;
   track?: string;
   start_at: string;
   end_at: string;
@@ -683,8 +704,10 @@ export type CollectionRecord =
   | CfpReviewRecord
   | CfpWeightVoteRecord
   | SpeakerRecord
+  | AppearanceEventRecord
   | SessionRecord
   | ConferenceDayRecord
+  | EventProgrammeRecord
   | AgendaTrackRecord
   | AgendaSlotRecord
   | GamificationAchievementRecord
@@ -749,6 +772,12 @@ export function isConferenceDayRecord(
   record: CollectionRecord,
 ): record is ConferenceDayRecord {
   return (record as any).collectionName === "conference_days";
+}
+
+export function isEventProgrammeRecord(
+  record: CollectionRecord,
+): record is EventProgrammeRecord {
+  return (record as any).collectionName === "event_programmes";
 }
 
 export function isAgendaTrackRecord(

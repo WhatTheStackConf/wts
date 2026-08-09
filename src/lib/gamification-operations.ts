@@ -44,6 +44,7 @@ import {
 import type {
   AgendaSlotRecord,
   ConferenceDayRecord,
+  EventProgrammeRecord,
   GamificationAchievementRecord,
   GamificationActivityRecord,
   GamificationActivityClaimRecord,
@@ -571,6 +572,7 @@ interface GamificationContext {
   partners: PartnerRecord[];
   sessions: SessionRecord[];
   agendaSlots: AgendaSlotRecord[];
+  eventProgrammes: EventProgrammeRecord[];
   conferenceDays: ConferenceDayRecord[];
   adminActions: Array<{
     id: string;
@@ -932,8 +934,11 @@ function safeSessionReference(
   const slot = context.agendaSlots.find((candidate) =>
     candidate.kind === "session" && candidate.session === session.id && candidate.published
   );
-  const day = slot
-    ? context.conferenceDays.find((candidate) => candidate.id === slot.day && candidate.published)
+  const programme = slot
+    ? context.eventProgrammes.find((candidate) => candidate.id === slot.programme)
+    : undefined;
+  const day = programme
+    ? context.conferenceDays.find((candidate) => candidate.id === programme.day && candidate.published)
     : undefined;
   return {
     id: session.id,
@@ -2636,6 +2641,7 @@ export class GamificationOperationsService {
       partners,
       sessions,
       agendaSlots,
+      eventProgrammes,
       conferenceDays,
       adminActions,
     ] = await Promise.all([
@@ -2653,6 +2659,7 @@ export class GamificationOperationsService {
       this.store.list<PartnerRecord>("partners", undefined, { sort: "name,id", limit: 1000 }),
       this.store.list<SessionRecord>("sessions", undefined, { sort: "title,id", limit: 1000 }),
       this.store.list<AgendaSlotRecord>("agenda_slots", undefined, { sort: "start_at,id", limit: 2000 }),
+      this.store.list<EventProgrammeRecord>("event_programmes", undefined, { sort: "day,display_order,id", limit: 500 }),
       this.store.list<ConferenceDayRecord>("conference_days", undefined, { sort: "display_order,local_date,id", limit: 100 }),
       this.store.list<GamificationContext["adminActions"][number]>(GAMIFICATION_COLLECTIONS.adminActions, undefined, { sort: "-created,id", limit: 5000 }),
     ]);
@@ -2671,6 +2678,7 @@ export class GamificationOperationsService {
       partners,
       sessions,
       agendaSlots,
+      eventProgrammes,
       conferenceDays,
       adminActions,
     };

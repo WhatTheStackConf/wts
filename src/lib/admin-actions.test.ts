@@ -260,6 +260,46 @@ describe("admin speaker profile helpers", () => {
     });
   });
 
+  it("normalizes explicit Appearance Event assignments with the Speaker profile", () => {
+    const normalized = normalizeSpeakerProfileUpdateInput({
+      display_name: "Ada Lovelace",
+      slug: "ada-lovelace",
+      appearance_events: ["event-2", "", "event-1", "event-2"],
+    });
+
+    expect(normalized).toMatchObject({
+      success: true,
+      data: {
+        fields: {
+          appearance_events: ["event-2", "event-1"],
+        },
+      },
+    });
+  });
+
+  it("preserves Appearance Event assignments when replacing a Speaker photo", () => {
+    const normalized = normalizeSpeakerProfileUpdateInput({
+      display_name: "Ada Lovelace",
+      slug: "ada-lovelace",
+      appearance_events: ["event-1", "event-2"],
+      photo: {
+        intent: "replace",
+        file: { name: "ada.webp", type: "image/webp", data: [1, 2, 3] },
+      },
+    });
+    if (!normalized.success) throw new Error(normalized.error);
+
+    const body = buildSpeakerProfileUpdateBody(
+      normalized.data.fields,
+      normalized.data.photo,
+    );
+
+    expect(body).toBeInstanceOf(FormData);
+    expect((body as FormData).get("appearance_events")).toBe(
+      JSON.stringify(["event-1", "event-2"]),
+    );
+  });
+
   it("reuses an existing CFP-origin speaker before reading source records", async () => {
     mockSpeakerLookups([speaker()]);
 

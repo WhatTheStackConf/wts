@@ -6,6 +6,12 @@ import {
   type ConferenceGuidePublishedData,
 } from "~/lib/conference-guide";
 
+const mainAgendaEvent = {
+  name: "WhatTheStack 2026",
+  compactLabel: "WTS 2026",
+  destinationUrl: "https://wts.sh",
+};
+
 function publishedData(): ConferenceGuidePublishedData {
   return {
     agenda: {
@@ -13,7 +19,9 @@ function publishedData(): ConferenceGuidePublishedData {
         key: "conference-day",
         localDate: "2026-09-19",
         title: "Conference Day",
-        slots: [
+        programmes: [{
+          event: mainAgendaEvent,
+          slots: [
           {
             kind: "opening",
             startAt: "2026-09-19T07:00:00.000Z",
@@ -29,7 +37,8 @@ function publishedData(): ConferenceGuidePublishedData {
             track: { key: "systems", name: "Systems", locationLabel: "Stage A" },
             session: { slug: "safe-systems", title: "Safe <em>Systems</em>", format: "Talk" },
           },
-        ],
+          ],
+        }],
       }],
     },
     sessions: [{
@@ -87,7 +96,7 @@ function publishedData(): ConferenceGuidePublishedData {
 
 function searchablePublishedData(): ConferenceGuidePublishedData {
   const data = publishedData();
-  data.agenda.days[0].slots.push(
+  data.agenda.days[0].programmes[0].slots.push(
     {
       kind: "session",
       startAt: "2026-09-19T09:00:00.000Z",
@@ -160,13 +169,16 @@ function searchablePublishedData(): ConferenceGuidePublishedData {
     key: "community-day",
     localDate: "2026-09-20",
     title: "Community Day",
-    slots: [{
-      kind: "session",
-      startAt: "2026-09-20T08:00:00.000Z",
-      endAt: "2026-09-20T08:35:00.000Z",
-      locationLabel: "Community hall",
-      track: { key: "community", name: "Community", locationLabel: "Community hall" },
-      session: { slug: "future-community", title: "Future Community", format: "Panel" },
+    programmes: [{
+      event: mainAgendaEvent,
+      slots: [{
+        kind: "session",
+        startAt: "2026-09-20T08:00:00.000Z",
+        endAt: "2026-09-20T08:35:00.000Z",
+        locationLabel: "Community hall",
+        track: { key: "community", name: "Community", locationLabel: "Community hall" },
+        session: { slug: "future-community", title: "Future Community", format: "Panel" },
+      }],
     }],
   });
   data.sessions.push({
@@ -187,7 +199,7 @@ function searchablePublishedData(): ConferenceGuidePublishedData {
 
 function plannablePublishedData(): ConferenceGuidePublishedData {
   const data = publishedData();
-  data.agenda.days[0].slots.push(
+  data.agenda.days[0].programmes[0].slots.push(
     {
       kind: "session",
       startAt: "2026-09-19T08:00:00.000Z",
@@ -317,7 +329,7 @@ function plannablePublishedData(): ConferenceGuidePublishedData {
 
 function overnightPlannablePublishedData(): ConferenceGuidePublishedData {
   const data = publishedData();
-  data.agenda.days[0].slots.push(
+  data.agenda.days[0].programmes[0].slots.push(
     {
       kind: "session",
       startAt: "2026-09-19T21:00:00.000Z",
@@ -337,12 +349,15 @@ function overnightPlannablePublishedData(): ConferenceGuidePublishedData {
     key: "conference-day-two",
     localDate: "2026-09-20",
     title: "Conference day two",
-    slots: [{
-      kind: "session",
-      startAt: "2026-09-19T22:30:00.000Z",
-      endAt: "2026-09-19T23:00:00.000Z",
-      track: { key: "community", name: "Community", locationLabel: "Hall C" },
-      session: { slug: "next-day-overlap", title: "Next Day Overlap", format: "Talk" },
+    programmes: [{
+      event: mainAgendaEvent,
+      slots: [{
+        kind: "session",
+        startAt: "2026-09-19T22:30:00.000Z",
+        endAt: "2026-09-19T23:00:00.000Z",
+        track: { key: "community", name: "Community", locationLabel: "Hall C" },
+        session: { slug: "next-day-overlap", title: "Next Day Overlap", format: "Talk" },
+      }],
     }],
   });
   data.sessions.push(
@@ -394,7 +409,7 @@ describe("Conference Guide", () => {
 
     expect(proposal).toMatchObject({
       metadata: {
-        schema_version: "1",
+        schema_version: "2",
         content_version: "2026-07-23",
         programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         generated_at: "2026-07-14T18:00:00.000Z",
@@ -541,7 +556,7 @@ describe("Conference Guide", () => {
     expect(proposal.ranked_alternatives[0].priority).toEqual({ kind: "must_attend" });
   });
 
-  it("reports mutually conflicting inputs and Sessions blocked by fixed all-attendee context", async () => {
+  it("reports mutually conflicting inputs and Sessions blocked by fixed Programme-wide context", async () => {
     const guide = createConferenceGuide({
       content: conferenceGuideContent,
       loadPublishedData: async () => plannablePublishedData(),
@@ -575,6 +590,42 @@ describe("Conference Guide", () => {
         fixed_context: [expect.objectContaining({ kind: "opening", title: "Opening" })],
       })],
     });
+  });
+
+  it("does not apply one Event Programme's fixed Slots to another Event Programme", async () => {
+    const data = publishedData();
+    data.agenda.days[0].programmes.push({
+      event: { name: "Community Warmup", compactLabel: "Warmup" },
+      slots: [{
+        kind: "session",
+        startAt: "2026-09-19T07:15:00.000Z",
+        endAt: "2026-09-19T07:45:00.000Z",
+        session: { slug: "warmup-session", title: "Warmup Session", format: "Talk" },
+      }],
+    });
+    data.sessions.push({
+      slug: "warmup-session",
+      title: "Warmup Session",
+      abstract: "Runs alongside the main Event opening.",
+      format: "Talk",
+      speakers: [],
+      relatedSessions: [],
+    });
+    const guide = createConferenceGuide({
+      content: conferenceGuideContent,
+      loadPublishedData: async () => data,
+      canonicalOrigin: "https://wts.sh",
+    });
+
+    const proposal = await guide.planProposedSchedule({ must_attend_slugs: ["warmup-session"] });
+
+    expect(proposal.selected_sessions).toEqual([
+      expect.objectContaining({
+        slug: "warmup-session",
+        appearance_event: expect.objectContaining({ name: "Community Warmup" }),
+      }),
+    ]);
+    expect(proposal.fixed_context).toEqual([]);
   });
 
   it("handles overnight intervals across Conference Days and excludes tracked Slots from fixed context", async () => {
@@ -657,7 +708,7 @@ describe("Conference Guide", () => {
 
     expect(ranked).toMatchObject({
       metadata: {
-        schema_version: "1",
+        schema_version: "2",
         content_version: "2026-07-23",
         programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         generated_at: "2026-07-14T18:00:00.000Z",
@@ -822,7 +873,7 @@ describe("Conference Guide", () => {
 
     expect(index).toMatchObject({
       metadata: {
-        schema_version: "1",
+        schema_version: "2",
         content_version: "2026-07-23",
         programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         generated_at: "2026-07-14T18:00:00.000Z",
@@ -849,17 +900,20 @@ describe("Conference Guide", () => {
     });
     expect(agenda.days[0]).toMatchObject({
       key: "conference-day",
-      slots: [
-        { kind: "opening", start_time: "09:00", end_time: "09:30", end_local_date: "2026-09-19", title: "Opening" },
-        {
-          kind: "session",
-          start_time: "10:00",
-          end_time: "10:35",
-          end_local_date: "2026-09-19",
-          track: { key: "systems", name: "Systems" },
-          session: { slug: "safe-systems", resource_uri: "wts://conference-guide/sessions/safe-systems" },
-        },
-      ],
+      programmes: [{
+        appearance_event: { name: "WhatTheStack 2026", compact_label: "WTS 2026" },
+        slots: [
+          { kind: "opening", start_time: "09:00", end_time: "09:30", end_local_date: "2026-09-19", title: "Opening" },
+          {
+            kind: "session",
+            start_time: "10:00",
+            end_time: "10:35",
+            end_local_date: "2026-09-19",
+            track: { key: "systems", name: "Systems" },
+            session: { slug: "safe-systems", resource_uri: "wts://conference-guide/sessions/safe-systems" },
+          },
+        ],
+      }],
     });
     expect(session).toMatchObject({
       slug: "safe-systems",
@@ -869,6 +923,7 @@ describe("Conference Guide", () => {
       schedule: {
         status: "scheduled",
         day_key: "conference-day",
+        appearance_event: { name: "WhatTheStack 2026" },
         track: { key: "systems" },
       },
       speakers: [{ slug: "ada-example", canonical_url: "https://wts.sh/speakers/ada-example" }],

@@ -15,14 +15,17 @@ import {
   adminCreateAgendaSlot,
   adminCreateAgendaTrack,
   adminCreateConferenceDay,
+  adminCreateEventProgramme,
   adminFetchProgramme,
   adminSetAgendaSlotPublished,
   adminSetConferenceDayPublished,
   adminUpdateAgendaSlot,
   adminUpdateAgendaTrack,
   adminUpdateConferenceDay,
+  adminUpdateEventProgramme,
   type AdminAgendaSlotInput,
   type AdminProgrammeData,
+  type EventProgrammeInput,
 } from "~/lib/programme-admin-actions";
 import {
   AGENDA_SLOT_KINDS,
@@ -30,6 +33,7 @@ import {
   scheduleLocalDateTimeToInstant,
   type AgendaSlotKind,
   type ProgrammeDayRef,
+  type ProgrammeEventProgrammeRef,
   type ProgrammeSlotRef,
   type ProgrammeTrackRef,
 } from "~/lib/programme";
@@ -67,6 +71,13 @@ function slotLabel(slot: ProgrammeSlotRef, data: AdminProgrammeData): string {
   return data.sessions.find((session) => session.id === slot.sessionId)?.title || "Session";
 }
 
+function eventProgrammeLabel(programme: ProgrammeEventProgrammeRef | undefined, data: AdminProgrammeData): string {
+  if (!programme) return "Unknown Event Programme";
+  const day = data.days.find((candidate) => candidate.id === programme.dayId);
+  const event = data.events.find((candidate) => candidate.id === programme.appearanceEventId);
+  return `${day?.localDate || "Unknown date"} - ${event?.name || "Unknown event"}`;
+}
+
 export default function AdminAgendaHub() {
   const { toast, showToast } = useAdminToast();
   const [busy, setBusy] = createSignal(false);
@@ -88,15 +99,20 @@ export default function AdminAgendaHub() {
   const [dayTitle, setDayTitle] = createSignal("");
   const [dayOrder, setDayOrder] = createSignal("0");
 
+  const [programmeEditingId, setProgrammeEditingId] = createSignal<string | null>(null);
+  const [programmeDayId, setProgrammeDayId] = createSignal("");
+  const [programmeEventId, setProgrammeEventId] = createSignal("");
+  const [programmeOrder, setProgrammeOrder] = createSignal("0");
+
   const [trackEditingId, setTrackEditingId] = createSignal<string | null>(null);
-  const [trackDayId, setTrackDayId] = createSignal("");
+  const [trackProgrammeId, setTrackProgrammeId] = createSignal("");
   const [trackKey, setTrackKey] = createSignal("");
   const [trackName, setTrackName] = createSignal("");
   const [trackLocation, setTrackLocation] = createSignal("");
   const [trackOrder, setTrackOrder] = createSignal("0");
 
   const [slotEditingId, setSlotEditingId] = createSignal<string | null>(null);
-  const [slotDayId, setSlotDayId] = createSignal("");
+  const [slotProgrammeId, setSlotProgrammeId] = createSignal("");
   const [slotTrackId, setSlotTrackId] = createSignal("");
   const [slotStart, setSlotStart] = createSignal("");
   const [slotEnd, setSlotEnd] = createSignal("");
@@ -108,7 +124,7 @@ export default function AdminAgendaHub() {
   const [slotSummary, setSlotSummary] = createSignal("");
 
   const availableTracks = createMemo(() =>
-    (programme()?.tracks || []).filter((track) => track.dayId === slotDayId()),
+    (programme()?.tracks || []).filter((track) => track.programmeId === slotProgrammeId()),
   );
 
   const resetDay = () => {
@@ -119,9 +135,16 @@ export default function AdminAgendaHub() {
     setDayOrder("0");
   };
 
+  const resetProgramme = () => {
+    setProgrammeEditingId(null);
+    setProgrammeDayId("");
+    setProgrammeEventId("");
+    setProgrammeOrder("0");
+  };
+
   const resetTrack = () => {
     setTrackEditingId(null);
-    setTrackDayId("");
+    setTrackProgrammeId("");
     setTrackKey("");
     setTrackName("");
     setTrackLocation("");
@@ -130,7 +153,7 @@ export default function AdminAgendaHub() {
 
   const resetSlot = () => {
     setSlotEditingId(null);
-    setSlotDayId("");
+    setSlotProgrammeId("");
     setSlotTrackId("");
     setSlotStart("");
     setSlotEnd("");
@@ -140,6 +163,13 @@ export default function AdminAgendaHub() {
     setSlotSessionId("");
     setSlotTitle("");
     setSlotSummary("");
+  };
+
+  const editProgramme = (eventProgramme: ProgrammeEventProgrammeRef) => {
+    setProgrammeEditingId(eventProgramme.id);
+    setProgrammeDayId(eventProgramme.dayId);
+    setProgrammeEventId(eventProgramme.appearanceEventId);
+    setProgrammeOrder(String(eventProgramme.displayOrder));
   };
 
   const editDay = (day: ProgrammeDayRef) => {
@@ -152,7 +182,7 @@ export default function AdminAgendaHub() {
 
   const editTrack = (track: ProgrammeTrackRef) => {
     setTrackEditingId(track.id);
-    setTrackDayId(track.dayId);
+    setTrackProgrammeId(track.programmeId);
     setTrackKey(track.key);
     setTrackName(track.name);
     setTrackLocation(track.locationLabel || "");
@@ -161,7 +191,7 @@ export default function AdminAgendaHub() {
 
   const editSlot = (slot: ProgrammeSlotRef) => {
     setSlotEditingId(slot.id);
-    setSlotDayId(slot.dayId);
+    setSlotProgrammeId(slot.programmeId);
     setSlotTrackId(slot.trackId || "");
     setSlotStart(localDateTimeInput(slot.startAt));
     setSlotEnd(localDateTimeInput(slot.endAt));
@@ -171,6 +201,32 @@ export default function AdminAgendaHub() {
     setSlotSessionId(slot.sessionId || "");
     setSlotTitle(slot.title || "");
     setSlotSummary(slot.summary || "");
+  };
+
+  const submitProgramme = async (event: Event) => {
+    event.preventDefault();
+    if (busy()) return;
+    setBusy(true);
+    try {
+      const input: EventProgrammeInput = {
+        dayId: programmeDayId(),
+        appearanceEventId: programmeEventId(),
+        displayOrder: Number(programmeOrder()),
+      };
+      const id = programmeEditingId();
+      const result = id
+        ? await adminUpdateEventProgramme(id, { displayOrder: input.displayOrder })
+        : await adminCreateEventProgramme(input);
+      if (!result.success) {
+        showToast("error", result.error || "Could not save Event Programme.");
+        return;
+      }
+      showToast("success", id ? "Event Programme updated." : "Event Programme created.");
+      resetProgramme();
+      await refetch();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const submitDay = async (event: Event) => {
@@ -216,7 +272,7 @@ export default function AdminAgendaHub() {
             displayOrder: Number(trackOrder()),
           })
         : await adminCreateAgendaTrack({
-            dayId: trackDayId(),
+            programmeId: trackProgrammeId(),
             key: trackKey(),
             name: trackName(),
             locationLabel: trackLocation(),
@@ -235,7 +291,7 @@ export default function AdminAgendaHub() {
   };
 
   const slotPayload = (): AdminAgendaSlotInput => ({
-    dayId: slotDayId(),
+    programmeId: slotProgrammeId(),
     trackId: slotTrackId(),
     startAt: scheduleLocalDateTimeToInstant(slotStart()),
     endAt: scheduleLocalDateTimeToInstant(slotEnd()),
@@ -315,16 +371,21 @@ export default function AdminAgendaHub() {
       layoutTitle="Admin: Agenda"
       layoutDescription="Manage the public conference programme"
       title="Agenda"
-      subtitle="Conference Days, day-specific Tracks, and Slots"
-      hint={`All schedule times are interpreted in ${SCHEDULE_TIME_ZONE}. Publishing a Session Slot also publishes its linked Session.`}
+      subtitle="Conference Days, Event Programmes, Tracks, and Slots"
+      hint={`All schedule times are interpreted in ${SCHEDULE_TIME_ZONE}. Session Speakers need matching Event Appearances before their Slot can be published.`}
       count={programme()?.slots.length}
       countLoading={programme.loading}
       accent="secondary"
       toast={toast()}
       headerActions={
-        <a href="/admin/sessions" class="btn btn-outline btn-primary font-mono">
-          Sessions
-        </a>
+        <>
+          <a href="/admin/speakers#appearance-events-heading" class="btn btn-ghost font-mono">
+            Appearance Events
+          </a>
+          <a href="/admin/sessions" class="btn btn-outline btn-primary font-mono">
+            Sessions
+          </a>
+        </>
       }
     >
       <Show when={error()}>
@@ -334,7 +395,7 @@ export default function AdminAgendaHub() {
         </div>
       </Show>
 
-      <div class="grid gap-8 xl:grid-cols-2">
+      <div class="grid gap-8 xl:grid-cols-3">
         <form class={adminFormPanelClass} onSubmit={submitDay}>
           <AdminFormSection title={dayEditingId() ? "Edit Conference Day" : "New Conference Day"} description="Keys are immutable after creation. The local date is evaluated in Europe/Skopje.">
             <div class="grid gap-4 sm:grid-cols-2">
@@ -358,16 +419,42 @@ export default function AdminAgendaHub() {
           </div>
         </form>
 
-        <form class={adminFormPanelClass} onSubmit={submitTrack}>
-          <AdminFormSection title={trackEditingId() ? "Edit Track" : "New Track"} description="Tracks are scoped to exactly one Conference Day and their keys are immutable.">
-            <div class="grid gap-4 sm:grid-cols-2">
-              <AdminFormField id="agenda-track-day" label="Conference Day" required>
-                <select id="agenda-track-day" class={adminSelectClass()} required disabled={Boolean(trackEditingId())} value={trackDayId()} onChange={(event) => setTrackDayId(event.currentTarget.value)}>
+        <form class={adminFormPanelClass} onSubmit={submitProgramme}>
+          <AdminFormSection title={programmeEditingId() ? "Edit Event Programme" : "New Event Programme"} description="Pairs one Appearance Event with one Conference Day. The pair is immutable after creation.">
+            <div class="grid gap-4">
+              <AdminFormField id="agenda-programme-day" label="Conference Day" required>
+                <select id="agenda-programme-day" name="day" class={adminSelectClass()} required disabled={Boolean(programmeEditingId())} value={programmeDayId()} onChange={(event) => setProgrammeDayId(event.currentTarget.value)}>
                   <option value="">Choose a Day</option>
                   <For each={programme()?.days || []}>{(day) => <option value={day.id}>{day.localDate} - {day.title}</option>}</For>
                 </select>
               </AdminFormField>
-              <AdminFormField id="agenda-track-key" label="Day-local key" required hint="Example: main">
+              <AdminFormField id="agenda-programme-event" label="Appearance Event" required>
+                <select id="agenda-programme-event" name="appearance_event" class={adminSelectClass()} required disabled={Boolean(programmeEditingId())} value={programmeEventId()} onChange={(event) => setProgrammeEventId(event.currentTarget.value)}>
+                  <option value="">Choose an Event</option>
+                  <For each={programme()?.events || []}>{(appearanceEvent) => <option value={appearanceEvent.id}>{appearanceEvent.name} {appearanceEvent.published ? "(published)" : "(draft)"}</option>}</For>
+                </select>
+              </AdminFormField>
+              <AdminFormField id="agenda-programme-order" label="Day-local display order" required>
+                <input id="agenda-programme-order" name="display_order" type="number" step="1" class={adminInputClass("font-mono")} required value={programmeOrder()} onInput={(event) => setProgrammeOrder(event.currentTarget.value)} />
+              </AdminFormField>
+            </div>
+          </AdminFormSection>
+          <div class="mt-5 flex justify-end gap-2 border-t border-white/10 pt-5">
+            <button type="button" class="btn btn-ghost font-mono" onClick={resetProgramme}>Clear</button>
+            <button type="submit" class="btn btn-secondary font-mono" disabled={busy()}>{programmeEditingId() ? "Update Programme" : "Create Programme"}</button>
+          </div>
+        </form>
+
+        <form class={adminFormPanelClass} onSubmit={submitTrack}>
+          <AdminFormSection title={trackEditingId() ? "Edit Track" : "New Track"} description="Tracks are scoped to exactly one Event Programme and their keys are immutable.">
+            <div class="grid gap-4 sm:grid-cols-2">
+              <AdminFormField id="agenda-track-programme" label="Event Programme" required>
+                <select id="agenda-track-programme" name="programme" class={adminSelectClass()} required disabled={Boolean(trackEditingId())} value={trackProgrammeId()} onChange={(event) => setTrackProgrammeId(event.currentTarget.value)}>
+                  <option value="">Choose a Programme</option>
+                  <For each={programme()?.programmes || []}>{(eventProgramme) => <option value={eventProgramme.id}>{eventProgrammeLabel(eventProgramme, programme()!)}</option>}</For>
+                </select>
+              </AdminFormField>
+              <AdminFormField id="agenda-track-key" label="Programme-local key" required hint="Example: main">
                 <input id="agenda-track-key" class={adminInputClass("font-mono")} required disabled={Boolean(trackEditingId())} value={trackKey()} onInput={(event) => setTrackKey(event.currentTarget.value)} />
               </AdminFormField>
               <AdminFormField id="agenda-track-name" label="Name" required>
@@ -389,17 +476,17 @@ export default function AdminAgendaHub() {
       </div>
 
       <form class={`${adminFormPanelClass} mt-8`} onSubmit={submitSlot}>
-        <AdminFormSection title={slotEditingId() ? "Edit Agenda Slot" : "New Agenda Slot"} description="Untracked Slots are all-attendee entries. They cannot overlap any Track or following-Day Slot.">
+        <AdminFormSection title={slotEditingId() ? "Edit Agenda Slot" : "New Agenda Slot"} description="Programme-wide Slots have no Track and cannot overlap another Slot in the same Event Programme.">
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <AdminFormField id="agenda-slot-day" label="Conference Day" required>
-              <select id="agenda-slot-day" class={adminSelectClass()} required value={slotDayId()} onChange={(event) => { setSlotDayId(event.currentTarget.value); setSlotTrackId(""); }}>
-                <option value="">Choose a Day</option>
-                <For each={programme()?.days || []}>{(day) => <option value={day.id}>{day.localDate} - {day.title}</option>}</For>
+            <AdminFormField id="agenda-slot-programme" label="Event Programme" required>
+              <select id="agenda-slot-programme" name="programme" class={adminSelectClass()} required value={slotProgrammeId()} onChange={(event) => { setSlotProgrammeId(event.currentTarget.value); setSlotTrackId(""); }}>
+                <option value="">Choose a Programme</option>
+                <For each={programme()?.programmes || []}>{(eventProgramme) => <option value={eventProgramme.id}>{eventProgrammeLabel(eventProgramme, programme()!)}</option>}</For>
               </select>
             </AdminFormField>
             <AdminFormField id="agenda-slot-track" label="Track">
               <select id="agenda-slot-track" class={adminSelectClass()} value={slotTrackId()} onChange={(event) => setSlotTrackId(event.currentTarget.value)}>
-                <option value="">All attendees (no Track)</option>
+                <option value="">Programme-wide (no Track)</option>
                 <For each={availableTracks()}>{(track) => <option value={track.id}>{track.name}</option>}</For>
               </select>
             </AdminFormField>
@@ -447,7 +534,7 @@ export default function AdminAgendaHub() {
         </div>
       </form>
 
-      <div class="mt-8 grid gap-8 xl:grid-cols-2">
+      <div class="mt-8 grid gap-8 xl:grid-cols-3">
         <AdminDataPanel>
           <div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">Conference Days</h2></div>
           <ul class="divide-y divide-white/10" role="list">
@@ -464,11 +551,23 @@ export default function AdminAgendaHub() {
           </ul>
         </AdminDataPanel>
         <AdminDataPanel>
+          <div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">Event Programmes</h2></div>
+          <ul class="divide-y divide-white/10" role="list">
+            <For each={programme()?.programmes || []}>{(eventProgramme) => (
+              <li class="flex flex-wrap items-center justify-between gap-3 p-4">
+                <div><p class="font-bold text-white">{eventProgrammeLabel(eventProgramme, programme()!)}</p><p class="text-xs font-mono text-base-content/55">Day-local order {eventProgramme.displayOrder}</p></div>
+                <button type="button" class="btn btn-xs btn-ghost font-mono" onClick={() => editProgramme(eventProgramme)}>Edit</button>
+              </li>
+            )}</For>
+            <Show when={(programme()?.programmes.length || 0) === 0}><li class="p-5 text-sm font-mono text-base-content/60">Pair a Day with an Appearance Event.</li></Show>
+          </ul>
+        </AdminDataPanel>
+        <AdminDataPanel>
           <div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">Tracks</h2></div>
           <ul class="divide-y divide-white/10" role="list">
             <For each={programme()?.tracks || []}>{(track) => (
               <li class="flex flex-wrap items-center justify-between gap-3 p-4">
-                <div><p class="font-bold text-white">{track.name}</p><p class="text-xs font-mono text-base-content/55">{track.key} / {track.locationLabel || "No default location"}</p></div>
+                <div><p class="font-bold text-white">{track.name}</p><p class="text-xs font-mono text-base-content/55">{eventProgrammeLabel(programme()!.programmes.find((candidate) => candidate.id === track.programmeId)!, programme()!)} / {track.key} / {track.locationLabel || "No default location"}</p></div>
                 <button type="button" class="btn btn-xs btn-ghost font-mono" onClick={() => editTrack(track)}>Edit</button>
               </li>
             )}</For>
@@ -484,7 +583,7 @@ export default function AdminAgendaHub() {
             <li class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div class="min-w-0">
                 <p class="font-bold text-white break-words">{slotLabel(slot, programme()!)}</p>
-                <p class="text-xs font-mono text-base-content/60">{displayDateTime(slot.startAt)} - {displayDateTime(slot.endAt)} / {slot.kind}</p>
+                <p class="text-xs font-mono text-base-content/60">{eventProgrammeLabel(programme()!.programmes.find((candidate) => candidate.id === slot.programmeId)!, programme()!)} / {displayDateTime(slot.startAt)} - {displayDateTime(slot.endAt)} / {slot.kind}</p>
               </div>
               <div class="flex shrink-0 gap-2">
                 <button type="button" class="btn btn-xs btn-ghost font-mono" onClick={() => editSlot(slot)}>Edit</button>

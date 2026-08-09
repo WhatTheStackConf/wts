@@ -7,6 +7,7 @@ import {
 } from "~/lib/conference-guide-content";
 import type {
   PublicAgenda,
+  PublicAgendaEvent,
   PublicAgendaSlot,
   PublicSessionDetail,
   PublicSpeakerDetail,
@@ -82,7 +83,7 @@ interface ConferenceGuideDependencies {
 }
 
 export interface GuideMetadata {
-  schema_version: "1";
+  schema_version: "2";
   content_version: string;
   programme_version: string;
   generated_at: string;
@@ -205,24 +206,35 @@ function mapAgendaSlot(
   };
 }
 
+function mapAgendaEvent(event: PublicAgendaEvent) {
+  return {
+    name: normalizeGuideText(event.name),
+    compact_label: normalizeGuideText(event.compactLabel),
+    destination_url: canonicalExternalUrl(event.destinationUrl),
+  };
+}
+
 function sessionSchedule(agenda: PublicAgenda, slug: string, origin: string) {
   for (const day of agenda.days) {
-    const slot = day.slots.find((item) => item.session?.slug === slug);
-    if (!slot) continue;
-    return {
-      status: "scheduled" as const,
-      day_key: day.key,
-      local_date: day.localDate,
-      day_title: normalizeGuideText(day.title),
-      start_time: localTime(slot.startAt),
-      end_time: localTime(slot.endAt),
-      end_local_date: localDate(slot.endAt),
-      location: optionalGuideText(slot.locationLabel),
-      track: slot.track
-        ? { key: normalizeGuideText(slot.track.key), name: normalizeGuideText(slot.track.name) }
-        : undefined,
-      agenda_url: `${origin}/agenda`,
-    };
+    for (const programme of day.programmes) {
+      const slot = programme.slots.find((item) => item.session?.slug === slug);
+      if (!slot) continue;
+      return {
+        status: "scheduled" as const,
+        day_key: day.key,
+        local_date: day.localDate,
+        day_title: normalizeGuideText(day.title),
+        appearance_event: mapAgendaEvent(programme.event),
+        start_time: localTime(slot.startAt),
+        end_time: localTime(slot.endAt),
+        end_local_date: localDate(slot.endAt),
+        location: optionalGuideText(slot.locationLabel),
+        track: slot.track
+          ? { key: normalizeGuideText(slot.track.key), name: normalizeGuideText(slot.track.name) }
+          : undefined,
+        agenda_url: `${origin}/agenda`,
+      };
+    }
   }
   return { status: "not_scheduled" as const };
 }
@@ -354,7 +366,10 @@ function mapProgramme(data: ConferenceGuidePublishedData, origin: string) {
         key: day.key,
         local_date: day.localDate,
         title: normalizeGuideText(day.title),
-        slots: day.slots.map((slot) => mapAgendaSlot(slot, day.key, origin)),
+        programmes: day.programmes.map((programme) => ({
+          appearance_event: mapAgendaEvent(programme.event),
+          slots: programme.slots.map((slot) => mapAgendaSlot(slot, day.key, origin)),
+        })),
       })),
     },
     sessions,
@@ -366,11 +381,13 @@ function mapProgramme(data: ConferenceGuidePublishedData, origin: string) {
 type GuideProgramme = ReturnType<typeof mapProgramme>;
 type GuideSession = GuideProgramme["sessions"][number];
 type GuideAgendaDay = GuideProgramme["agenda"]["days"][number];
-type GuideAgendaSlot = GuideAgendaDay["slots"][number];
+type GuideEventProgramme = GuideAgendaDay["programmes"][number];
+type GuideAgendaSlot = GuideEventProgramme["slots"][number];
 
 interface PlanningCandidate {
   session: GuideSession;
   day: GuideAgendaDay;
+  programme: GuideEventProgramme;
   slot: GuideAgendaSlot;
   agendaOrder: number;
   priority: { kind: "must_attend" } | { kind: "ranked"; rank: number };
@@ -578,7 +595,13 @@ function scheduleIntervalsOverlap(left: PlanningCandidate, right: PlanningCandid
   return leftInterval.start < rightInterval.end && rightInterval.start < leftInterval.end;
 }
 
-function fixedSlotOverlaps(candidate: PlanningCandidate, day: GuideAgendaDay, slot: GuideAgendaSlot) {
+function fixedSlotOverlaps(
+  candidate: PlanningCandidate,
+  day: GuideAgendaDay,
+  programme: GuideEventProgramme,
+  slot: GuideAgendaSlot,
+) {
+  if (candidate.programme !== programme) return false;
   const candidateInterval = scheduleInterval(candidate.day, candidate.slot);
   const fixedInterval = scheduleInterval(day, slot);
   return candidateInterval.start < fixedInterval.end && fixedInterval.start < candidateInterval.end;
@@ -594,6 +617,7 @@ function planningSession(candidate: PlanningCandidate) {
     day_key: candidate.day.key,
     local_date: candidate.day.local_date,
     day_title: boundedPublicLabel(candidate.day.title),
+    appearance_event: candidate.programme.appearance_event,
     start_time: candidate.slot.start_time,
     end_time: candidate.slot.end_time,
     end_local_date: candidate.slot.end_local_date,
@@ -622,14 +646,16 @@ function planningScheduleIndex(programme: GuideProgramme) {
   const scheduledBySlug = new Map<string, Omit<PlanningCandidate, "priority">>();
   let agendaOrder = 0;
   for (const day of programme.agenda.days) {
-    for (const slot of day.slots) {
-      if (slot.kind === "session" && slot.session) {
-        const session = sessionsBySlug.get(slot.session.slug);
-        if (session && !scheduledBySlug.has(session.slug)) {
-          scheduledBySlug.set(session.slug, { session, day, slot, agendaOrder });
+    for (const eventProgramme of day.programmes) {
+      for (const slot of eventProgramme.slots) {
+        if (slot.kind === "session" && slot.session) {
+          const session = sessionsBySlug.get(slot.session.slug);
+          if (session && !scheduledBySlug.has(session.slug)) {
+            scheduledBySlug.set(session.slug, { session, day, programme: eventProgramme, slot, agendaOrder });
+          }
         }
+        agendaOrder += 1;
       }
-      agendaOrder += 1;
     }
   }
 
@@ -692,15 +718,23 @@ function candidateIsAvailable(
   );
 }
 
-function fixedContextReference(day: GuideAgendaDay, slot: GuideAgendaSlot) {
+function fixedContextReference(
+  day: GuideAgendaDay,
+  programme: GuideEventProgramme,
+  slot: GuideAgendaSlot,
+) {
   return {
     kind: slot.kind,
     day_key: day.key,
     local_date: day.local_date,
+    appearance_event: programme.appearance_event,
     start_time: slot.start_time,
     end_time: slot.end_time,
     end_local_date: slot.end_local_date,
+    day_title: boundedPublicLabel(day.title),
+    location: slot.location ? boundedPublicLabel(slot.location) : undefined,
     title: slot.title ? boundedPublicLabel(slot.title) : undefined,
+    summary: slot.summary ? boundedPublicLabel(slot.summary) : undefined,
   };
 }
 
@@ -725,7 +759,7 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
     programmeVersion: string,
     generatedAt: string,
   ): GuideMetadata => ({
-    schema_version: "1",
+    schema_version: "2",
     content_version: content.contentVersion,
     programme_version: programmeVersion,
     generated_at: generatedAt,
@@ -923,43 +957,23 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
         return { slug, requested_as: requestedAs, outcome };
       });
       const inputOutcomeBySlug = new Map(inputOutcomes.map((outcome) => [outcome.slug, outcome]));
-      const fixedContext = snapshot.programme.agenda.days.flatMap((day) =>
-        day.slots
-          .filter((slot) => slot.kind !== "session" && !slot.track)
-          .map((slot) => ({
-            kind: slot.kind,
-            day_key: day.key,
-            local_date: day.local_date,
-            day_title: boundedPublicLabel(day.title),
-            start_time: slot.start_time,
-            end_time: slot.end_time,
-            end_local_date: slot.end_local_date,
-            location: slot.location ? boundedPublicLabel(slot.location) : undefined,
-            track: slot.track
-              ? {
-                  key: boundedPublicLabel(slot.track.key),
-                  name: boundedPublicLabel(slot.track.name),
-                }
-              : undefined,
-            title: slot.title ? boundedPublicLabel(slot.title) : undefined,
-            summary: slot.summary ? boundedPublicLabel(slot.summary) : undefined,
-          })),
-      );
       const fixedSlots = snapshot.programme.agenda.days.flatMap((day) =>
-        day.slots
+        day.programmes.flatMap((programme) => programme.slots
           .filter((slot) => slot.kind !== "session" && !slot.track)
-          .map((slot) => ({ day, slot })),
+          .map((slot) => ({ day, programme, slot }))),
       );
       const selected: PlanningCandidate[] = [];
       const rejected: Array<{
         candidate: PlanningCandidate;
         selectedConflicts: PlanningCandidate[];
-        fixedConflicts: Array<{ day: GuideAgendaDay; slot: GuideAgendaSlot }>;
+        fixedConflicts: Array<{ day: GuideAgendaDay; programme: GuideEventProgramme; slot: GuideAgendaSlot }>;
       }> = [];
 
       for (const candidate of planningCandidates(scheduledBySlug, input, eligibleSlugs)) {
         const selectedConflicts = selected.filter((chosen) => scheduleIntervalsOverlap(candidate, chosen));
-        const fixedConflicts = fixedSlots.filter(({ day, slot }) => fixedSlotOverlaps(candidate, day, slot));
+        const fixedConflicts = fixedSlots.filter(({ day, programme, slot }) =>
+          fixedSlotOverlaps(candidate, day, programme, slot)
+        );
         if (selectedConflicts.length === 0 && fixedConflicts.length === 0) {
           selected.push(candidate);
           const outcome = inputOutcomeBySlug.get(candidate.session.slug);
@@ -970,6 +984,10 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
           if (outcome) outcome.outcome = "not_selected_conflict";
         }
       }
+      const selectedProgrammes = new Set(selected.map((candidate) => candidate.programme));
+      const fixedContext = fixedSlots
+        .filter(({ programme }) => selectedProgrammes.has(programme))
+        .map(({ day, programme, slot }) => fixedContextReference(day, programme, slot));
 
       const rejectedBySlug = new Map(rejected.map((entry) => [entry.candidate.session.slug, entry]));
       const unresolvedHardConstraints = inputOutcomes
@@ -985,8 +1003,8 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
             slug: outcome.slug,
             reason,
             conflicting_session_slugs: conflict?.selectedConflicts.map((entry) => entry.session.slug) ?? [],
-            fixed_context: conflict?.fixedConflicts.map(({ day, slot }) =>
-              fixedContextReference(day, slot)
+            fixed_context: conflict?.fixedConflicts.map(({ day, programme, slot }) =>
+              fixedContextReference(day, programme, slot)
             ) ?? [],
           };
         });
@@ -1042,7 +1060,9 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
             ? "overlaps_selected_session" as const
             : "overlaps_fixed_context" as const,
           selected_session_slugs: selectedConflicts.map((conflict) => conflict.session.slug),
-          fixed_context: fixedConflicts.map(({ day, slot }) => fixedContextReference(day, slot)),
+          fixed_context: fixedConflicts.map(({ day, programme, slot }) =>
+            fixedContextReference(day, programme, slot)
+          ),
         })),
         ranked_alternatives: rejected
           .filter(({ selectedConflicts }) => selectedConflicts.length > 0)
