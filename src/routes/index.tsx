@@ -122,7 +122,7 @@ export default function Home() {
                   </For>
                 </ul>
                 <a
-                  href="https://www.google.com/maps/search/?api=1&query=Technical+Campus+Skopje"
+                  href="https://maps.app.goo.gl/YyD591wtvbTQjzwU7"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="link mt-8 inline-block text-lg font-black text-primary-200"
