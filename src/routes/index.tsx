@@ -1,4 +1,4 @@
-import { createResource, For, Show } from "solid-js";
+import { createResource, For, Show, Suspense } from "solid-js";
 import { Layout } from "../layouts/Layout";
 import { Hero } from "../components/Hero";
 import {
@@ -25,45 +25,47 @@ export default function Home() {
       <div class="relative">
         <Hero />
 
-        <Show when={(speakers()?.preview.length ?? 0) > 0}>
-          <section class="px-3 md:px-0 pt-16 md:pt-20 pb-12 md:pb-16 fade-in-delay-2">
-            <header class="mb-10 md:mb-12 fade-in">
-              <h2 class="font-star text-3xl md:text-4xl uppercase tracking-widest text-primary-500 mb-4">
-                Speakers
-              </h2>
-              <p class="max-w-md text-dark-50 text-lg font-light leading-relaxed">
-                Meet some of the voices joining us at WTS 2026
-              </p>
-            </header>
-
-            <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 list-none p-0 m-0 fade-in-delay-2">
-              <For each={speakers()?.preview}>
-                {(speaker) => (
-                  <li class="min-w-0 h-full">
-                    <SpeakerCard speaker={speaker} layout="grid" />
-                  </li>
-                )}
-              </For>
-            </ul>
-
-            <div class="mt-10 md:mt-12 flex flex-col items-center gap-3 text-center fade-in-delay-3">
-              <Show when={(speakers()?.total ?? 0) < TEASER_SPEAKER_LIMIT}>
-                <p class="text-secondary-400 font-mono text-sm m-0">
-                  More speakers announced soon.
+        <Suspense>
+          <Show when={(speakers()?.preview.length ?? 0) > 0}>
+            <section class="px-3 md:px-0 pt-16 md:pt-20 pb-12 md:pb-16 fade-in-delay-2">
+              <header class="mb-10 md:mb-12 fade-in">
+                <h2 class="font-star text-3xl md:text-4xl uppercase tracking-widest text-primary-500 mb-4">
+                  Speakers
+                </h2>
+                <p class="max-w-md text-dark-50 text-lg font-light leading-relaxed">
+                  Meet some of the voices joining us at WTS 2026
                 </p>
-              </Show>
-              <a
-                href="/speakers"
-                class="link text-primary-200 font-black text-xl"
-              >
-                {`>`}{" "}
-                {(speakers()?.total ?? 0) > TEASER_SPEAKER_LIMIT
-                  ? "View all speakers"
-                  : "View full speakers lineup"}
-              </a>
-            </div>
-          </section>
-        </Show>
+              </header>
+
+              <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 list-none p-0 m-0 fade-in-delay-2">
+                <For each={speakers()?.preview}>
+                  {(speaker) => (
+                    <li class="min-w-0 h-full">
+                      <SpeakerCard speaker={speaker} layout="grid" />
+                    </li>
+                  )}
+                </For>
+              </ul>
+
+              <div class="mt-10 md:mt-12 flex flex-col items-center gap-3 text-center fade-in-delay-3">
+                <Show when={(speakers()?.total ?? 0) < TEASER_SPEAKER_LIMIT}>
+                  <p class="text-secondary-400 font-mono text-sm m-0">
+                    More speakers announced soon.
+                  </p>
+                </Show>
+                <a
+                  href="/speakers"
+                  class="link text-primary-200 font-black text-xl"
+                >
+                  {`>`}{" "}
+                  {(speakers()?.total ?? 0) > TEASER_SPEAKER_LIMIT
+                    ? "View all speakers"
+                    : "View full speakers lineup"}
+                </a>
+              </div>
+            </section>
+          </Show>
+        </Suspense>
 
         <section class="px-3 md:px-0 pt-4 md:pt-8 pb-12 md:pb-16 fade-in-delay-2">
           <header class="max-w-6xl mx-auto mb-6 md:mb-8 fade-in">
@@ -72,9 +74,11 @@ export default function Home() {
             </h2>
           </header>
 
-          <Show when={partnerGroups()} fallback={<PartnersShowcaseSkeleton />}>
-            <PartnersShowcase groups={partnerGroups() ?? []} variant="home" />
-          </Show>
+          <Suspense fallback={<PartnersShowcaseSkeleton />}>
+            <Show when={partnerGroups()} fallback={<PartnersShowcaseSkeleton />}>
+              <PartnersShowcase groups={partnerGroups() ?? []} variant="home" />
+            </Show>
+          </Suspense>
 
           <div class="mt-8 md:mt-10 flex justify-center fade-in-delay-3">
             <a href="/sponsors" class="link text-primary-200 font-black text-xl">

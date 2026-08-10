@@ -12,6 +12,41 @@ export default defineConfig({
     solidSvg(),
     nitroV2Plugin({
       preset: "node-server",
+      routeRules: {
+        "/_build/**": {
+          headers: { "cache-control": "public, max-age=31536000, immutable" },
+        },
+        "/fonts/**": {
+          headers: { "cache-control": "public, max-age=604800" },
+        },
+        "/blog/iceberg-meme.jpg": {
+          headers: { "cache-control": "public, max-age=604800" },
+        },
+        "/press-kit/**": {
+          headers: { "cache-control": "public, max-age=604800" },
+        },
+        "/static/**": {
+          headers: { "cache-control": "public, max-age=604800" },
+        },
+        "/bg.webp": {
+          headers: { "cache-control": "public, max-age=604800" },
+        },
+        "/bg.png": {
+          headers: { "cache-control": "public, max-age=604800" },
+        },
+        "/favicon.svg": {
+          headers: { "cache-control": "public, max-age=604800" },
+        },
+        "/wts-square-web.webm": {
+          headers: { "cache-control": "public, max-age=604800" },
+        },
+        "/wts-community-partnership-2026.pdf": {
+          headers: { "cache-control": "public, max-age=604800" },
+        },
+        "/wts-partnership-proposal-2026.pdf": {
+          headers: { "cache-control": "public, max-age=604800" },
+        },
+      },
     }),
   ],
   resolve: {

@@ -10,12 +10,17 @@ export default createHandler(() => (
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <link rel="icon" href="/favicon.svg" />
+          <link
+            rel="preload"
+            href="/fonts/space-grotesk-latin.woff2"
+            as="font"
+            type="font/woff2"
+            crossorigin="anonymous"
+          />
           {assets}
-          <script
-            defer
-            src="https://umami.foundry.mk/script.js"
-            data-website-id="7eac874e-f8d2-4d48-8b71-aa34d1b2cd78"
-          ></script>
+          <script>
+            {`window.addEventListener('load',function(){var s=document.createElement('script');s.async=true;s.fetchPriority='low';s.src='https://umami.foundry.mk/script.js';s.dataset.websiteId='7eac874e-f8d2-4d48-8b71-aa34d1b2cd78';document.head.appendChild(s)},{once:true});`}
+          </script>
           <script>
             {`window.addEventListener('load',function(){!function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?

@@ -1,5 +1,9 @@
 import { Show } from "solid-js";
 import { SpeakerAvatarRing } from "./SpeakerAvatarRing";
+import {
+  pocketBaseThumbnailSrcSet,
+  pocketBaseThumbnailUrl,
+} from "~/lib/pocketbase-thumbnail";
 
 interface SpeakerAvatarProps {
   name: string;
@@ -17,6 +21,15 @@ const sizeClass = {
   "lg-plus": "w-40 h-40 sm:w-44 sm:h-44",
   xl: "w-40 h-40 sm:w-44 sm:h-44",
   promo: "w-28 h-28 sm:w-36 sm:h-36",
+};
+
+const imageSizes = {
+  sm: "64px",
+  md: "96px",
+  lg: "128px",
+  "lg-plus": "(min-width: 640px) 176px, 160px",
+  xl: "(min-width: 640px) 176px, 160px",
+  promo: "(min-width: 640px) 144px, 112px",
 };
 
 function speakerInitials(name: string): string {
@@ -57,10 +70,13 @@ export function SpeakerAvatar(props: SpeakerAvatarProps) {
         >
           {(photoUrl) => (
             <img
-              src={photoUrl()}
+              src={pocketBaseThumbnailUrl(photoUrl(), "256x256")}
+              srcset={pocketBaseThumbnailSrcSet(photoUrl(), [128, 256, 384])}
+              sizes={imageSizes[size()]}
               alt={props.name}
               class="w-full h-full object-cover"
               loading="lazy"
+              decoding="async"
             />
           )}
         </Show>

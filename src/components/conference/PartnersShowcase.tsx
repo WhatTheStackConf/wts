@@ -2,6 +2,10 @@ import { createMemo, For, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { HologramButton } from "~/components/HologramButton";
 import type { PublicPartner, PublicPartnerGroup } from "~/lib/partners-public";
+import {
+  pocketBaseThumbnailSrcSet,
+  pocketBaseThumbnailUrl,
+} from "~/lib/pocketbase-thumbnail";
 
 interface PartnersShowcaseProps {
   groups: PublicPartnerGroup[];
@@ -61,6 +65,13 @@ function logoStageClass(group: PublicPartnerGroup): string {
   return "h-24";
 }
 
+function logoSizes(group: PublicPartnerGroup): string {
+  if (group.tier === "platinum") {
+    return "(min-width: 1280px) 576px, (min-width: 640px) 40vw, 90vw";
+  }
+  return "(min-width: 1280px) 384px, (min-width: 1024px) 30vw, (min-width: 640px) 40vw, 90vw";
+}
+
 function PartnerLogo(props: PartnerLogoProps) {
   const component = () => (props.partner.url ? "a" : "div");
 
@@ -78,11 +89,18 @@ function PartnerLogo(props: PartnerLogoProps) {
         data-surface={props.partner.logoSurface}
       >
         <img
-          src={props.partner.logoUrl}
+          src={pocketBaseThumbnailUrl(props.partner.logoUrl, "640x0")}
+          srcset={pocketBaseThumbnailSrcSet(
+            props.partner.logoUrl,
+            [320, 640, 1280],
+            { mode: "width" },
+          )}
+          sizes={logoSizes(props.group)}
           alt=""
           width={320}
           height={160}
           loading="lazy"
+          decoding="async"
           class="partner-logo-image block h-full w-full object-contain p-2"
         />
       </span>

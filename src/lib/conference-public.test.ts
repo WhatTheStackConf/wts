@@ -11,6 +11,45 @@ import {
   loadPublicSpeakerTeaser,
   loadPublicSpeakers,
 } from "~/lib/conference-public";
+import {
+  pocketBaseThumbnailSrcSet,
+  pocketBaseThumbnailUrl,
+} from "~/lib/pocketbase-thumbnail";
+
+describe("PocketBase image thumbnails", () => {
+  it("builds responsive thumbnail URLs for raster images", () => {
+    const url = "https://pb.example/api/files/speakers/speaker-1/photo.png";
+
+    expect(pocketBaseThumbnailUrl(url, "256x256")).toBe(
+      `${url}?thumb=256x256`,
+    );
+    expect(pocketBaseThumbnailSrcSet(url, [128, 256])).toBe(
+      `${url}?thumb=128x128 128w, ${url}?thumb=256x256 256w`,
+    );
+  });
+
+  it("leaves SVG files unchanged because PocketBase cannot resize them", () => {
+    const url = "https://pb.example/api/files/partners/partner-1/logo.svg";
+
+    expect(pocketBaseThumbnailUrl(url, "640x320")).toBe(url);
+    expect(
+      pocketBaseThumbnailSrcSet(url, [320, 640], {
+        aspectRatio: 2,
+        mode: "fit",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("uses width-preserving PocketBase thumbnails for logos", () => {
+    const url = "https://pb.example/api/files/partners/partner-1/logo.png";
+
+    expect(
+      pocketBaseThumbnailSrcSet(url, [320, 640, 1280], { mode: "width" }),
+    ).toBe(
+      `${url}?thumb=320x0 320w, ${url}?thumb=640x0 640w, ${url}?thumb=1280x0 1280w`,
+    );
+  });
+});
 
 describe("public Speaker Event Appearances", () => {
   beforeEach(() => {

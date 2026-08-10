@@ -100,13 +100,14 @@ const HeroGlitch = (props: {
 
 const HeroVideo = (props: {
   active: boolean;
+  enabled: boolean;
   onEnded: () => void;
   onLoaded: () => void;
 }) => {
   let videoRef: HTMLVideoElement | undefined;
 
-  onMount(() => {
-    if (videoRef) {
+  createEffect(() => {
+    if (props.enabled && videoRef) {
       videoRef.load();
     }
   });
@@ -125,13 +126,17 @@ const HeroVideo = (props: {
       class={`w-full h-full object-cover absolute inset-0 rounded-[40px] transition-opacity duration-200 grayscale-[10%] ${props.active ? "opacity-[95%] z-10" : "opacity-0 z-0"}`}
       muted
       playsinline
-      preload="auto"
+      preload="none"
+      width={440}
+      height={440}
       onEnded={props.onEnded}
-      onCanPlayThrough={() => {
+      onCanPlay={() => {
         props.onLoaded();
       }}
     >
-      <source src="/wts-square-web.webm" type="video/webm" />
+      <Show when={props.enabled}>
+        <source src="/wts-square-web.webm" type="video/webm" />
+      </Show>
     </video>
   );
 };
@@ -142,6 +147,7 @@ type DisplayState = "LOGO" | "GLITCH_IN" | "VIDEO" | "GLITCH_OUT";
 
 const GlassPanelController = () => {
   const [state, setState] = createSignal<DisplayState>("LOGO");
+  const [videoRequested, setVideoRequested] = createSignal(false);
   const [videoLoaded, setVideoLoaded] = createSignal(false);
   let timer: ReturnType<typeof setTimeout>;
 
@@ -183,24 +189,42 @@ const GlassPanelController = () => {
     }
   });
 
-  // Fallback: If video doesn't report loaded within 5s, start anyway
   onMount(() => {
-    const fallbackTimer = setTimeout(() => {
-      if (!videoLoaded()) {
-        console.warn("Video load timeout - forcing start");
-        setVideoLoaded(true);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    let idleId: number | undefined;
+    let fallbackId: ReturnType<typeof setTimeout> | undefined;
+    const requestVideo = () => {
+      if (typeof window.requestIdleCallback === "function") {
+        idleId = window.requestIdleCallback(() => setVideoRequested(true), {
+          timeout: 3000,
+        });
+      } else {
+        fallbackId = setTimeout(() => setVideoRequested(true), 1000);
       }
-    }, 5000);
-    onCleanup(() => clearTimeout(fallbackTimer));
+    };
+
+    if (document.readyState === "complete") {
+      requestVideo();
+    } else {
+      window.addEventListener("load", requestVideo, { once: true });
+    }
+
+    onCleanup(() => {
+      window.removeEventListener("load", requestVideo);
+      if (idleId !== undefined) window.cancelIdleCallback(idleId);
+      if (fallbackId !== undefined) clearTimeout(fallbackId);
+    });
   });
 
   onCleanup(() => clearTimeout(timer));
 
   return (
-    <div class="relative min-h-[300px] lg:min-h-0 lg:h-full fade-in-delay-1 z-20 rounded-[40px] overflow-hidden">
+    <div class="relative min-h-[300px] lg:min-h-0 lg:h-full z-20 rounded-[40px] overflow-hidden">
       {/* Background/Base Layer: Video */}
       <HeroVideo
         active={state() === "VIDEO"}
+        enabled={videoRequested()}
         onEnded={handleVideoEnded}
         onLoaded={() => setVideoLoaded(true)}
       />
@@ -274,13 +298,13 @@ export const Hero = () => {
   return (
     <section class="">
       <div class="grid lg:grid-cols-2 gap-10 items-center px-3 md:px-0">
-        <div class="fade-in relative z-30">
+        <div class="relative z-30">
           <div class="inline-block font-bold px-3 py-1 bg-dark-800/50 border-l-2 border-secondary-500 text-[16px] tracking-[2px] mb-8 text-secondary-200">
             {conferenceLongDate.toUpperCase()} // {conferenceLocation.toUpperCase()}
           </div>
 
           <div class="flex gap-2">
-            <h1 class="font-star text-5xl lg:text-7xl leading-[0.85] uppercase tracking-tighter font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-secondary-300 mb-6 fade-in">
+            <h1 class="font-star text-5xl lg:text-7xl leading-[0.85] uppercase tracking-tighter font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-secondary-300 mb-6">
               WHAT THE
               <br />
               STACK _
@@ -330,7 +354,7 @@ export const Hero = () => {
         {/* The Visual Glass Panel */}
         <GlassPanelController />
       </div>
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12 mt-20 pt-12 border-t border-white/20 fade-in-delay-2 relative text-center lg:text-left">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12 mt-20 pt-12 border-t border-white/20 relative text-center lg:text-left">
         <div class="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-secondary-500/50 to-transparent"></div>
         <div
           class="group tooltip cursor-help"

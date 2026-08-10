@@ -1,6 +1,5 @@
 import { createSignal, onMount, onCleanup, createEffect, Show } from "solid-js";
 import { Icon } from "@iconify-icon/solid";
-import { clientOnly } from "@solidjs/start";
 
 const NewsletterPopup = () => {
   const [isVisible, setIsVisible] = createSignal(false);
@@ -20,41 +19,37 @@ const NewsletterPopup = () => {
   const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
   const LISTMONK_URL = "https://listmonk.wts.sh";
 
+  const loadTurnstile = () => {
+    if (!SITE_KEY) return;
+    if ((window as any).turnstile) {
+      setTurnstileReady(true);
+      return;
+    }
+
+    const existingScript = document.getElementById("turnstile-script");
+    if (existingScript) {
+      existingScript.addEventListener("load", () => setTurnstileReady(true), {
+        once: true,
+      });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src =
+      "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.id = "turnstile-script";
+    script.async = true;
+    script.fetchPriority = "low";
+    script.onload = () => setTurnstileReady(true);
+    document.head.appendChild(script);
+  };
+
   onMount(() => {
-    // Listen for manual trigger
-    const handleOpen = () => setIsVisible(true);
-    window.addEventListener("wts:open-newsletter", handleOpen);
-
-    // Check if Turnstile is already loaded
-    const checkTurnstile = () => {
-      if ((window as any).turnstile) {
-        setTurnstileReady(true);
-        return true;
-      }
-      return false;
+    const handleOpen = () => {
+      setIsVisible(true);
+      loadTurnstile();
     };
-
-    if (!checkTurnstile()) {
-      // Poll for a bit just in case
-      const interval = setInterval(() => {
-        if (checkTurnstile()) clearInterval(interval);
-      }, 100);
-      setTimeout(() => clearInterval(interval), 5000);
-    }
-
-    // Inject Turnstile script
-    if (SITE_KEY && !document.getElementById("turnstile-script")) {
-      const script = document.createElement("script");
-      script.src =
-        "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-      script.id = "turnstile-script";
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        setTurnstileReady(true);
-      };
-      document.head.appendChild(script);
-    }
+    window.addEventListener("wts:open-newsletter", handleOpen);
 
     onCleanup(() => {
       window.removeEventListener("wts:open-newsletter", handleOpen);

@@ -1,5 +1,5 @@
 import Logo from "../assets/images/LogoSolo.svg";
-import { createSignal, createResource, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, createResource, onCleanup, onMount, Show, Suspense } from "solid-js";
 import { clientOnly } from "@solidjs/start";
 import { Icon } from "@iconify-icon/solid";
 import { useAuth } from "~/lib/auth-context";
@@ -187,11 +187,13 @@ export const Navbar = () => {
                   id="nav-involved"
                   style="position-anchor:--anchor-involved"
                 >
-                  <Show when={cfpConfig()?.cfp_open}>
-                    <li>
-                      <a href="/cfp">{`>`} Apply to speak</a>
-                    </li>
-                  </Show>
+                  <Suspense>
+                    <Show when={cfpConfig()?.cfp_open}>
+                      <li>
+                        <a href="/cfp">{`>`} Apply to speak</a>
+                      </li>
+                    </Show>
+                  </Suspense>
                   <li>
                     <a href="/partnerships">{`>`} Partner with us</a>
                   </li>
@@ -353,11 +355,13 @@ export const Navbar = () => {
               <details>
                 <summary>Get Involved</summary>
                 <ul>
-                  <Show when={cfpConfig()?.cfp_open}>
-                    <li>
-                      <a href="/cfp" onClick={closeDrawer}>Apply to speak</a>
-                    </li>
-                  </Show>
+                  <Suspense>
+                    <Show when={cfpConfig()?.cfp_open}>
+                      <li>
+                        <a href="/cfp" onClick={closeDrawer}>Apply to speak</a>
+                      </li>
+                    </Show>
+                  </Suspense>
                   <li>
                     <a href="/partnerships" onClick={closeDrawer}>Partner with us</a>
                   </li>
