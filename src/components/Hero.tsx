@@ -9,7 +9,6 @@ import {
 import Logo from "../assets/images/LogoSolo.svg?component-solid";
 import { HologramButton } from "./HologramButton";
 import {
-  conferenceLocation,
   conferenceLongDate,
   conferenceTicketPrice,
 } from "~/lib/conference-guide-content";
@@ -253,7 +252,7 @@ export const Hero = () => {
       <div class="grid lg:grid-cols-2 gap-10 items-center px-3 md:px-0">
         <div class="relative z-30">
           <div class="inline-block font-bold px-3 py-1 bg-dark-800/50 border-l-2 border-secondary-500 text-[16px] tracking-[2px] mb-8 text-secondary-200">
-            {conferenceLongDate.toUpperCase()} // {conferenceLocation.toUpperCase()}
+            {conferenceLongDate.toUpperCase()} // SKOPJE, MK
           </div>
 
           <div class="flex gap-2">
