@@ -404,12 +404,17 @@ export async function fetchHiEventsAttendeeSnapshot(options: HiEventsAdapterOpti
     totalPages = info.totalPages || totalPages;
     if (info.nextUrl) {
       const candidate = new URL(info.nextUrl, apiUrl);
-      if (candidate.origin !== apiOrigin || candidate.pathname !== attendeePath) {
+      if (candidate.origin !== apiOrigin) {
         return { state: "partial", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "malformed_pagination" };
       }
-      nextUrl = candidate.toString();
-      currentPage += 1;
-      continue;
+      if (!totalPages) {
+        if (candidate.pathname !== attendeePath) {
+          return { state: "partial", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "malformed_pagination" };
+        }
+        nextUrl = candidate.toString();
+        currentPage += 1;
+        continue;
+      }
     }
     if (totalPages && currentPage < totalPages) {
       currentPage += 1;

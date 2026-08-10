@@ -6185,6 +6185,41 @@ describe("Hi.Events adapter pagination", () => {
     expect(malformedRows).toMatchObject({ state: "partial", reason: "malformed_data", pagination: { complete: false } });
   });
 
+  it("keeps pagination on the API path when provider links omit the API prefix", async () => {
+    const requestedUrls: string[] = [];
+    const snapshot = await fetchHiEventsAttendeeSnapshot({
+      apiUrl: "https://hievents.example",
+      eventId: "main-event",
+      accessToken: "test-token",
+      fetcher: async (url) => {
+        requestedUrls.push(String(url));
+        const page = requestedUrls.length;
+        return new Response(JSON.stringify({
+          data: [{ id: `attendee-${page}`, email: `attendee-${page}@example.com`, status: "active" }],
+          links: {
+            next: page === 1 ? "https://hievents.example/events/main-event/attendees?page=2" : null,
+          },
+          meta: {
+            current_page: page,
+            last_page: 2,
+            per_page: 100,
+            total: 2,
+          },
+        }), { status: 200 });
+      },
+      now: () => timestamp,
+    });
+
+    expect(snapshot).toMatchObject({
+      state: "success",
+      pagination: { complete: true, completedPages: 2 },
+    });
+    expect(requestedUrls).toEqual([
+      "https://hievents.example/api/events/main-event/attendees?page=1&per_page=100",
+      "https://hievents.example/api/events/main-event/attendees?page=2&per_page=100",
+    ]);
+  });
+
   it("retries a transient page failure within a bounded budget before declaring the snapshot partial", async () => {
     let calls = 0;
     const snapshot = await fetchHiEventsAttendeeSnapshot({
