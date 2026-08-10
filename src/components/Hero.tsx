@@ -268,10 +268,11 @@ export const Hero = () => {
             {`>`} All things software, all things code. <br />
             {`>`}{" "}
             <span class="font-black text-primary-200 lg:hidden">The Web</span>
-            <span
-              class="hero-topic-rotate hidden lg:inline-grid"
-              aria-label="The Web, AI and Machine Learning, Infrastructure, DevOps, Soft Skills, and Startups"
-            >
+            <span class="hero-topic-rotate hidden lg:inline-grid">
+              <span class="sr-only">
+                The Web, AI and Machine Learning, Infrastructure, DevOps, Soft
+                Skills, and Startups
+              </span>
               <span class="hero-topic-list" aria-hidden="true">
                 <span class="text-primary-200 font-black">The Web</span>
                 <span class="text-secondary-200 font-black">
