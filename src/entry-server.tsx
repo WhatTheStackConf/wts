@@ -17,16 +17,17 @@ export default createHandler(() => (
             data-website-id="7eac874e-f8d2-4d48-8b71-aa34d1b2cd78"
           ></script>
           <script>
-            {`!function(f,b,e,v,n,t,s)
+            {`window.addEventListener('load',function(){!function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 n.callMethod.apply(n,arguments):n.queue.push(arguments)};
 if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
 n.queue=[];t=b.createElement(e);t.async=!0;
+t.fetchPriority='low';
 t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '2475235909644118');
-fbq('track', 'PageView');`}
+fbq('track', 'PageView')},{once:true});`}
           </script>
         </head>
         <body>
