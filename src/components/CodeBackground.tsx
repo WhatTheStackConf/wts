@@ -35,7 +35,7 @@ export default function CodeBackground() {
   return (
     <div class="absolute inset-0 overflow-hidden z-19" aria-hidden="true" inert>
       {/* Scrolling code lines */}
-      <For each={Array.from({ length: 15 })}>
+      <For each={Array.from({ length: 8 })}>
         {(item, i) => {
           const index = i();
           const fontSize = index % 4 === 0 ? "text-sm" : "text-xs";
@@ -64,7 +64,7 @@ export default function CodeBackground() {
       </For>
 
       {/* Typing code lines */}
-      <For each={Array.from({ length: 8 })}>
+      <For each={Array.from({ length: 4 })}>
         {(item, i) => {
           const index = i();
           const fontSize = index % 2 === 0 ? "text-sm" : "text-xs";

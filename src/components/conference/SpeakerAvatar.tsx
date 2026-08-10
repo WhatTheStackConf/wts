@@ -32,6 +32,15 @@ const imageSizes = {
   promo: "(min-width: 640px) 144px, 112px",
 };
 
+const imageDimensions = {
+  sm: 64,
+  md: 96,
+  lg: 128,
+  "lg-plus": 176,
+  xl: 176,
+  promo: 144,
+};
+
 function speakerInitials(name: string): string {
   const initials = name
     .trim()
@@ -70,10 +79,12 @@ export function SpeakerAvatar(props: SpeakerAvatarProps) {
         >
           {(photoUrl) => (
             <img
-              src={pocketBaseThumbnailUrl(photoUrl(), "256x256")}
-              srcset={pocketBaseThumbnailSrcSet(photoUrl(), [128, 256, 384])}
+              src={pocketBaseThumbnailUrl(photoUrl(), "192x192")}
+              srcset={pocketBaseThumbnailSrcSet(photoUrl(), [96, 128, 192, 256])}
               sizes={imageSizes[size()]}
               alt={props.name}
+              width={imageDimensions[size()]}
+              height={imageDimensions[size()]}
               class="w-full h-full object-cover"
               loading="lazy"
               decoding="async"

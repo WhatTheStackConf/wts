@@ -1,23 +1,31 @@
-const RESIZABLE_IMAGE_EXTENSIONS = /\.(?:gif|jpe?g|png|webp)$/i;
+const OPTIMIZABLE_IMAGE_EXTENSIONS = /\.(?:gif|jpe?g|png|svg|webp)$/i;
 
 interface ThumbnailSrcSetOptions {
   aspectRatio?: number;
   mode?: "crop" | "fit" | "width";
 }
 
-function supportsPocketBaseThumbnail(fileUrl: string): boolean {
+function supportsOptimizedImage(fileUrl: string): boolean {
   try {
-    return RESIZABLE_IMAGE_EXTENSIONS.test(new URL(fileUrl).pathname);
+    return OPTIMIZABLE_IMAGE_EXTENSIONS.test(new URL(fileUrl).pathname);
   } catch {
     return false;
   }
 }
 
 export function pocketBaseThumbnailUrl(fileUrl: string, size: string): string {
-  if (!supportsPocketBaseThumbnail(fileUrl)) return fileUrl;
-  const url = new URL(fileUrl);
-  url.searchParams.set("thumb", size);
-  return url.toString();
+  if (!supportsOptimizedImage(fileUrl)) return fileUrl;
+  const dimensions = /^(\d+)x(\d+)(f?)$/.exec(size);
+  if (!dimensions) return fileUrl;
+
+  const params = new URLSearchParams({
+    src: fileUrl,
+    width: dimensions[1],
+  });
+  if (dimensions[2] !== "0") params.set("height", dimensions[2]);
+  if (dimensions[3]) params.set("fit", "contain");
+
+  return `/api/image?${params.toString()}`;
 }
 
 export function pocketBaseThumbnailSrcSet(
@@ -25,7 +33,7 @@ export function pocketBaseThumbnailSrcSet(
   widths: readonly number[],
   options: ThumbnailSrcSetOptions = {},
 ): string | undefined {
-  if (!supportsPocketBaseThumbnail(fileUrl)) return undefined;
+  if (!supportsOptimizedImage(fileUrl)) return undefined;
   const aspectRatio = options.aspectRatio ?? 1;
   const modeSuffix = options.mode === "fit" ? "f" : "";
   return widths

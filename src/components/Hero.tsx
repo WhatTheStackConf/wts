@@ -1,7 +1,6 @@
 import {
   createSignal,
   createEffect,
-  onMount,
   onCleanup,
   Show,
   Switch,
@@ -19,6 +18,7 @@ import {
 
 const HeroLogo = (props: { show: boolean }) => (
   <div
+    aria-hidden="true"
     class={`w-auto h-full animate-float flex items-center justify-center p-4 filter drop-shadow-[0_0_15px_rgba(46,200,254,0.4)] transition-opacity duration-300 ${props.show ? "opacity-90" : "opacity-0"}`}
   >
     <Logo class="w-full h-full" />
@@ -94,6 +94,7 @@ const HeroGlitch = (props: {
       height={80}
       class={`absolute inset-0 w-full h-full pointer-events-none transition-opacity duration-75 ${props.active ? "opacity-100 z-50" : "opacity-0 z-0"}`}
       style={{ "image-rendering": "pixelated" }}
+      aria-hidden="true"
     />
   );
 };
@@ -129,6 +130,8 @@ const HeroVideo = (props: {
       preload="none"
       width={440}
       height={440}
+      aria-hidden="true"
+      tabindex="-1"
       onEnded={props.onEnded}
       onCanPlay={() => {
         props.onLoaded();
@@ -150,6 +153,11 @@ const GlassPanelController = () => {
   const [videoRequested, setVideoRequested] = createSignal(false);
   const [videoLoaded, setVideoLoaded] = createSignal(false);
   let timer: ReturnType<typeof setTimeout>;
+
+  const requestVideo = () => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    setVideoRequested(true);
+  };
 
   // Random delay between 3s and 15s
   const getRandomDelay = () => Math.floor(Math.random() * 12000) + 3000;
@@ -189,38 +197,14 @@ const GlassPanelController = () => {
     }
   });
 
-  onMount(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-    let idleId: number | undefined;
-    let fallbackId: ReturnType<typeof setTimeout> | undefined;
-    const requestVideo = () => {
-      if (typeof window.requestIdleCallback === "function") {
-        idleId = window.requestIdleCallback(() => setVideoRequested(true), {
-          timeout: 3000,
-        });
-      } else {
-        fallbackId = setTimeout(() => setVideoRequested(true), 1000);
-      }
-    };
-
-    if (document.readyState === "complete") {
-      requestVideo();
-    } else {
-      window.addEventListener("load", requestVideo, { once: true });
-    }
-
-    onCleanup(() => {
-      window.removeEventListener("load", requestVideo);
-      if (idleId !== undefined) window.cancelIdleCallback(idleId);
-      if (fallbackId !== undefined) clearTimeout(fallbackId);
-    });
-  });
-
   onCleanup(() => clearTimeout(timer));
 
   return (
-    <div class="relative min-h-[300px] lg:min-h-0 lg:h-full z-20 rounded-[40px] overflow-hidden">
+    <div
+      class="relative min-h-[300px] lg:min-h-0 lg:h-full z-20 rounded-[40px] overflow-hidden"
+      onPointerEnter={requestVideo}
+      onPointerDown={requestVideo}
+    >
       {/* Background/Base Layer: Video */}
       <HeroVideo
         active={state() === "VIDEO"}
@@ -263,38 +247,7 @@ const GlassPanelController = () => {
   );
 };
 
-function useCountUp(target: number, duration: number = 2000) {
-  const [count, setCount] = createSignal(0);
-
-  onMount(() => {
-    // onMount is client-only usually, but let's be safe
-    if (typeof window === "undefined") return;
-
-    let startTimestamp: number | null = null;
-    let animationFrame: number;
-
-    const step = (timestamp: number) => {
-      if (!startTimestamp) startTimestamp = timestamp;
-      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-      const ease = 1 - Math.pow(1 - progress, 4);
-      setCount(Math.floor(ease * target));
-      if (progress < 1) {
-        animationFrame = requestAnimationFrame(step);
-      }
-    };
-    animationFrame = requestAnimationFrame(step);
-    onCleanup(() => cancelAnimationFrame(animationFrame));
-  });
-
-  return count;
-}
-
 export const Hero = () => {
-  const workshops = useCountUp(5, 1500);
-  const talks = useCountUp(30, 1800);
-  const tracks = useCountUp(5, 1200);
-  const attendees = useCountUp(800, 2500);
-
   return (
     <section class="">
       <div class="grid lg:grid-cols-2 gap-10 items-center px-3 md:px-0">
@@ -314,8 +267,12 @@ export const Hero = () => {
           <p class="max-w-md text-dark-50 text-lg font-light mb-12 leading-relaxed">
             {`>`} All things software, all things code. <br />
             {`>`}{" "}
-            <span class="text-rotate">
-              <span>
+            <span class="font-black text-primary-200 lg:hidden">The Web</span>
+            <span
+              class="hero-topic-rotate hidden lg:inline-grid"
+              aria-label="The Web, AI and Machine Learning, Infrastructure, DevOps, Soft Skills, and Startups"
+            >
+              <span class="hero-topic-list" aria-hidden="true">
                 <span class="text-primary-200 font-black">The Web</span>
                 <span class="text-secondary-200 font-black">
                   AI & Machine Learning
@@ -324,6 +281,7 @@ export const Hero = () => {
                 <span class="text-primary-200 font-black">DevOps</span>
                 <span class="font-black">Soft Skills</span>
                 <span class="text-secondary-200 font-black">Startups</span>
+                <span class="text-primary-200 font-black">The Web</span>
               </span>
             </span>{" "}
             <br />
@@ -364,7 +322,7 @@ export const Hero = () => {
             Workshops
           </span>
           <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-secondary-200 to-secondary-400 group-hover:from-white group-hover:via-primary-200 group-hover:to-primary-400 transition-all duration-300 tabular-nums block">
-            {workshops()}+
+            5+
           </span>
         </div>
         <div
@@ -375,7 +333,7 @@ export const Hero = () => {
             Talks
           </span>
           <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-secondary-200 to-secondary-400 group-hover:from-white group-hover:via-primary-200 group-hover:to-primary-400 transition-all duration-300 tabular-nums block">
-            {talks()}+
+            30+
           </span>
         </div>
         <div
@@ -386,7 +344,7 @@ export const Hero = () => {
             Tracks
           </span>
           <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-secondary-200 to-secondary-400 group-hover:from-white group-hover:via-primary-200 group-hover:to-primary-400 transition-all duration-300 tabular-nums block">
-            {tracks()}
+            5
             <span class="text-4xl align-super">*</span>
           </span>
         </div>
@@ -398,7 +356,7 @@ export const Hero = () => {
             Attendees
           </span>
           <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-secondary-200 to-secondary-400 group-hover:from-white group-hover:via-primary-200 group-hover:to-primary-400 transition-all duration-300 tabular-nums block">
-            {attendees()}+
+            800+
           </span>
         </div>
       </div>

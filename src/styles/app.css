@@ -61,16 +61,16 @@
 
 @font-face {
   font-family: "StarzoomShavian";
-  src: url("/fonts/starzoom-shavian.regular.ttf") format("truetype");
-  font-weight: normal;
+  src: url("/fonts/starzoom-shavian.regular.woff2") format("woff2");
+  font-weight: 400 900;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
   font-family: "StarZoomShavian";
-  src: url("/fonts/starzoom-shavian.italic.ttf") format("truetype");
-  font-weight: normal;
+  src: url("/fonts/starzoom-shavian.italic.woff2") format("woff2");
+  font-weight: 400 900;
   font-style: italic;
   font-display: swap;
 }
@@ -356,16 +356,29 @@
   background-size: 30px 30px;
   pointer-events: none;
   z-index: 20;
-  animation: grid-move 10s linear infinite;
 }
 
-@keyframes grid-move {
-  0% {
-    background-position: 0 0;
-  }
+.hero-topic-rotate {
+  height: 1.5em;
+  overflow: hidden;
+  vertical-align: bottom;
+}
 
-  100% {
-    background-position: 30px 30px;
+.hero-topic-list {
+  display: flex;
+  flex-direction: column;
+  animation: hero-topic-rotate 18s steps(6, end) infinite;
+  will-change: transform;
+}
+
+.hero-topic-list > span {
+  height: 1.5em;
+  white-space: nowrap;
+}
+
+@keyframes hero-topic-rotate {
+  to {
+    transform: translateY(-9em);
   }
 }
 
@@ -419,8 +432,7 @@
 }
 
 body {
-  background: url("/bg.webp") center center no-repeat;
-  background-size: cover;
+  background: var(--color-dark-950);
 }
 
 /* Keep the Press Kit contents sticky without making the public shell a scroll container. */

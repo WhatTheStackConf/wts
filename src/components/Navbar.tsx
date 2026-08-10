@@ -6,9 +6,6 @@ import { useAuth } from "~/lib/auth-context";
 import { fetchCfpConfig } from "~/lib/cfp-utils";
 
 const LoginMenu = clientOnly(() => import("./LoginMenu"));
-const MultiLineCyberpunkText = clientOnly(
-  () => import("./MultiLineCyberpunkText"),
-);
 
 export const Navbar = () => {
   const auth = useAuth();
@@ -92,15 +89,16 @@ export const Navbar = () => {
               <div>
                 <div class="flex flex-col">
                   <span class="block font-star italic text-xs md:text-2xl leading-tight">
-                    <MultiLineCyberpunkText
-                      firstLineText="WhatTheStack"
-                      secondLineText="2026"
-                      hasGlow={true}
-                      className="inline"
-                      delay={0}
-                      tracking="tracking-widest md:tracking-[0.8em]"
-                      trackingYear="tracking-[0.5em] md:tracking-[0.7em]"
-                    />
+                    <span class="relative flex flex-col leading-none neon-glow-subtle">
+                      <span class="whitespace-nowrap">
+                        <span class="text-secondary-300">What</span>
+                        <span class="text-primary-500">The</span>
+                        <span class="text-secondary-300">Stack</span>
+                      </span>
+                      <span class="mt-0 whitespace-nowrap text-xs tracking-[0.5em] text-primary-400 md:mt-2 md:text-2xl md:tracking-[0.7em]">
+                        2 0 2 6
+                      </span>
+                    </span>
                   </span>
                 </div>
               </div>

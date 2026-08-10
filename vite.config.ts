@@ -17,7 +17,7 @@ export default defineConfig({
           headers: { "cache-control": "public, max-age=31536000, immutable" },
         },
         "/fonts/**": {
-          headers: { "cache-control": "public, max-age=604800" },
+          headers: { "cache-control": "public, max-age=31536000" },
         },
         "/blog/iceberg-meme.jpg": {
           headers: { "cache-control": "public, max-age=604800" },
@@ -38,7 +38,10 @@ export default defineConfig({
           headers: { "cache-control": "public, max-age=604800" },
         },
         "/wts-square-web.webm": {
-          headers: { "cache-control": "public, max-age=604800" },
+          headers: { "cache-control": "public, max-age=31536000" },
+        },
+        "/llms.txt": {
+          headers: { "cache-control": "public, max-age=86400" },
         },
         "/wts-community-partnership-2026.pdf": {
           headers: { "cache-control": "public, max-age=604800" },

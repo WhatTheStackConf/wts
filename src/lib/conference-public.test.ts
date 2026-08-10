@@ -17,27 +17,31 @@ import {
 } from "~/lib/pocketbase-thumbnail";
 
 describe("PocketBase image thumbnails", () => {
-  it("builds responsive thumbnail URLs for raster images", () => {
+  it("builds responsive optimized image URLs for raster images", () => {
     const url = "https://pb.example/api/files/speakers/speaker-1/photo.png";
 
     expect(pocketBaseThumbnailUrl(url, "256x256")).toBe(
-      `${url}?thumb=256x256`,
+      `/api/image?src=${encodeURIComponent(url)}&width=256&height=256`,
     );
     expect(pocketBaseThumbnailSrcSet(url, [128, 256])).toBe(
-      `${url}?thumb=128x128 128w, ${url}?thumb=256x256 256w`,
+      `/api/image?src=${encodeURIComponent(url)}&width=128&height=128 128w, /api/image?src=${encodeURIComponent(url)}&width=256&height=256 256w`,
     );
   });
 
-  it("leaves SVG files unchanged because PocketBase cannot resize them", () => {
+  it("optimizes SVG files through the image endpoint", () => {
     const url = "https://pb.example/api/files/partners/partner-1/logo.svg";
 
-    expect(pocketBaseThumbnailUrl(url, "640x320")).toBe(url);
+    expect(pocketBaseThumbnailUrl(url, "640x320")).toBe(
+      `/api/image?src=${encodeURIComponent(url)}&width=640&height=320`,
+    );
     expect(
       pocketBaseThumbnailSrcSet(url, [320, 640], {
         aspectRatio: 2,
         mode: "fit",
       }),
-    ).toBeUndefined();
+    ).toBe(
+      `/api/image?src=${encodeURIComponent(url)}&width=320&height=160&fit=contain 320w, /api/image?src=${encodeURIComponent(url)}&width=640&height=320&fit=contain 640w`,
+    );
   });
 
   it("uses width-preserving PocketBase thumbnails for logos", () => {
@@ -46,7 +50,7 @@ describe("PocketBase image thumbnails", () => {
     expect(
       pocketBaseThumbnailSrcSet(url, [320, 640, 1280], { mode: "width" }),
     ).toBe(
-      `${url}?thumb=320x0 320w, ${url}?thumb=640x0 640w, ${url}?thumb=1280x0 1280w`,
+      `/api/image?src=${encodeURIComponent(url)}&width=320 320w, /api/image?src=${encodeURIComponent(url)}&width=640 640w, /api/image?src=${encodeURIComponent(url)}&width=1280 1280w`,
     );
   });
 });
