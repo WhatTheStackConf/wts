@@ -25,7 +25,7 @@ export function SpeakerPromoPage(props: SpeakerPromoPageProps) {
 
       <h1 class="font-star italic text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight mb-10 md:mb-12 leading-tight neon-glow-subtle">
         <span class="text-secondary-300">What</span>
-        <span class="text-primary-500">The</span>
+        <span class="text-secondary-300">The</span>
         <span class="text-secondary-300">Stack</span>
         <span class="text-primary-400">!?!</span>
       </h1>

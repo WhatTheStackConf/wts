@@ -92,10 +92,10 @@ export const Navbar = () => {
                     <span class="relative flex flex-col leading-none neon-glow-subtle">
                       <span class="whitespace-nowrap">
                         <span class="text-secondary-300">What</span>
-                        <span class="text-primary-500">The</span>
+                        <span class="text-secondary-300">The</span>
                         <span class="text-secondary-300">Stack</span>
                       </span>
-                      <span class="mt-0 whitespace-nowrap text-xs tracking-[0.5em] text-primary-400 md:mt-2 md:text-2xl md:tracking-[0.7em]">
+                      <span class="mt-0 whitespace-nowrap text-xs tracking-[0.5em] text-secondary-300 md:mt-2 md:text-2xl md:tracking-[0.7em]">
                         2 0 2 6
                       </span>
                     </span>

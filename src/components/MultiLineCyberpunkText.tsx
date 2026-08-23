@@ -110,7 +110,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
                 class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}
               >
                 <span class="text-secondary-300">What</span>
-                <span class="text-primary-500">The</span>
+                <span class="text-secondary-300">The</span>
                 <span class="text-secondary-300">Stack</span>
               </span>
             )}
@@ -151,13 +151,13 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
           <div>
             <span class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}>
               <span class="text-secondary-300">What</span>
-              <span class="text-primary-500">The</span>
+              <span class="text-secondary-300">The</span>
               <span class="text-secondary-300">Stack</span>
             </span>
 
             <div class="mt-0 md:mt-2">
               <span class="relative neon-glow-subtle whitespace-nowrap">
-                <span class={`text-primary-400 text-xs md:text-2xl ${props.trackingYear || "tracking-[0.7em]"}`}>
+                <span class={`text-secondary-300 text-xs md:text-2xl ${props.trackingYear || "tracking-[0.7em]"}`}>
                   2 0 2 6
                 </span>
                 <span class="ml-0.5 inline-block w-1 h-3 md:h-6 bg-primary-500 align-middle animate-pulse"></span>
