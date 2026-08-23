@@ -316,13 +316,13 @@ export const Hero = () => {
         <div class="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-secondary-500/50 to-transparent"></div>
         <div
           class="group tooltip cursor-help"
-          data-tip="That's at least 5. Due to the venue change, we can totally do more this time around! "
+          data-tip="Six days of programme, from InfoSec Monday through to the main conference on Saturday."
         >
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
-            Workshops
+            Days
           </span>
           <span class="text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-secondary-200 to-secondary-400 group-hover:from-white group-hover:via-primary-200 group-hover:to-primary-400 transition-all duration-300 tabular-nums block">
-            5+
+            6
           </span>
         </div>
         <div
