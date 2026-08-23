@@ -89,6 +89,13 @@
   --color-dark-900: oklch(0.1 0.02 270);
   --color-dark-950: oklch(0.05 0.01 270);
 
+  /* Light colors - near-white plates for dark logo artwork */
+  --color-light-50: oklch(0.99 0.004 270);
+  --color-light-100: oklch(0.97 0.006 270);
+  --color-light-200: oklch(0.94 0.008 270);
+  --color-light-300: oklch(0.9 0.01 270);
+  --color-light-400: oklch(0.86 0.012 270);
+
   /* Secondary colors */
   --color-secondary-50: oklch(0.97 0.05 85);
   --color-secondary-100: oklch(0.95 0.1 85);
@@ -1048,7 +1055,7 @@ a.partner-logo-card:active {
 }
 
 .partner-logo-stage[data-surface="light"] {
-  background: color-mix(in oklch, var(--color-dark-50), transparent 64%);
+  background: color-mix(in oklch, var(--color-light-100), transparent 8%);
 }
 
 .partner-logo-stage[data-surface="mixed"] {
