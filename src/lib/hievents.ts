@@ -131,6 +131,18 @@ function numberValue(value: unknown): number | undefined {
   return Number.isFinite(number) ? number : undefined;
 }
 
+function flag(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  const candidate = text(value)?.toLowerCase();
+  return candidate === "true" || candidate === "1";
+}
+
+/** Hidden products are reachable only by direct link or promo code, never from the public listing. */
+function isHiddenProduct(ticket: Record<string, unknown>): boolean {
+  return flag(ticket.is_hidden ?? ticket.hidden) || flag(ticket.is_hidden_without_promo_code);
+}
+
 /** Normalization intentionally does not strip aliases or apply provider-specific rules. */
 export function normalizeHiEventsEmail(email: string | undefined): string {
   return email?.trim().toLocaleLowerCase() || "";
@@ -459,6 +471,7 @@ export async function fetchHiEventsReleases(): Promise<HiEventsRelease[]> {
       : `${rawApiUrl.replace(/\/$/, "")}/event/${eventId}`;
     return products
       .filter((ticket): ticket is Record<string, unknown> => Boolean(ticket && typeof ticket === "object" && !Array.isArray(ticket)))
+      .filter((ticket) => !isHiddenProduct(ticket))
       .map((ticket) => ({
         id: numberValue(ticket.id) || 0,
         title: text(ticket.title) || "Ticket",
