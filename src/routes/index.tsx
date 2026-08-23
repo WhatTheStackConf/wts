@@ -12,6 +12,7 @@ import {
 } from "~/components/conference/PartnersShowcase";
 import { fetchPublicPartnerGroups } from "~/lib/partners-public";
 import { conferenceGuideContent } from "~/lib/conference-guide-content";
+import { ConferenceWeek } from "~/components/conference/ConferenceWeek";
 
 export default function Home() {
   const [speakers] = createResource(fetchPublicSpeakerTeaser);
@@ -24,6 +25,8 @@ export default function Home() {
     >
       <div class="relative">
         <Hero />
+
+        <ConferenceWeek />
 
         <Suspense>
           <Show when={(speakers()?.preview.length ?? 0) > 0}>

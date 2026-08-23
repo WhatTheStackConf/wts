@@ -1012,6 +1012,84 @@ main:has(.press-kit-page) {
   overflow: hidden;
 }
 
+.week-track-card {
+  translate: 0 0;
+  background: color-mix(in oklch, var(--color-dark-900), transparent 4%);
+  box-shadow: 0 5px 12px rgb(0 0 0 / 0.42);
+  backdrop-filter: blur(8px) saturate(120%);
+  transition:
+    translate 240ms cubic-bezier(0.25, 1, 0.5, 1),
+    background-color 240ms cubic-bezier(0.25, 1, 0.5, 1),
+    border-color 240ms cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 240ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.week-track-card:hover,
+.week-track-card:focus-within {
+  translate: 0 -2px;
+  border-color: color-mix(in oklch, var(--color-primary-400) 70%, transparent);
+  box-shadow:
+    0 0 10px color-mix(in oklch, var(--color-primary-500) 20%, transparent),
+    0 6px 14px rgb(0 0 0 / 0.48);
+}
+
+/* Action for a day the WhatTheStack ticket does not cover. */
+.week-entry-cta {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in oklch, var(--color-secondary-400) 65%, transparent);
+  border-radius: 0.375rem;
+  padding: 0.5rem 1rem;
+  font-family: var(--font-star, inherit);
+  font-size: 0.9rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-secondary-200);
+  background: color-mix(in oklch, var(--color-secondary-500) 14%, transparent);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition:
+    background-color 200ms cubic-bezier(0.25, 1, 0.5, 1),
+    border-color 200ms cubic-bezier(0.25, 1, 0.5, 1),
+    color 200ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.week-entry-cta:hover {
+  background: color-mix(in oklch, var(--color-secondary-500) 30%, transparent);
+  border-color: var(--color-secondary-300);
+  color: white;
+}
+
+.week-entry-cta:focus-visible {
+  outline-color: var(--color-accent-400);
+}
+
+/* An unannounced day. Present in the week, clearly not yet bookable. */
+.week-track-card[data-placeholder="true"] {
+  border-style: dashed;
+  border-color: color-mix(in oklch, var(--color-primary-500) 30%, transparent);
+  background: color-mix(in oklch, var(--color-dark-900), transparent 22%);
+}
+
+.week-track-card[data-placeholder="true"] h3 {
+  color: color-mix(in oklch, var(--color-primary-300) 70%, transparent);
+}
+
+.week-track-title-link {
+  color: inherit;
+  outline: 2px solid transparent;
+  outline-offset: 3px;
+  transition: color 200ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.week-track-title-link:hover {
+  color: var(--color-primary-200);
+}
+
+.week-track-title-link:focus-visible {
+  outline-color: var(--color-accent-400);
+}
+
 .partner-logo-card {
   translate: 0 0;
   background: color-mix(in oklch, var(--color-dark-900), transparent 4%);
@@ -1137,6 +1215,17 @@ a.partner-logo-card:focus-visible .cyber-scan-line {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .week-track-card:hover,
+  .week-track-card:focus-within {
+    translate: 0 0;
+  }
+
+  .week-track-card:hover .cyber-scan-line,
+  .week-track-card:focus-within .cyber-scan-line {
+    animation: none;
+    opacity: 0;
+  }
+
   a.partner-logo-card:hover,
   a.partner-logo-card:focus-visible,
   a.partner-logo-card:hover .partner-logo-arrow,
