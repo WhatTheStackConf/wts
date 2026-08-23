@@ -20,7 +20,7 @@ interface PartnerLogoProps {
 function groupToneClass(group: PublicPartnerGroup): string {
   switch (group.id) {
     case "platinum-sponsors":
-      return "text-primary-200 border-primary-300/60";
+      return "text-emerald-300 border-emerald-300/60";
     case "gold-sponsors":
       return "text-yellow-300 border-yellow-300/60";
     case "silver-sponsors":
@@ -28,7 +28,7 @@ function groupToneClass(group: PublicPartnerGroup): string {
     case "bronze-sponsors":
       return "text-amber-500 border-amber-500/50";
     case "bank-sponsors":
-      return "text-emerald-300 border-emerald-300/55";
+      return "text-white border-white/55";
     case "organizers":
       return "text-primary-300 border-primary-400/50";
     default:
