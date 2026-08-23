@@ -54,17 +54,17 @@ function showcaseSpacingClass(variant: "home" | "page"): string {
 }
 
 function logoCardClass(group: PublicPartnerGroup): string {
-  let size = "min-h-[10rem] p-3";
-  if (group.tier === "gold") size = "min-h-[12rem] p-3.5 md:p-4";
-  if (group.tier === "platinum") size = "min-h-[14rem] p-4 md:p-5";
+  let size = "min-h-[17rem] px-5 py-5";
+  if (group.tier === "gold") size = "min-h-[19rem] px-6 py-6 md:px-7 md:py-7";
+  if (group.tier === "platinum") size = "min-h-[21rem] px-7 py-6 md:px-8 md:py-8";
 
   return `partner-logo-card group relative flex h-full w-full flex-col overflow-hidden rounded-2xl border no-underline ${size} ${groupToneClass(group)}`;
 }
 
 function logoStageClass(group: PublicPartnerGroup): string {
-  if (group.tier === "platinum") return "h-36";
-  if (group.tier === "gold") return "h-28";
-  return "h-24";
+  if (group.tier === "platinum") return "h-60";
+  if (group.tier === "gold") return "h-52";
+  return "h-48";
 }
 
 function logoSizes(group: PublicPartnerGroup): string {
@@ -100,10 +100,10 @@ function PartnerLogo(props: PartnerLogoProps) {
           sizes={logoSizes(props.group)}
           alt=""
           width={320}
-          height={160}
+          height={256}
           loading="lazy"
           decoding="async"
-          class="partner-logo-image block h-full w-full object-contain p-2"
+          class="partner-logo-image block h-full w-full object-contain px-5 py-8 md:px-7 md:py-10"
         />
       </span>
       <span class="relative z-10 mt-3 flex w-full min-w-0 items-center gap-3 px-1">
