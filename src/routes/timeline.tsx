@@ -24,6 +24,10 @@ const fetchTimeline = async (): Promise<TimelineEvent[]> => {
   return records as unknown as TimelineEvent[];
 };
 
+function isExternal(url: string) {
+  return /^https?:\/\//.test(url);
+}
+
 function isPast(dateStr: string) {
   return new Date(dateStr) < new Date();
 }
@@ -143,9 +147,14 @@ export default function Timeline() {
                               <Show when={event.link_url && event.link_text}>
                                 <a
                                   href={event.link_url}
+                                  target={isExternal(event.link_url) ? "_blank" : undefined}
+                                  rel={isExternal(event.link_url) ? "noopener noreferrer" : undefined}
                                   class="inline-block mt-3 text-sm font-bold text-primary-400 hover:text-primary-300 transition-colors"
                                 >
                                   {`>`} {event.link_text}
+                                  <Show when={isExternal(event.link_url)}>
+                                    <span aria-hidden="true"> &#8599;</span>
+                                  </Show>
                                 </a>
                               </Show>
                             </div>
