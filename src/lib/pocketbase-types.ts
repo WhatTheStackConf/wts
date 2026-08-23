@@ -602,7 +602,7 @@ export interface PartnerRecord extends RecordModel {
     | "media"
     | "catering"
     | "other";
-  tier?: "platinum" | "gold" | "silver" | "bronze";
+  tier?: "platinum" | "gold" | "silver" | "bronze" | "bank";
   logo?: string;
   logo_surface: PartnerLogoSurface;
   url?: string;

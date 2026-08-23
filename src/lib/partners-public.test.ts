@@ -37,6 +37,19 @@ describe("public partner groups", () => {
       .toBe(true);
   });
 
+  it("keeps Bank Sponsors in their own group, separate from the ranked tiers", () => {
+    const groups = buildPublicPartnerGroups([
+      partner({ id: "komercijalna", name: "Komercijalna Banka", type: "sponsor", tier: "bank" }),
+      partner({ id: "bronze-co", name: "Bronze Co", type: "sponsor", tier: "bronze" }),
+    ]);
+
+    const bank = groups.find((group) => group.id === "bank-sponsors");
+    expect(bank?.kind).toBe("sponsor");
+    expect(bank?.partners.map((item) => item.name)).toEqual(["Komercijalna Banka"]);
+    expect(groups.find((group) => group.id === "bronze-sponsors")?.partners.map((item) => item.name))
+      .toEqual(["Bronze Co"]);
+  });
+
   it("projects only Published Partner fields and excludes Partner Notes", () => {
     const groups = buildPublicPartnerGroups([
       partner({

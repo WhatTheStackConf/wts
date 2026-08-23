@@ -56,6 +56,7 @@ const TIER_OPTIONS: { value: NonNullable<PartnerRecord["tier"]>; label: string }
   { value: "gold", label: "Gold" },
   { value: "silver", label: "Silver" },
   { value: "bronze", label: "Bronze" },
+  { value: "bank", label: "Bank" },
 ];
 
 const LOGO_SURFACE_OPTIONS: {

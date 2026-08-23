@@ -33,6 +33,7 @@ const PARTNER_GROUPS: PublicPartnerGroupConfig[] = [
   { id: "gold-sponsors", title: "Gold Sponsors", kind: "sponsor", type: "sponsor", tier: "gold" },
   { id: "silver-sponsors", title: "Silver Sponsors", kind: "sponsor", type: "sponsor", tier: "silver" },
   { id: "bronze-sponsors", title: "Bronze Sponsors", kind: "sponsor", type: "sponsor", tier: "bronze" },
+  { id: "bank-sponsors", title: "Bank Sponsor", kind: "sponsor", type: "sponsor", tier: "bank" },
   { id: "media-partners", title: "Media Partners", kind: "partner", type: "media" },
   { id: "supporters", title: "Supporters", kind: "partner", type: "supporter" },
   { id: "community-partners", title: "Community Partners", kind: "partner", type: "community_partner" },

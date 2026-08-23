@@ -22,7 +22,7 @@ export const PARTNER_TYPES = [
   "catering",
   "other",
 ] as const satisfies readonly PartnerRecord["type"][];
-export const PARTNER_TIERS = ["platinum", "gold", "silver", "bronze"] as const;
+export const PARTNER_TIERS = ["platinum", "gold", "silver", "bronze", "bank"] as const;
 export const PARTNER_LOGO_SURFACES = ["dark", "light", "mixed"] as const satisfies readonly PartnerLogoSurface[];
 const PARTNER_LOGO_TYPES = [
   "image/svg+xml",

@@ -27,6 +27,8 @@ function groupToneClass(group: PublicPartnerGroup): string {
       return "text-slate-200 border-slate-200/50";
     case "bronze-sponsors":
       return "text-amber-500 border-amber-500/50";
+    case "bank-sponsors":
+      return "text-emerald-300 border-emerald-300/55";
     case "organizers":
       return "text-primary-300 border-primary-400/50";
     default:

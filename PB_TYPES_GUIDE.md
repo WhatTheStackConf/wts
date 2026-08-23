@@ -28,7 +28,7 @@ This project uses manually defined TypeScript types for PocketBase collections t
 - Fields: `name`, `published`, `type`, `tier`, optional `logo`, required `logo_surface`, `url`, `notes`, `normalized_name`, `canonical_url`, internal `mutation_token`, `logo_uploaded_by_human`, `note_agent_visible`, `created`, `updated`
 - Logo surfaces: `dark`, `light`, `mixed`
 - Classifications: `organizer`, `sponsor`, `supporter`, `community_partner`, `media`, `catering`, `other`
-- Sponsor tiers: `platinum`, `gold`, `silver`, `bronze`; non-Sponsors have no tier
+- Sponsor tiers: `platinum`, `gold`, `silver`, `bronze`, `bank`; non-Sponsors have no tier
 
 ### MCP Tokens Collection
 - Location: `McpTokenRecord` interface in `src/lib/pocketbase-types.ts`
