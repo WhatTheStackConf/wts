@@ -7,7 +7,7 @@ const codeSnippets = [
   "const neon = 'rgb(255, 0, 255)'; // Cyberpunk pink",
   "for (let i = 0; i < stack.length; i++) { console.log(stack[i]); }",
   "const WTSTheme = { year: 2026, theme: 'Blade Runner' };",
-  "function deploy() { return 'To the future'; }",
+  "function deploy() { return 'September 19, Skopje'; }",
   "const conference = { name: 'WhatTheStack', vibe: 'neon' };",
   "const replicant = { type: 'Nexus-7', status: 'on-the-run' };",
   "if (memory) { return false; } // Replicant memories are implanted",
@@ -20,10 +20,10 @@ const codeSnippets = [
   "const cyberpunk = { city: 'Skopje', year: 2049 };",
   "const code = { language: 'Assembly', origin: 'Tyrell Corp' };",
   "const server = { location: 'Off-world colony', security: 'high' };",
-  "const stack = { tech: ['Solid.js', 'Node.js', 'WebAssembly'], future: 'bright' };",
-  "const webAssembly = 'The future of web development';",
+  "const stack = ['web', 'AI', 'infra', 'DevOps', 'soft skills', 'startups'];",
+  "const campus = ['FINKI', 'FEIT', 'Mechanical Engineering'];",
   "const nodejs = 'Running JavaScript everywhere';",
-  "const javascript = { goodParts: false, es6: true, future: 'bright' };",
+  "const salesPitch = false; // seriously",
   "const ai = { consciousness: 'simulated', empathy: 'questionable' };",
 ];
 

@@ -78,7 +78,7 @@ export default function PressKit() {
   return (
     <Layout
       title="Press Kit | WhatTheStack 2026"
-      description="Download approved WhatTheStack 2026 assets and read usage guidance for Media and Partners."
+      description="Download the WhatTheStack 2026 logos, event facts, and usage notes."
       ogSubtitle="Approved assets and usage guidance for Media and Partners"
     >
       <Link rel="canonical" href={pressKitCanonicalUrl(getSiteOrigin())} />
@@ -92,7 +92,7 @@ export default function PressKit() {
                 Press Kit
               </h1>
               <p class="mt-5 max-w-2xl text-pretty text-lg leading-relaxed text-dark-50">
-                For Media and Partners. No advance approval is needed for the uses described here.
+                For media and partners. If your use fits the notes below, you don't need to ask first.
               </p>
             </div>
             <a
@@ -124,7 +124,7 @@ export default function PressKit() {
             <section id="overview" aria-labelledby="overview-title" class="scroll-mt-8 grid gap-8 md:grid-cols-[minmax(0,1fr)_15rem] md:items-start">
               <div>
                 <h2 id="overview-title" class="max-w-3xl text-balance text-3xl font-bold leading-tight text-white md:text-4xl">
-                  WhatTheStack 2026, ready to reference
+                  About WhatTheStack 2026
                 </h2>
                 <p class="mt-5 max-w-3xl text-pretty text-xl leading-relaxed text-dark-50">
                   {pressKitDescription}
@@ -196,7 +196,7 @@ export default function PressKit() {
                 <div>
                   <h2 id="facts-title" class="font-star text-3xl uppercase tracking-[0.04em] text-primary-300">Facts and copy</h2>
                   <p class="mt-3 max-w-3xl text-pretty leading-relaxed text-dark-50">
-                    Stable public details for WhatTheStack 2026. Copy individual values or all facts at once.
+                    Dates, venue, organizers, and links. Copy one item or the full list.
                   </p>
                 </div>
                 <CopyButton value={pressKitAllFacts} label="Copy all facts" />

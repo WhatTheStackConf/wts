@@ -285,8 +285,8 @@ export const Hero = () => {
               </span>
             </span>{" "}
             <br />
-            {`>`} With the vibes to match... <br />
-            {`>`} and the amazing dev community as last time!
+            {`>`} Talks and workshops, with the hallway conversations in between. <br />
+            {`>`} The same dev community as last time, with more room this year.
           </p>
 
           <div class="flex items-center gap-4 sm:gap-6 xl:gap-8">
@@ -316,7 +316,7 @@ export const Hero = () => {
         <div class="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-secondary-500/50 to-transparent"></div>
         <div
           class="group tooltip cursor-help"
-          data-tip="Six days of programme, from InfoSec Monday through to the main conference on Saturday."
+          data-tip="We start Monday with InfoSec and finish Saturday with the main conference."
         >
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
             Days
@@ -327,7 +327,7 @@ export const Hero = () => {
         </div>
         <div
           class="group tooltip cursor-help"
-          data-tip="30 of the regular ones; We have a few new ideas too!"
+          data-tip="Thirty regular talks. We have a few shorter and stranger ideas too."
         >
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
             Talks
@@ -338,7 +338,7 @@ export const Hero = () => {
         </div>
         <div
           class="group tooltip cursor-help"
-          data-tip="New venue - anything is possible. As in, more!"
+          data-tip="Five stages on the new campus. The asterisk is there because we may find room for more."
         >
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
             Tracks
@@ -350,7 +350,7 @@ export const Hero = () => {
         </div>
         <div
           class="group tooltip cursor-help"
-          data-tip="Based on last year's attendance. But, if we project it, we'll probably break 1000."
+          data-tip="Last year brought 800 people. This year we may need a bigger number."
         >
           <span class="block text-sm text-secondary-300 uppercase tracking-[0.2em] mb-2 group-hover:text-primary-300 transition-colors">
             Attendees

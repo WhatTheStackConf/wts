@@ -10,7 +10,7 @@ interface SpeakerCardProps {
 }
 
 function sessionLabel(count: number) {
-  if (count === 0) return "Sessions soon";
+  if (count === 0) return "Talks not announced yet";
   if (count === 1) return "1 session";
   return `${count} sessions`;
 }

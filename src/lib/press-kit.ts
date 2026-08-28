@@ -1,9 +1,10 @@
 export const pressKitDescription =
-  "WhatTheStack is a single-day, multi-track conference celebrating technology, the web platform, AI, infrastructure, and everything else that makes the modern stack what it is.";
+  "WhatTheStack is a community-run software conference in Skopje. The 2026 edition runs from September 14 to 19, with smaller events and workshops through the week and a five-stage main conference on Saturday.";
 
 export const pressKitFacts = [
   { label: "Edition", value: "WhatTheStack 2026" },
-  { label: "Date", value: "2026-09-19" },
+  { label: "Conference week", value: "2026-09-14 to 2026-09-19" },
+  { label: "Main conference", value: "2026-09-19" },
   { label: "Location", value: "Skopje, North Macedonia" },
   { label: "Venue", value: "Technical Campus" },
   { label: "Organizers", value: "DeveD, Base42, Angular Macedonia" },

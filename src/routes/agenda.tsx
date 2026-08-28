@@ -77,7 +77,7 @@ export default function Agenda() {
           >
             <Show when={!agenda.error} fallback={
               <div class="alert alert-error flex-col items-start sm:flex-row sm:items-center sm:justify-between" role="alert">
-                <span>The public agenda could not be loaded. Draft or partial programme data is not being shown.</span>
+                <span>We couldn't load the agenda. Try again in a moment.</span>
                 <button type="button" class="btn btn-sm btn-outline min-h-11 font-mono" onClick={() => void refetch()}>Try again</button>
               </div>
             }>
@@ -85,9 +85,9 @@ export default function Agenda() {
                 when={(agenda()?.days.length || 0) > 0}
               fallback={
                 <section class="glass-panel rounded-2xl p-8 text-center md:p-12">
-                  <h2 class="text-xl font-bold text-white">Agenda coming soon</h2>
+                  <h2 class="text-xl font-bold text-white">Agenda not published yet</h2>
                   <p class="mx-auto mt-3 max-w-xl text-sm font-mono leading-relaxed text-secondary-200/70">
-                    The programme will appear here once its Conference Days and Slots are published.
+                    We'll add times, rooms, and sessions here once they're final.
                   </p>
                 </section>
               }
@@ -102,7 +102,7 @@ export default function Agenda() {
                       </header>
                       <Show
                         when={day.programmes.length > 0}
-                        fallback={<p class="px-5 py-6 font-mono text-sm text-secondary-200/65 md:px-8">Programme details coming soon.</p>}
+                        fallback={<p class="px-5 py-6 font-mono text-sm text-secondary-200/65 md:px-8">No sessions scheduled for this day yet.</p>}
                       >
                         <div class="divide-y divide-white/10">
                           <For each={day.programmes}>

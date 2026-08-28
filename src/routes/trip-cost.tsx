@@ -77,8 +77,8 @@ export default function TripCost() {
             Trip Cost
           </h1>
           <p class="text-center text-secondary-300 mb-12 text-lg fade-in-delay-1 max-w-2xl mx-auto">
-            Skopje is one of the most affordable conference destinations in
-            Europe. Here's a quick estimate of what your trip might cost.
+            Skopje is cheaper than most European conference cities, but flights
+            and hotels still add up. Use this as a rough budget, not a promise.
           </p>
 
           <div class="grid md:grid-cols-[1fr_300px] gap-8 items-start mb-8">
@@ -298,7 +298,7 @@ export default function TripCost() {
             <div class="fade-in-delay-3 md:sticky md:top-24 md:self-start">
               <div class="bg-base-200/80 backdrop-blur-sm border border-primary-500/30 rounded-lg p-6 grid-scan">
                 <h2 class="text-lg font-star font-bold text-secondary-300 mb-6 uppercase tracking-wider">
-                  Estimated Breakdown
+                  Your rough total
                 </h2>
                 <div class="space-y-4 text-sm">
                   <div class="flex justify-between">
@@ -348,8 +348,8 @@ export default function TripCost() {
                 </div>
 
                 <p class="text-[11px] text-secondary-500 mt-4 leading-relaxed">
-                  Prices are estimates based on typical September rates.
-                  Actual costs vary based on booking time and preferences.
+                  These are rough September prices, not quotes. Booking late or
+                  checking a bag will move the total quickly.
                 </p>
 
                 <div class="mt-6">

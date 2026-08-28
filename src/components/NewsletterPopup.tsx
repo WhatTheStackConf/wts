@@ -139,7 +139,7 @@ const NewsletterPopup = () => {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to subscribe. Please try again.");
+        throw new Error("We couldn't add you to the newsletter. Try again.");
       }
 
       setSuccess(true);
@@ -153,7 +153,7 @@ const NewsletterPopup = () => {
       }, 3000);
     } catch (err: any) {
       console.error("Newsletter error:", err);
-      setError(err.message || "Something went wrong.");
+      setError(err.message || "We couldn't add you to the newsletter. Try again.");
     } finally {
       setLoading(false);
     }
@@ -202,11 +202,11 @@ const NewsletterPopup = () => {
                 <Icon icon="mdi:email-fast-outline" width="28" />
               </div>
               <h3 class="text-2xl font-bold font-star text-white mb-2">
-                STAY UPDATED
+                CONFERENCE UPDATES
               </h3>
               <p class="text-secondary-300 text-sm">
-                Get the latest news about speakers, tickets, and schedule for
-                WhatTheStack 2026. No spam, we promise.
+                Speaker announcements, ticket updates, and schedule changes.
+                That's it.
               </p>
             </div>
 

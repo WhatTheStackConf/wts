@@ -19,7 +19,7 @@ export default function Speakers() {
               Speakers
             </h1>
             <p class="mt-5 max-w-xl text-lg text-secondary-200/90 leading-relaxed fade-in-delay-1">
-              The people bringing ideas to the stage in Skopje. Browse the programme roster.
+              The people doing the talking in Skopje this September.
             </p>
           </header>
 
@@ -35,7 +35,7 @@ export default function Speakers() {
               when={(speakers()?.length ?? 0) > 0}
               fallback={
                 <p class="text-secondary-400 text-lg fade-in-delay-2 md:pl-2">
-                  Speaker announcements coming soon.
+                  We haven't announced any speakers yet.
                 </p>
               }
             >

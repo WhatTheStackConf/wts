@@ -46,7 +46,7 @@ const qrDiscountCopy: Record<QrDiscountSlug, QrDiscountCopy> = {
   raise: {
     title: "Inflation goes brrr",
     lead: "Finally, a reason for that raise!",
-    body: "Join WhatTheStack, sharpen your skills, and make the next salary conversation easier.",
+    body: "Take 5% off the ticket. The raise is still between you and your manager.",
   },
   "skopje-e-moj-grad": {
     title: "*crickets?*",

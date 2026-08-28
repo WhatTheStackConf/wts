@@ -21,7 +21,7 @@ export default function Home() {
   return (
     <Layout
       title="WhatTheStack 2026"
-      description="Refracting the boundaries between reality and the machine."
+      description="A week of software events in Skopje, ending with the WhatTheStack 2026 main conference on September 19."
     >
       <div class="relative">
         <Hero />
@@ -36,7 +36,7 @@ export default function Home() {
                   Speakers
                 </h2>
                 <p class="max-w-md text-dark-50 text-lg font-light leading-relaxed">
-                  Meet some of the voices joining us at WTS 2026
+                  Some of the people doing the talking at WTS 2026.
                 </p>
               </header>
 
@@ -63,7 +63,7 @@ export default function Home() {
                   {`>`}{" "}
                   {(speakers()?.total ?? 0) > TEASER_SPEAKER_LIMIT
                     ? "View all speakers"
-                    : "View full speakers lineup"}
+                    : "View the full speaker lineup"}
                 </a>
               </div>
             </section>
@@ -95,13 +95,13 @@ export default function Home() {
             <div class="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)] lg:gap-16">
               <div>
                 <p class="mb-4 font-mono text-sm font-bold uppercase tracking-[0.18em] text-secondary-300">
-                  Venue announced
+                  New venue
                 </p>
                 <h2 class="max-w-3xl text-balance font-star text-4xl font-bold uppercase leading-tight text-primary-500 md:text-5xl">
                   We're taking over the {conferenceGuideContent.mainVenue.name}
                 </h2>
                 <p class="mt-6 max-w-2xl text-pretty text-lg font-light leading-relaxed text-dark-50">
-                  One conference across three neighboring faculties in Skopje, built as a full campus experience with talks, workshops, an expo, games, food, coffee, and an outdoor after-party.
+                  We're using three neighboring faculties for the day: talks and workshops inside, plus the expo, games, food, coffee, and the after-party outside.
                 </p>
 
                 <div class="mt-8 flex flex-wrap gap-x-8 gap-y-3 border-t border-white/15 pt-6 text-lg font-black text-secondary-200">

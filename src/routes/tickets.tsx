@@ -56,7 +56,7 @@ export default function Tickets() {
             Conference Tickets
           </h1>
           <p class="text-xl  mb-12 fade-in-delay-1">
-            Secure your place at the future of software development
+            One regular ticket, one student ticket, and no early-bird maze.
           </p>
 
           <Show
@@ -72,10 +72,17 @@ export default function Tickets() {
               fallback={
                 <div class="text-center py-12">
                   <div class="text-error text-xl mb-4">
-                    Error loading tickets
+                    Tickets aren't loading
                   </div>
                   <p class="text-secondary-300">
-                    Please try again later or contact support
+                    Reload the page, or email{" "}
+                    <a
+                      href={`mailto:${conferenceGuideContent.contact.generalEmail}`}
+                      class="text-primary-200 hover:text-primary-100"
+                    >
+                      {conferenceGuideContent.contact.generalEmail}
+                    </a>{" "}
+                    if it keeps failing.
                   </p>
                 </div>
               }
@@ -149,10 +156,10 @@ export default function Tickets() {
 
                   <div class="container mx-auto text-center px-4 flex flex-col items-center justify-center">
                     <h3 class="text-3xl font-star text-secondary-300 mb-2 neon-glow-subtle">
-                      Enhance Your Experience
+                      The optional bits
                     </h3>
                     <p class="text-secondary-400 mb-10 text-lg">
-                      Extras available during checkout!
+                      Workshops, swag, and other extras are available at checkout.
                     </p>
 
                     <div class="flex flex-wrap justify-center gap-6">
@@ -182,15 +189,14 @@ export default function Tickets() {
                     </div>
 
                     <p class="py-10 w-[400px]">
-                      Volume discounts and payment via invoice available as
-                      well. Send an email to{" "}
+                      Bringing a team or need an invoice? Email{" "}
                       <a
                         class="text-primary-200 hover:text-primary-100"
                         href={`mailto:${conferenceGuideContent.contact.generalEmail}`}
                       >
                         {conferenceGuideContent.contact.generalEmail}
                       </a>{" "}
-                      for more information.
+                      and we'll sort it out.
                     </p>
 
                     <p class="text-secondary-300 text-sm">
@@ -200,8 +206,8 @@ export default function Tickets() {
                         class="text-primary-400 hover:text-primary-300 hover:underline transition-colors"
                       >
                         Convince your boss
-                      </a>{" "}
-                      — we wrote the email for you.
+                      </a>
+                      . We wrote the email for you.
                     </p>
                   </div>
                 </div>

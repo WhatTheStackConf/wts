@@ -59,7 +59,7 @@ function TrackCard(props: { track: ConferenceWeekTrack }) {
               )}
             </For>
             <Show when={props.track.moreSpeakers}>
-              <li class="py-1 text-sm leading-snug text-dark-50/60">and more...</li>
+              <li class="py-1 text-sm leading-snug text-dark-50/60">More speakers to come.</li>
             </Show>
           </ul>
         </Show>

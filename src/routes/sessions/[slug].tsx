@@ -118,7 +118,7 @@ export default function SessionDetail() {
                     when={s().abstract}
                     fallback={
                       <p class="text-primary-200/60 italic">
-                        Abstract coming soon.
+                        The abstract hasn't been published yet.
                       </p>
                     }
                   >
@@ -138,7 +138,7 @@ export default function SessionDetail() {
                       when={s().speakers.length > 0}
                       fallback={
                         <p class="text-primary-200/60 italic">
-                          Speaker details coming soon.
+                          Speakers haven't been announced for this session yet.
                         </p>
                       }
                     >

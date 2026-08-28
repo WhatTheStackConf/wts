@@ -76,7 +76,7 @@ export default function Timeline() {
             Timeline
           </h1>
           <p class="text-center text-secondary-300 mb-16 fade-in-delay-1">
-            From announcement to conference day — here's what's happening and when.
+            The dates that matter, and where we are right now.
           </p>
 
           <Show

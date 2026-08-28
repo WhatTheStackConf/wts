@@ -146,13 +146,13 @@ export function PartnersShowcase(props: PartnersShowcaseProps) {
           fallback={
             <div class="glass-panel grid-scan rounded-3xl p-8 md:p-10 text-center">
               <p class="font-mono text-sm uppercase tracking-[0.3em] text-accent-300 mb-4">
-                Awaiting signal
+                Not announced yet
               </p>
               <h2 class="font-star text-3xl md:text-4xl uppercase tracking-widest text-primary-300 mb-4">
-                Sponsors and partners announce soon
+                The partner list isn't ready yet
               </h2>
               <p class="max-w-2xl mx-auto text-dark-50 text-lg leading-relaxed mb-8">
-                We are lining up the companies, communities, media crews, and food-and-coffee humans who help make WTS feel like WTS.
+                We're still talking to sponsors and community partners. Once the list is final, it'll show up here instead of this awkward placeholder.
               </p>
               <div class="flex justify-center">
                 <HologramButton href="/partnerships" text="Partner with us" class="px-7 py-3" />

@@ -9,12 +9,12 @@
 
 export const conferenceWeekRange = "14-19 September 2026";
 
-export const conferenceWeekEyebrow = "A full week of WhatTheStack";
+export const conferenceWeekEyebrow = "WhatTheStack, Monday to Saturday";
 
-export const conferenceWeekHeadline = "Six days. One campus. The whole stack.";
+export const conferenceWeekHeadline = "Saturday's the main event. We start Monday.";
 
 export const conferenceWeekIntro =
-  "WhatTheStack 2026 is no longer a single Saturday. The week ahead of the main conference turns into focused mini-conferences and hands-on workshops, each one a full day of its own programme.";
+  "That's how we've always done it. Smaller events and workshops run through the week before everyone meets at the main conference on Saturday. Some events are included with your WTS ticket; a couple need a separate one.";
 
 export interface ConferenceWeekTrack {
   /** Matches the `name` of the corresponding published appearance event. */
@@ -45,21 +45,21 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     name: "InfoSec Monday",
     date: "2026-09-14",
     summary:
-      "A dedicated cybersecurity and application-security workshop to open the week.",
-    access: "Ticket holders only. Limited availability, registration opens closer to the date.",
+      "We start with a full-day cybersecurity and application-security workshop.",
+    access: "Included with your WTS ticket. Seats are limited; registration opens closer to September.",
   },
   {
     name: "Coming Soon",
     date: "2026-09-15",
     summary:
-      "One more full day of the programme. We are lining it up and will announce it here.",
+      "Tuesday is booked. The announcement isn't ready yet, which is why this card is being annoyingly vague.",
     placeholder: true,
   },
   {
     name: "DevFest",
     date: "2026-09-16",
     summary:
-      "Pre-DevFest Days: Day Zero x WhatThe(Google)Stack, with GDG Skopje - practical AI, accessibility, and agentic systems.",
+      "GDG Skopje takes Wednesday: practical AI, accessibility, and agentic systems at Pre-DevFest Days: Day Zero x WhatThe(Google)Stack.",
     highlights: [
       "Roushanak Rahmat, IBM - Google Developer Expert in AI & Cloud",
       "Josefine Schaefer, Storyblok - GDE and Accessibility Engineer",
@@ -75,7 +75,7 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     name: "MAUI Day",
     date: "2026-09-17",
     summary:
-      "A full day on .NET MAUI and cross-platform development at FINKI, with experts from the international .NET ecosystem.",
+      ".NET MAUI gets a full day at FINKI, with speakers from Microsoft and the wider .NET community.",
     highlights: ["Stephane Delcroix, Principal Software Engineer at Microsoft"],
     moreSpeakers: true,
     cta: {
@@ -88,21 +88,21 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     name: "Workshop Thursday",
     date: "2026-09-17",
     summary:
-      "Hands-on pre-conference workshops on software architecture, payments, and frontend engineering - far deeper than a conference slot allows.",
+      "Long-form workshops on software architecture, payments, and frontend engineering. The kind of sessions that don't fit into 35 minutes.",
     access: "Workshop add-on, selected at checkout",
   },
   {
     name: "Angular Day",
     date: "2026-09-18",
     summary:
-      "A full day for Angular and frontend engineering, built with the international and local Angular community.",
-    access: "Included with your WhatTheStack ticket",
+      "Angular and frontend engineering, put together with the local and international Angular community.",
+    access: "Included with your WTS ticket",
   },
   {
     name: "Main Conference Day",
     date: "2026-09-19",
     summary:
-      "The week culminates at the Technical Campus, taking over FINKI, FEIT, and the Faculty of Mechanical Engineering. Five stages, an expo, a game corner, and an outdoor after-party to close the week out.",
+      "Saturday is the big one: five stages across FINKI, FEIT, and the Faculty of Mechanical Engineering, plus the expo, game corner, and an outdoor after-party.",
     topics: [
       "AI and Machine Learning",
       "Web",

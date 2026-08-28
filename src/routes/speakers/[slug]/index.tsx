@@ -88,7 +88,7 @@ export default function SpeakerDetail() {
                       when={s().sessions.length > 0}
                       fallback={
                         <p class="text-primary-200/60 italic">
-                          Session details coming soon.
+                          This speaker's sessions haven't been published yet.
                         </p>
                       }
                     >

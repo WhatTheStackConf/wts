@@ -19,7 +19,7 @@ export default function Sessions() {
               Sessions
             </h1>
             <p class="mt-5 max-w-xl text-lg text-secondary-200/90 leading-relaxed fade-in-delay-1">
-              Talk details, abstracts, and the people taking the stage in Skopje.
+              The timetable lives on the agenda page. This one is for browsing talk abstracts and speakers.
             </p>
           </header>
 
@@ -33,7 +33,7 @@ export default function Sessions() {
           >
             <Show when={!sessions.error} fallback={
               <div class="alert alert-error flex-col items-start sm:flex-row sm:items-center sm:justify-between" role="alert">
-                <span>Published sessions could not be loaded. Draft or partial programme data is not being shown.</span>
+                <span>We couldn't load the sessions. Try again in a moment.</span>
                 <button type="button" class="btn btn-sm btn-outline min-h-11 font-mono" onClick={() => void refetch()}>Try again</button>
               </div>
             }>
@@ -42,10 +42,10 @@ export default function Sessions() {
               fallback={
                 <div class="md:pl-2 fade-in-delay-2">
                   <p class="text-2xl md:text-3xl font-star text-white/30 mb-4 tracking-wider uppercase">
-                    Coming Soon
+                    No sessions announced yet
                   </p>
                   <p class="max-w-md text-secondary-300 text-lg leading-relaxed">
-                    Session announcements will appear here as the programme locks in.
+                    We'll add each talk here once it's confirmed.
                   </p>
                 </div>
               }
