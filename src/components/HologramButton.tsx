@@ -1,5 +1,6 @@
-import { Component, JSX, splitProps } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import type { Component } from "solid-js";
+import { Dynamic, type JSX } from "@solidjs/web";
+import { omit } from "solid-js";
 
 interface HologramButtonProps extends JSX.HTMLAttributes<any> {
   href?: string;
@@ -9,25 +10,20 @@ interface HologramButtonProps extends JSX.HTMLAttributes<any> {
 }
 
 export const HologramButton: Component<HologramButtonProps> = (props) => {
-  const [local, others] = splitProps(props, [
-    "href",
-    "class",
-    "text",
-    "children",
-  ]);
+  const others = omit(props, "href", "class", "text", "children");
 
   return (
     <Dynamic
-      component={local.href ? "a" : "button"}
-      href={local.href}
-      class={`btn-hologram cyber-hologram-surface rounded-xs flex items-center justify-center text-center decoration-none select-none ${local.class || ""}`}
+      component={props.href ? "a" : "button"}
+      href={props.href}
+      class={`btn-hologram cyber-hologram-surface rounded-xs flex items-center justify-center text-center decoration-none select-none ${props.class || ""}`}
       {...others}
     >
       <span
         class="text-content font-star uppercase tracking-widest"
-        data-text={local.text}
+        data-text={props.text}
       >
-        {local.children || local.text}
+        {props.children || props.text}
       </span>
       <div class="scan-line cyber-scan-line" aria-hidden="true" />
     </Dynamic>

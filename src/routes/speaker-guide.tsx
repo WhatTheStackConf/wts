@@ -1,5 +1,6 @@
 import { useSearchParams } from "@solidjs/router";
-import { createResource, Show } from "solid-js";
+import { Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { MDXContent } from "~/components/MDXContent";
 import { fetchSpeakerGuide } from "~/lib/speaker-guide";
 import { Layout } from "~/layouts/Layout";

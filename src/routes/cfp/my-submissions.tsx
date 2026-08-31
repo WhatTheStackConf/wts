@@ -1,12 +1,13 @@
-import { createResource, For, Show } from "solid-js";
-import { useNavigate, A } from "@solidjs/router";
+import { For, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
+import { useNavigate } from "@solidjs/router";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
 import { useRequireAuth } from "~/lib/route-guards";
 import { fetchProposals, loadSubmissionToStore } from "~/lib/cfp-store";
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 import { sanitizeHtml } from "~/lib/sanitize-html";
-import { clientOnly } from "@solidjs/start";
+import { clientOnly } from "@solidjs/web";
 
 const MyProposals = () => {
   const auth = useAuth();
@@ -44,13 +45,13 @@ const MyProposals = () => {
                 {auth.record?.name}
               </p>
             </div>
-            <A
+            <a
               href="/cfp/01-intro"
               class="btn btn-primary gap-2 shadow-lg shadow-primary/30 px-8"
             >
               <Icon icon="material-symbols:add" class="text-xl" />
               New Proposal
-            </A>
+            </a>
           </div>
 
           <Show when={proposals.loading}>
@@ -73,9 +74,9 @@ const MyProposals = () => {
                   <p class="mb-8 opacity-40">
                     You haven't submitted any proposals for 2026 yet.
                   </p>
-                  <A href="/cfp/01-intro" class="btn btn-outline btn-wide">
+                  <a href="/cfp/01-intro" class="btn btn-outline btn-wide">
                     Submit a Talk
-                  </A>
+                  </a>
                 </div>
               </Show>
             }

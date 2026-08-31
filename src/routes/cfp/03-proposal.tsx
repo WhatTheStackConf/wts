@@ -2,9 +2,10 @@ import { useNavigate } from "@solidjs/router";
 import { useRequireAuth } from "~/lib/route-guards";
 import { useCfpStore } from "~/lib/cfp-store";
 import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
-import { clientOnly } from "@solidjs/start";
-import { createEffect, createResource, createSignal, Show } from "solid-js";
-import { Icon } from "@iconify-icon/solid";
+import { clientOnly } from "@solidjs/web";
+import { createSignal, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
+import { Icon } from "~/components/Icon";
 import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
 
 const RichEditor = clientOnly(() => import("../../components/RichEditor"));
@@ -51,7 +52,6 @@ const Proposal = () => {
     setCfpStore("formData", name, value);
   };
 
-  createEffect(() => {});
 
   return (
     <CfpStepLayout

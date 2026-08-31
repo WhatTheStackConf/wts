@@ -8,6 +8,10 @@ import {
     reviewerAuthorized,
 } from "~/lib/route-authorization";
 
+function scheduleRedirect(navigate: ReturnType<typeof useNavigate>, path: string) {
+  queueMicrotask(() => navigate(path, { replace: true }));
+}
+
 export function useRequireAdmin() {
     const auth = useAuth();
     const navigate = useNavigate();
@@ -22,16 +26,23 @@ export function useRequireAdmin() {
         });
     });
 
-    createEffect(() => {
-        if (auth.isLoading()) return;
-        if (!auth.isAuthenticated()) {
-            navigate("/login", { replace: true });
+    createEffect(
+      () => ({
+        loading: auth.isLoading(),
+        authenticated: auth.isAuthenticated(),
+        role: auth.user?.role,
+      }),
+      ({ loading, authenticated, role }) => {
+        if (loading) return;
+        if (!authenticated) {
+            scheduleRedirect(navigate, "/login");
             return;
         }
-        if (auth.user?.role !== "admin") {
-            navigate("/", { replace: true });
+        if (role !== "admin") {
+            scheduleRedirect(navigate, "/");
         }
-    });
+      },
+    );
 
     const user = createMemo((): UserRecord | null =>
         authorized() ? (auth.user as UserRecord) : null,
@@ -54,17 +65,23 @@ export function useRequireReviewer() {
         });
     });
 
-    createEffect(() => {
-        if (auth.isLoading()) return;
-        if (!auth.isAuthenticated()) {
-            navigate("/login", { replace: true });
+    createEffect(
+      () => ({
+        loading: auth.isLoading(),
+        authenticated: auth.isAuthenticated(),
+        role: auth.user?.role,
+      }),
+      ({ loading, authenticated, role }) => {
+        if (loading) return;
+        if (!authenticated) {
+            scheduleRedirect(navigate, "/login");
             return;
         }
-        const role = auth.user?.role;
         if (role !== "reviewer" && role !== "admin") {
-            navigate("/", { replace: true });
+            scheduleRedirect(navigate, "/");
         }
-    });
+      },
+    );
 
     const user = createMemo((): UserRecord | null =>
         authorized() ? (auth.user as UserRecord) : null,
@@ -83,17 +100,23 @@ export function useRequireAuth() {
         role: auth.user?.role,
     }));
 
-    createEffect(() => {
-        if (!auth.isLoading() && !auth.isAuthenticated()) {
-            const destination = `${location.pathname}${location.search}${location.hash}`;
+    createEffect(
+      () => ({
+        loading: auth.isLoading(),
+        authenticated: auth.isAuthenticated(),
+        destination: `${location.pathname}${location.search}${location.hash}`,
+      }),
+      ({ loading, authenticated, destination }) => {
+        if (!loading && !authenticated) {
             try {
                 window.localStorage.setItem("redirect_url", destination);
             } catch {
                 // Login still works when browser storage is unavailable.
             }
-            navigate("/login", { replace: true });
+            scheduleRedirect(navigate, "/login");
         }
-    });
+      },
+    );
 
     const user = createMemo((): UserRecord | null =>
         authorized() ? (auth.user as UserRecord) : null,

@@ -1,6 +1,7 @@
-import { clientOnly } from "@solidjs/start";
-import { Icon } from "@iconify-icon/solid";
-import { createResource, For, Show } from "solid-js";
+import { clientOnly } from "@solidjs/web";
+import { Icon } from "~/components/Icon";
+import { For, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { Layout } from "~/layouts/Layout";
 import { getPublicCommunityPartnerMissions } from "~/lib/gamification-community-public";
 

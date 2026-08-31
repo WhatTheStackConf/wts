@@ -1,11 +1,12 @@
-import { Navigate, useNavigate } from "@solidjs/router";
+import { useNavigate } from "@solidjs/router";
+import { Redirect } from "~/components/Redirect";
 // import { Layout } from "~/layouts/Layout";
 import { useRequireAuth } from "~/lib/route-guards";
 import { useCfpStore } from "~/lib/cfp-store";
 import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
-import { clientOnly } from "@solidjs/start";
-import { createResource } from "solid-js";
-import { Icon } from "@iconify-icon/solid";
+import { clientOnly } from "@solidjs/web";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
+import { Icon } from "~/components/Icon";
 
 import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
 
@@ -15,7 +16,7 @@ const Experience = () => {
   const [cfpStore, setCfpStore] = useCfpStore();
   const [cfpConfig] = createResource(fetchCfpConfig);
 
-  if (!isCfpOpen()) return <Navigate href="/cfp/closed" />;
+  if (!isCfpOpen()) return <Redirect href="/cfp/closed" />;
 
   const handleNext = () => {
     // No strict validation required for this step

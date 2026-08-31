@@ -120,6 +120,6 @@ export default defineConfig({
         },
     },
     mdx: {
-        jsxImportSource: "solid-jsx",
+        jsxImportSource: "@solidjs/web",
     },
 });

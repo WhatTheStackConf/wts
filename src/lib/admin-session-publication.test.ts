@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { setSessionPublished } from "~/lib/admin-session-promotion";
 import type { AdminSpeakerService } from "~/lib/admin-speaker-profile";
 

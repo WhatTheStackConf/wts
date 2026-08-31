@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const mocks = vi.hoisted(() => {
   const requireReviewer = vi.fn();
@@ -30,7 +30,7 @@ vi.mock("~/lib/server-auth", () => ({
   requireReviewerSession: mocks.requireReviewerSession,
 }));
 vi.mock("~/lib/pocketbase-admin-service", () => ({ getAdminPB: () => mocks.adminService }));
-vi.mock("@solidjs/start/server", () => ({ createServerReference: (fn: unknown) => fn }));
+
 
 import {
   fetchReviewerSubmissionDetailCore as fetchReviewerSubmissionDetail,

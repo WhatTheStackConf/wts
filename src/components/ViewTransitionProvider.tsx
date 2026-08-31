@@ -1,11 +1,7 @@
 import {
   createSignal,
-  onMount,
-  onCleanup,
-  children,
   createContext,
   useContext,
-  untrack,
 } from "solid-js";
 
 declare global {
@@ -18,7 +14,12 @@ declare global {
 }
 
 // Context for view transitions
-const ViewTransitionContext = createContext();
+interface ViewTransitionContextValue {
+  startTransition: (callback: () => void) => void;
+  isTransitioning: () => boolean;
+}
+
+const ViewTransitionContext = createContext<ViewTransitionContextValue>();
 
 export const ViewTransitionProvider = (props: { children: any }) => {
   const [isTransitioning, setIsTransitioning] = createSignal(false);
@@ -45,9 +46,9 @@ export const ViewTransitionProvider = (props: { children: any }) => {
   };
 
   return (
-    <ViewTransitionContext.Provider value={value}>
+    <ViewTransitionContext value={value}>
       {props.children}
-    </ViewTransitionContext.Provider>
+    </ViewTransitionContext>
   );
 };
 

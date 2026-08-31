@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { AdminActions } from "~/lib/admin-action-ledger";
 import { createInMemoryAdminActionStore } from "~/lib/admin-action-memory-store";
 import { McpPartnerAdministration } from "~/lib/mcp-partner-administration";

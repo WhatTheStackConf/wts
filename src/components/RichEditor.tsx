@@ -1,4 +1,4 @@
-import { createSignal, onMount, Component, Show, createEffect } from "solid-js";
+import { createSignal, onSettled, Component, Show, createEffect } from "solid-js";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { schema } from "prosemirror-schema-basic";
@@ -11,7 +11,7 @@ import {
 import { keymap } from "prosemirror-keymap";
 import { history, undo, redo } from "prosemirror-history";
 import { DOMSerializer, DOMParser } from "prosemirror-model";
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 import { placeholderPlugin } from "./placeholder";
 
 interface RichEditorProps {
@@ -26,7 +26,7 @@ const RichEditor: Component<RichEditorProps> = (props) => {
   const [editorState, setEditorState] = createSignal<EditorState>();
   let view: EditorView;
 
-  onMount(() => {
+  onSettled(() => {
     if (!editorRef) return;
 
     const state = EditorState.create({
@@ -44,25 +44,6 @@ const RichEditor: Component<RichEditorProps> = (props) => {
         // Add the plugin here using the placeholder from props
         placeholderPlugin(props.placeholder || ""),
       ],
-    });
-
-    createEffect(() => {
-      const val = props.value;
-
-      // If the view exists and has no content, but the prop has content (e.g., after reload)
-      if (view && val && view.state.doc.content.size <= 2) {
-        const element = document.createElement("div");
-        element.innerHTML = val;
-
-        const newState = EditorState.create({
-          schema,
-          doc: DOMParser.fromSchema(schema).parse(element),
-          plugins: view.state.plugins,
-        });
-
-        view.updateState(newState);
-        setEditorState(newState);
-      }
     });
 
     setEditorState(state);
@@ -83,7 +64,25 @@ const RichEditor: Component<RichEditorProps> = (props) => {
         props.onInput(div.innerHTML === "<p></p>" ? "" : div.innerHTML);
       },
     });
+
+    return () => view.destroy();
   });
+
+  createEffect(
+    () => props.value,
+    (value) => {
+      if (!view || !value || view.state.doc.content.size > 2) return;
+      const element = document.createElement("div");
+      element.innerHTML = value;
+      const newState = EditorState.create({
+        schema,
+        doc: DOMParser.fromSchema(schema).parse(element),
+        plugins: view.state.plugins,
+      });
+      view.updateState(newState);
+      setEditorState(newState);
+    },
+  );
 
   const runCommand = (cmd: any) => {
     if (!view) return;

@@ -1,7 +1,8 @@
 import { Title } from "@solidjs/meta";
 import { Layout } from "../layouts/Layout";
 import { fetchHiEventsReleases, HiEventsRelease } from "../lib/hievents";
-import { createResource, Show, For } from "solid-js";
+import { Show, For } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { HologramButton } from "../components/HologramButton";
 import { conferenceGuideContent } from "~/lib/conference-guide-content";
 

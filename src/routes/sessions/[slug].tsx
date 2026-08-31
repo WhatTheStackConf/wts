@@ -1,5 +1,6 @@
 import { useParams } from "@solidjs/router";
-import { createEffect, createMemo, createResource, For, Show } from "solid-js";
+import { createEffect, createMemo, For, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { Layout } from "~/layouts/Layout";
 import { fetchSessionBySlug } from "~/lib/speakers-public";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
@@ -29,7 +30,7 @@ function formatScheduleEnd(iso: string) {
 
 export default function SessionDetail() {
   const params = useParams();
-  const [session] = createResource(
+  const [session, { refetch }] = createResource(
     () => params.slug,
     (slug) => fetchSessionBySlug(slug),
   );
@@ -51,9 +52,12 @@ export default function SessionDetail() {
     return Boolean(s?.schedule);
   };
 
-  createEffect(() => {
-    if (session()) document.title = pageTitle();
-  });
+  createEffect(
+    () => (session() ? pageTitle() : undefined),
+    (title) => {
+      if (title) document.title = title;
+    },
+  );
 
   return (
     <Show
@@ -68,16 +72,33 @@ export default function SessionDetail() {
         </Layout>
       }
     >
-      <Show when={session()} fallback={<NotFound />}>
-        {(s) => (
-          <Layout
-            title={`${s().title} — WhatTheStack 2026`}
-            description={pageDescription()}
-            ogSubtitle={s().format || "Conference session"}
-          >
-            <div class="w-full h-full px-4 relative pt-4 md:pt-12 pb-20">
+      <Show
+        when={!session.error}
+        fallback={
+          <Layout title={pageTitle()} description={pageDescription()}>
+            <div class="w-full px-4 relative pt-4 md:pt-12 pb-20">
               <div class="max-w-4xl mx-auto relative z-20">
-                <article class="glass-panel p-6 md:p-12 rounded-2xl fade-in-delay-1 relative z-30">
+                <div class="alert alert-error flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between" role="alert">
+                  <span>We couldn't load this session. Try again in a moment.</span>
+                  <button type="button" class="btn btn-sm btn-outline min-h-11 font-mono" onClick={() => void refetch()}>
+                    Try again
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Layout>
+        }
+      >
+        <Show when={session()} fallback={<NotFound />}>
+          {(s) => (
+            <Layout
+              title={`${s().title} — WhatTheStack 2026`}
+              description={pageDescription()}
+              ogSubtitle={s().format || "Conference session"}
+            >
+              <div class="w-full h-full px-4 relative pt-4 md:pt-12 pb-20">
+                <div class="max-w-4xl mx-auto relative z-20">
+                  <article class="glass-panel p-6 md:p-12 rounded-2xl fade-in-delay-1 relative z-30">
                   <header class="mb-8 md:mb-10">
                     <p class="speaker-kicker mb-3">Session</p>
                     <h1 class="font-star text-3xl md:text-4xl lg:text-5xl font-bold text-secondary-400 leading-tight text-balance">
@@ -201,11 +222,12 @@ export default function SessionDetail() {
                       </ul>
                     </section>
                   </Show>
-                </article>
+                  </article>
+                </div>
               </div>
-            </div>
-          </Layout>
-        )}
+            </Layout>
+          )}
+        </Show>
       </Show>
     </Show>
   );

@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { clientOnly } from "@solidjs/start";
+import { clientOnly } from "@solidjs/web";
 import { useRequireAdmin } from "~/lib/route-guards";
 
 const AdminSessionsHub = clientOnly(() => import("~/components/admin/AdminSessionsHub"));

@@ -1,5 +1,6 @@
-import { createSignal, createEffect, onMount, Show } from "solid-js";
-import { Navigate, useNavigate } from "@solidjs/router";
+import { createSignal, createEffect, onSettled, Show } from "solid-js";
+import { useNavigate } from "@solidjs/router";
+import { Redirect } from "~/components/Redirect";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
 
@@ -29,10 +30,10 @@ const RegisterPage = () => {
 
   // If already logged in, redirect to the home page
   if (auth && auth.record) {
-    return <Navigate href="/" />;
+    return <Redirect href="/" />;
   }
 
-  onMount(() => {
+  onSettled(() => {
     // Skip turnstile in local dev
     if (isDev()) {
       setTurnstileToken("dev-bypass");
@@ -73,41 +74,38 @@ const RegisterPage = () => {
   });
 
   // Render Turnstile when visible and ready (skip in dev)
-  createEffect(() => {
-    if (isDev()) return;
-
-    if (
-      !success() &&
-      SITE_KEY &&
-      turnstileReady() &&
-      (window as any).turnstile &&
-      containerRef
-    ) {
-      if (renderedWidgetId) return; // Prevent duplicates
-
-      // Tiny delay to ensure DOM is ready
-      setTimeout(() => {
-        try {
-          if (containerRef && !renderedWidgetId) {
-            // Clear to be safe
-            containerRef.innerHTML = "";
-
-            renderedWidgetId = (window as any).turnstile.render(containerRef, {
-              sitekey: SITE_KEY,
-              callback: (token: string) => {
-                setTurnstileToken(token);
-              },
-              "expired-callback": () => setTurnstileToken(""),
-              "error-callback": () => { },
-              theme: "dark",
-            });
+  createEffect(
+    () => ({ dev: isDev(), succeeded: success(), ready: turnstileReady() }),
+    ({ dev, succeeded, ready }) => {
+      if (dev) return;
+      if (
+        !succeeded &&
+        SITE_KEY &&
+        ready &&
+        (window as any).turnstile &&
+        containerRef
+      ) {
+        if (renderedWidgetId) return;
+        const timeout = setTimeout(() => {
+          try {
+            if (containerRef && !renderedWidgetId) {
+              containerRef.innerHTML = "";
+              renderedWidgetId = (window as any).turnstile.render(containerRef, {
+                sitekey: SITE_KEY,
+                callback: (token: string) => setTurnstileToken(token),
+                "expired-callback": () => setTurnstileToken(""),
+                "error-callback": () => {},
+                theme: "dark",
+              });
+            }
+          } catch (error) {
+            console.error("Turnstile render error", error);
           }
-        } catch (e) {
-          console.error("Turnstile render error", e);
-        }
-      }, 100);
-    }
-  });
+        }, 100);
+        return () => clearTimeout(timeout);
+      }
+    },
+  );
 
   const handleRegister = async (e: Event) => {
     e.preventDefault();
@@ -139,13 +137,16 @@ const RegisterPage = () => {
     }
   };
 
-  createEffect(() => {
-    if (success()) {
+  createEffect(
+    () => success(),
+    (didSucceed) => {
+    if (didSucceed) {
       setTimeout(() => {
         navigate("/login");
       }, 3000);
     }
-  });
+    },
+  );
 
   return (
     <Layout

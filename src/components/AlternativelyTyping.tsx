@@ -1,4 +1,4 @@
-import { createSignal, onMount } from "solid-js";
+import { createSignal, onSettled } from "solid-js";
 
 interface AlternativelyTypingProps {
   alternatives: string[];
@@ -12,7 +12,7 @@ export default function AlternativelyTyping(props: AlternativelyTypingProps) {
 
   const alternatives = props.alternatives;
 
-  onMount(() => {
+  onSettled(() => {
     const type = () => {
       const currentAlternative = alternatives[currentIndex()];
       const fullText = currentAlternative;

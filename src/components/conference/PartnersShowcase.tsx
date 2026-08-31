@@ -1,5 +1,5 @@
 import { createMemo, For, Show } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { Dynamic } from "@solidjs/web";
 import { HologramButton } from "~/components/HologramButton";
 import type { PublicPartner, PublicPartnerGroup } from "~/lib/partners-public";
 import {

@@ -1,8 +1,8 @@
 import { createSignal, Show } from "solid-js";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
-import { clientOnly } from "@solidjs/start";
-import { Icon } from "@iconify-icon/solid";
+import { clientOnly } from "@solidjs/web";
+import { Icon } from "~/components/Icon";
 
 const LoginPage = () => {
   const [email, setEmail] = createSignal("");

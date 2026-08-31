@@ -1,5 +1,6 @@
-import { createResource, createSignal, For, onMount, Show } from "solid-js";
-import { Icon } from "@iconify-icon/solid";
+import { createSignal, For, onSettled, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
+import { Icon } from "~/components/Icon";
 import {
   AdminDataPanel,
   AdminFilterBar,
@@ -201,7 +202,7 @@ export default function AdminPartnersHub() {
   const [operationIds, setOperationIds] = createSignal<Record<string, string>>({});
   const [historyPartner, setHistoryPartner] = createSignal<Pick<PartnerAdminSnapshot, "id" | "name"> | null>(null);
 
-  onMount(() => {
+  onSettled(() => {
     try {
       const stored = JSON.parse(sessionStorage.getItem(PARTNER_OPERATION_IDS_STORAGE_KEY) || "null");
       if (!stored || typeof stored !== "object" || Array.isArray(stored)) return;
@@ -563,7 +564,7 @@ export default function AdminPartnersHub() {
           type="button"
           class={`btn btn-xs max-md:min-h-12 max-md:px-3 font-mono ${partner.noteAgentVisible ? "btn-success btn-outline" : "btn-ghost"}`}
           disabled={saving() || busyId() === partner.id}
-          aria-pressed={partner.noteAgentVisible}
+          aria-pressed={partner.noteAgentVisible ? "true" : "false"}
           onClick={() => toggleNoteApproval(partner)}
         >
           <Show when={partner.noteAgentVisible} fallback="Approve note">Revoke note approval</Show>

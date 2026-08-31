@@ -1,4 +1,4 @@
-import { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { Title, Meta, Link } from "@solidjs/meta";
 import CodeBackground from "~/components/CodeBackground";
 import { toAbsoluteUrl } from "~/lib/site-url";

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import PocketBase from "pocketbase";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { AdminActions } from "~/lib/admin-action-ledger";
 import { createInMemoryAdminActionStore } from "~/lib/admin-action-memory-store";
 import { McpTokenAdministration } from "~/lib/mcp-token-administration";

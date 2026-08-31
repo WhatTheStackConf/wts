@@ -5,7 +5,7 @@ import {
   onCleanup,
   createEffect,
   Show,
-  onMount,
+  onSettled,
 } from "solid-js";
 
 const STATIONS = [
@@ -55,7 +55,7 @@ export default function NightridePlayerInner() {
     }
   };
 
-  onMount(() => {
+  onSettled(() => {
     const updateMetadata = async () => {
       try {
         const res = await fetch(`/api/nr-metadata?stationId=${station().id}`);
@@ -77,7 +77,7 @@ export default function NightridePlayerInner() {
     // Refresh every 20 seconds
     const interval = setInterval(updateMetadata, 20000);
 
-    onCleanup(() => clearInterval(interval));
+    return () => clearInterval(interval);
   });
 
   const animate = () => {
@@ -85,9 +85,14 @@ export default function NightridePlayerInner() {
     frameId = requestAnimationFrame(animate);
   };
 
-  createEffect(() => {
-    playing() ? animate() : cancelAnimationFrame(frameId);
-  });
+  createEffect(
+    () => playing(),
+    (isPlaying) => {
+      if (isPlaying) animate();
+      else cancelAnimationFrame(frameId);
+      return () => cancelAnimationFrame(frameId);
+    },
+  );
 
   onCleanup(() => cancelAnimationFrame(frameId));
 

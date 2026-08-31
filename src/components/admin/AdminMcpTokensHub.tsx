@@ -1,5 +1,6 @@
-import { Icon } from "@iconify-icon/solid";
-import { createMemo, createResource, createSignal, For, onMount, Show } from "solid-js";
+import { Icon } from "~/components/Icon";
+import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import {
   AdminDataPanel,
   AdminFilterBar,
@@ -83,7 +84,7 @@ export default function AdminMcpTokensHub() {
   const [operationFilter, setOperationFilter] = createSignal("");
   const [targetFilter, setTargetFilter] = createSignal("");
 
-  onMount(() => {
+  onSettled(() => {
     const maximum = maximumNewMcpTokenExpiryDate();
     setExpiresAt(maximum);
     setMaximumExpiryDate(maximum);
@@ -448,7 +449,7 @@ export default function AdminMcpTokensHub() {
                             <button
                               type="button"
                               class="btn btn-sm btn-outline btn-error font-mono min-h-12"
-                              aria-expanded={revokeTargetId() === token.id}
+                              aria-expanded={revokeTargetId() === token.id ? "true" : "false"}
                               aria-controls={`revoke-token-${token.id}`}
                               onClick={() => {
                                 if (revokeTargetId() === token.id) {

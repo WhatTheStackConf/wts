@@ -1,4 +1,5 @@
-import { createResource, For, Show, Suspense } from "solid-js";
+import { For, Show, Loading } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { Layout } from "../layouts/Layout";
 import { Hero } from "../components/Hero";
 import {
@@ -28,7 +29,7 @@ export default function Home() {
 
         <ConferenceWeek />
 
-        <Suspense>
+        <Loading>
           <Show when={(speakers()?.preview.length ?? 0) > 0}>
             <section class="px-3 md:px-0 pt-16 md:pt-20 pb-12 md:pb-16 fade-in-delay-2">
               <header class="mb-10 md:mb-12 fade-in">
@@ -68,7 +69,7 @@ export default function Home() {
               </div>
             </section>
           </Show>
-        </Suspense>
+        </Loading>
 
         <section class="px-3 md:px-0 pt-4 md:pt-8 pb-12 md:pb-16 fade-in-delay-2">
           <header class="max-w-6xl mx-auto mb-6 md:mb-8 fade-in">
@@ -77,11 +78,11 @@ export default function Home() {
             </h2>
           </header>
 
-          <Suspense fallback={<PartnersShowcaseSkeleton />}>
+          <Loading fallback={<PartnersShowcaseSkeleton />}>
             <Show when={partnerGroups()} fallback={<PartnersShowcaseSkeleton />}>
               <PartnersShowcase groups={partnerGroups() ?? []} variant="home" />
             </Show>
-          </Suspense>
+          </Loading>
 
           <div class="mt-8 md:mt-10 flex justify-center fade-in-delay-3">
             <a href="/sponsors" class="link text-primary-200 font-black text-xl">

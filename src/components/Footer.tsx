@@ -1,4 +1,4 @@
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 
 export const Footer = () => {
   return (

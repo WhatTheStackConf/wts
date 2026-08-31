@@ -1,5 +1,6 @@
-import { createEffect, createResource, createSignal, For, onCleanup, Show } from "solid-js";
-import { Icon } from "@iconify-icon/solid";
+import { createEffect, createSignal, For, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
+import { Icon } from "~/components/Icon";
 import {
   AdminDataPanel,
   AdminFilterBar,
@@ -156,17 +157,19 @@ export default function AdminSpeakersHub() {
     return res.data;
   });
 
-  createEffect(() => {
-    const file = editPhoto();
-    if (!file) {
-      setEditPhotoPreview(null);
-      return;
-    }
+  createEffect(
+    () => editPhoto(),
+    (file) => {
+      if (!file) {
+        setEditPhotoPreview(null);
+        return;
+      }
 
-    const url = URL.createObjectURL(file);
-    setEditPhotoPreview(url);
-    onCleanup(() => URL.revokeObjectURL(url));
-  });
+      const url = URL.createObjectURL(file);
+      setEditPhotoPreview(url);
+      return () => URL.revokeObjectURL(url);
+    },
+  );
 
   const editCurrentPhotoUrl = () => {
     const row = editingSpeaker();
@@ -467,7 +470,7 @@ export default function AdminSpeakersHub() {
           type="button"
           class={`btn btn-xs font-mono ${row.published ? "btn-success" : "btn-ghost"}`}
           disabled={busyId() !== null}
-          aria-pressed={row.published}
+          aria-pressed={row.published ? "true" : "false"}
           onClick={() => togglePublished(row)}
         >
           <Show when={busyId() === row.id} fallback={row.published ? "Published" : "Draft"}>
@@ -481,7 +484,7 @@ export default function AdminSpeakersHub() {
           <button
             type="button"
             class={`btn btn-xs font-mono ${editingSpeaker()?.id === row.id ? "btn-primary" : "btn-ghost"}`}
-            aria-expanded={editingSpeaker()?.id === row.id}
+            aria-expanded={editingSpeaker()?.id === row.id ? "true" : "false"}
             aria-controls="speaker-profile-edit-form"
             onClick={() => startEdit(row)}
           >
@@ -1160,7 +1163,7 @@ export default function AdminSpeakersHub() {
               <button
                 type="button"
                 class={adminFilterButtonClass(originFilter() === opt.value)}
-                aria-pressed={originFilter() === opt.value}
+                aria-pressed={originFilter() === opt.value ? "true" : "false"}
                 onClick={() => setOriginFilter(opt.value)}
               >
                 {opt.label}
@@ -1174,7 +1177,7 @@ export default function AdminSpeakersHub() {
               <button
                 type="button"
                 class={adminFilterButtonClass(publishedFilter() === opt.value, "secondary")}
-                aria-pressed={publishedFilter() === opt.value}
+                aria-pressed={publishedFilter() === opt.value ? "true" : "false"}
                 onClick={() => setPublishedFilter(opt.value)}
               >
                 {opt.label}
@@ -1235,7 +1238,7 @@ export default function AdminSpeakersHub() {
                       type="button"
                       class={`btn btn-xs font-mono ${row.published ? "btn-success" : "btn-ghost"}`}
                       disabled={busyId() !== null}
-                      aria-pressed={row.published}
+                      aria-pressed={row.published ? "true" : "false"}
                       onClick={() => togglePublished(row)}
                     >
                       <Show when={busyId() === row.id} fallback={row.published ? "Published" : "Draft"}>
@@ -1247,7 +1250,7 @@ export default function AdminSpeakersHub() {
                       <button
                         type="button"
                         class={`btn btn-xs font-mono ${editingSpeaker()?.id === row.id ? "btn-primary" : "btn-ghost"}`}
-                        aria-expanded={editingSpeaker()?.id === row.id}
+                        aria-expanded={editingSpeaker()?.id === row.id ? "true" : "false"}
                         aria-controls="speaker-profile-edit-form"
                         onClick={() => startEdit(row)}
                       >

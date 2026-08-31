@@ -1,6 +1,6 @@
 import { Layout } from "~/layouts/Layout";
-import { Icon } from "@iconify-icon/solid";
-import { clientOnly } from "@solidjs/start";
+import { Icon } from "~/components/Icon";
+import { clientOnly } from "@solidjs/web";
 
 const CfpClosed = () => {
   return (

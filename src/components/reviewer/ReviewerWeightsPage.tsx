@@ -1,6 +1,6 @@
 import { createSignal, createEffect, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 import { Layout } from "~/layouts/Layout";
 import { fetchWeightVotes, saveWeightVote } from "~/lib/reviewer-actions";
 import { useRequireReviewer } from "~/lib/route-guards";
@@ -75,11 +75,14 @@ export default function ReviewerWeightsPage() {
         }
     };
 
-    createEffect(() => {
-        if (guard.authorized()) {
+    createEffect(
+      () => guard.authorized(),
+      (authorized) => {
+        if (authorized) {
             fetchData();
         }
-    });
+      },
+    );
 
     const handleSliderChange = (id: string, val: string) => {
         setVotes((prev) => ({ ...prev, [id]: parseInt(val) }));

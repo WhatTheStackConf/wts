@@ -1,6 +1,6 @@
-import { onMount, onCleanup, createEffect, Show } from "solid-js";
+import { onSettled, Show } from "solid-js";
 import lottie, { AnimationItem } from "lottie-web/build/player/lottie_light";
-import Logo from "../assets/images/LogoSolo.svg?component-solid";
+import logoUrl from "../assets/images/LogoSolo.svg";
 
 interface LottieProps {
   animationData: any;
@@ -20,9 +20,11 @@ const Lottie = (props: LottieProps) => {
   let containerRef: HTMLDivElement | undefined;
   let anim: AnimationItem | undefined;
 
-  const shouldAnimate = sessionStorage.getItem("shouldAnimate") !== "false";
+  const shouldAnimate =
+    typeof sessionStorage === "undefined" ||
+    sessionStorage.getItem("shouldAnimate") !== "false";
 
-  onMount(() => {
+  onSettled(() => {
     if (containerRef && shouldAnimate) {
       anim = lottie.loadAnimation({
         container: containerRef,
@@ -50,24 +52,10 @@ const Lottie = (props: LottieProps) => {
         containerRef.classList.add("lottie-neon-glow");
       }
     }
+
+    return () => anim?.destroy();
   });
 
-  // Reactively play/stop based on the shouldAnimate prop
-  createEffect(() => {
-    const active = shouldAnimate ?? true;
-    if (!anim) return;
-
-    if (active) {
-      anim.play();
-    } else {
-      // Go to the last frame and stay there
-      anim.goToAndStop(anim.totalFrames, true);
-    }
-  });
-
-  onCleanup(() => {
-    if (anim) anim.destroy();
-  });
 
   return (
     <>
@@ -75,7 +63,7 @@ const Lottie = (props: LottieProps) => {
         <div ref={containerRef} style={props.style} class={props.className} />
       </Show>
       <Show when={!shouldAnimate}>
-        <Logo class="w-full h-full" />
+        <img src={logoUrl} alt="" class="w-full h-full" />
       </Show>
     </>
   );

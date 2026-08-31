@@ -1,5 +1,5 @@
 import { For, createMemo, Component } from "solid-js";
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 import { getSocialIcon } from "~/lib/social-links";
 
 interface SmartAreaProps {

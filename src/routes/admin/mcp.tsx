@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { clientOnly } from "@solidjs/start";
+import { clientOnly } from "@solidjs/web";
 import { useRequireAdmin } from "~/lib/route-guards";
 
 const AdminMcpTokensHub = clientOnly(() => import("~/components/admin/AdminMcpTokensHub"));

@@ -1,5 +1,4 @@
-import { createStore } from "solid-js/store";
-import { makePersisted } from "@solid-primitives/storage";
+import { createStore, snapshot, storePath } from "solid-js";
 import { CfpApplicantRecord } from "./pocketbase-types";
 import {
   fetchMyCfpApplicant,
@@ -59,11 +58,40 @@ const initialStore: CfpStore = {
   step: 1,
 };
 
-// Create the persisted store
-export const [cfpStore, setCfpStore] = makePersisted(
-  createStore<CfpStore>(initialStore),
-  { name: "cfp-form-data" },
-);
+const CFP_STORAGE_KEY = "cfp-form-data";
+
+function loadPersistedStore(): CfpStore {
+  if (typeof localStorage === "undefined") return initialStore;
+  try {
+    const persisted = JSON.parse(localStorage.getItem(CFP_STORAGE_KEY) || "null") as Partial<CfpStore> | null;
+    if (!persisted) return initialStore;
+    return {
+      ...initialStore,
+      ...persisted,
+      formData: { ...initialStore.formData, ...persisted.formData },
+    };
+  } catch {
+    return initialStore;
+  }
+}
+
+export const [cfpStore, setCfpStoreState] = createStore<CfpStore>(loadPersistedStore());
+
+let persistQueued = false;
+function persistCfpStore() {
+  if (persistQueued || typeof localStorage === "undefined") return;
+  persistQueued = true;
+  queueMicrotask(() => {
+    persistQueued = false;
+    localStorage.setItem(CFP_STORAGE_KEY, JSON.stringify(snapshot(cfpStore)));
+  });
+}
+
+export function setCfpStore(...args: unknown[]) {
+  const pathSetter = (storePath as (...segments: unknown[]) => unknown)(...args);
+  (setCfpStoreState as (setter: unknown) => void)(pathSetter);
+  persistCfpStore();
+}
 
 // Create a context provider hook to access the store
 export const useCfpStore = () => [cfpStore, setCfpStore] as const;

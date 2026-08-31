@@ -1,4 +1,5 @@
-import { createContext, createSignal, onMount, useContext, type JSX } from "solid-js";
+import { createContext, createSignal, onSettled, useContext } from "solid-js";
+import { isServer, type JSX } from "@solidjs/web";
 import { pb, loginWithGithub, loginWithGoogle } from "~/lib/pocketbase-utils";
 import {
   getSession,
@@ -71,7 +72,8 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
     });
   };
 
-  onMount(() => {
+  onSettled(() => {
+    if (isServer) return;
     void enqueueAuthRequest(async () => {
       setLoading(true);
       try {
@@ -160,7 +162,7 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
     isLoading: loading,
   };
 
-  return <AuthContext.Provider value={value}>{props.children}</AuthContext.Provider>;
+  return <AuthContext value={value}>{props.children}</AuthContext>;
 };
 
 export const useAuth = () => {

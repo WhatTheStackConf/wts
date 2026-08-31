@@ -1,6 +1,7 @@
-import { createSignal, createResource, Show, For, createMemo } from "solid-js";
-import { Icon } from "@iconify-icon/solid";
-import { clientOnly } from "@solidjs/start";
+import { createSignal, Show, For, createMemo } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
+import { Icon } from "~/components/Icon";
+import { clientOnly } from "@solidjs/web";
 import {
     AdminDataPanel,
     AdminFilterBar,

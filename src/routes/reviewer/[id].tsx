@@ -1,9 +1,9 @@
 import { createSignal, createEffect, Show, For } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
-import { clientOnly } from "@solidjs/start";
+import { clientOnly } from "@solidjs/web";
 import { useAuth } from "~/lib/auth-context";
 import { useRequireReviewer } from "~/lib/route-guards";
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 import { sanitizeHtml } from "~/lib/sanitize-html";
 import type { ReviewerReviewDto } from "~/lib/reviewer-actions";
 import { Layout } from "~/layouts/Layout";
@@ -48,43 +48,48 @@ const ReviewPage = () => {
         return await submitReview(data);
     };
 
-    createEffect(async () => {
-        if (guard.authorized() && params.id) {
-            setLoading(true);
-            try {
-                const res = await fetchSubmissionData(params.id);
-                if (res.success && res.data) {
-                    setSubmission(res.data.submission);
+    createEffect(
+      () => ({ authorized: guard.authorized(), id: params.id }),
+      ({ authorized, id }) => {
+        if (!authorized || !id) return;
+        let cancelled = false;
+        setLoading(true);
+        void (async () => {
+          try {
+            const res = await fetchSubmissionData(id);
+            if (cancelled || !res.success || !res.data) return;
+            setSubmission(res.data.submission);
 
-                    if (res.data.userRole === "admin") {
-                        setAllReviews((res.data.reviews || []) as any[]);
-                    } else {
-                        // Reviewer mode - find my review
-                        // The server returns only MY review in reviews array for non-admins
-                        if (res.data.reviews && res.data.reviews.length > 0) {
-                            const r = res.data.reviews[0];
-                            setMyReview(r as ReviewerReviewDto);
-                            // Populate form
-                            const newScores: any = {};
-                            CRITERIA.forEach(c => newScores[c.id] = (r as any)[c.id]);
-                            setScores(newScores);
-                            setNotes(r.notes || "");
-                            setIsLlm(r.is_llm_suspected);
-                        } else {
-                            // Init defaults
-                            const newScores: any = {};
-                            CRITERIA.forEach(c => newScores[c.id] = 1);
-                            setScores(newScores);
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setLoading(false);
+            if (res.data.userRole === "admin") {
+              setAllReviews((res.data.reviews || []) as any[]);
+            } else if (res.data.reviews && res.data.reviews.length > 0) {
+              const review = res.data.reviews[0];
+              setMyReview(review as ReviewerReviewDto);
+              const newScores: any = {};
+              CRITERIA.forEach((criterion) => {
+                newScores[criterion.id] = (review as any)[criterion.id];
+              });
+              setScores(newScores);
+              setNotes(review.notes || "");
+              setIsLlm(review.is_llm_suspected);
+            } else {
+              const newScores: any = {};
+              CRITERIA.forEach((criterion) => {
+                newScores[criterion.id] = 1;
+              });
+              setScores(newScores);
             }
-        }
-    });
+          } catch (error) {
+            if (!cancelled) console.error(error);
+          } finally {
+            if (!cancelled) setLoading(false);
+          }
+        })();
+        return () => {
+          cancelled = true;
+        };
+      },
+    );
 
     const handleScoreChange = (key: string, val: string) => {
         setScores(p => ({ ...p, [key]: parseInt(val) }));

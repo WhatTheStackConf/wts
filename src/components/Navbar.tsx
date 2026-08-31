@@ -1,7 +1,8 @@
-import Logo from "../assets/images/LogoSolo.svg";
-import { createSignal, createResource, onCleanup, onMount, Show, Suspense } from "solid-js";
-import { clientOnly } from "@solidjs/start";
-import { Icon } from "@iconify-icon/solid";
+import logoUrl from "../assets/images/LogoSolo.svg";
+import { createSignal, onSettled, Show, Loading } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
+import { clientOnly } from "@solidjs/web";
+import { Icon } from "~/components/Icon";
 import { useAuth } from "~/lib/auth-context";
 import { fetchCfpConfig } from "~/lib/cfp-utils";
 
@@ -14,7 +15,7 @@ export const Navbar = () => {
   const [cfpConfig] = createResource(fetchCfpConfig);
   let animationTimer: number | undefined;
 
-  onMount(() => {
+  onSettled(() => {
     setMounted(true);
     animationTimer = window.setTimeout(() => {
       sessionStorage.setItem("shouldAnimate", "false");
@@ -23,10 +24,10 @@ export const Navbar = () => {
       if (event.key === "Escape" && isDrawerOpen()) closeDrawer();
     };
     window.addEventListener("keydown", closeOnEscape);
-    onCleanup(() => {
+    return () => {
       if (animationTimer) window.clearTimeout(animationTimer);
       window.removeEventListener("keydown", closeOnEscape);
-    });
+    };
   });
 
   const openDrawer = () => {
@@ -70,7 +71,7 @@ export const Navbar = () => {
                 type="button"
                 aria-label="open sidebar"
                 aria-controls="mobile-navigation"
-                aria-expanded={isDrawerOpen()}
+                aria-expanded={isDrawerOpen() ? "true" : "false"}
                 class="btn btn-square btn-ghost"
                 onClick={openDrawer}
               >
@@ -83,8 +84,8 @@ export const Navbar = () => {
               href="/"
               aria-label="WhatTheStack 2 0 2 6 home"
             >
-              <div class="h-6 w-6 mr-4 lg:h-16 lg:w-16 lg:mr-3 [&>svg]:!w-full [&>svg]:!h-full" aria-hidden="true">
-                <Logo />
+              <div class="h-6 w-6 mr-4 shrink-0 overflow-hidden lg:h-16 lg:w-16 lg:mr-3 [&>svg]:!w-full [&>svg]:!h-full" aria-hidden="true">
+                <img src={logoUrl} alt="" class="block h-full w-full object-contain" />
               </div>
               <div>
                 <div class="flex flex-col">
@@ -143,7 +144,7 @@ export const Navbar = () => {
                   Conference
                 </button>
                 <ul
-                  class="dropdown menu p-2 bg-base-100 shadow-lg w-[200px]"
+                  class="dropdown menu p-2 bg-base-100 shadow-lg w-[min(280px,calc(100vw-2rem))] overflow-x-hidden"
                   popover
                   id="nav-conference"
                   style="position-anchor:--anchor-conference"
@@ -180,18 +181,18 @@ export const Navbar = () => {
                   Get Involved
                 </button>
                 <ul
-                  class="dropdown menu p-2 bg-base-100 shadow-lg w-[220px]"
+                  class="dropdown menu p-2 bg-base-100 shadow-lg w-[220px] overflow-x-hidden"
                   popover
                   id="nav-involved"
                   style="position-anchor:--anchor-involved"
                 >
-                  <Suspense>
+                  <Loading>
                     <Show when={cfpConfig()?.cfp_open}>
                       <li>
                         <a href="/cfp">{`>`} Apply to speak</a>
                       </li>
                     </Show>
-                  </Suspense>
+                  </Loading>
                   <li>
                     <a href="/partnerships">{`>`} Partner with us</a>
                   </li>
@@ -209,7 +210,7 @@ export const Navbar = () => {
                   About
                 </button>
                 <ul
-                  class="dropdown menu p-2 bg-base-100 shadow-lg w-[240px]"
+                  class="dropdown menu p-2 bg-base-100 shadow-lg w-[min(280px,calc(100vw-2rem))] overflow-x-hidden"
                   popover
                   id="nav-about"
                   style="position-anchor:--anchor-about"
@@ -353,13 +354,13 @@ export const Navbar = () => {
               <details>
                 <summary>Get Involved</summary>
                 <ul>
-                  <Suspense>
+                  <Loading>
                     <Show when={cfpConfig()?.cfp_open}>
                       <li>
                         <a href="/cfp" onClick={closeDrawer}>Apply to speak</a>
                       </li>
                     </Show>
-                  </Suspense>
+                  </Loading>
                   <li>
                     <a href="/partnerships" onClick={closeDrawer}>Partner with us</a>
                   </li>

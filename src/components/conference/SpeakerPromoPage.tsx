@@ -1,6 +1,6 @@
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 import { For, Show } from "solid-js";
-import Logo from "~/assets/images/LogoSolo.svg?component-solid";
+import logoUrl from "~/assets/images/LogoSolo.svg";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
 import type { PublicSpeakerPromo } from "~/lib/speakers-public";
 
@@ -20,7 +20,7 @@ export function SpeakerPromoPage(props: SpeakerPromoPageProps) {
         class="h-20 w-20 sm:h-24 sm:w-24 mb-6 md:mb-8 flex items-center justify-center filter drop-shadow-[0_0_15px_rgba(46,200,254,0.4)]"
         aria-hidden="true"
       >
-        <Logo class="w-full h-full" />
+        <img src={logoUrl} alt="" class="w-full h-full" />
       </div>
 
       <h1 class="font-star italic text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight mb-10 md:mb-12 leading-tight neon-glow-subtle">

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const mocks = vi.hoisted(() => {
   const requireAuth = vi.fn();
@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("~/lib/server-auth", () => ({ requireAuth: mocks.requireAuth }));
 vi.mock("~/lib/pocketbase-admin-service", () => ({ getAdminPB: () => mocks.adminService }));
-vi.mock("@solidjs/start/server", () => ({ createServerReference: (fn: unknown) => fn }));
+
 
 import { saveMyCfpSubmissionCore as saveMyCfpSubmission } from "~/lib/cfp-actions";
 

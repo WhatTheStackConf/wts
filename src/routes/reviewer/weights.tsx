@@ -1,4 +1,4 @@
-import { clientOnly } from "@solidjs/start";
+import { clientOnly } from "@solidjs/web";
 
 const ReviewerWeightsPage = clientOnly(
     () => import("~/components/reviewer/ReviewerWeightsPage"),

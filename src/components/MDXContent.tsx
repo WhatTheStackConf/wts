@@ -1,7 +1,6 @@
-import * as runtime from "solid-jsx";
 import { runSync } from "@mdx-js/mdx";
-import { Dynamic } from "solid-js/web";
-import { createMemo, JSX, splitProps } from "solid-js";
+import { createComponent, Dynamic, type JSX } from "@solidjs/web";
+import { createMemo, omit } from "solid-js";
 import {
   conferenceGuideContent,
   conferenceLocation,
@@ -15,8 +14,8 @@ interface MDXProps {
 }
 
 const MdxLink = (props: any) => {
-  const [local, others] = splitProps(props, ["href"]);
-  const href = local.href || "";
+  const others = omit(props, "href");
+  const href = props.href || "";
   const isStaticAsset = /\.(pdf|zip|docx?|xlsx?|pptx?|csv|ics)$/i.test(href);
   const isExternal = /^(https?:)?\/\//i.test(href) || href.startsWith("mailto:");
 
@@ -41,6 +40,21 @@ const conferenceComponents = {
   ),
 };
 
+type MdxComponent = (props: Record<string, any>) => JSX.Element;
+
+const mdxJsx = (component: string | MdxComponent, props?: Record<string, any>) => {
+  const resolvedProps = props ?? {};
+  return typeof component === "string"
+    ? createComponent(Dynamic, { ...resolvedProps, component })
+    : createComponent(component, resolvedProps);
+};
+
+const mdxRuntime = {
+  Fragment: (props: { children?: JSX.Element }) => props.children,
+  jsx: mdxJsx,
+  jsxs: mdxJsx,
+};
+
 /** Shared with blog-style article surfaces (e.g. speaker bio). */
 export const proseArticleClasses =
   "prose prose-invert prose-lg md:prose-2xl max-w-none prose-strong:text-secondary-400 prose-headings:font-star prose-headings:text-secondary-400 prose-a:text-primary-400 prose-a:no-underline hover:prose-a:text-primary-300 prose-img:mx-auto prose-img:rounded-xl prose-img:border-2 prose-img:border-primary-500/40 prose-img:shadow-lg prose-img:shadow-primary-500/10";
@@ -48,7 +62,7 @@ export const proseArticleClasses =
 export const MDXContent = (props: MDXProps): JSX.Element => {
   const Content = createMemo(() => {
     const mdxModule = runSync(props.code, {
-      ...(runtime as any),
+      ...mdxRuntime,
       baseUrl: import.meta.url,
     });
     return mdxModule.default || (() => null);

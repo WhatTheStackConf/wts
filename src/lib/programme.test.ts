@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { runAuthorizedProgrammeOperation } from "~/lib/programme-admin-authorization";
 import { buildPublicAgenda, derivePublicSessionSchedule } from "~/lib/programme-public";
 import {

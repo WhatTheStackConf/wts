@@ -1,5 +1,5 @@
-import { createSignal, onMount, onCleanup, createEffect, Show } from "solid-js";
-import { Icon } from "@iconify-icon/solid";
+import { createSignal, onSettled, createEffect, Show } from "solid-js";
+import { Icon } from "~/components/Icon";
 
 const NewsletterPopup = () => {
   const [isVisible, setIsVisible] = createSignal(false);
@@ -44,60 +44,59 @@ const NewsletterPopup = () => {
     document.head.appendChild(script);
   };
 
-  onMount(() => {
+  onSettled(() => {
     const handleOpen = () => {
       setIsVisible(true);
       loadTurnstile();
     };
     window.addEventListener("wts:open-newsletter", handleOpen);
 
-    onCleanup(() => {
+    return () => {
       window.removeEventListener("wts:open-newsletter", handleOpen);
-    });
+    };
   });
 
   // Render Turnstile when visible and ready
-  createEffect(() => {
-    if (!isVisible()) {
-      renderedWidgetId = null;
-      return;
-    }
+  createEffect(
+    () => ({
+      visible: isVisible(),
+      succeeded: success(),
+      ready: turnstileReady(),
+    }),
+    ({ visible, succeeded, ready }) => {
+      if (!visible) {
+        renderedWidgetId = null;
+        return;
+      }
 
-    if (
-      isVisible() &&
-      !success() &&
-      SITE_KEY &&
-      turnstileReady() &&
-      (window as any).turnstile &&
-      containerRef
-    ) {
-      if (renderedWidgetId) return; // Prevent duplicates
-
-      // Tiny delay to ensure DOM is ready
-      setTimeout(() => {
-        try {
-          if (containerRef && !renderedWidgetId) {
-            // Clear to be safe
-            containerRef.innerHTML = "";
-
-            renderedWidgetId = (window as any).turnstile.render(containerRef, {
-              sitekey: SITE_KEY,
-              callback: (token: string) => {
-                setTurnstileToken(token);
-              },
-              "expired-callback": () => setTurnstileToken(""),
-              "error-callback": () => {},
-              // console.error("[Newsletter] Turnstile Error")
-              theme: "dark",
-            });
+      if (
+        !succeeded &&
+        SITE_KEY &&
+        ready &&
+        (window as any).turnstile &&
+        containerRef
+      ) {
+        if (renderedWidgetId) return;
+        const timeout = setTimeout(() => {
+          try {
+            if (containerRef && !renderedWidgetId) {
+              containerRef.innerHTML = "";
+              renderedWidgetId = (window as any).turnstile.render(containerRef, {
+                sitekey: SITE_KEY,
+                callback: (token: string) => setTurnstileToken(token),
+                "expired-callback": () => setTurnstileToken(""),
+                "error-callback": () => {},
+                theme: "dark",
+              });
+            }
+          } catch (error) {
+            console.error("Turnstile render error", error);
           }
-        } catch (e) {
-          console.error("Turnstile render error", e);
-        }
-      }, 100);
-    } else if (isVisible() && !SITE_KEY) {
-    }
-  });
+        }, 100);
+        return () => clearTimeout(timeout);
+      }
+    },
+  );
 
   const handleDismiss = () => {
     setIsVisible(false);

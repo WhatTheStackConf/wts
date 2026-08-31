@@ -154,7 +154,7 @@ export function TouchSafeSlider(props: TouchSafeSliderProps) {
             <div class={`hidden [@media(any-pointer:coarse)]:block ${props.disabled ? "opacity-50" : ""}`}>
                 <div
                     role="slider"
-                    tabIndex={props.disabled ? -1 : 0}
+                    tabindex={props.disabled ? -1 : 0}
                     aria-label={props.label}
                     aria-valuemin={props.min}
                     aria-valuemax={props.max}

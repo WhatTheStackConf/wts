@@ -1,6 +1,3 @@
-import { onMount, createSignal, on, Show } from "solid-js";
-import { useNavigate, useLocation } from "@solidjs/router";
-
 declare global {
   interface Document {
     createDocumentTransition?: (options: any) => any;
@@ -9,8 +6,6 @@ declare global {
 
 // Simple ViewTransition component for page transitions
 export const ViewTransition = (props: { children: any }) => {
-  const [isTransitioning, setIsTransitioning] = createSignal(false);
-  const location = useLocation();
   // Check if View Transitions API is supported
   const viewTransitionsSupported = () => {
     return (

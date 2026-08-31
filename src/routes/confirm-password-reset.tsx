@@ -1,7 +1,7 @@
-import { createSignal, Show, onMount } from "solid-js";
+import { createSignal, Show, onSettled } from "solid-js";
 import { useSearchParams, useNavigate } from "@solidjs/router";
 import { Layout } from "~/layouts/Layout";
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 
 const ConfirmPasswordResetPage = () => {
     const [searchParams] = useSearchParams();
@@ -21,7 +21,7 @@ const ConfirmPasswordResetPage = () => {
     const [success, setSuccess] = createSignal(false);
     const [error, setError] = createSignal("");
 
-    onMount(() => {
+    onSettled(() => {
         if (!token()) {
             setError("Invalid or missing reset token.");
         }
@@ -105,7 +105,7 @@ const ConfirmPasswordResetPage = () => {
                                     onInput={(e) => setPassword(e.currentTarget.value)}
                                     class="input input-bordered w-full"
                                     required
-                                    minLength={8}
+                                    minlength={8}
                                     disabled={!!error() && !token()} // Disable if missing token
                                 />
                             </div>
@@ -122,7 +122,7 @@ const ConfirmPasswordResetPage = () => {
                                     onInput={(e) => setPasswordConfirm(e.currentTarget.value)}
                                     class="input input-bordered w-full"
                                     required
-                                    minLength={8}
+                                    minlength={8}
                                     disabled={!!error() && !token()}
                                 />
                             </div>

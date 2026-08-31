@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { pages, speakerGuide } from ".velite";
 import {
   conferenceGuideContent,

@@ -1,7 +1,8 @@
 import { Layout } from "~/layouts/Layout";
-import { createResource, createEffect, For, Show } from "solid-js";
+import { createEffect, For, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
-import { isServer } from "solid-js/web";
+import { isServer } from "@solidjs/web";
 
 interface TimelineEvent {
   id: string;
@@ -51,17 +52,19 @@ function formatDate(dateStr: string) {
 export default function Timeline() {
   const [events] = createResource(fetchTimeline);
 
-  createEffect(() => {
-    if (isServer) return;
-    if (events()) {
-      setTimeout(() => {
+  createEffect(
+    () => Boolean(events()),
+    (loaded) => {
+    if (isServer || !loaded) return;
+      const timeout = setTimeout(() => {
         const marker = document.getElementById("you-are-here");
         if (marker) {
           marker.scrollIntoView({ behavior: "smooth", block: "center" });
         }
       }, 300);
-    }
-  });
+      return () => clearTimeout(timeout);
+    },
+  );
 
   return (
     <Layout

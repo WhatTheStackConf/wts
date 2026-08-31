@@ -1,9 +1,9 @@
-import { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { Title, Meta, Link } from "@solidjs/meta";
 import { Navbar } from "~/components/Navbar";
 import CodeBackground from "../components/CodeBackground";
 import { Footer } from "~/components/Footer";
-import { clientOnly } from "@solidjs/start";
+import { clientOnly } from "@solidjs/web";
 import {
   conferenceDefaultDescription,
   conferenceDefaultOgSubtitle,

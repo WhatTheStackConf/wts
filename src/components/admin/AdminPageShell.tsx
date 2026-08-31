@@ -1,6 +1,7 @@
-import { createSignal, JSX, onCleanup, Show, ParentProps } from "solid-js";
+import { createSignal, onCleanup, Show, type ParentProps } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { useNavigate } from "@solidjs/router";
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 import { Layout } from "~/layouts/Layout";
 
 export type AdminToast = {

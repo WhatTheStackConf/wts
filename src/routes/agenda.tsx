@@ -1,4 +1,5 @@
-import { createResource, For, Show } from "solid-js";
+import { For, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { Layout } from "~/layouts/Layout";
 import { fetchPublicAgenda, type PublicAgendaSlot } from "~/lib/speakers-public";
 import { conferenceLocation } from "~/lib/conference-guide-content";

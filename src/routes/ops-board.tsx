@@ -1,6 +1,7 @@
-import { clientOnly } from "@solidjs/start";
-import { Icon } from "@iconify-icon/solid";
-import { createResource, createSignal, For, Show } from "solid-js";
+import { clientOnly } from "@solidjs/web";
+import { Icon } from "~/components/Icon";
+import { createSignal, For, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { Layout } from "~/layouts/Layout";
 import type { GamificationPublicOpsBoardPage } from "~/lib/gamification";
 import { getPublicOpsBoard } from "~/lib/gamification-profile";
@@ -66,7 +67,7 @@ const OpsBoardPage = () => {
                   </div>
                 }
               >
-                <section class="glass-panel overflow-hidden rounded-2xl border border-white/10" aria-labelledby="ops-board-results-heading" aria-busy={board.loading}>
+                <section class="glass-panel overflow-hidden rounded-2xl border border-white/10" aria-labelledby="ops-board-results-heading" aria-busy={board.loading ? "true" : "false"}>
                   <h2 id="ops-board-results-heading" class="sr-only">Ops-board rankings</h2>
                   <Show when={board.loading}><p class="sr-only" role="status">Updating public field progress...</p></Show>
                   <div class="grid gap-3 p-3 md:hidden" role="list">

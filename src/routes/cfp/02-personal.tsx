@@ -1,4 +1,5 @@
-import { createEffect, createSignal, createResource, Show } from "solid-js";
+import { createEffect, createSignal, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { useNavigate } from "@solidjs/router";
 import { useAuth } from "~/lib/auth-context";
 import { useRequireAuth } from "~/lib/route-guards";
@@ -9,8 +10,8 @@ import {
 } from "~/lib/cfp-store";
 import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
 import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
-import { clientOnly } from "@solidjs/start";
-import { Icon } from "@iconify-icon/solid";
+import { clientOnly } from "@solidjs/web";
+import { Icon } from "~/components/Icon";
 import { SmartArea } from "../../components/SmartArea";
 
 const Personal = () => {
@@ -23,34 +24,43 @@ const Personal = () => {
 
   if (!isCfpOpen()) navigate("/cfp/closed");
 
-  createEffect(async () => {
-    if (!guard.authorized()) return;
-    const applicantData = await fetchApplicantData();
-    const data = applicantData?.[0];
+  createEffect(
+    () => ({ authorized: guard.authorized(), record: auth.record }),
+    ({ authorized, record }) => {
+      if (!authorized) return;
+      let cancelled = false;
+      void (async () => {
+        const applicantData = await fetchApplicantData();
+        if (cancelled) return;
+        const data = applicantData?.[0];
 
-    // Initialize logic combined for both new and returning users
-    if (data || auth.record) {
-      const rawHandles = data?.social_handles;
-      const socialHandlesArray = Array.isArray(rawHandles)
-        ? rawHandles
-        : typeof rawHandles === "string"
-          ? rawHandles
-            ? [rawHandles]
-            : []
-          : [];
+        if (data || record) {
+          const rawHandles = data?.social_handles;
+          const socialHandlesArray = Array.isArray(rawHandles)
+            ? rawHandles
+            : typeof rawHandles === "string"
+              ? rawHandles
+                ? [rawHandles]
+                : []
+              : [];
 
-      setCfpStore("formData", {
-        ...cfpStore.formData,
-        full_name: cfpStore.formData.full_name || auth.record?.name || "",
-        email: auth.record?.email || "",
-        short_bio: data?.bio || "",
-        affiliation: data?.affiliation || "",
-        social_handles: socialHandlesArray,
-        preferred_contact: data?.preferred_contact_method || "",
-        applicant_id: data?.id || "",
-      });
-    }
-  });
+          setCfpStore("formData", {
+            ...cfpStore.formData,
+            full_name: cfpStore.formData.full_name || record?.name || "",
+            email: record?.email || "",
+            short_bio: data?.bio || "",
+            affiliation: data?.affiliation || "",
+            social_handles: socialHandlesArray,
+            preferred_contact: data?.preferred_contact_method || "",
+            applicant_id: data?.id || "",
+          });
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    },
+  );
 
   const handleNext = async () => {
     const user = auth.record;

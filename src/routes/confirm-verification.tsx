@@ -1,8 +1,8 @@
-import { createSignal, onMount, Show } from "solid-js";
+import { createSignal, onSettled, Show } from "solid-js";
 import { useSearchParams, useNavigate } from "@solidjs/router";
 import { Layout } from "~/layouts/Layout";
-import { Icon } from "@iconify-icon/solid";
-import { clientOnly } from "@solidjs/start";
+import { Icon } from "~/components/Icon";
+import { clientOnly } from "@solidjs/web";
 
 const ConfirmVerificationPage = () => {
   const [searchParams] = useSearchParams();
@@ -12,7 +12,8 @@ const ConfirmVerificationPage = () => {
   const [error, setError] = createSignal("");
   const navigate = useNavigate();
 
-  onMount(async () => {
+  onSettled(() => {
+    void (async () => {
     const token = searchParams.token;
     if (!token) {
       setStatus("error");
@@ -44,6 +45,7 @@ const ConfirmVerificationPage = () => {
           "Failed to verify email. The token may be invalid or expired.",
       );
     }
+    })();
   });
 
   return (

@@ -1,5 +1,6 @@
 import { useParams } from "@solidjs/router";
-import { createMemo, createResource, Show } from "solid-js";
+import { createMemo, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { PromoLayout } from "~/layouts/PromoLayout";
 import { SpeakerPromoPage } from "~/components/conference/SpeakerPromoPage";
 import { fetchSpeakerPromoBySlug } from "~/lib/speakers-public";

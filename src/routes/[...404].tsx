@@ -1,4 +1,10 @@
 import { Layout } from "../layouts/Layout";
+import { httpStatus } from "@solidjs/web";
+import type { RouteDefinition } from "@solidjs/router";
+
+export const route = {
+  preload: () => httpStatus(404),
+} satisfies RouteDefinition;
 
 export default function NotFound() {
   return (

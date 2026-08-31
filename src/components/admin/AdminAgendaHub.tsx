@@ -1,5 +1,6 @@
-import { createMemo, createResource, createSignal, For, Show } from "solid-js";
-import { Icon } from "@iconify-icon/solid";
+import { createMemo, createSignal, For, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
+import { Icon } from "~/components/Icon";
 import {
   AdminDataPanel,
   AdminFormField,

@@ -1,5 +1,5 @@
 import { For, Show } from "solid-js";
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 import {
   getSocialIcon,
   getSocialPlatformLabel,

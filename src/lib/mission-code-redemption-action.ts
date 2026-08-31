@@ -1,4 +1,4 @@
-import { getRequestEvent } from "solid-js/web";
+import { getRequestEvent } from "@solidjs/web";
 import { createGamificationAccountingStore } from "~/lib/gamification-accounting-store";
 import { runAuthenticatedGamificationOperation } from "~/lib/gamification-authorization";
 import {

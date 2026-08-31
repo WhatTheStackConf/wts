@@ -1,9 +1,16 @@
-import { useParams, useNavigate } from "@solidjs/router";
-import { createMemo, Show, onMount } from "solid-js";
+import { useParams, type RouteDefinition } from "@solidjs/router";
+import { httpStatus } from "@solidjs/web";
+import { createMemo, Show } from "solid-js";
 import { Layout } from "~/layouts/Layout";
 import { MDXContent } from "~/components/MDXContent";
 import { pages } from ".velite";
 import NotFound from "./[...404]";
+
+export const route = {
+    preload: ({ params }) => {
+        if (!pages.some((page) => page.slug === params.slug)) httpStatus(404);
+    },
+} satisfies RouteDefinition;
 
 export default function Page() {
     const params = useParams();

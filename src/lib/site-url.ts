@@ -1,4 +1,4 @@
-import { getRequestEvent } from "solid-js/web";
+import { getRequestEvent } from "@solidjs/web";
 
 const SITE_ORIGIN_ENV_KEYS = [
   "PUBLIC_SITE_URL",

@@ -1,4 +1,4 @@
-import { createSignal, onMount, Show } from "solid-js";
+import { createSignal, onSettled, Show } from "solid-js";
 
 interface MultiLineCyberpunkTextProps {
   firstLineText: string;
@@ -20,7 +20,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
     sessionStorage.getItem("shouldAnimate") !== "false" &&
     !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  onMount(() => {
+  onSettled(() => {
     if (!shouldAnimate) return;
 
     // Delay before typing starts

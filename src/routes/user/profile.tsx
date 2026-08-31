@@ -1,9 +1,10 @@
-import { createEffect, createSignal, Show, createResource, For } from "solid-js";
+import { createEffect, createSignal, Show, For } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { useNavigate } from "@solidjs/router";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
-import { clientOnly } from "@solidjs/start";
-import { Icon } from "@iconify-icon/solid";
+import { clientOnly } from "@solidjs/web";
+import { Icon } from "~/components/Icon";
 
 import SparkMD5 from "spark-md5";
 import { sanitizeHtml } from "~/lib/sanitize-html";
@@ -53,13 +54,15 @@ const ProfilePage = () => {
   const [visibilityBusy, setVisibilityBusy] = createSignal(false);
   const [visibilityMessage, setVisibilityMessage] = createSignal("");
   const [visibilityMessageKind, setVisibilityMessageKind] = createSignal<"success" | "error">("success");
-  createEffect(() => {
-    const summary = gamification();
-    if (!summary) return;
-    setOpsBoardVisible(summary.opsBoard.visible);
-    setOpsBoardDisplayName(summary.opsBoard.displayName);
-    setPublicBadgesVisible(summary.opsBoard.publicBadgesVisible);
-  });
+  createEffect(
+    () => gamification()?.opsBoard,
+    (opsBoard) => {
+      if (!opsBoard) return;
+      setOpsBoardVisible(opsBoard.visible);
+      setOpsBoardDisplayName(opsBoard.displayName);
+      setPublicBadgesVisible(opsBoard.publicBadgesVisible);
+    },
+  );
   const [ticketRefreshRequest, setTicketRefreshRequest] = createSignal(0);
   const [consentBusy, setConsentBusy] = createSignal(false);
   const [consentMessage, setConsentMessage] = createSignal("");
@@ -95,12 +98,19 @@ const ProfilePage = () => {
     navigate("/cfp/03-proposal");
   };
 
-  createEffect(() => {
-    setUser(auth.record);
-    if (!auth.isLoading() && !auth.isAuthenticated()) {
+  createEffect(
+    () => ({
+      record: auth.record,
+      loading: auth.isLoading(),
+      authenticated: auth.isAuthenticated(),
+    }),
+    ({ record, loading, authenticated }) => {
+    setUser(record);
+    if (!loading && !authenticated) {
       navigate("/login", { replace: true });
     }
-  });
+    },
+  );
 
   const getGravatarUrl = (email: string) => {
     const trimmedEmail = email.trim().toLowerCase();
@@ -482,7 +492,7 @@ const ProfilePage = () => {
                           </div>
                           <a href="/ops-board" class="btn btn-outline btn-primary btn-sm shrink-0 font-mono">View ops board</a>
                         </div>
-                        <form class="mt-5 space-y-5" onSubmit={(event) => void saveGamificationVisibility(event)} aria-busy={visibilityBusy()}>
+                        <form class="mt-5 space-y-5" onSubmit={(event) => void saveGamificationVisibility(event)} aria-busy={visibilityBusy() ? "true" : "false"}>
                           <fieldset disabled={visibilityBusy()}>
                             <legend class="sr-only">Public ops-board settings</legend>
                             <label class="flex min-h-12 cursor-pointer items-start gap-3 text-sm leading-relaxed text-secondary-100" for="ops-board-visible">
@@ -670,7 +680,7 @@ const ProfilePage = () => {
                                    <p class="mt-1 text-sm text-secondary-200/85">Activity: {consent.activityLabel}</p>
                                   <p class="mt-1 text-xs leading-relaxed text-secondary-300/80">Purpose: {consent.purpose}. Notice: {consent.noticeVersion}. Fields: {consent.fields.join(" and ")}.</p>
                                   <Show when={consent.state === "granted"} fallback={
-                                    <form class="mt-4" onSubmit={(event) => void grantPartnerFollowUp(event, consent.activityId)} aria-busy={consentBusy()}>
+                                    <form class="mt-4" onSubmit={(event) => void grantPartnerFollowUp(event, consent.activityId)} aria-busy={consentBusy() ? "true" : "false"}>
                                       <fieldset>
                                          <label class="flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-secondary-100" for={`profile-partner-follow-up-${consent.activityId}`}>
                                           <input id={`profile-partner-follow-up-${consent.activityId}`} name="partner-follow-up" type="checkbox" class="checkbox checkbox-primary mt-0.5 shrink-0" />

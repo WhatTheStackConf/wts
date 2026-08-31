@@ -1,10 +1,11 @@
-import { createResource, For, Show } from "solid-js";
+import { For, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { Layout } from "~/layouts/Layout";
 import { fetchPublishedSpeakers } from "~/lib/speakers-public";
 import { SpeakerCard } from "~/components/conference/SpeakerCard";
 
 export default function Speakers() {
-  const [speakers] = createResource(() => fetchPublishedSpeakers());
+  const [speakers, { refetch }] = createResource(fetchPublishedSpeakers);
 
   return (
     <Layout
@@ -32,22 +33,34 @@ export default function Speakers() {
             }
           >
             <Show
-              when={(speakers()?.length ?? 0) > 0}
+              when={!speakers.error}
               fallback={
-                <p class="text-secondary-400 text-lg fade-in-delay-2 md:pl-2">
-                  We haven't announced any speakers yet.
-                </p>
+                <div class="alert alert-error flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between" role="alert">
+                  <span>We couldn't load the speakers. Try again in a moment.</span>
+                  <button type="button" class="btn btn-sm btn-outline min-h-11 font-mono" onClick={() => void refetch()}>
+                    Try again
+                  </button>
+                </div>
               }
             >
-              <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8 list-none p-0 m-0 fade-in-delay-2">
-                <For each={speakers()}>
-                  {(speaker) => (
-                    <li class="min-w-0 h-full">
-                      <SpeakerCard speaker={speaker} layout="grid" />
-                    </li>
-                  )}
-                </For>
-              </ul>
+              <Show
+                when={(speakers()?.length ?? 0) > 0}
+                fallback={
+                  <p class="text-secondary-400 text-lg fade-in-delay-2 md:pl-2">
+                    We haven't announced any speakers yet.
+                  </p>
+                }
+              >
+                <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8 list-none p-0 m-0 fade-in-delay-2">
+                  <For each={speakers()}>
+                    {(speaker) => (
+                      <li class="min-w-0 h-full">
+                        <SpeakerCard speaker={speaker} layout="grid" />
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </Show>
             </Show>
           </Show>
         </div>

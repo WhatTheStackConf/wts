@@ -1,5 +1,6 @@
-import { createMemo, createResource, createSignal, For, Show } from "solid-js";
-import { Icon } from "@iconify-icon/solid";
+import { createMemo, createSignal, For, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
+import { Icon } from "~/components/Icon";
 import {
   AdminDataPanel,
   AdminFormField,
@@ -390,15 +391,15 @@ export default function AdminGamificationHub() {
       <Show when={loadError()}><div class="alert alert-error mb-6 font-mono" role="alert">{loadError()}</div></Show>
 
        <nav class="mb-6 flex flex-wrap gap-2" aria-label="Gamification operations">
-          <button type="button" class={`btn btn-sm font-mono ${tab() === "catalog" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "catalog"} onClick={() => selectTab("catalog")}>Catalog</button>
-            <button type="button" class={`btn btn-sm font-mono ${tab() === "schedule" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "schedule"} onClick={() => selectTab("schedule")}>Score schedules</button>
-            <button type="button" class={`btn btn-sm font-mono ${tab() === "sessions" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "sessions"} onClick={() => selectTab("sessions")}>Session Missions</button>
-            <button type="button" class={`btn btn-sm font-mono ${tab() === "events" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "events"} onClick={() => selectTab("events")}>Event Missions</button>
-             <button type="button" class={`btn btn-sm font-mono ${tab() === "community" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "community"} onClick={() => selectTab("community")}>Community Partners</button>
-            <button type="button" class={`btn btn-sm font-mono ${tab() === "eggs" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "eggs"} onClick={() => selectTab("eggs")}>Easter Eggs</button>
-           <button type="button" class={`btn btn-sm font-mono ${tab() === "codes" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "codes"} onClick={() => selectTab("codes")}>Mission codes</button>
-           <button type="button" class={`btn btn-sm font-mono ${tab() === "hievents" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "hievents"} onClick={() => selectTab("hievents")}>Hi.Events sync</button>
-           <button type="button" class={`btn btn-sm font-mono ${tab() === "support" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "support"} onClick={() => selectTab("support")}>User support</button>
+          <button type="button" class={`btn btn-sm font-mono ${tab() === "catalog" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "catalog" ? "true" : "false"} onClick={() => selectTab("catalog")}>Catalog</button>
+            <button type="button" class={`btn btn-sm font-mono ${tab() === "schedule" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "schedule" ? "true" : "false"} onClick={() => selectTab("schedule")}>Score schedules</button>
+            <button type="button" class={`btn btn-sm font-mono ${tab() === "sessions" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "sessions" ? "true" : "false"} onClick={() => selectTab("sessions")}>Session Missions</button>
+            <button type="button" class={`btn btn-sm font-mono ${tab() === "events" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "events" ? "true" : "false"} onClick={() => selectTab("events")}>Event Missions</button>
+             <button type="button" class={`btn btn-sm font-mono ${tab() === "community" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "community" ? "true" : "false"} onClick={() => selectTab("community")}>Community Partners</button>
+            <button type="button" class={`btn btn-sm font-mono ${tab() === "eggs" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "eggs" ? "true" : "false"} onClick={() => selectTab("eggs")}>Easter Eggs</button>
+           <button type="button" class={`btn btn-sm font-mono ${tab() === "codes" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "codes" ? "true" : "false"} onClick={() => selectTab("codes")}>Mission codes</button>
+           <button type="button" class={`btn btn-sm font-mono ${tab() === "hievents" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "hievents" ? "true" : "false"} onClick={() => selectTab("hievents")}>Hi.Events sync</button>
+           <button type="button" class={`btn btn-sm font-mono ${tab() === "support" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "support" ? "true" : "false"} onClick={() => selectTab("support")}>User support</button>
        </nav>
 
       <Show when={tab() === "catalog"}>

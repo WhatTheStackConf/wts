@@ -6,7 +6,7 @@ import {
   Switch,
   Match,
 } from "solid-js";
-import Logo from "../assets/images/LogoSolo.svg?component-solid";
+import logoUrl from "../assets/images/LogoSolo.svg";
 import { HologramButton } from "./HologramButton";
 import {
   conferenceLongDate,
@@ -20,7 +20,7 @@ const HeroLogo = (props: { show: boolean }) => (
     aria-hidden="true"
     class={`w-auto h-full animate-float flex items-center justify-center p-4 filter drop-shadow-[0_0_15px_rgba(46,200,254,0.4)] transition-opacity duration-300 ${props.show ? "opacity-90" : "opacity-0"}`}
   >
-    <Logo class="w-full h-full" />
+    <img src={logoUrl} alt="" class="w-full h-full" />
   </div>
 );
 
@@ -71,14 +71,18 @@ const HeroGlitch = (props: {
     animationId = requestAnimationFrame(drawNoise);
   };
 
-  createEffect(() => {
-    if (typeof window === "undefined") return;
-    if (props.active) {
-      drawNoise();
-    } else {
-      cancelAnimationFrame(animationId);
-    }
-  });
+  createEffect(
+    () => props.active,
+    (active) => {
+      if (typeof window === "undefined") return;
+      if (active) {
+        drawNoise();
+      } else {
+        cancelAnimationFrame(animationId);
+      }
+      return () => cancelAnimationFrame(animationId);
+    },
+  );
 
   onCleanup(() => {
     if (typeof window !== "undefined") {
@@ -106,19 +110,23 @@ const HeroVideo = (props: {
 }) => {
   let videoRef: HTMLVideoElement | undefined;
 
-  createEffect(() => {
-    if (props.enabled && videoRef) {
-      videoRef.load();
-    }
-  });
+  createEffect(
+    () => props.enabled,
+    (enabled) => {
+      if (enabled) videoRef?.load();
+    },
+  );
 
-  createEffect(() => {
-    if (props.active && videoRef) {
-      videoRef.currentTime = 0;
-      videoRef.playbackRate = 0.4;
-      videoRef.play().catch((e) => console.error("Video play failed", e));
-    }
-  });
+  createEffect(
+    () => props.active,
+    (active) => {
+      const video = videoRef;
+      if (!active || !video) return;
+      video.currentTime = 0;
+      video.playbackRate = 0.4;
+      void video.play().catch((error) => console.error("Video play failed", error));
+    },
+  );
 
   return (
     <video
@@ -187,14 +195,18 @@ const GlassPanelController = () => {
   };
 
   // Watch for video load to trigger the FIRST run
-  createEffect(() => {
-    if (videoLoaded()) {
+  createEffect(
+    () => videoLoaded(),
+    (loaded) => {
+      if (loaded) {
       // First run: wait 3s then start
-      timer = setTimeout(() => {
-        startGlitchSequence();
-      }, 3000);
-    }
-  });
+        timer = setTimeout(() => {
+          startGlitchSequence();
+        }, 3000);
+        return () => clearTimeout(timer);
+      }
+    },
+  );
 
   onCleanup(() => clearTimeout(timer));
 

@@ -1,4 +1,4 @@
-import { createSignal, onMount, Show } from "solid-js";
+import { createSignal, onSettled, Show } from "solid-js";
 
 interface CyberpunkTextProps {
   text: string;
@@ -20,7 +20,7 @@ export const CyberpunkText = (props: CyberpunkTextProps) => {
   const [showEffect, setShowEffect] = createSignal(false);
   const [isTypingFirst, setIsTypingFirst] = createSignal(true); // true for typing first text, false for second text
 
-  onMount(() => {
+  onSettled(() => {
     // Delay before typing starts
     const startDelay = props.delay || 0;
 

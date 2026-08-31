@@ -1,7 +1,8 @@
-import { Show, createResource, createSignal } from "solid-js";
+import { Show, createSignal } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { Layout } from "~/layouts/Layout";
-import { clientOnly } from "@solidjs/start";
-import { Icon } from "@iconify-icon/solid";
+import { clientOnly } from "@solidjs/web";
+import { Icon } from "~/components/Icon";
 import { useRequireAdmin } from "~/lib/route-guards";
 import { adminUpdateCfpConfig, adminFetchCfpConfig } from "~/lib/admin-actions";
 import { authorizedResourceSource } from "~/lib/route-authorization";

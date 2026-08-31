@@ -1,5 +1,6 @@
-import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js";
-import { Icon } from "@iconify-icon/solid";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
+import { Icon } from "~/components/Icon";
 import {
   AdminDataPanel,
   AdminFormField,
@@ -104,34 +105,44 @@ export default function AdminSessionsHub() {
     setShowForm(true);
   };
 
-  createEffect(() => {
-    if (requestedEditHandled() || sessions.loading) return;
+  createEffect(
+    () => {
+      const loading = sessions.loading;
+      return {
+        handled: requestedEditHandled(),
+        loading,
+        items: loading ? undefined : sessions(),
+      };
+    },
+    ({ handled, loading, items }) => {
+      if (handled || loading) return;
 
-    const requestedId = typeof window === "undefined"
-      ? ""
-      : new URLSearchParams(window.location.search).get("edit")?.trim() || "";
+      const requestedId = typeof window === "undefined"
+        ? ""
+        : new URLSearchParams(window.location.search).get("edit")?.trim() || "";
 
-    if (!requestedId) {
-      setRequestedEditHandled(true);
-      return;
-    }
+      if (!requestedId) {
+        setRequestedEditHandled(true);
+        return;
+      }
 
-    const match = (sessions() || []).find((session) => session.id === requestedId);
-    if (match) {
-      loadSession(match);
-      setRequestedEditHandled(true);
-      window.requestAnimationFrame(() => {
-        document.getElementById("session-edit-form")?.scrollIntoView({
-          block: "start",
-          behavior: reducedMotionPreferred() ? "auto" : "smooth",
+      const match = (items || []).find((session) => session.id === requestedId);
+      if (match) {
+        loadSession(match);
+        setRequestedEditHandled(true);
+        window.requestAnimationFrame(() => {
+          document.getElementById("session-edit-form")?.scrollIntoView({
+            block: "start",
+            behavior: reducedMotionPreferred() ? "auto" : "smooth",
+          });
         });
-      });
-      return;
-    }
+        return;
+      }
 
-    setSessionsError("The requested Session could not be found.");
-    setRequestedEditHandled(true);
-  });
+      setSessionsError("The requested Session could not be found.");
+      setRequestedEditHandled(true);
+    },
+  );
 
   const toggleSpeaker = (id: string) => {
     const current = selectedSpeakers();
@@ -571,7 +582,7 @@ export default function AdminSessionsHub() {
                       type="button"
                       class={`btn btn-xs font-mono ${session.published ? "btn-success" : "btn-ghost"}`}
                       disabled={busyId() !== null}
-                      aria-pressed={session.published}
+                      aria-pressed={session.published ? "true" : "false"}
                       onClick={() => togglePublished(session)}
                     >
                       <Show
@@ -652,7 +663,7 @@ export default function AdminSessionsHub() {
                           type="button"
                           class={`btn btn-xs font-mono ${session.published ? "btn-success" : "btn-ghost"}`}
                           disabled={busyId() !== null}
-                          aria-pressed={session.published}
+                          aria-pressed={session.published ? "true" : "false"}
                           onClick={() => togglePublished(session)}
                         >
                           <Show

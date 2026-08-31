@@ -1,4 +1,4 @@
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 
 interface CfpStepIndicatorProps {
     currentStep: number;

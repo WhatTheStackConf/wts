@@ -1,5 +1,5 @@
 import PocketBase from "pocketbase";
-import { getRequestEvent } from "solid-js/web";
+import { getRequestEvent } from "@solidjs/web";
 import {
   PB_AUTH_COOKIE,
   hasManagedSessionCookie,

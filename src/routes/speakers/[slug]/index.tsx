@@ -1,5 +1,5 @@
 import { useParams } from "@solidjs/router";
-import { createMemo, createResource, For, Show } from "solid-js";
+import { createMemo, For, Loading, Show } from "solid-js";
 import { Layout } from "~/layouts/Layout";
 import { fetchSpeakerBySlug } from "~/lib/speakers-public";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
@@ -11,37 +11,27 @@ import NotFound from "../../[...404]";
 
 export default function SpeakerDetail() {
   const params = useParams();
-  const [speaker] = createResource(
-    () => params.slug,
-    (slug) => fetchSpeakerBySlug(slug),
-  );
-
-  const pageTitle = createMemo(() => {
-    const data = speaker();
-    if (data) return `${data.displayName} — WhatTheStack 2026`;
-    return "Speaker — WhatTheStack 2026";
-  });
-
-  const pageDescription = createMemo(() => {
-    const data = speaker();
-    if (data) {
-      return data.affiliation || `Speaker at WhatTheStack 2026`;
-    }
-    return "Speaker at WhatTheStack 2026";
+  const speaker = createMemo(() => {
+    const slug = params.slug;
+    return slug ? fetchSpeakerBySlug(slug) : null;
   });
 
   return (
-    <Layout title={pageTitle()} description={pageDescription()}>
-      <Show
-        when={!speaker.loading}
-        fallback={
+    <Loading
+      fallback={
+        <Layout title="Speaker — WhatTheStack 2026" description="Speaker at WhatTheStack 2026">
           <div class="flex justify-center py-32">
             <span class="loading loading-bars loading-lg text-primary-500" />
           </div>
-        }
-      >
-        <Show when={speaker()} fallback={<NotFound />}>
-          {(s) => (
+        </Layout>
+      }
+    >
+      <Show when={speaker()} fallback={<NotFound />}>
+        {(s) => (
+          <Layout
+            title={`${s().displayName} — WhatTheStack 2026`}
+            description={s().affiliation || "Speaker at WhatTheStack 2026"}
+          >
             <div class="w-full h-full px-4 relative pt-4 md:pt-12 pb-20">
               <div class="max-w-4xl mx-auto relative z-20">
                 <div class="glass-panel p-6 md:p-12 rounded-2xl fade-in-delay-1 relative z-30">
@@ -118,9 +108,9 @@ export default function SpeakerDetail() {
                 </div>
               </div>
             </div>
-          )}
-        </Show>
+          </Layout>
+        )}
       </Show>
-    </Layout>
+    </Loading>
   );
 }

@@ -1,11 +1,12 @@
-import { Show, createSignal, createResource } from "solid-js";
+import { Show, createSignal } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { useNavigate } from "@solidjs/router";
 // import { Layout } from "~/layouts/Layout";
 import { useRequireAuth } from "~/lib/route-guards";
 import { useCfpStore, submitProposal } from "~/lib/cfp-store";
 import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
-import { clientOnly } from "@solidjs/start";
-import { Icon } from "@iconify-icon/solid";
+import { clientOnly } from "@solidjs/web";
+import { Icon } from "~/components/Icon";
 
 import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
 

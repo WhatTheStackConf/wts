@@ -1,4 +1,5 @@
-import { createResource, Show } from "solid-js";
+import { Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { HologramButton } from "~/components/HologramButton";
 import {
   PartnersShowcase,

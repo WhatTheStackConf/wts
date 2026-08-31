@@ -1,6 +1,7 @@
-import { createSignal, createMemo, For, Show, createResource } from "solid-js";
+import { createSignal, createMemo, For, Show } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { useRequireAdmin } from "~/lib/route-guards";
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 import {
     AdminDataPanel,
     AdminFilterBar,
@@ -426,7 +427,7 @@ export default function AdminProposalsTable() {
                                     <button
                                         type="button"
                                         class={adminFilterButtonClass(expenseFilter() === opt)}
-                                        aria-pressed={expenseFilter() === opt}
+                                        aria-pressed={expenseFilter() === opt ? "true" : "false"}
                                         onClick={() => setExpenseFilter(opt)}
                                     >
                                         {opt === "all" ? "All" : opt}
@@ -441,7 +442,7 @@ export default function AdminProposalsTable() {
                                     <button
                                         type="button"
                                         class={adminFilterButtonClass(statusFilter() === opt)}
-                                        aria-pressed={statusFilter() === opt}
+                                        aria-pressed={statusFilter() === opt ? "true" : "false"}
                                         onClick={() => setStatusFilter(opt)}
                                     >
                                         {opt === "all" ? "All" : opt.charAt(0).toUpperCase() + opt.slice(1)}
@@ -456,7 +457,7 @@ export default function AdminProposalsTable() {
                                     <button
                                         type="button"
                                         class={adminFilterButtonClass(sortBy() === opt.k)}
-                                        aria-pressed={sortBy() === opt.k}
+                                        aria-pressed={sortBy() === opt.k ? "true" : "false"}
                                         onClick={() => setSortBy(opt.k)}
                                     >
                                         {opt.l}

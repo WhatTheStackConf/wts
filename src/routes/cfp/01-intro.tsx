@@ -1,4 +1,5 @@
-import { createEffect, createSignal, createResource } from "solid-js";
+import { createEffect, createSignal } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { useNavigate } from "@solidjs/router";
 // Removed Layout
 // import { Layout } from "~/layouts/Layout";
@@ -6,8 +7,8 @@ import { useAuth } from "~/lib/auth-context";
 import { useRequireAuth } from "~/lib/route-guards";
 import { useCfpStore } from "~/lib/cfp-store";
 import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
-import { clientOnly } from "@solidjs/start";
-import { Icon } from "@iconify-icon/solid";
+import { clientOnly } from "@solidjs/web";
+import { Icon } from "~/components/Icon";
 
 import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
 
@@ -24,15 +25,22 @@ const Intro = () => {
   }
 
   // Initialize form data with user's info if not already set
-  createEffect(() => {
-    if (guard.authorized() && !cfpStore?.formData?.email && auth.record) {
+  createEffect(
+    () => ({
+      authorized: guard.authorized(),
+      email: cfpStore.formData.email,
+      record: auth.record,
+    }),
+    ({ authorized, email, record }) => {
+    if (authorized && !email && record) {
       setCfpStore("formData", {
         ...cfpStore.formData,
-        email: auth.record.email || "",
-        full_name: auth.record.name || "", // Assuming user profile has a name field
+        email: record.email || "",
+        full_name: record.name || "", // Assuming user profile has a name field
       });
     }
-  });
+    },
+  );
 
   const handleNext = () => {
     // Validate current step before proceeding

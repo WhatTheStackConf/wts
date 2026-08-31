@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import DOMPurify from "isomorphic-dompurify";
+import sanitize from "sanitize-html";
+import { decodeHTML } from "entities";
 import type { ConferenceGuide } from ".velite";
 import {
   conferenceGuideContent,
@@ -106,11 +107,8 @@ function normalizeGuideText(value: string | null | undefined): string {
     .replace(/<\/?(?:p|div|li|ul|ol|h[1-6]|blockquote)[^>]*>/gi, (tag) =>
       tag.startsWith("</") || /^<li/i.test(tag) ? "\n" : "",
     );
-  const document = DOMPurify.sanitize(withBreaks, {
-    ALLOWED_TAGS: [],
-    RETURN_DOM: true,
-  });
-  return (document.textContent ?? "")
+  const text = decodeHTML(sanitize(withBreaks, { allowedTags: [], allowedAttributes: {} }));
+  return text
     .split(/\n+/)
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter(Boolean)

@@ -1,6 +1,6 @@
 import { createSignal, Show } from "solid-js";
 import SparkMD5 from "spark-md5";
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 import { useAuth } from "~/lib/auth-context";
 
 const LoginMenu = () => {

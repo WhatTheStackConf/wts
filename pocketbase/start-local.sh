@@ -4,20 +4,17 @@
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Function to source environment variables safely
+# Function to source environment variables
 source_env_file() {
     local env_file="$1"
     if [ -f "$env_file" ]; then
         echo "Loading environment variables from $env_file"
-        # Use while loop to read each line and export only valid variables
-        while IFS= read -r line || [ -n "$line" ]; do
-            # Skip empty lines and comments
-            if [[ $line =~ ^[^#]*= ]] && [ -n "$line" ]; then
-                # Remove any trailing characters that might cause issues
-                line=$(echo "$line" | sed 's/[^[:print:]]*$//')
-                export "$line"
-            fi
-        done < "$env_file"
+        # The project env file uses standard shell quoting. Source it with
+        # automatic export so quoted values do not become part of the value.
+        set -a
+        # shellcheck disable=SC1090
+        . "$env_file"
+        set +a
     fi
 }
 

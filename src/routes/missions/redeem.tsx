@@ -1,6 +1,6 @@
-import { clientOnly } from "@solidjs/start";
-import { Icon } from "@iconify-icon/solid";
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { clientOnly } from "@solidjs/web";
+import { Icon } from "~/components/Icon";
+import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
 import type { MissionCodeRedemptionResult } from "~/lib/mission-code-redemption";
@@ -121,23 +121,28 @@ const RedeemMissionPage = () => {
     resumePendingCode();
   };
 
-  onMount(() => {
+  onSettled(() => {
     captureFragmentCode();
     window.addEventListener("hashchange", captureFragmentCode);
-    onCleanup(() => window.removeEventListener("hashchange", captureFragmentCode));
+    return () => window.removeEventListener("hashchange", captureFragmentCode);
   });
 
-  createEffect(() => {
-    auth.isLoading();
-    auth.isAuthenticated();
-    pendingVersion();
-    resumePendingCode();
-  });
+  createEffect(
+    () => ({
+      loading: auth.isLoading(),
+      authenticated: auth.isAuthenticated(),
+      version: pendingVersion(),
+    }),
+    () => resumePendingCode(),
+  );
 
-  createEffect(() => {
-    if (requestError()) queueMicrotask(() => requestErrorRegion?.focus());
-    else if (result()) queueMicrotask(() => resultRegion?.focus());
-  });
+  createEffect(
+    () => ({ hasError: Boolean(requestError()), hasResult: Boolean(result()) }),
+    ({ hasError, hasResult }) => {
+      if (hasError) queueMicrotask(() => requestErrorRegion?.focus());
+      else if (hasResult) queueMicrotask(() => resultRegion?.focus());
+    },
+  );
 
   return (
     <Layout title="Redeem Mission // WhatTheStack" description="Redeem a WhatTheStack Mission code.">
@@ -158,7 +163,7 @@ const RedeemMissionPage = () => {
             </div>
           </Show>
 
-          <form class="mt-6 space-y-4" onSubmit={handleSubmit} aria-busy={isRedeeming()}>
+          <form class="mt-6 space-y-4" onSubmit={handleSubmit} aria-busy={isRedeeming() ? "true" : "false"}>
             <div class="form-control">
               <label class="label" for="mission-code">
                 <span class="label-text font-mono text-xs font-bold uppercase tracking-[0.12em] text-primary-200">Mission code</span>
@@ -255,7 +260,7 @@ const RedeemMissionPage = () => {
                     </Show>
                     <Show when={current().partnerFollowUp?.state !== "granted" ? current().partnerFollowUp : undefined}>
                       {(consent) => (
-                        <form class="mt-5 rounded-lg border border-white/15 bg-base-300/35 p-4" onSubmit={(event) => void grantPartnerFollowUp(event, consent().activityId)} aria-busy={consentBusy()}>
+                        <form class="mt-5 rounded-lg border border-white/15 bg-base-300/35 p-4" onSubmit={(event) => void grantPartnerFollowUp(event, consent().activityId)} aria-busy={consentBusy() ? "true" : "false"}>
                           <fieldset>
                             <legend class="font-mono text-xs font-bold uppercase tracking-[0.1em] text-primary-200">Optional partner follow-up</legend>
                             <p class="mt-2 text-sm leading-relaxed text-secondary-100">

@@ -1,5 +1,6 @@
-import { createSignal, createResource, Show, For } from "solid-js";
-import { Icon } from "@iconify-icon/solid";
+import { createSignal, Show, For } from "solid-js";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
+import { Icon } from "~/components/Icon";
 import { AdminDataPanel, AdminPageShell } from "~/components/admin/AdminPageShell";
 import { useAuth } from "~/lib/auth-context";
 import { adminFetchAllUsers, adminUpdateUser, adminDeleteUser, adminFetchUserSpeakerProfile } from "~/lib/admin-actions";

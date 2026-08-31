@@ -1,6 +1,6 @@
 import { createSignal, Show } from "solid-js";
 import { Layout } from "~/layouts/Layout";
-import { Icon } from "@iconify-icon/solid";
+import { Icon } from "~/components/Icon";
 
 const ForgotPasswordPage = () => {
     const [email, setEmail] = createSignal("");

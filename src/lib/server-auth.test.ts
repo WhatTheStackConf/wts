@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
   getRequestEvent: vi.fn(),
@@ -15,8 +15,7 @@ const state = vi.hoisted(() => ({
   token: "",
 }));
 
-vi.mock("solid-js/web", () => ({ getRequestEvent: state.getRequestEvent }));
-vi.mock("@solidjs/start/server", () => ({ createServerReference: (fn: unknown) => fn }));
+vi.mock("@solidjs/web", () => ({ getRequestEvent: state.getRequestEvent }));
 vi.mock("pocketbase", () => ({
   default: class MockPocketBase {
     authStore = {

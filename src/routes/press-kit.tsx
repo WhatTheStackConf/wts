@@ -1,6 +1,7 @@
 import { Link } from "@solidjs/meta";
-import { For, Match, Show, Switch, createSignal, onCleanup, type JSX } from "solid-js";
-import Logo from "~/assets/images/LogoSolo.svg";
+import { For, Match, Show, Switch, createSignal, onCleanup } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import logoUrl from "~/assets/images/LogoSolo.svg";
 import {
   formatPressKitGradient,
   pressKitAllFacts,
@@ -135,7 +136,7 @@ export default function PressKit() {
               </div>
               <figure class="grid min-h-64 place-items-center border border-white/20 bg-dark-900/95 p-8">
                 <div class="h-48 w-40 [&>svg]:h-full [&>svg]:w-full" aria-hidden="true">
-                  <Logo />
+                  <img src={logoUrl} alt="" />
                 </div>
                 <figcaption class="sr-only">Approved WhatTheStack 2026 standalone logo mark preview</figcaption>
               </figure>
