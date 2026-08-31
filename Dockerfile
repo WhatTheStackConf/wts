@@ -10,7 +10,7 @@ FROM base AS build
 RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --dangerously-allow-all-builds
 
 COPY . .
