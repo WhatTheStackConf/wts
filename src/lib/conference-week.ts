@@ -92,7 +92,10 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     date: "2026-09-17",
     summary:
       "Long-form workshops on software architecture, payments, and frontend engineering. The kind of sessions that don't fit into 35 minutes.",
-    access: "Workshop add-on, selected at checkout",
+    cta: {
+      label: "Get a workshop ticket",
+      href: "/tickets",
+    },
   },
   {
     name: "Angular Day",

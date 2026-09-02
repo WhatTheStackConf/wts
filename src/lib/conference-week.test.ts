@@ -38,6 +38,7 @@ describe("Conference week copy", () => {
       "Workshop Tuesday: Frontend",
       "DevFest",
       "MAUI Day",
+      "Workshop Thursday",
     ]);
     for (const track of withCta) {
       expect(track.cta!.label.trim()).not.toBe("");
