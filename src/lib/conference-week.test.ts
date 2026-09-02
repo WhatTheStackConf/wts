@@ -34,10 +34,17 @@ describe("Conference week copy", () => {
   it("gives every separate-entry day an action rather than a note", () => {
     const withCta = conferenceWeekTracks.filter((track) => track.cta);
 
-    expect(withCta.map((track) => track.name)).toEqual(["DevFest", "MAUI Day"]);
+    expect(withCta.map((track) => track.name)).toEqual([
+      "Workshop Tuesday: Frontend",
+      "DevFest",
+      "MAUI Day",
+    ]);
     for (const track of withCta) {
       expect(track.cta!.label.trim()).not.toBe("");
-      expect(track.cta!.href.startsWith("https://")).toBe(true);
+      expect(
+        track.cta!.href.startsWith("https://") ||
+          track.cta!.href === conferenceWeekCta.href,
+      ).toBe(true);
       // An action replaces the note; showing both would state entry twice.
       expect(track.access).toBeUndefined();
     }

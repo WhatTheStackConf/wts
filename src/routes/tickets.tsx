@@ -1,4 +1,3 @@
-import { Title } from "@solidjs/meta";
 import { Layout } from "../layouts/Layout";
 import { fetchHiEventsReleases, HiEventsRelease } from "../lib/hievents";
 import { Show, For } from "solid-js";
@@ -32,6 +31,10 @@ const fetchReleases = async (): Promise<HiEventsRelease[]> => {
   return [...apiReleases, studentTicket];
 };
 
+function plainText(value: string | null): string {
+  return value?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || "Optional conference extra.";
+}
+
 export default function Tickets() {
   const [releases] = createResource<HiEventsRelease[]>(fetchReleases);
 
@@ -44,6 +47,10 @@ export default function Tickets() {
     releases()?.filter(
       (r) => r.title !== "Conference entry" && r.title !== "Student Ticket",
     ) || [];
+
+  const conferenceTicketLink = () =>
+    baseTickets().find((release) => release.title === "Conference entry")
+      ?.purchase_link;
 
   return (
     <Layout
@@ -91,7 +98,7 @@ export default function Tickets() {
               {/* Base Tickets */}
               <div class="flex flex-wrap justify-center gap-8 mb-20 fade-in-delay-2">
                 <For each={baseTickets()}>
-                  {(release, index) => (
+                  {(release) => (
                     <div
                       class={`w-full max-w-sm bg-base-200/70 backdrop-blur-sm border border-primary-500/30 rounded-lg p-8 transform transition duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(var(--color-primary-500),0.6)] grid-scan flex flex-col ${release.title === "Conference entry" ? "border-2 border-primary-500 relative shadow-[0_0_20px_rgba(var(--color-primary-500),0.3)]" : ""}`}
                     >
@@ -163,28 +170,35 @@ export default function Tickets() {
                       Workshops, swag, and other extras are available at checkout.
                     </p>
 
-                    <div class="flex flex-wrap justify-center gap-6">
+                    <div class="grid w-full max-w-4xl gap-3 text-left">
                       <For each={addOns()}>
                         {(release) => (
-                          <div class="w-full max-w-xs bg-dark-800/40 backdrop-blur-sm border border-secondary-500/20 rounded-lg p-6 flex flex-col items-center hover:bg-dark-800/60 transition-colors">
-                            <h4 class="text-xl font-star text-secondary-200 mb-3 font-bold uppercase tracking-wide">
-                              {release.title.replace(" add-on", "")}
-                            </h4>
-                            <div class="text-3xl font-star mb-4 text-white">
-                              <span class="font-sans font-bold text-xl align-top opacity-60">
-                                €
-                              </span>
-                              {release.price}
+                          <article class="group grid gap-4 overflow-hidden rounded-none border border-dashed border-secondary-500/40 bg-base-200/55 p-4 transition-colors hover:border-secondary-400/80 hover:bg-base-200/80 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
+                            <div class="min-w-0">
+                              <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                                <span class="font-mono text-[0.65rem] font-bold uppercase tracking-[0.18em] text-secondary-400">
+                                  Add-on
+                                </span>
+                                <h4 class="font-star text-lg font-bold uppercase tracking-wide text-secondary-200">
+                                  {release.title.replace(" add-on", "")}
+                                </h4>
+                                <span class="font-star text-2xl text-white">
+                                  <span class="font-sans text-base font-bold text-white/60">€</span>{release.price}
+                                </span>
+                              </div>
+                              <p class="mt-1 line-clamp-2 text-sm leading-relaxed text-secondary-300">
+                                {plainText(release.description)}
+                              </p>
                             </div>
-                            <div
-                              class="text-secondary-400 text-sm mb-4 leading-relaxed"
-                              innerHTML={release.description || ""}
-                            />
-
-                            {/*<div class="text-xs text-secondary-500 uppercase tracking-widest border border-secondary-500/20 px-3 py-1 rounded">
-                              Add-on Option
-                            </div>*/}
-                          </div>
+                            <a
+                                href={conferenceTicketLink() || release.purchase_link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="week-entry-cta justify-center whitespace-nowrap sm:min-w-40"
+                              >
+                                View ticket options <span aria-hidden="true">&#8599;</span>
+                            </a>
+                          </article>
                         )}
                       </For>
                     </div>

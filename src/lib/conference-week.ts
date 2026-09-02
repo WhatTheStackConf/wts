@@ -49,11 +49,14 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     access: "Included with your WTS ticket. Seats are limited; registration opens closer to September.",
   },
   {
-    name: "Coming Soon",
+    name: "Workshop Tuesday: Frontend",
     date: "2026-09-15",
     summary:
-      "Tuesday is booked. The announcement isn't ready yet, which is why this card is being annoyingly vague.",
-    placeholder: true,
+      "A focused frontend workshop for engineers who want more than a quick conference session.",
+    cta: {
+      label: "Get a workshop ticket",
+      href: "/tickets",
+    },
   },
   {
     name: "DevFest",
