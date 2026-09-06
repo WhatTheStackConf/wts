@@ -35,7 +35,6 @@ describe("Conference week copy", () => {
     const withCta = conferenceWeekTracks.filter((track) => track.cta);
 
     expect(withCta.map((track) => track.name)).toEqual([
-      "Workshop Tuesday: Frontend",
       "DevFest",
       "MAUI Day",
       "Workshop Thursday",
@@ -49,6 +48,15 @@ describe("Conference week copy", () => {
       // An action replaces the note; showing both would state entry twice.
       expect(track.access).toBeUndefined();
     }
+  });
+
+  it("describes Tuesday as a free iOS workshop plus an AI talk without a ticket CTA", () => {
+    const tuesday = conferenceWeekTracks.find((track) => track.date === "2026-09-15");
+
+    expect(tuesday?.name).toBe("Workshop Tuesday: iOS + AI");
+    expect(tuesday?.summary).toBe("An iOS workshop plus an AI talk.");
+    expect(tuesday?.access).toBe("Free entry. No ticket required.");
+    expect(tuesday?.cta).toBeUndefined();
   });
 
   it("spans the grid only for the main conference day", () => {

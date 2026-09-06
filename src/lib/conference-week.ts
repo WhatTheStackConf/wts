@@ -28,7 +28,7 @@ export interface ConferenceWeekTrack {
   topics?: readonly string[];
   /** Trails the named speakers with "and more...", where the lineup is still growing. */
   moreSpeakers?: boolean;
-  /** How to get in, when the WhatTheStack ticket already covers it. */
+  /** Entry details for free events or events covered by the WhatTheStack ticket. */
   access?: string;
   /** Days needing their own entry get an action instead of a note. */
   cta?: { label: string; href: string };
@@ -49,14 +49,11 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     access: "Included with your WTS ticket. Seats are limited; registration opens closer to September.",
   },
   {
-    name: "Workshop Tuesday: Frontend",
+    name: "Workshop Tuesday: iOS + AI",
     date: "2026-09-15",
     summary:
-      "A focused frontend workshop for engineers who want more than a quick conference session.",
-    cta: {
-      label: "Get a workshop ticket",
-      href: "/tickets",
-    },
+      "An iOS workshop plus an AI talk.",
+    access: "Free entry. No ticket required.",
   },
   {
     name: "DevFest",
