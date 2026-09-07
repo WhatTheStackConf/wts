@@ -124,6 +124,19 @@ export function AgendaProgramme(props: AgendaProgrammeProps) {
                 </For>
               </ul>
             </Show>
+            <Show when={untimed().unassignedSpeakers?.length}>
+              <ul class="mt-4 grid gap-4 md:grid-cols-2" role="list" aria-label={`${props.programme.event.name} — speakers, topics TBD`}>
+                <For each={untimed().unassignedSpeakers}>
+                  {(speaker) => (
+                    <li class="min-w-0 rounded-lg border border-white/15 bg-dark-800 p-4">
+                      <h4 class="text-base font-bold leading-snug text-white">Topic: TBD</h4>
+                      <AgendaSpeakers speakers={[speaker]} />
+                      <p class="mt-2 text-sm leading-relaxed text-secondary-200">Programme to be announced.</p>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
           </div>
         </section>
       )}

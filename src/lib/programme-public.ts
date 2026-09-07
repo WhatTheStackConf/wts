@@ -87,6 +87,8 @@ export interface PublicEventProgramme {
     title?: string;
     locationLabel?: string;
     speakers?: PublicAgendaSession["speakers"];
+    /** Published event speakers without an assigned public session; topics are TBD. */
+    unassignedSpeakers?: PublicAgendaSession["speakers"];
     summary: string;
     sessions: PublicAgendaSession[];
     highlights?: string[];

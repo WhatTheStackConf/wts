@@ -2,6 +2,14 @@
 
 Publishes the reviewed `2026-09-19` manifest: 27 linked talks, five tracks, and 39 slots (including seven consistently labelled TBD placeholders). Speaker/session identities and public event membership are pinned in `main-day-agenda.manifest.json`; drift or collisions fail closed.
 
+## Main-day revision 2
+
+Revision 2 preserves record IDs, immutable Track keys and Session links. Public numbering/order changes from old 2 → new 1, old 3 → new 2, old 1 → new 3; stages 4 and 5 are unchanged. The new Stage 1 starts with Alexander Lichter (10:10), Alem Tuzlak (10:55), Sam Vloeberghs (11:50), and Kiril Zafirov (12:35), all Europe/Skopje. Remaining talks, breaks and TBDs retain their windows.
+
+For an already-published revision-1 database, do **not** use stage/publish to rewrite it. After verifying a native backup, run `python3 -B scripts/main-day-agenda.revise.py` for a read-only preflight, then `python3 -B scripts/main-day-agenda.revise.py --execute --backup-dir PRIVATE_DIRECTORY`. This requires the existing enabled PocketBase batch API and applies the timing moves and stage labels in one transaction. A temporary holding track resolves overlap constraints and is deleted in the same transaction. No public Session or Slot is unpublished. Unexpected drift fails closed; a completed rerun is a no-op. Verify with `python3 -B scripts/main-day-agenda.py verify --expect published`.
+
+`pnpm run test:agenda-revision` exercises the production-pinned real hooks, successful migration, no-op rerun, overlap rejection and full rollback after a deliberately injected late-batch failure. Select the binary with `WTS_FIXTURE_PB_BINARY` as described below.
+
 ## Announced weekday lineups
 
 The requested Monday–Friday TBA views are a separate, explicitly announced marketing lineup in `src/lib/conference-week-agenda.ts`, not publication of draft Event Programmes or Slots. They reuse the public homepage announcements and only expose published Appearance Events, Sessions, and Speakers. They intentionally remain visible while the corresponding timed Conference Day is still a draft (including the existing Monday draft). Publishing a timed programme replaces its TBA fallback. Hiding a timed day alone does not withdraw the public announcement: unpublish the Appearance Event or remove its explicit announcement to withdraw that lineup.

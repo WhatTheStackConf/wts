@@ -37,9 +37,13 @@ def plan(state):
            'title': DATA['event_name'], 'display_order': 3, 'published': True}
     programme = {'id': record_id('programme'), 'day': day['id'], 'appearance_event': event['id'], 'display_order': 0}
     wanted = [('conference_days', day), ('event_programmes', programme)]
-    wanted += [('sessions', {'id': record_id(s['slug']), 'slug': s['slug'], 'title': s['title'],
-                            'abstract': '<p>' + html.escape(s['description']) + '</p>',
-                            'format': 'talk', 'speakers': [], 'published': True}) for s in DATA['sessions']]
+    for session in DATA['sessions']:
+        speaker = agenda.one([r for r in state['speakers'] if r['slug'] == session['speaker_slug']], 'confirmed DevFest speaker')
+        agenda.require(speaker['published'] and event['id'] in speaker.get('appearance_events', []),
+                       'Confirmed speaker must have a published DevFest appearance.')
+        wanted.append(('sessions', {'id': record_id(session['slug']), 'slug': session['slug'], 'title': session['title'],
+                                   'abstract': '<p>' + html.escape(session['description']) + '</p>',
+                                   'format': 'talk', 'speakers': [speaker['id']], 'published': True}))
     operations = []
     for collection, row in wanted:
         for actual in state[collection]:
@@ -49,7 +53,11 @@ def plan(state):
             agenda.require(not related or actual['id'] == row['id'], f'Review existing {collection} identity before creating a duplicate.')
         actual = next((r for r in state[collection] if r['id'] == row['id']), None)
         if actual:
-            agenda.require(all(actual.get(k) == v for k, v in row.items()), f'Existing {collection} fields drifted.')
+            checked_fields = {k: v for k, v in row.items() if collection != 'sessions' or k != 'speakers'}
+            agenda.require(all(actual.get(k) == v for k, v in checked_fields.items()), f'Existing {collection} fields drifted.')
+            if collection == 'sessions' and actual.get('speakers') != row['speakers']:
+                agenda.require(actual.get('speakers') == [], 'Refusing to overwrite an existing Session speaker assignment.')
+                operations.append(('PATCH', collection, row['id'], {'speakers': row['speakers']}))
         else:
             operations.append(('POST', collection, row['id'], row))
     if event.get('destination_url') != DATA['source']:

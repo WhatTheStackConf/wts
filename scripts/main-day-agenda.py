@@ -82,7 +82,7 @@ def one(rows, label):
     return rows[0]
 
 
-def build_manifest(source):
+def build_manifest(source, revision=2):
     """Resolve ONLY public speaker slugs with explicit main-event appearances + talk."""
     day_id, programme_id = stable_id("day"), stable_id("programme")
     records = {
@@ -141,7 +141,21 @@ def build_manifest(source):
         add(5, times)
     for kind, times, title, summary in SHARED:
         add(0, times, kind=kind, title=title, summary=summary)
-    return {"version": 1, "event_id": EVENT, "local_date": DATE, "timezone": ZONE,
+    require(revision in (1, 2), "Unknown main-day schedule revision.")
+    if revision == 2:
+        # Keep immutable Track keys and Slot/Session identities from revision 1.
+        # Only public stage labels/order and the four approved clock windows move.
+        stage_numbers = {1: 3, 2: 1, 3: 2, 4: 4, 5: 5}
+        for track in records["agenda_tracks"]:
+            number = stage_numbers[track["display_order"]]
+            track.update(name=f"Stage {number}", display_order=number)
+        reordered = {"sam-vloeberghs": 2, "kiril-zafirov": 3, "alem-tuzlak": 1, "alexander-lichter": 0}
+        sessions_by_speaker = {b["speaker"]["slug"]: b["session"]["id"] for b in bindings}
+        for slug, index in reordered.items():
+            slot = one([s for s in records["agenda_slots"] if s["session"] == sessions_by_speaker[slug]], "rescheduled talk")
+            start, end = TIMES[index].split("-")
+            slot.update(start_at=instant(start), end_at=instant(end), display_order=int(start.replace(":", "")))
+    return {"version": revision, "event_id": EVENT, "local_date": DATE, "timezone": ZONE,
             "ownership_prefix": PREFIX, "bindings": bindings, "records": records}
 
 
@@ -150,7 +164,7 @@ def validate_manifest(manifest):
     source = {"appearance_events": [{"id": EVENT, "published": True}],
               "speakers": [b["speaker"] for b in manifest["bindings"]],
               "sessions": [b["session"] for b in manifest["bindings"]]}
-    require(build_manifest(source) == manifest, "Manifest differs from deterministic reviewed schedule.")
+    require(build_manifest(source, revision=manifest["version"]) == manifest, "Manifest differs from deterministic reviewed schedule.")
     records = manifest["records"]
     slots = records["agenda_slots"]
     ids = [r["id"] for rows in records.values() for r in rows]
@@ -192,7 +206,7 @@ def inspect_state(manifest, state, complete=False, expect=None):
         require(name in state and isinstance(state[name], list), f"Missing collection snapshot: {name}.")
         ids = [r["id"] for r in state[name]]
         require(len(ids) == len(set(ids)), f"Duplicate record IDs in {name} snapshot.")
-    require(build_manifest(state) == manifest, "Live source bindings/titles/membership drifted; review a new manifest.")
+    require(build_manifest(state, revision=manifest["version"]) == manifest, "Live source bindings/titles/membership drifted; review a new manifest.")
     expected = manifest["records"]
     day = expected["conference_days"][0]
     programme = expected["event_programmes"][0]

@@ -111,6 +111,56 @@ describe("public agenda programme", () => {
     expect(html).not.toContain('aria-label="Speakers"');
   });
 
+  it("renders speakers awaiting topics as TBD cards with profiles, not invented sessions", () => {
+    for (const sessions of [[], [{ slug: "confirmed-angular", title: "Confirmed Angular topic", speakers: [{ slug: "nicolas", name: "Nicolas" }] }]]) {
+      const html = renderProgramme({
+        event: { name: "Angular Day", compactLabel: "Angular" }, tracks: [], slots: [],
+        untimed: {
+          summary: "Angular and frontend engineering.", sessions,
+          unassignedSpeakers: [
+            { slug: "kiril-zafirov", name: "Kiril Zafirov", photoUrl: "https://pb.example/api/files/speakers/kiril/photo.jpg" },
+            { slug: "santosh-yadav", name: "Santosh Yadav", photoUrl: null },
+          ],
+        },
+      });
+      expect(html).toContain('aria-label="Angular Day — speakers, topics TBD"');
+      expect(html.match(/Topic: TBD/g)).toHaveLength(2);
+      expect(html.match(/Programme to be announced\./g)).toHaveLength(2);
+      expect(html.match(/href="\/speakers\/kiril-zafirov"/g)).toHaveLength(1);
+      expect(html.match(/href="\/speakers\/santosh-yadav"/g)).toHaveLength(1);
+      expect(html).toContain("Kiril Zafirov");
+      expect(html).toContain("Santosh Yadav");
+      expect(html).toContain('sizes="40px"');
+      expect(html).toContain('alt=""');
+      expect(html).toContain('loading="lazy"');
+      expect(html).toContain("SY");
+      expect(html).toContain("Starting time: TBA");
+      expect(html).not.toContain("<time");
+      expect(html).not.toContain("Choose a stage");
+      expect(html.match(/href="\/sessions\/[^"]+"/g) || []).toEqual(
+        sessions.length ? ['href="/sessions/confirmed-angular"'] : [],
+      );
+      if (sessions.length) {
+        expect(html.match(/href="\/speakers\/nicolas"/g)).toHaveLength(1);
+        expect(html).toContain("Confirmed Angular topic");
+      }
+    }
+  });
+
+  it("omits the topics-TBD list when there are no unassigned speakers", () => {
+    for (const unassignedSpeakers of [undefined, []]) {
+      const html = renderProgramme({
+        event: { name: "Angular Day", compactLabel: "Angular" }, tracks: [], slots: [],
+        untimed: { summary: "Angular", sessions: [], unassignedSpeakers },
+      });
+      expect(html).not.toContain("topics TBD");
+      expect(html).not.toContain("Topic: TBD");
+      expect(html).not.toContain("Programme to be announced.");
+      expect(html).toContain("Starting time: TBA");
+      expect(html).toContain("Session lineup: TBA");
+    }
+  });
+
   it("renders an untimed lineup without inventing clock times or stage positions", () => {
     const html = renderProgramme({
       event: { name: "Workshop Tuesday: iOS + AI", compactLabel: "Tuesday" },

@@ -86,6 +86,58 @@ describe("untimed weekday agendas", () => {
     expect(withoutSessions.untimed?.speakers).toEqual(programme.untimed?.speakers);
   });
 
+  it("announces Angular event members without borrowing other talks or duplicating assigned speakers", () => {
+    const angularEvents = [{ id: "angular", name: "Angular Day", published: true }] as AppearanceEventRecord[];
+    const sessions = [
+      { slug: "probabilistic-ai-to-deterministic-applications", title: "Selected Angular talk", published: true, speakers: ["nicolas"] },
+      { slug: "same-crud-10-times", title: "Selected CRUD talk", published: true, speakers: ["aleksandar"] },
+      { slug: "beyond-the-chatbox", title: "Selected chatbox talk", published: true, speakers: ["angel"] },
+      { slug: "offline-first-zero-cost", title: "Selected offline talk", published: true, speakers: ["michael"] },
+      { slug: "main-day-kiril", title: "Kiril main-day topic", published: true, speakers: ["kiril"] },
+      { slug: "main-day-santosh", title: "Santosh main-day topic", published: true, speakers: ["santosh"] },
+    ] as SessionRecord[];
+    const speakers = [
+      ...["nicolas", "aleksandar", "angel", "michael"].map((id) => ({ id, slug: id, display_name: id, published: true, appearance_events: ["angular"] })),
+      { id: "santosh", slug: "santosh-yadav", display_name: "Santosh Yadav", published: true, appearance_events: ["main", "angular"] },
+      { id: "kiril", slug: "kiril-zafirov", display_name: "Kiril Zafirov", photo: "kiril.jpg", published: true, appearance_events: ["angular"], email: "private@example.test" },
+      { id: "new", slug: "another-speaker", display_name: "Another Speaker", published: true, appearance_events: ["angular"] },
+      { id: "mateusz", slug: "mateusz", display_name: "Unpublished Mateusz", published: false, appearance_events: ["angular"] },
+      { id: "unrelated", slug: "unrelated", display_name: "Unrelated speaker", published: true, appearance_events: ["main"] },
+      { id: "no-event", slug: "no-event", display_name: "No event", published: true },
+    ] as SpeakerRecord[];
+    const programme = addAnnouncedWeekProgrammes({ days: [] }, angularEvents, sessions, speakers).days[0].programmes[0];
+    expect(programme.untimed?.unassignedSpeakers).toEqual([
+      { slug: "another-speaker", name: "Another Speaker", photoUrl: null },
+      { slug: "kiril-zafirov", name: "Kiril Zafirov", photoUrl: expect.stringMatching(/\/api\/files\/speakers\/kiril\/kiril\.jpg$/) },
+      { slug: "santosh-yadav", name: "Santosh Yadav", photoUrl: null },
+    ]);
+    expect(programme.untimed?.sessions.map((session) => session.slug)).toEqual([
+      "probabilistic-ai-to-deterministic-applications", "same-crud-10-times", "beyond-the-chatbox", "offline-first-zero-cost",
+    ]);
+    expect(programme.untimed?.speakers).toBeUndefined();
+    expect(programme.slots).toEqual([]);
+    expect(JSON.stringify(programme)).not.toMatch(/main-day|private|Unpublished|Unrelated|No event|startAt|endAt/);
+  });
+
+  it("keeps Angular appearances visible until a selected public session is available", () => {
+    const angularEvents = [{ id: "angular", name: "Angular Day", published: true }] as AppearanceEventRecord[];
+    const speakers = [{ id: "speaker", slug: "speaker", display_name: "Announced Speaker", published: true, appearance_events: ["angular"] }] as SpeakerRecord[];
+    const session = { slug: "beyond-the-chatbox", title: "Confirmed topic", speakers: ["speaker"], published: false } as SessionRecord;
+    for (const sessions of [[], [session]]) {
+      const programme = addAnnouncedWeekProgrammes({ days: [] }, angularEvents, sessions, speakers).days[0].programmes[0];
+      expect(programme.untimed?.sessions).toEqual([]);
+      expect(programme.untimed?.unassignedSpeakers).toEqual([{ slug: "speaker", name: "Announced Speaker", photoUrl: null }]);
+      expect(programme.slots).toEqual([]);
+      expect(JSON.stringify(programme)).not.toContain("Confirmed topic");
+    }
+    const assigned = addAnnouncedWeekProgrammes({ days: [] }, angularEvents, [{ ...session, published: true }], speakers).days[0].programmes[0];
+    expect(assigned.untimed?.unassignedSpeakers).toEqual([]);
+    expect(assigned.untimed?.sessions[0].speakers).toEqual([{ slug: "speaker", name: "Announced Speaker", photoUrl: null }]);
+    const unrelatedProgrammes = addAnnouncedWeekProgrammes({ days: [] }, events, [], speakers).days
+      .flatMap((day) => day.programmes).filter((programme) => programme.event.name !== "Angular Day");
+    expect(unrelatedProgrammes.every((programme) => programme.untimed?.unassignedSpeakers === undefined)).toBe(true);
+  });
+
   it("does not publish hidden events or duplicate an existing timed programme", () => {
     expect(addAnnouncedWeekProgrammes({ days: [] }, events.map((event) => ({ ...event, published: false })), [], []).days).toEqual([]);
     const input: PublicAgenda = { days: [{ key: "monday", localDate: "2026-09-14", title: "Monday", programmes: [

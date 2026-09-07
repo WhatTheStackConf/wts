@@ -6,15 +6,17 @@
   "date": "2026-09-16",
   "location": "Faculty of Computer Science & Engineering (FINKI), 16 Руѓер Бошковиќ, Skopje",
   "timing_policy": "Starting time: TBA. No timed slots are created.",
-  "speaker_policy": "The source lists Roushanak Rahmat and Josefine Schaefer separately from talks. Retain their existing event appearances, but do not infer session assignments.",
+  "speaker_policy": "Organizer-confirmed assignments: Josefine Schaefer presents Agentic Accessibility; Roushanak Rahmat presents Designing Multi-Agent Systems (ADK). Akshata Mohanty remains announced without a session.",
   "sessions": [
     {
       "slug": "agentic-accessibility",
+      "speaker_slug": "josefine-schaefer",
       "title": "Agentic Accessibility",
       "description": "A look at using AI agents to catch accessibility problems missing alt text, bad contrast, broken semantic structure before they ship, instead of relying on manual audits after the fact. The pitch: accessibility built into the pipeline, not bolted on at the end."
     },
     {
       "slug": "designing-multi-agent-systems-sequential-parallel-and-beyond-with-adk",
+      "speaker_slug": "roushanak-rahmat",
       "title": "Designing Multi-Agent Systems: Sequential, Parallel, and Beyond with ADK",
       "description": "A practical session on architecting multi-agent systems with Google's Agent Development Kit — when to chain agents sequentially, when to run them in parallel, and how to decide which orchestration pattern actually fits your problem."
     }

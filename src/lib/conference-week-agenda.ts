@@ -29,7 +29,7 @@ export const untimedWeekProgrammes = [
   { name: "Workshop Thursday", eventName: "Workshop Thursday", sessions: [
     "workshop-payments-and-monetization-at-scale-for-frontend-engineers",
   ] },
-  { name: "Angular Day", eventName: "Angular Day", sessions: [
+  { name: "Angular Day", eventName: "Angular Day", includeUnassignedSpeakers: true, sessions: [
     // The other published Signal Forms record duplicates this speaker/title.
     "probabilistic-ai-to-deterministic-applications",
     "same-crud-10-times", "beyond-the-chatbox", "offline-first-zero-cost",
@@ -59,11 +59,20 @@ export function addAnnouncedWeekProgrammes(
       day = { key: `week-${copy.date}`, localDate: copy.date, title: copy.date === "2026-09-17" ? "MAUI Day & Workshop Thursday" : copy.name, programmes: [] };
       days.push(day);
     }
+    const selectedSessions = definition.sessions.flatMap((slug) => {
+      const session = visibleSessions.get(slug);
+      return session ? [session] : [];
+    });
+    const assignedSpeakerIds = new Set(selectedSessions.flatMap((session) => session.speakers || []));
     const programme: PublicEventProgramme = {
       event: { name: copy.name, compactLabel: event.compact_label || copy.name, destinationUrl: copy.href || event.destination_url || undefined },
       tracks: [],
       slots: [],
       untimed: {
+        ...("includeUnassignedSpeakers" in definition ? {
+          unassignedSpeakers: publicAgendaSpeakers(speakers.filter((speaker) =>
+            speaker.appearance_events?.includes(event.id) && !assignedSpeakerIds.has(speaker.id))),
+        } : {}),
         ...("details" in definition ? {
           title: definition.details.title,
           locationLabel: definition.details.locationLabel,
@@ -74,11 +83,7 @@ export function addAnnouncedWeekProgrammes(
         access: copy.access,
         cta: copy.cta,
         highlights: copy.highlights ? [...copy.highlights] : undefined,
-        sessions: definition.sessions.flatMap((slug) => {
-          const session = visibleSessions.get(slug);
-          if (!session) return [];
-          return [publicAgendaSession(session, visibleSpeakers)];
-        }),
+        sessions: selectedSessions.map((session) => publicAgendaSession(session, visibleSpeakers)),
       },
     };
     day.programmes.push(programme);
