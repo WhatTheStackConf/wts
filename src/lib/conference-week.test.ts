@@ -60,6 +60,8 @@ describe("untimed weekday agendas", () => {
       speakers: [
         { id: "r", slug: "roushanak-rahmat", display_name: "Roushanak Rahmat", appearance_events: ["devfest"], published: true },
         { id: "j", slug: "josefine-schaefer", display_name: "Josefine Schaefer", photo: "josefine.jpg", appearance_events: ["devfest"], published: true },
+        { id: "a", slug: "akshata-mohanty", display_name: "Akshata Mohanty", photo: "akshata.jpeg", appearance_events: ["devfest"], published: true },
+        { id: "other", slug: "other", display_name: "Another event speaker", appearance_events: ["other-event"], published: true },
         { id: "private", slug: "private", display_name: "Private speaker", photo: "private.jpg", appearance_events: ["devfest"], published: false },
       ] as SpeakerRecord[],
     };
@@ -70,6 +72,7 @@ describe("untimed weekday agendas", () => {
     expect(programme.untimed?.sessions).toHaveLength(2);
     expect(programme.untimed?.sessions.every((session) => session.speakers.length === 0)).toBe(true);
     expect(programme.untimed?.speakers).toEqual([
+      { slug: "akshata-mohanty", name: "Akshata Mohanty", photoUrl: expect.stringMatching(/\/api\/files\/speakers\/a\/akshata\.jpeg$/) },
       { slug: "josefine-schaefer", name: "Josefine Schaefer", photoUrl: expect.stringMatching(/\/api\/files\/speakers\/j\/josefine\.jpg$/) },
       { slug: "roushanak-rahmat", name: "Roushanak Rahmat", photoUrl: null },
     ]);
@@ -77,6 +80,10 @@ describe("untimed weekday agendas", () => {
     expect(programme.untimed?.locationLabel).toContain("FINKI");
     expect(programme.untimed?.cta?.href).toContain("gdg.community.dev/events/");
     expect(JSON.stringify(programme)).not.toContain("private");
+    expect(JSON.stringify(programme)).not.toContain("Another event speaker");
+    const withoutSessions = addAnnouncedWeekProgrammes({ days: [] }, input.events, [], input.speakers).days[0].programmes[0];
+    expect(withoutSessions.untimed?.sessions).toEqual([]);
+    expect(withoutSessions.untimed?.speakers).toEqual(programme.untimed?.speakers);
   });
 
   it("does not publish hidden events or duplicate an existing timed programme", () => {

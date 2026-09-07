@@ -17,8 +17,6 @@ export const untimedWeekProgrammes = [
   ], details: {
     title: "Pre-DevFest Days: Day Zero x WhatThe(Google)Stack",
     locationLabel: "Faculty of Computer Science & Engineering (FINKI), Skopje",
-    // The official page announces speakers separately, without pairing them to talks.
-    speakers: ["roushanak-rahmat", "josefine-schaefer"],
   } },
   { name: "MAUI Day", eventName: "MAUI Day", sessions: [
     "building-your-first-net-maui-app-workshop",
@@ -69,8 +67,8 @@ export function addAnnouncedWeekProgrammes(
         ...("details" in definition ? {
           title: definition.details.title,
           locationLabel: definition.details.locationLabel,
-          speakers: publicAgendaSpeakers(speakers.filter((speaker) =>
-            definition.details.speakers.some((slug) => slug === speaker.slug) && speaker.appearance_events?.includes(event.id))),
+          // Published event appearances announce speakers independently of sessions.
+          speakers: publicAgendaSpeakers(speakers.filter((speaker) => speaker.appearance_events?.includes(event.id))),
         } : {}),
         summary: copy.summary,
         access: copy.access,
