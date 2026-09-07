@@ -1,10 +1,65 @@
 import { describe, expect, it } from "vite-plus/test";
 import { conferenceGuideContent } from "~/lib/conference-guide-content";
+import { addAnnouncedWeekProgrammes, untimedWeekProgrammes } from "~/lib/conference-week-agenda";
+import type { AppearanceEventRecord, SessionRecord, SpeakerRecord } from "~/lib/pocketbase-types";
+import type { PublicAgenda } from "~/lib/programme-public";
 import {
   conferenceWeekCta,
   conferenceWeekDayLabel,
   conferenceWeekTracks,
 } from "~/lib/conference-week";
+
+describe("untimed weekday agendas", () => {
+  const events = untimedWeekProgrammes.map((definition, index) => ({
+    id: `event-${index}`, name: definition.eventName, published: true,
+  })) as AppearanceEventRecord[];
+
+  it("adds all five weekdays, groups Thursday, preserves Saturday and has no fake timestamps", () => {
+    const input: PublicAgenda = { days: [{ key: "saturday", localDate: "2026-09-19", title: "Main Conference Day", programmes: [] }] };
+    const result = addAnnouncedWeekProgrammes(input, events, [], []);
+    expect(result.days.map((day) => day.localDate)).toEqual([
+      "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-19",
+    ]);
+    expect(result.days[3].programmes.map((programme) => programme.event.name)).toEqual(["MAUI Day", "Workshop Thursday"]);
+    const weekdayProgrammes = result.days.slice(0, -1).flatMap((day) => day.programmes);
+    expect(weekdayProgrammes).toHaveLength(6);
+    expect(weekdayProgrammes.every((programme) => programme.untimed && programme.slots.length === 0)).toBe(true);
+    expect(JSON.stringify(weekdayProgrammes)).not.toMatch(/startAt|endAt/);
+    expect(input.days).toHaveLength(1);
+    expect(result.days.at(-1)).toEqual(input.days[0]);
+    expect(addAnnouncedWeekProgrammes(result, events, [], [])).toEqual(result);
+  });
+
+  it("shows only explicitly assigned published sessions and public speaker fields", () => {
+    const sessions = [
+      { id: "ios", slug: "fundamentals-of-native-ios-development", title: "iOS", published: true, speakers: ["mia", "hidden"], cfp_submission: "private" },
+      { id: "ddd", slug: "ddd-for-ai-assisted-development", title: "DDD", published: false, speakers: [] },
+      { id: "other", slug: "main-day-talk", title: "Saturday only", published: true, speakers: ["mia"] },
+    ] as SessionRecord[];
+    const speakers = [
+      { id: "mia", slug: "mia", display_name: "Mia", published: true, email: "private@example.test" },
+      { id: "hidden", slug: "hidden", display_name: "Private speaker", published: false },
+    ] as SpeakerRecord[];
+    const result = addAnnouncedWeekProgrammes({ days: [] }, events, sessions, speakers);
+    expect(result.days[1].programmes[0].untimed?.sessions).toEqual([
+      { slug: "fundamentals-of-native-ios-development", title: "iOS", format: undefined, speakers: [{ slug: "mia", name: "Mia" }] },
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(/private|cfp_submission|Saturday only|"DDD"/);
+    expect(result.days[1].programmes[0].untimed?.access).toBe("Free entry. No ticket required.");
+    expect(result.days[1].programmes[0].untimed?.cta).toBeUndefined();
+    expect(untimedWeekProgrammes.flatMap((definition) => [...definition.sessions])).toHaveLength(14);
+  });
+
+  it("does not publish hidden events or duplicate an existing timed programme", () => {
+    expect(addAnnouncedWeekProgrammes({ days: [] }, events.map((event) => ({ ...event, published: false })), [], []).days).toEqual([]);
+    const input: PublicAgenda = { days: [{ key: "monday", localDate: "2026-09-14", title: "Monday", programmes: [
+      { event: { name: "InfoSec Monday", compactLabel: "InfoSec" }, tracks: [], slots: [
+        { kind: "opening", startAt: "2026-09-14T08:00:00Z", endAt: "2026-09-14T08:10:00Z", title: "Opening" },
+      ] },
+    ] }] };
+    expect(addAnnouncedWeekProgrammes(input, events, [], []).days[0]).toEqual(input.days[0]);
+  });
+});
 
 describe("Conference week copy", () => {
   it("points the ticket call to action at the canonical tickets path", () => {

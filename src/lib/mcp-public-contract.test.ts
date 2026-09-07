@@ -652,6 +652,7 @@ describe("public Conference Guide MCP contract", () => {
             title: "Conference Day",
             programmes: [{
               event: { name: "WhatTheStack 2026", compactLabel: "WTS 2026" },
+              tracks: [],
               slots: [
               {
                 kind: "opening",
@@ -665,7 +666,7 @@ describe("public Conference Guide MCP contract", () => {
                 endAt: "2026-09-19T08:35:00.000Z",
                 locationLabel: "Main stage",
                 track: { key: "systems", name: "Systems" },
-                session: { slug: "safe-systems", title: "Safe Systems", format: "Talk" },
+                session: { slug: "safe-systems", title: "Safe Systems", format: "Talk", speakers: [] },
               },
               {
                 kind: "session",
@@ -677,6 +678,7 @@ describe("public Conference Guide MCP contract", () => {
                   slug: "reliable-systems",
                   title: "Reliable Systems",
                   format: "Talk",
+                  speakers: [],
                 },
               },
               ],
@@ -828,12 +830,13 @@ describe("public Conference Guide MCP contract", () => {
             title: "Conference Day",
             programmes: [{
               event: { name: "WhatTheStack 2026", compactLabel: "WTS 2026" },
+              tracks: [],
               slots: [{
                 kind: "session",
                 startAt: "2026-09-19T08:00:00.000Z",
                 endAt: "2026-09-19T08:35:00.000Z",
                 track: { key: "main", name: "Main" },
-                session: { slug: "safe-systems", title: "Safe Systems" },
+                session: { slug: "safe-systems", title: "Safe Systems", speakers: [] },
               }],
             }],
           }],

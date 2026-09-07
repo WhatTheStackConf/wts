@@ -1,5 +1,6 @@
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
+import { addAnnouncedWeekProgrammes } from "~/lib/conference-week-agenda";
 import {
   buildPublicAgenda,
   derivePublicSessionSchedule,
@@ -426,11 +427,10 @@ export const fetchPublicSessions = async (): Promise<PublicSessionCard[]> => {
   );
 };
 
-/** Returns the public agenda only from published Day and Slot records. */
-export const fetchPublicAgenda = async (): Promise<PublicAgenda> => {
-  "use server";
+/** Published timed slots plus explicitly announced, untimed weekday lineups. */
+export const loadPublicAgenda = async (): Promise<PublicAgenda> => {
   const admin = getAdminPB();
-  const [days, events, programmes, tracks, slots, sessions] = await Promise.all([
+  const [days, events, programmes, tracks, slots, sessions, speakers] = await Promise.all([
     admin.fetchAllRecords("conference_days", {
       filter: "published = true",
       fields: "id,key,local_date,title,display_order,published",
@@ -456,18 +456,30 @@ export const fetchPublicAgenda = async (): Promise<PublicAgenda> => {
     }),
     admin.fetchAllRecords("sessions", {
       filter: "published = true",
-      fields: "id,slug,title,format,published",
+      fields: "id,slug,title,format,published,speakers",
       sort: "title,id",
     }),
+    admin.fetchAllRecords("speakers", {
+      filter: "published = true",
+      fields: "id,slug,display_name,published",
+      sort: "slug,id",
+    }),
   ]);
-  return buildPublicAgenda(
+  const agenda = buildPublicAgenda(
     days as ConferenceDayRecord[],
     events as AppearanceEventRecord[],
     programmes as EventProgrammeRecord[],
     tracks as AgendaTrackRecord[],
     slots as AgendaSlotRecord[],
     sessions as SessionRecord[],
+    speakers as SpeakerRecord[],
   );
+  return addAnnouncedWeekProgrammes(agenda, events as AppearanceEventRecord[], sessions as SessionRecord[], speakers as SpeakerRecord[]);
+};
+
+export const fetchPublicAgenda = async (): Promise<PublicAgenda> => {
+  "use server";
+  return loadPublicAgenda();
 };
 
 function scheduleFromPublicAgenda(

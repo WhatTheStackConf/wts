@@ -1,0 +1,1192 @@
+{
+  "version": 1,
+  "event_id": "wts2026appevent",
+  "local_date": "2026-09-19",
+  "timezone": "Europe/Skopje",
+  "ownership_prefix": "md26",
+  "bindings": [
+    {
+      "speaker": {
+        "id": "dtnyt04fs25i4w0",
+        "slug": "igor-trajkovski",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "dfjdwtfo8308nay",
+        "slug": "inside-the-gpts",
+        "title": "Inside GPTs: Understanding Large Language Models",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "dtnyt04fs25i4w0"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "ma8p9bv90wl2llh",
+        "slug": "elena-kolevska",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "obcr90z58q9rdj1",
+        "slug": "context-is-their-reality",
+        "title": "Context Is Their Reality: How AI Agents Perceive the World",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "ma8p9bv90wl2llh"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "wdjcgntwy0frqnq",
+        "slug": "nino-risteski",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "onva7an1xd45dgd",
+        "slug": "from-portable-ai-lab-to-frontier-research",
+        "title": "From Portable AI Lab to Frontier Research",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "wdjcgntwy0frqnq"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "xe9wtz06z6gys1k",
+        "slug": "bojan-jakimovski",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "nnyzc6iscvtz361",
+        "slug": "what-do-you-do-when-nvidia-gpus-aren-t-available-for-inference",
+        "title": "What Do You Do When Nvidia GPUs Aren't Available for Inference?",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "xe9wtz06z6gys1k"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "qqjxy5808w6p56q",
+        "slug": "dushko-klincharov",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "x0m1i7lpizg7ccm",
+        "slug": "harnessing-the-model",
+        "title": "Harnessing the Model: What Coding Agents Are Really Made Of",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "qqjxy5808w6p56q"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "xohqor6rpvk9f5r",
+        "slug": "riste-oreshkovski",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "hftfblor7opaq4h",
+        "slug": "scaling-observability-as-a-product",
+        "title": "Building for the Unknown: Scaling Observability as a Product",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "xohqor6rpvk9f5r"
+        ]
+      },
+      "short_15_plus_5": true
+    },
+    {
+      "speaker": {
+        "id": "wxq43gyujtrnjp2",
+        "slug": "dragan-shahpaski",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "u1sa69a7d3gxclb",
+        "slug": "ai-in-a-hospital",
+        "title": "What makes AI work in a hospital, and what makes it harder",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "wxq43gyujtrnjp2"
+        ]
+      },
+      "short_15_plus_5": true
+    },
+    {
+      "speaker": {
+        "id": "ib3su2vscie2gjv",
+        "slug": "sam-vloeberghs",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "snt9o4fuxq1jew2",
+        "slug": "angular-apps-with-ai",
+        "title": "Building Angular Apps With AI",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "ib3su2vscie2gjv"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "x3rkfte1rzalgw6",
+        "slug": "kiril-zafirov",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent",
+          "usj5npdkjw72msh"
+        ]
+      },
+      "session": {
+        "id": "lwq3l9s5pclj6f9",
+        "slug": "cleaner-angular-applications-signals",
+        "title": "Building Cleaner Angular Applications with Signal Forms",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "x3rkfte1rzalgw6"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "va52g3it8h1n3s1",
+        "slug": "alem-tuzlak",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "s413dci9kry2bd4",
+        "slug": "how-tanstack-ai-made-the-hidden-complexity-of-ai-simple",
+        "title": "How TanStack AI made the hidden complexity of AI simple for you",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "va52g3it8h1n3s1"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "ifdf2x9nrzruhpj",
+        "slug": "alexander-lichter",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "rwsvylxgmizjm01",
+        "slug": "unified-toolchain",
+        "title": "(When) Do We Finally Have a Unified Toolchain?",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "ifdf2x9nrzruhpj"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "lqwz92ao7yukcjk",
+        "slug": "konrad-reczko",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "pnnrx37ghxydz2i",
+        "slug": "performant-typescript-shaders-breaking-down-the-jelly-slider",
+        "title": "Performant TypeScript shaders: breaking down the Jelly Slider",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "lqwz92ao7yukcjk"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "9p7t9ecx5j4mpha",
+        "slug": "iwo-plaza",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "uarbhzdfzwws0ml",
+        "slug": "javascript-doesn-t-support-operator-overloading-right",
+        "title": "JavaScript Doesn't Support Operator Overloading... Right?",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "9p7t9ecx5j4mpha"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "vl41q7fdwl3moap",
+        "slug": "wekoslav-stefanovski",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent",
+          "frlsuzmnu3jju4o"
+        ]
+      },
+      "session": {
+        "id": "g0bbpy7j6cl23wu",
+        "slug": "my-30-years-of-javascript",
+        "title": "My 30 Years of JavaScript: How I Learned to Stop Worrying and Love JavaScript",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "vl41q7fdwl3moap"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "hel4xsue86mhmb7",
+        "slug": "gerald-versluis",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent",
+          "ltc5lm10p0bpmuo"
+        ]
+      },
+      "session": {
+        "id": "s1cjrigz4gtmpvq",
+        "slug": "software-engineer-at-microsoft-dont-write-code",
+        "title": "I’m a Software Engineer at Microsoft. I Don’t Write Code.",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "hel4xsue86mhmb7"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "hcylucb8r3b5usi",
+        "slug": "santosh-yadav",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent",
+          "usj5npdkjw72msh"
+        ]
+      },
+      "session": {
+        "id": "kgjv4s3yz7pvbjj",
+        "slug": "a-brief-history-of-code-review",
+        "title": "A Brief History of Code Review (And What's Next)",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "hcylucb8r3b5usi"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "2e6924zqxnd743y",
+        "slug": "ramona-schwering",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "cczq2rjtdw4i11r",
+        "slug": "artful-defense-let-s-sketch-web-security",
+        "title": "Artful Defense: Let's Sketch Web Security",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "2e6924zqxnd743y"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "h73wmh5udfljxmn",
+        "slug": "andrej-acevski",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "2zmyqs14d1nqj1w",
+        "slug": "i-stopped-throwing-errors-and-my-code-finally-works",
+        "title": "I Stopped Throwing Errors and My Code Finally Works",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "h73wmh5udfljxmn"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "b1relel96l93bk7",
+        "slug": "bozidar-spirovski",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent",
+          "frlsuzmnu3jju4o"
+        ]
+      },
+      "session": {
+        "id": "x1f7leishmz4lkz",
+        "slug": "a-bouncer-gang-in-the-vibe-coding-party",
+        "title": "A Bouncer Gang in the (Vibe) Coding Party",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "b1relel96l93bk7"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "k0p2o4tmre0a58i",
+        "slug": "miroslav-janeski",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "q02z12s2f04byzs",
+        "slug": "typescript-apphost-the-next-step-for-polyglot-cloud-native-apps",
+        "title": "TypeScript AppHost: The Next Step for Polyglot Cloud-Native Apps",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "k0p2o4tmre0a58i"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "mhlpe4vba6ztst2",
+        "slug": "goran-david",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "2qzz8bf5jcq59k5",
+        "slug": "legacy-in-it-breaking-stereotypes-understanding-reality-and-embracing-the-uncool",
+        "title": "Legacy in IT: Breaking Stereotypes, Understanding Reality, and Embracing the Uncool",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "mhlpe4vba6ztst2"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "kleqx55avrqboa7",
+        "slug": "serena-sensini",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "df6uwh7kohf2oi9",
+        "slug": "thinking-in-qubits-using-code",
+        "title": "Thinking in qubits, using code",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "kleqx55avrqboa7"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "dvszjk2p7k3nabj",
+        "slug": "andjelina-maksimovic",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "hccz2uq9i4tm2z2",
+        "slug": "one-project-three-ways-kotlin",
+        "title": "One Project, Three Ways I Changed How I Write Kotlin",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "dvszjk2p7k3nabj"
+        ]
+      },
+      "short_15_plus_5": true
+    },
+    {
+      "speaker": {
+        "id": "xqrncy4m8nfujed",
+        "slug": "faris-aziz",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent",
+          "p011k62396jaegx"
+        ]
+      },
+      "session": {
+        "id": "9mrymz1rfxmsqxl",
+        "slug": "reverse-engineering-seniority",
+        "title": "Reverse-Engineering Seniority, From Bootcamp Grad to Staff Engineer in Four Years",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "xqrncy4m8nfujed"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "0i17e115c8kjth1",
+        "slug": "stefan-andonov",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "m80cp5fil7fhqg1",
+        "slug": "stop-engineering-features",
+        "title": "Stop Engineering Features. Start Learning Graphs.",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "0i17e115c8kjth1"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "f5gcgj80682zig5",
+        "slug": "bogdan-ilie",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "9eilgx18i78wi6p",
+        "slug": "how-to-not-use-ai-or-staying-sane-in-a-frenzied-world",
+        "title": "How to not use AI. Or staying sane in a frenzied world",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "f5gcgj80682zig5"
+        ]
+      },
+      "short_15_plus_5": false
+    },
+    {
+      "speaker": {
+        "id": "g2vul2641xi295j",
+        "slug": "domagoj-maric",
+        "published": true,
+        "appearance_events": [
+          "wts2026appevent"
+        ]
+      },
+      "session": {
+        "id": "l4ccl4736wl50tg",
+        "slug": "friendly-borders-graph-algorithms-reveal-eurovision-voting-patterns",
+        "title": "Friendly Borders: Graph algorithms reveal Eurovision voting patterns",
+        "published": true,
+        "format": "talk",
+        "speakers": [
+          "g2vul2641xi295j"
+        ]
+      },
+      "short_15_plus_5": false
+    }
+  ],
+  "records": {
+    "conference_days": [
+      {
+        "id": "md262ffb2e933ca",
+        "key": "main-day",
+        "local_date": "2026-09-19",
+        "title": "Main Conference Day",
+        "display_order": 6,
+        "published": false
+      }
+    ],
+    "event_programmes": [
+      {
+        "id": "md260b1f5e44856",
+        "day": "md262ffb2e933ca",
+        "appearance_event": "wts2026appevent",
+        "display_order": 0
+      }
+    ],
+    "agenda_tracks": [
+      {
+        "id": "md2678bf170448b",
+        "programme": "md260b1f5e44856",
+        "key": "stage-1",
+        "name": "Stage 1",
+        "location_label": "",
+        "display_order": 1
+      },
+      {
+        "id": "md26bbca959d7d0",
+        "programme": "md260b1f5e44856",
+        "key": "stage-2",
+        "name": "Stage 2",
+        "location_label": "",
+        "display_order": 2
+      },
+      {
+        "id": "md26e01e18cd8de",
+        "programme": "md260b1f5e44856",
+        "key": "stage-3",
+        "name": "Stage 3",
+        "location_label": "",
+        "display_order": 3
+      },
+      {
+        "id": "md26d9ab41329d1",
+        "programme": "md260b1f5e44856",
+        "key": "stage-4",
+        "name": "Stage 4",
+        "location_label": "",
+        "display_order": 4
+      },
+      {
+        "id": "md26debf72ff7e4",
+        "programme": "md260b1f5e44856",
+        "key": "stage-5",
+        "name": "Stage 5",
+        "location_label": "",
+        "display_order": 5
+      }
+    ],
+    "agenda_slots": [
+      {
+        "id": "md26ef93e7997c9",
+        "programme": "md260b1f5e44856",
+        "track": "md2678bf170448b",
+        "start_at": "2026-09-19 08:10:00.000Z",
+        "end_at": "2026-09-19 08:45:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1010,
+        "location_label": "",
+        "session": "dfjdwtfo8308nay",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md2605e8408b28a",
+        "programme": "md260b1f5e44856",
+        "track": "md2678bf170448b",
+        "start_at": "2026-09-19 08:55:00.000Z",
+        "end_at": "2026-09-19 09:30:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1055,
+        "location_label": "",
+        "session": "obcr90z58q9rdj1",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md262106741207e",
+        "programme": "md260b1f5e44856",
+        "track": "md2678bf170448b",
+        "start_at": "2026-09-19 09:50:00.000Z",
+        "end_at": "2026-09-19 10:25:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1150,
+        "location_label": "",
+        "session": "onva7an1xd45dgd",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md2667ddcbcbd28",
+        "programme": "md260b1f5e44856",
+        "track": "md2678bf170448b",
+        "start_at": "2026-09-19 10:35:00.000Z",
+        "end_at": "2026-09-19 11:10:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1235,
+        "location_label": "",
+        "session": "nnyzc6iscvtz361",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md263541db37737",
+        "programme": "md260b1f5e44856",
+        "track": "md2678bf170448b",
+        "start_at": "2026-09-19 11:50:00.000Z",
+        "end_at": "2026-09-19 12:25:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1350,
+        "location_label": "",
+        "session": "x0m1i7lpizg7ccm",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md260ebf873bd93",
+        "programme": "md260b1f5e44856",
+        "track": "md2678bf170448b",
+        "start_at": "2026-09-19 12:45:00.000Z",
+        "end_at": "2026-09-19 13:05:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1445,
+        "location_label": "",
+        "session": "hftfblor7opaq4h",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md265b6478f1309",
+        "programme": "md260b1f5e44856",
+        "track": "md2678bf170448b",
+        "start_at": "2026-09-19 13:05:00.000Z",
+        "end_at": "2026-09-19 13:25:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1505,
+        "location_label": "",
+        "session": "u1sa69a7d3gxclb",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26a3ea10c2d00",
+        "programme": "md260b1f5e44856",
+        "track": "md2678bf170448b",
+        "start_at": "2026-09-19 13:30:00.000Z",
+        "end_at": "2026-09-19 14:05:00.000Z",
+        "kind": "other",
+        "published": true,
+        "display_order": 1530,
+        "location_label": "",
+        "session": "",
+        "title": "TBD",
+        "summary": "Programme to be announced."
+      },
+      {
+        "id": "md26739fdb05952",
+        "programme": "md260b1f5e44856",
+        "track": "md26bbca959d7d0",
+        "start_at": "2026-09-19 08:10:00.000Z",
+        "end_at": "2026-09-19 08:45:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1010,
+        "location_label": "",
+        "session": "snt9o4fuxq1jew2",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26a63c5567efc",
+        "programme": "md260b1f5e44856",
+        "track": "md26bbca959d7d0",
+        "start_at": "2026-09-19 08:55:00.000Z",
+        "end_at": "2026-09-19 09:30:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1055,
+        "location_label": "",
+        "session": "lwq3l9s5pclj6f9",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26abbd90501c9",
+        "programme": "md260b1f5e44856",
+        "track": "md26bbca959d7d0",
+        "start_at": "2026-09-19 09:50:00.000Z",
+        "end_at": "2026-09-19 10:25:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1150,
+        "location_label": "",
+        "session": "s413dci9kry2bd4",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md2649ff1529c0e",
+        "programme": "md260b1f5e44856",
+        "track": "md26bbca959d7d0",
+        "start_at": "2026-09-19 10:35:00.000Z",
+        "end_at": "2026-09-19 11:10:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1235,
+        "location_label": "",
+        "session": "rwsvylxgmizjm01",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md2696e01c9596a",
+        "programme": "md260b1f5e44856",
+        "track": "md26bbca959d7d0",
+        "start_at": "2026-09-19 11:50:00.000Z",
+        "end_at": "2026-09-19 12:25:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1350,
+        "location_label": "",
+        "session": "pnnrx37ghxydz2i",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md2626bf9e427b9",
+        "programme": "md260b1f5e44856",
+        "track": "md26bbca959d7d0",
+        "start_at": "2026-09-19 12:45:00.000Z",
+        "end_at": "2026-09-19 13:20:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1445,
+        "location_label": "",
+        "session": "uarbhzdfzwws0ml",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26afd4b07e898",
+        "programme": "md260b1f5e44856",
+        "track": "md26bbca959d7d0",
+        "start_at": "2026-09-19 13:30:00.000Z",
+        "end_at": "2026-09-19 14:05:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1530,
+        "location_label": "",
+        "session": "g0bbpy7j6cl23wu",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26ad956520adb",
+        "programme": "md260b1f5e44856",
+        "track": "md26e01e18cd8de",
+        "start_at": "2026-09-19 08:10:00.000Z",
+        "end_at": "2026-09-19 08:45:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1010,
+        "location_label": "",
+        "session": "s1cjrigz4gtmpvq",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26f0eaf7f2868",
+        "programme": "md260b1f5e44856",
+        "track": "md26e01e18cd8de",
+        "start_at": "2026-09-19 08:55:00.000Z",
+        "end_at": "2026-09-19 09:30:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1055,
+        "location_label": "",
+        "session": "kgjv4s3yz7pvbjj",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26e5a7ac15844",
+        "programme": "md260b1f5e44856",
+        "track": "md26e01e18cd8de",
+        "start_at": "2026-09-19 09:50:00.000Z",
+        "end_at": "2026-09-19 10:25:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1150,
+        "location_label": "",
+        "session": "cczq2rjtdw4i11r",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md2641b6f18e230",
+        "programme": "md260b1f5e44856",
+        "track": "md26e01e18cd8de",
+        "start_at": "2026-09-19 10:35:00.000Z",
+        "end_at": "2026-09-19 11:10:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1235,
+        "location_label": "",
+        "session": "2zmyqs14d1nqj1w",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md262f6f89aff82",
+        "programme": "md260b1f5e44856",
+        "track": "md26e01e18cd8de",
+        "start_at": "2026-09-19 11:50:00.000Z",
+        "end_at": "2026-09-19 12:25:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1350,
+        "location_label": "",
+        "session": "x1f7leishmz4lkz",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26798deae4908",
+        "programme": "md260b1f5e44856",
+        "track": "md26e01e18cd8de",
+        "start_at": "2026-09-19 12:45:00.000Z",
+        "end_at": "2026-09-19 13:20:00.000Z",
+        "kind": "other",
+        "published": true,
+        "display_order": 1445,
+        "location_label": "",
+        "session": "",
+        "title": "TBD",
+        "summary": "Programme to be announced."
+      },
+      {
+        "id": "md262f473899917",
+        "programme": "md260b1f5e44856",
+        "track": "md26e01e18cd8de",
+        "start_at": "2026-09-19 13:30:00.000Z",
+        "end_at": "2026-09-19 14:05:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1530,
+        "location_label": "",
+        "session": "q02z12s2f04byzs",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26fb0924a7d39",
+        "programme": "md260b1f5e44856",
+        "track": "md26d9ab41329d1",
+        "start_at": "2026-09-19 08:10:00.000Z",
+        "end_at": "2026-09-19 08:45:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1010,
+        "location_label": "",
+        "session": "2qzz8bf5jcq59k5",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26acac6a68709",
+        "programme": "md260b1f5e44856",
+        "track": "md26d9ab41329d1",
+        "start_at": "2026-09-19 08:55:00.000Z",
+        "end_at": "2026-09-19 09:30:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1055,
+        "location_label": "",
+        "session": "df6uwh7kohf2oi9",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26ebe1331a8a6",
+        "programme": "md260b1f5e44856",
+        "track": "md26d9ab41329d1",
+        "start_at": "2026-09-19 09:50:00.000Z",
+        "end_at": "2026-09-19 10:10:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1150,
+        "location_label": "",
+        "session": "hccz2uq9i4tm2z2",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md269c42155e827",
+        "programme": "md260b1f5e44856",
+        "track": "md26d9ab41329d1",
+        "start_at": "2026-09-19 10:10:00.000Z",
+        "end_at": "2026-09-19 10:30:00.000Z",
+        "kind": "other",
+        "published": true,
+        "display_order": 1210,
+        "location_label": "",
+        "session": "",
+        "title": "TBD",
+        "summary": "Programme to be announced."
+      },
+      {
+        "id": "md26bb209b3b8d7",
+        "programme": "md260b1f5e44856",
+        "track": "md26d9ab41329d1",
+        "start_at": "2026-09-19 10:35:00.000Z",
+        "end_at": "2026-09-19 11:10:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1235,
+        "location_label": "",
+        "session": "9mrymz1rfxmsqxl",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26908314524f4",
+        "programme": "md260b1f5e44856",
+        "track": "md26d9ab41329d1",
+        "start_at": "2026-09-19 11:50:00.000Z",
+        "end_at": "2026-09-19 12:25:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1350,
+        "location_label": "",
+        "session": "m80cp5fil7fhqg1",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26be330bf0794",
+        "programme": "md260b1f5e44856",
+        "track": "md26d9ab41329d1",
+        "start_at": "2026-09-19 12:45:00.000Z",
+        "end_at": "2026-09-19 13:20:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1445,
+        "location_label": "",
+        "session": "9eilgx18i78wi6p",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26d78729fe3b9",
+        "programme": "md260b1f5e44856",
+        "track": "md26d9ab41329d1",
+        "start_at": "2026-09-19 13:30:00.000Z",
+        "end_at": "2026-09-19 14:05:00.000Z",
+        "kind": "session",
+        "published": true,
+        "display_order": 1530,
+        "location_label": "",
+        "session": "l4ccl4736wl50tg",
+        "title": "",
+        "summary": ""
+      },
+      {
+        "id": "md26ffd5d05d07e",
+        "programme": "md260b1f5e44856",
+        "track": "md26debf72ff7e4",
+        "start_at": "2026-09-19 08:10:00.000Z",
+        "end_at": "2026-09-19 09:30:00.000Z",
+        "kind": "other",
+        "published": true,
+        "display_order": 1010,
+        "location_label": "",
+        "session": "",
+        "title": "TBD",
+        "summary": "Programme to be announced."
+      },
+      {
+        "id": "md2635c9636d85f",
+        "programme": "md260b1f5e44856",
+        "track": "md26debf72ff7e4",
+        "start_at": "2026-09-19 09:50:00.000Z",
+        "end_at": "2026-09-19 11:10:00.000Z",
+        "kind": "other",
+        "published": true,
+        "display_order": 1150,
+        "location_label": "",
+        "session": "",
+        "title": "TBD",
+        "summary": "Programme to be announced."
+      },
+      {
+        "id": "md263b8bb3d14ce",
+        "programme": "md260b1f5e44856",
+        "track": "md26debf72ff7e4",
+        "start_at": "2026-09-19 11:50:00.000Z",
+        "end_at": "2026-09-19 12:25:00.000Z",
+        "kind": "other",
+        "published": true,
+        "display_order": 1350,
+        "location_label": "",
+        "session": "",
+        "title": "TBD",
+        "summary": "Programme to be announced."
+      },
+      {
+        "id": "md2662fd64da0ca",
+        "programme": "md260b1f5e44856",
+        "track": "md26debf72ff7e4",
+        "start_at": "2026-09-19 12:45:00.000Z",
+        "end_at": "2026-09-19 14:05:00.000Z",
+        "kind": "other",
+        "published": true,
+        "display_order": 1445,
+        "location_label": "",
+        "session": "",
+        "title": "TBD",
+        "summary": "Programme to be announced."
+      },
+      {
+        "id": "md264716514bda3",
+        "programme": "md260b1f5e44856",
+        "track": "",
+        "start_at": "2026-09-19 08:00:00.000Z",
+        "end_at": "2026-09-19 08:10:00.000Z",
+        "kind": "opening",
+        "published": true,
+        "display_order": 1000,
+        "location_label": "",
+        "session": "",
+        "title": "Opening",
+        "summary": "Opening of WhatTheStack 2026."
+      },
+      {
+        "id": "md265bb0fb387e0",
+        "programme": "md260b1f5e44856",
+        "track": "",
+        "start_at": "2026-09-19 09:30:00.000Z",
+        "end_at": "2026-09-19 09:50:00.000Z",
+        "kind": "break",
+        "published": true,
+        "display_order": 1130,
+        "location_label": "",
+        "session": "",
+        "title": "Coffee break",
+        "summary": "Programme-wide coffee break."
+      },
+      {
+        "id": "md26f9d7fe0b751",
+        "programme": "md260b1f5e44856",
+        "track": "",
+        "start_at": "2026-09-19 11:10:00.000Z",
+        "end_at": "2026-09-19 11:50:00.000Z",
+        "kind": "meal",
+        "published": true,
+        "display_order": 1310,
+        "location_label": "",
+        "session": "",
+        "title": "Lunch",
+        "summary": "Programme-wide lunch break."
+      },
+      {
+        "id": "md269ea2fc34647",
+        "programme": "md260b1f5e44856",
+        "track": "",
+        "start_at": "2026-09-19 12:25:00.000Z",
+        "end_at": "2026-09-19 12:45:00.000Z",
+        "kind": "break",
+        "published": true,
+        "display_order": 1425,
+        "location_label": "",
+        "session": "",
+        "title": "Coffee break",
+        "summary": "Programme-wide coffee break."
+      },
+      {
+        "id": "md26717e3f4fed6",
+        "programme": "md260b1f5e44856",
+        "track": "",
+        "start_at": "2026-09-19 14:05:00.000Z",
+        "end_at": "2026-09-19 14:15:00.000Z",
+        "kind": "closing",
+        "published": true,
+        "display_order": 1605,
+        "location_label": "",
+        "session": "",
+        "title": "Closing",
+        "summary": "Closing of WhatTheStack 2026."
+      }
+    ]
+  }
+}

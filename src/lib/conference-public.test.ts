@@ -7,6 +7,7 @@ vi.mock("~/lib/pocketbase-admin-service", () => ({
 }));
 
 import {
+  loadPublicAgenda,
   loadPublicSpeakerBySlug,
   loadPublicSpeakerTeaser,
   loadPublicSpeakers,
@@ -52,6 +53,37 @@ describe("PocketBase image thumbnails", () => {
     ).toBe(
       `/api/image?src=${encodeURIComponent(url)}&width=320 320w, /api/image?src=${encodeURIComponent(url)}&width=640 640w, /api/image?src=${encodeURIComponent(url)}&width=1280 1280w`,
     );
+  });
+});
+
+describe("public agenda loading", () => {
+  it("loads published speaker names for linked sessions without fetching private profile fields", async () => {
+    fetchAllRecords.mockReset();
+    fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
+      conference_days: [{ id: "day", key: "main-day", local_date: "2026-09-19", title: "Main day", published: true }],
+      appearance_events: [{ id: "event", name: "WhatTheStack 2026", published: true }],
+      event_programmes: [{ id: "programme", day: "day", appearance_event: "event" }],
+      agenda_tracks: [{ id: "track", programme: "programme", key: "stage-1", name: "Stage 1" }],
+      agenda_slots: [{ id: "slot", programme: "programme", track: "track", kind: "session", published: true, session: "session", start_at: "2026-09-19T08:10:00.000Z", end_at: "2026-09-19T08:45:00.000Z" }],
+      sessions: [{ id: "session", slug: "systems", title: "Systems", published: true, speakers: ["speaker"] }],
+      speakers: [{ id: "speaker", slug: "ada", display_name: "Ada Lovelace", published: true }],
+    }[collection] || []));
+
+    const agenda = await loadPublicAgenda();
+
+    expect(agenda.days[0].programmes[0].slots[0].session?.speakers).toEqual([
+      { slug: "ada", name: "Ada Lovelace" },
+    ]);
+    expect(fetchAllRecords).toHaveBeenCalledWith("speakers", {
+      filter: "published = true",
+      fields: "id,slug,display_name,published",
+      sort: "slug,id",
+    });
+    expect(fetchAllRecords).toHaveBeenCalledWith("sessions", {
+      filter: "published = true",
+      fields: "id,slug,title,format,published,speakers",
+      sort: "title,id",
+    });
   });
 });
 

@@ -6,6 +6,7 @@ import type {
   ConferenceDayRecord,
   EventProgrammeRecord,
   SessionRecord,
+  SpeakerRecord,
 } from "~/lib/pocketbase-types";
 
 export interface PublicSessionSchedule {
@@ -22,6 +23,7 @@ export interface PublicAgendaSession {
   slug: string;
   title: string;
   format?: string;
+  speakers: { slug: string; name: string }[];
 }
 
 export interface PublicAgendaTrack {
@@ -56,7 +58,16 @@ export interface PublicAgendaDay {
 
 export interface PublicEventProgramme {
   event: PublicAgendaEvent;
+  tracks: PublicAgendaTrack[];
   slots: PublicAgendaSlot[];
+  /** Announced lineup without a confirmed running order or clock times. */
+  untimed?: {
+    summary: string;
+    sessions: PublicAgendaSession[];
+    highlights?: string[];
+    access?: string;
+    cta?: { label: string; href: string };
+  };
 }
 
 export interface PublicAgenda {
@@ -104,6 +115,7 @@ export function buildPublicAgenda(
   tracks: AgendaTrackRecord[],
   slots: AgendaSlotRecord[],
   sessions: SessionRecord[],
+  speakers: SpeakerRecord[] = [],
 ): PublicAgenda {
   const visibleDays = days
     .filter((day) => day.published)
@@ -111,6 +123,7 @@ export function buildPublicAgenda(
   const tracksById = new Map(tracks.map((track) => [track.id, track]));
   const eventsById = new Map(events.filter((event) => event.published).map((event) => [event.id, event]));
   const sessionsById = new Map(sessions.filter((session) => session.published).map((session) => [session.id, session]));
+  const speakersById = new Map(speakers.filter((speaker) => speaker.published).map((speaker) => [speaker.id, speaker]));
 
   return {
     days: visibleDays.map((day) => {
@@ -152,7 +165,17 @@ export function buildPublicAgenda(
                 track: track
                   ? { key: track.key, name: track.name, locationLabel: track.location_label || undefined }
                   : undefined,
-                session: { slug: session.slug, title: session.title, format: session.format || undefined },
+                session: {
+                  slug: session.slug,
+                  title: session.title,
+                  format: session.format || undefined,
+                  speakers: (session.speakers || []).flatMap((speakerId) => {
+                    const speaker = speakersById.get(speakerId);
+                    return speaker
+                      ? [{ slug: speaker.slug, name: speaker.display_name || speaker.slug || "Speaker" }]
+                      : [];
+                  }),
+                },
               });
               continue;
             }
@@ -170,7 +193,14 @@ export function buildPublicAgenda(
           }
 
           return visibleSlots.length > 0
-            ? [{ event: publicAgendaEvent(event), slots: visibleSlots }]
+            ? [{
+              event: publicAgendaEvent(event),
+              tracks: tracks
+                .filter((track) => track.programme === programme.id)
+                .sort((a, b) => Number(a.display_order) - Number(b.display_order) || a.key.localeCompare(b.key))
+                .map((track) => ({ key: track.key, name: track.name, locationLabel: track.location_label || undefined })),
+              slots: visibleSlots,
+            }]
             : [];
         }),
       };

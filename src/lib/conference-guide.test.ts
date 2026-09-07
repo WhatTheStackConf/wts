@@ -21,6 +21,7 @@ function publishedData(): ConferenceGuidePublishedData {
         title: "Conference Day",
         programmes: [{
           event: mainAgendaEvent,
+          tracks: [],
           slots: [
           {
             kind: "opening",
@@ -35,7 +36,7 @@ function publishedData(): ConferenceGuidePublishedData {
             endAt: "2026-09-19T08:35:00.000Z",
             locationLabel: "Main stage",
             track: { key: "systems", name: "Systems", locationLabel: "Stage A" },
-            session: { slug: "safe-systems", title: "Safe <em>Systems</em>", format: "Talk" },
+            session: { slug: "safe-systems", title: "Safe <em>Systems</em>", format: "Talk", speakers: [] },
           },
           ],
         }],
@@ -103,7 +104,7 @@ function searchablePublishedData(): ConferenceGuidePublishedData {
       endAt: "2026-09-19T10:00:00.000Z",
       locationLabel: "Workshop room",
       track: { key: "platforms", name: "Platforms", locationLabel: "Workshop room" },
-      session: { slug: "resilient-platforms", title: "Resilient Platforms", format: "Workshop" },
+      session: { slug: "resilient-platforms", title: "Resilient Platforms", format: "Workshop", speakers: [] },
     },
     {
       kind: "session",
@@ -111,7 +112,7 @@ function searchablePublishedData(): ConferenceGuidePublishedData {
       endAt: "2026-09-19T10:35:00.000Z",
       locationLabel: "Hall A-B",
       track: { key: "systems", name: "Systems", locationLabel: "Stage A" },
-      session: { slug: "beta-operations", title: "Operations at Scale", format: "C#" },
+      session: { slug: "beta-operations", title: "Operations at Scale", format: "C#", speakers: [] },
     },
     {
       kind: "session",
@@ -119,7 +120,7 @@ function searchablePublishedData(): ConferenceGuidePublishedData {
       endAt: "2026-09-19T11:35:00.000Z",
       locationLabel: "Hall A/B",
       track: { key: "systems", name: "Systems", locationLabel: "Stage A" },
-      session: { slug: "alpha-operations", title: "Operations at Scale", format: "C++" },
+      session: { slug: "alpha-operations", title: "Operations at Scale", format: "C++", speakers: [] },
     },
   );
   data.sessions.push(
@@ -171,13 +172,14 @@ function searchablePublishedData(): ConferenceGuidePublishedData {
     title: "Community Day",
     programmes: [{
       event: mainAgendaEvent,
+      tracks: [],
       slots: [{
         kind: "session",
         startAt: "2026-09-20T08:00:00.000Z",
         endAt: "2026-09-20T08:35:00.000Z",
         locationLabel: "Community hall",
         track: { key: "community", name: "Community", locationLabel: "Community hall" },
-        session: { slug: "future-community", title: "Future Community", format: "Panel" },
+        session: { slug: "future-community", title: "Future Community", format: "Panel", speakers: [] },
       }],
     }],
   });
@@ -206,7 +208,7 @@ function plannablePublishedData(): ConferenceGuidePublishedData {
       endAt: "2026-09-19T08:35:00.000Z",
       locationLabel: "Workshop room",
       track: { key: "platforms", name: "Platforms", locationLabel: "Workshop room" },
-      session: { slug: "reliable-runtime", title: "Reliable Runtime", format: "Talk" },
+      session: { slug: "reliable-runtime", title: "Reliable Runtime", format: "Talk", speakers: [] },
     },
     {
       kind: "session",
@@ -214,7 +216,7 @@ function plannablePublishedData(): ConferenceGuidePublishedData {
       endAt: "2026-09-19T09:00:00.000Z",
       locationLabel: "Studio",
       track: { key: "architecture", name: "Architecture", locationLabel: "Studio" },
-      session: { slug: "platform-depth", title: "Platform Depth", format: "Workshop" },
+      session: { slug: "platform-depth", title: "Platform Depth", format: "Workshop", speakers: [] },
     },
     {
       kind: "break",
@@ -259,14 +261,14 @@ function plannablePublishedData(): ConferenceGuidePublishedData {
       endAt: "2026-09-19T14:00:00.000Z",
       locationLabel: "Studio",
       track: { key: "architecture", name: "Architecture", locationLabel: "Studio" },
-      session: { slug: "late-architecture", title: "Late Architecture", format: "Talk" },
+      session: { slug: "late-architecture", title: "Late Architecture", format: "Talk", speakers: [] },
     },
     {
       kind: "session",
       startAt: "2026-09-19T07:15:00.000Z",
       endAt: "2026-09-19T07:45:00.000Z",
       locationLabel: "Main stage",
-      session: { slug: "opening-overlap", title: "Opening Overlap", format: "Talk" },
+      session: { slug: "opening-overlap", title: "Opening Overlap", format: "Talk", speakers: [] },
     },
   );
   data.sessions.push(
@@ -335,14 +337,14 @@ function overnightPlannablePublishedData(): ConferenceGuidePublishedData {
       startAt: "2026-09-19T21:00:00.000Z",
       endAt: "2026-09-19T23:30:00.000Z",
       track: { key: "systems", name: "Systems", locationLabel: "Hall A" },
-      session: { slug: "overnight-primary", title: "Overnight Primary", format: "Talk" },
+      session: { slug: "overnight-primary", title: "Overnight Primary", format: "Talk", speakers: [] },
     },
     {
       kind: "session",
       startAt: "2026-09-19T21:30:00.000Z",
       endAt: "2026-09-19T22:30:00.000Z",
       track: { key: "platforms", name: "Platforms", locationLabel: "Hall B" },
-      session: { slug: "overnight-overlap", title: "Overnight Overlap", format: "Talk" },
+      session: { slug: "overnight-overlap", title: "Overnight Overlap", format: "Talk", speakers: [] },
     },
   );
   data.agenda.days.push({
@@ -351,12 +353,13 @@ function overnightPlannablePublishedData(): ConferenceGuidePublishedData {
     title: "Conference day two",
     programmes: [{
       event: mainAgendaEvent,
+      tracks: [],
       slots: [{
         kind: "session",
         startAt: "2026-09-19T22:30:00.000Z",
         endAt: "2026-09-19T23:00:00.000Z",
         track: { key: "community", name: "Community", locationLabel: "Hall C" },
-        session: { slug: "next-day-overlap", title: "Next Day Overlap", format: "Talk" },
+        session: { slug: "next-day-overlap", title: "Next Day Overlap", format: "Talk", speakers: [] },
       }],
     }],
   });
@@ -596,11 +599,12 @@ describe("Conference Guide", () => {
     const data = publishedData();
     data.agenda.days[0].programmes.push({
       event: { name: "Community Warmup", compactLabel: "Warmup" },
+      tracks: [],
       slots: [{
         kind: "session",
         startAt: "2026-09-19T07:15:00.000Z",
         endAt: "2026-09-19T07:45:00.000Z",
-        session: { slug: "warmup-session", title: "Warmup Session", format: "Talk" },
+        session: { slug: "warmup-session", title: "Warmup Session", format: "Talk", speakers: [] },
       }],
     });
     data.sessions.push({

@@ -175,14 +175,23 @@ describe("public agenda DTOs", () => {
         { id: "programme-hidden-event", day: "day-1", appearance_event: "event-hidden", display_order: 2, created: timestamp, updated: timestamp },
         { id: "programme-hidden-day", day: "day-draft", appearance_event: "event-main", display_order: 1, created: timestamp, updated: timestamp },
       ] as any,
-      [{ id: "track-1", programme: "programme-main", key: "main", name: "Main", location_label: "Hall A", display_order: 1, internal_note: "hide", created: timestamp, updated: timestamp } as any],
+      [
+        { id: "track-5", programme: "programme-main", key: "stage-5", name: "Stage 5", display_order: 5 },
+        { id: "track-other", programme: "programme-hidden-event", key: "secret", name: "Hidden Track", display_order: 0 },
+        { id: "track-1", programme: "programme-main", key: "main", name: "Main", location_label: "Hall A", display_order: 1, internal_note: "hide", created: timestamp, updated: timestamp },
+      ] as any,
       [
         { id: "slot-1", programme: "programme-main", track: "track-1", start_at: "2026-09-19T08:00:00.000Z", end_at: "2026-09-19T09:00:00.000Z", kind: "session", published: true, display_order: 1, session: "session-1", title: "", summary: "", secret: "hide", created: timestamp, updated: timestamp },
         { id: "slot-2", programme: "programme-main", start_at: "2026-09-19T10:00:00.000Z", end_at: "2026-09-19T10:30:00.000Z", kind: "break", published: false, display_order: 1, title: "Draft break", summary: "hide", created: timestamp, updated: timestamp },
         { id: "slot-3", programme: "programme-hidden-day", start_at: "2026-09-20T10:00:00.000Z", end_at: "2026-09-20T10:30:00.000Z", kind: "break", published: true, display_order: 1, title: "Hidden Day", summary: "hide", created: timestamp, updated: timestamp },
         { id: "slot-4", programme: "programme-hidden-event", start_at: "2026-09-19T11:00:00.000Z", end_at: "2026-09-19T11:30:00.000Z", kind: "break", published: true, display_order: 1, title: "Hidden Event", summary: "hide", created: timestamp, updated: timestamp },
       ] as any,
-      [{ id: "session-1", slug: "canonical-schedule", title: "Canonical schedule", abstract: "Public", format: "Talk", published: true, starts_at: "legacy-start", track: "Legacy Track", room: "Legacy Room", cfp_submission: "private", created: timestamp, updated: timestamp } as any],
+      [{ id: "session-1", slug: "canonical-schedule", title: "Canonical schedule", abstract: "Public", format: "Talk", published: true, speakers: ["speaker-2", "speaker-hidden", "speaker-1", "speaker-missing"], starts_at: "legacy-start", track: "Legacy Track", room: "Legacy Room", cfp_submission: "private", created: timestamp, updated: timestamp } as any],
+      [
+        { id: "speaker-1", slug: "ada", display_name: "Ada Lovelace", published: true, email: "private@example.com", user: "private-user" },
+        { id: "speaker-2", slug: "grace", display_name: "Grace Hopper", published: true },
+        { id: "speaker-hidden", slug: "hidden-speaker", display_name: "Hidden Speaker", published: false },
+      ] as any,
     );
 
     expect(agenda).toEqual({
@@ -196,13 +205,20 @@ describe("public agenda DTOs", () => {
             compactLabel: "WTS 2026",
             destinationUrl: "https://wts.sh",
           },
+          tracks: [
+            { key: "main", name: "Main", locationLabel: "Hall A" },
+            { key: "stage-5", name: "Stage 5", locationLabel: undefined },
+          ],
           slots: [{
             kind: "session",
             startAt: "2026-09-19T08:00:00.000Z",
             endAt: "2026-09-19T09:00:00.000Z",
             locationLabel: "Hall A",
             track: { key: "main", name: "Main", locationLabel: "Hall A" },
-            session: { slug: "canonical-schedule", title: "Canonical schedule", format: "Talk" },
+            session: {
+              slug: "canonical-schedule", title: "Canonical schedule", format: "Talk",
+              speakers: [{ slug: "grace", name: "Grace Hopper" }, { slug: "ada", name: "Ada Lovelace" }],
+            },
           }],
         }],
       }],
@@ -210,6 +226,8 @@ describe("public agenda DTOs", () => {
     expect(JSON.stringify(agenda)).not.toContain("legacy-start");
     expect(JSON.stringify(agenda)).not.toContain("private");
     expect(JSON.stringify(agenda)).not.toContain("secret");
+    expect(JSON.stringify(agenda)).not.toContain("Hidden Speaker");
+    expect(JSON.stringify(agenda)).not.toContain("Hidden Track");
   });
 
   it("derives Session schedule context from its published Agenda Slot, not legacy Session fields", () => {
