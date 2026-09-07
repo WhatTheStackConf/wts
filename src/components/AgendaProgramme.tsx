@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
-import type { PublicAgendaSlot, PublicEventProgramme } from "~/lib/programme-public";
+import type { PublicAgendaSession, PublicAgendaSlot, PublicEventProgramme } from "~/lib/programme-public";
 import { SCHEDULE_TIME_ZONE } from "~/lib/programme";
+import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
 
 const timeFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: SCHEDULE_TIME_ZONE,
@@ -21,6 +22,25 @@ const endDayFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 const linkClass = "underline decoration-white/30 underline-offset-4 hover:text-primary-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary-300";
+
+function AgendaSpeakers(props: { speakers: PublicAgendaSession["speakers"]; label?: string }) {
+  return (
+    <Show when={props.speakers.length}>
+      <ul class="mt-3 space-y-2 text-sm leading-snug text-secondary-100" aria-label={props.label || "Speakers"}>
+        <For each={props.speakers}>
+          {(speaker) => (
+            <li>
+              <a href={`/speakers/${speaker.slug}`} class={`flex min-h-11 items-center gap-2.5 ${linkClass}`}>
+                <SpeakerAvatar name={speaker.name} photoUrl={speaker.photoUrl || null} size="xs" glow={false} decorative />
+                <span class="min-w-0 [overflow-wrap:anywhere]">{speaker.name}</span>
+              </a>
+            </li>
+          )}
+        </For>
+      </ul>
+    </Show>
+  );
+}
 
 function SlotContent(props: { slot: PublicAgendaSlot }) {
   return (
@@ -43,11 +63,7 @@ function SlotContent(props: { slot: PublicAgendaSlot }) {
         </Show>
       </h4>
       <Show when={props.slot.session?.speakers.length}>
-        <ul class="mt-2 space-y-1 text-sm leading-snug text-secondary-100" aria-label="Speakers">
-          <For each={props.slot.session?.speakers || []}>
-            {(speaker) => <li><a href={`/speakers/${speaker.slug}`} class={linkClass}>{speaker.name}</a></li>}
-          </For>
-        </ul>
+        <AgendaSpeakers speakers={props.slot.session?.speakers || []} />
       </Show>
       <Show when={props.slot.summary}>
         <p class="mt-2 max-w-3xl text-sm leading-relaxed text-secondary-100/85">{props.slot.summary}</p>
@@ -70,10 +86,15 @@ export function AgendaProgramme(props: AgendaProgrammeProps) {
       {(untimed) => (
         <section aria-labelledby={props.id}>
           <header class="bg-black/15 px-5 py-5 md:px-8">
-            <h3 id={props.id} class="text-xl font-bold text-white">{props.programme.event.name}</h3>
+            <h3 id={props.id} class="text-xl font-bold text-white">{untimed().title || props.programme.event.name}</h3>
             <p class="mt-2 font-mono text-sm font-bold text-primary-300">Starting time: TBA</p>
+            <Show when={untimed().locationLabel}><p class="mt-2 text-sm text-secondary-200">Location: {untimed().locationLabel}</p></Show>
             <p class="mt-3 max-w-3xl text-sm leading-relaxed text-secondary-100/85">{untimed().summary}</p>
-            <Show when={untimed().highlights?.length}>
+            <Show when={untimed().speakers?.length}>
+              <p class="mt-4 text-sm font-bold text-white">Announced speakers</p>
+              <AgendaSpeakers speakers={untimed().speakers || []} label="Announced speakers" />
+            </Show>
+            <Show when={!untimed().speakers?.length && untimed().highlights?.length}>
               <ul class="mt-3 space-y-1 text-sm text-secondary-100" aria-label="Announced speakers">
                 <For each={untimed().highlights}>{(name) => <li>{name}</li>}</For>
               </ul>
@@ -97,11 +118,7 @@ export function AgendaProgramme(props: AgendaProgrammeProps) {
                       <h4 class="mt-2 text-base font-bold leading-snug text-white [overflow-wrap:anywhere]">
                         <a href={`/sessions/${session.slug}`} class={linkClass}>{session.title}</a>
                       </h4>
-                      <ul class="mt-3 space-y-1 text-sm text-secondary-100" aria-label="Speakers">
-                        <For each={session.speakers}>
-                          {(speaker) => <li><a href={`/speakers/${speaker.slug}`} class={linkClass}>{speaker.name}</a></li>}
-                        </For>
-                      </ul>
+                      <AgendaSpeakers speakers={session.speakers} />
                     </li>
                   )}
                 </For>

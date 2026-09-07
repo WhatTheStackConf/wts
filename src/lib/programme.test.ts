@@ -189,7 +189,7 @@ describe("public agenda DTOs", () => {
       [{ id: "session-1", slug: "canonical-schedule", title: "Canonical schedule", abstract: "Public", format: "Talk", published: true, speakers: ["speaker-2", "speaker-hidden", "speaker-1", "speaker-missing"], starts_at: "legacy-start", track: "Legacy Track", room: "Legacy Room", cfp_submission: "private", created: timestamp, updated: timestamp } as any],
       [
         { id: "speaker-1", slug: "ada", display_name: "Ada Lovelace", published: true, email: "private@example.com", user: "private-user" },
-        { id: "speaker-2", slug: "grace", display_name: "Grace Hopper", published: true },
+        { id: "speaker-2", slug: "grace", display_name: "Grace Hopper", photo: "grace.jpg", published: true },
         { id: "speaker-hidden", slug: "hidden-speaker", display_name: "Hidden Speaker", published: false },
       ] as any,
     );
@@ -217,7 +217,10 @@ describe("public agenda DTOs", () => {
             track: { key: "main", name: "Main", locationLabel: "Hall A" },
             session: {
               slug: "canonical-schedule", title: "Canonical schedule", format: "Talk",
-              speakers: [{ slug: "grace", name: "Grace Hopper" }, { slug: "ada", name: "Ada Lovelace" }],
+              speakers: [
+                { slug: "ada", name: "Ada Lovelace", photoUrl: null },
+                { slug: "grace", name: "Grace Hopper", photoUrl: expect.stringMatching(/\/api\/files\/speakers\/speaker-2\/grace\.jpg$/) },
+              ],
             },
           }],
         }],

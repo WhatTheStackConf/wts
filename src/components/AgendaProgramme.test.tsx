@@ -68,6 +68,49 @@ describe("agenda day filtering", () => {
 });
 
 describe("public agenda programme", () => {
+  it("uses compact speaker circles with lazy images and a missing-photo fallback", () => {
+    const speakers = [
+      { slug: "ana", name: "Ana Example", photoUrl: "https://pb.example/api/files/speakers/ana/photo.jpg" },
+      { slug: "ben", name: "Ben Example", photoUrl: null },
+    ];
+    for (const value of [
+      { ...programme, slots: [{ ...programme.slots[1], session: { slug: "talk", title: "Talk", speakers } }] },
+      { event: programme.event, tracks: [], slots: [], untimed: { summary: "Workshop", sessions: [{ slug: "talk", title: "Talk", speakers }] } },
+    ]) {
+      const html = renderProgramme(value);
+      expect(html).toContain("w-10 h-10");
+      expect(html).toContain("rounded-full p-[2px]");
+      expect(html).toContain("/api/image?src=");
+      expect(html).toContain('sizes="40px"');
+      expect(html).toContain('width="40" height="40"');
+      expect(html).toContain('alt=""');
+      expect(html).toContain('loading="lazy"');
+      expect(html).toContain('href="/speakers/ben"');
+      expect(html).toContain("BE");
+      expect(html).not.toContain('src="null"');
+    }
+  });
+
+  it("renders event-level speakers and venue without inventing talk assignments", () => {
+    const html = renderProgramme({
+      event: { name: "DevFest", compactLabel: "DevFest" }, tracks: [], slots: [],
+      untimed: {
+        title: "Pre-DevFest Days: Day Zero x WhatThe(Google)Stack", summary: "DevFest", access: "Free entry",
+        locationLabel: "FINKI, Skopje", highlights: ["Josefine Schaefer"],
+        speakers: [{ slug: "josefine-schaefer", name: "Josefine Schaefer", photoUrl: "https://pb.wts.sh/api/files/speakers/j/photo.jpg" }],
+        sessions: [{ slug: "agentic-accessibility", title: "Agentic Accessibility", speakers: [] }],
+      },
+    });
+    expect(html).toContain("Pre-DevFest Days: Day Zero x WhatThe(Google)Stack");
+    expect(html).toContain("Location: FINKI, Skopje");
+    expect(html).toContain('aria-label="Announced speakers"');
+    expect(html).toContain('href="/speakers/josefine-schaefer"');
+    expect(html).toContain('href="/sessions/agentic-accessibility"');
+    expect(html).toContain("Starting time: TBA");
+    expect(html).not.toContain("Session lineup: TBA");
+    expect(html).not.toContain('aria-label="Speakers"');
+  });
+
   it("renders an untimed lineup without inventing clock times or stage positions", () => {
     const html = renderProgramme({
       event: { name: "Workshop Tuesday: iOS + AI", compactLabel: "Tuesday" },

@@ -8,13 +8,15 @@ import {
 interface SpeakerAvatarProps {
   name: string;
   photoUrl: string | null;
-  size?: "sm" | "md" | "lg" | "lg-plus" | "xl" | "promo";
+  size?: "xs" | "sm" | "md" | "lg" | "lg-plus" | "xl" | "promo";
+  decorative?: boolean;
   glow?: boolean;
   spotlight?: boolean;
   class?: string;
 }
 
 const sizeClass = {
+  xs: "w-10 h-10",
   sm: "w-16 h-16",
   md: "w-24 h-24",
   lg: "w-32 h-32",
@@ -24,6 +26,7 @@ const sizeClass = {
 };
 
 const imageSizes = {
+  xs: "40px",
   sm: "64px",
   md: "96px",
   lg: "128px",
@@ -33,6 +36,7 @@ const imageSizes = {
 };
 
 const imageDimensions = {
+  xs: 40,
   sm: 64,
   md: 96,
   lg: 128,
@@ -58,7 +62,7 @@ export function SpeakerAvatar(props: SpeakerAvatarProps) {
   const spotlight = () => props.spotlight ?? false;
 
   return (
-    <div class={`relative shrink-0 ${props.class ?? ""}`}>
+    <div class={`relative shrink-0 ${props.class ?? ""}`} aria-hidden={props.decorative ? "true" : undefined}>
       <Show when={spotlight()}>
         <div
           class="absolute -inset-2 rounded-full bg-accent-500/15 blur-md pointer-events-none"
@@ -70,7 +74,7 @@ export function SpeakerAvatar(props: SpeakerAvatarProps) {
           when={props.photoUrl}
           fallback={
             <div
-              class="flex h-full w-full items-center justify-center bg-gradient-to-br from-dark-800 via-dark-900 to-primary-950 font-star text-xl font-bold tracking-wide text-secondary-200"
+              class={`flex h-full w-full items-center justify-center bg-gradient-to-br from-dark-800 via-dark-900 to-primary-950 font-star ${size() === "xs" ? "text-xs" : "text-xl"} font-bold tracking-wide text-secondary-200`}
               aria-hidden="true"
             >
               {speakerInitials(props.name)}
@@ -82,7 +86,7 @@ export function SpeakerAvatar(props: SpeakerAvatarProps) {
               src={pocketBaseThumbnailUrl(photoUrl(), "192x192")}
               srcset={pocketBaseThumbnailSrcSet(photoUrl(), [96, 128, 192, 256])}
               sizes={imageSizes[size()]}
-              alt={props.name}
+              alt={props.decorative ? "" : props.name}
               width={imageDimensions[size()]}
               height={imageDimensions[size()]}
               class="w-full h-full object-cover"

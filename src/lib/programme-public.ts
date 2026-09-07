@@ -8,6 +8,7 @@ import type {
   SessionRecord,
   SpeakerRecord,
 } from "~/lib/pocketbase-types";
+import { getPbFileUrl } from "~/lib/pocketbase-public-url";
 
 export interface PublicSessionSchedule {
   dayDate: string;
@@ -23,7 +24,28 @@ export interface PublicAgendaSession {
   slug: string;
   title: string;
   format?: string;
-  speakers: { slug: string; name: string }[];
+  speakers: { slug: string; name: string; photoUrl?: string | null }[];
+}
+
+/** Shared allowlist for timed and announced sessions; never copy private profile fields. */
+export function publicAgendaSession(session: SessionRecord, speakersById: ReadonlyMap<string, SpeakerRecord>): PublicAgendaSession {
+  return {
+    slug: session.slug,
+    title: session.title,
+    format: session.format || undefined,
+    speakers: publicAgendaSpeakers((session.speakers || []).flatMap((id) => {
+      const speaker = speakersById.get(id);
+      return speaker ? [speaker] : [];
+    })),
+  };
+}
+
+export function publicAgendaSpeakers(speakers: SpeakerRecord[]): PublicAgendaSession["speakers"] {
+  return speakers.filter((speaker) => speaker.published).map((speaker) => ({
+    slug: speaker.slug,
+    name: speaker.display_name || speaker.slug || "Speaker",
+    photoUrl: speaker.photo ? getPbFileUrl("speakers", speaker.id, speaker.photo) : null,
+  })).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 }
 
 export interface PublicAgendaTrack {
@@ -62,6 +84,9 @@ export interface PublicEventProgramme {
   slots: PublicAgendaSlot[];
   /** Announced lineup without a confirmed running order or clock times. */
   untimed?: {
+    title?: string;
+    locationLabel?: string;
+    speakers?: PublicAgendaSession["speakers"];
     summary: string;
     sessions: PublicAgendaSession[];
     highlights?: string[];
@@ -165,17 +190,7 @@ export function buildPublicAgenda(
                 track: track
                   ? { key: track.key, name: track.name, locationLabel: track.location_label || undefined }
                   : undefined,
-                session: {
-                  slug: session.slug,
-                  title: session.title,
-                  format: session.format || undefined,
-                  speakers: (session.speakers || []).flatMap((speakerId) => {
-                    const speaker = speakersById.get(speakerId);
-                    return speaker
-                      ? [{ slug: speaker.slug, name: speaker.display_name || speaker.slug || "Speaker" }]
-                      : [];
-                  }),
-                },
+                session: publicAgendaSession(session, speakersById),
               });
               continue;
             }

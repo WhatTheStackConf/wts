@@ -1,6 +1,7 @@
 import { conferenceWeekTracks } from "~/lib/conference-week";
 import type { AppearanceEventRecord, SessionRecord, SpeakerRecord } from "~/lib/pocketbase-types";
 import type { PublicAgenda, PublicEventProgramme } from "~/lib/programme-public";
+import { publicAgendaSession, publicAgendaSpeakers } from "~/lib/programme-public";
 
 /** Explicit session assignments, not inferred from a speaker's other appearances.
  * Dates and entry details reuse the already-announced homepage week copy.
@@ -11,7 +12,14 @@ export const untimedWeekProgrammes = [
   { name: "Workshop Tuesday: iOS + AI", eventName: "Workshop Tuesday", sessions: [
     "fundamentals-of-native-ios-development", "ddd-for-ai-assisted-development",
   ] },
-  { name: "DevFest", eventName: "DevFest", sessions: [] },
+  { name: "DevFest", eventName: "DevFest", sessions: [
+    "agentic-accessibility", "designing-multi-agent-systems-sequential-parallel-and-beyond-with-adk",
+  ], details: {
+    title: "Pre-DevFest Days: Day Zero x WhatThe(Google)Stack",
+    locationLabel: "Faculty of Computer Science & Engineering (FINKI), Skopje",
+    // The official page announces speakers separately, without pairing them to talks.
+    speakers: ["roushanak-rahmat", "josefine-schaefer"],
+  } },
   { name: "MAUI Day", eventName: "MAUI Day", sessions: [
     "building-your-first-net-maui-app-workshop",
     "ai-assisted-repository-in-net-maui",
@@ -58,6 +66,12 @@ export function addAnnouncedWeekProgrammes(
       tracks: [],
       slots: [],
       untimed: {
+        ...("details" in definition ? {
+          title: definition.details.title,
+          locationLabel: definition.details.locationLabel,
+          speakers: publicAgendaSpeakers(speakers.filter((speaker) =>
+            definition.details.speakers.some((slug) => slug === speaker.slug) && speaker.appearance_events?.includes(event.id))),
+        } : {}),
         summary: copy.summary,
         access: copy.access,
         cta: copy.cta,
@@ -65,15 +79,7 @@ export function addAnnouncedWeekProgrammes(
         sessions: definition.sessions.flatMap((slug) => {
           const session = visibleSessions.get(slug);
           if (!session) return [];
-          return [{
-            slug: session.slug,
-            title: session.title,
-            format: session.format || undefined,
-            speakers: (session.speakers || []).flatMap((id) => {
-              const speaker = visibleSpeakers.get(id);
-              return speaker ? [{ slug: speaker.slug, name: speaker.display_name || speaker.slug || "Speaker" }] : [];
-            }),
-          }];
+          return [publicAgendaSession(session, visibleSpeakers)];
         }),
       },
     };

@@ -42,12 +42,41 @@ describe("untimed weekday agendas", () => {
     ] as SpeakerRecord[];
     const result = addAnnouncedWeekProgrammes({ days: [] }, events, sessions, speakers);
     expect(result.days[1].programmes[0].untimed?.sessions).toEqual([
-      { slug: "fundamentals-of-native-ios-development", title: "iOS", format: undefined, speakers: [{ slug: "mia", name: "Mia" }] },
+      { slug: "fundamentals-of-native-ios-development", title: "iOS", format: undefined, speakers: [{ slug: "mia", name: "Mia", photoUrl: null }] },
     ]);
     expect(JSON.stringify(result)).not.toMatch(/private|cfp_submission|Saturday only|"DDD"/);
     expect(result.days[1].programmes[0].untimed?.access).toBe("Free entry. No ticket required.");
     expect(result.days[1].programmes[0].untimed?.cta).toBeUndefined();
-    expect(untimedWeekProgrammes.flatMap((definition) => [...definition.sessions])).toHaveLength(14);
+    expect(untimedWeekProgrammes.flatMap((definition) => [...definition.sessions])).toHaveLength(16);
+  });
+
+  it("projects sourced DevFest talks without inventing speaker assignments or times", () => {
+    const input = {
+      events: [{ id: "devfest", name: "DevFest", published: true }] as AppearanceEventRecord[],
+      sessions: [
+        { id: "a", slug: "agentic-accessibility", title: "Agentic Accessibility", speakers: [], published: true },
+        { id: "b", slug: "designing-multi-agent-systems-sequential-parallel-and-beyond-with-adk", title: "Designing Multi-Agent Systems: Sequential, Parallel, and Beyond with ADK", speakers: [], published: true },
+      ].map((session) => ({ ...session, abstract: "", created: "", updated: "", collectionId: "sessions", collectionName: "sessions" })),
+      speakers: [
+        { id: "r", slug: "roushanak-rahmat", display_name: "Roushanak Rahmat", appearance_events: ["devfest"], published: true },
+        { id: "j", slug: "josefine-schaefer", display_name: "Josefine Schaefer", photo: "josefine.jpg", appearance_events: ["devfest"], published: true },
+        { id: "private", slug: "private", display_name: "Private speaker", photo: "private.jpg", appearance_events: ["devfest"], published: false },
+      ] as SpeakerRecord[],
+    };
+    const result = addAnnouncedWeekProgrammes({ days: [] }, input.events, input.sessions, input.speakers);
+    const programme = result.days[0].programmes[0];
+    expect(result.days[0].localDate).toBe("2026-09-16");
+    expect(programme.slots).toEqual([]);
+    expect(programme.untimed?.sessions).toHaveLength(2);
+    expect(programme.untimed?.sessions.every((session) => session.speakers.length === 0)).toBe(true);
+    expect(programme.untimed?.speakers).toEqual([
+      { slug: "josefine-schaefer", name: "Josefine Schaefer", photoUrl: expect.stringMatching(/\/api\/files\/speakers\/j\/josefine\.jpg$/) },
+      { slug: "roushanak-rahmat", name: "Roushanak Rahmat", photoUrl: null },
+    ]);
+    expect(programme.untimed?.title).toBe("Pre-DevFest Days: Day Zero x WhatThe(Google)Stack");
+    expect(programme.untimed?.locationLabel).toContain("FINKI");
+    expect(programme.untimed?.cta?.href).toContain("gdg.community.dev/events/");
+    expect(JSON.stringify(programme)).not.toContain("private");
   });
 
   it("does not publish hidden events or duplicate an existing timed programme", () => {

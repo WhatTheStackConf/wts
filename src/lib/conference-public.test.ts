@@ -57,7 +57,7 @@ describe("PocketBase image thumbnails", () => {
 });
 
 describe("public agenda loading", () => {
-  it("loads published speaker names for linked sessions without fetching private profile fields", async () => {
+  it("loads published speaker names and photos without fetching private profile fields", async () => {
     fetchAllRecords.mockReset();
     fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
       conference_days: [{ id: "day", key: "main-day", local_date: "2026-09-19", title: "Main day", published: true }],
@@ -66,17 +66,17 @@ describe("public agenda loading", () => {
       agenda_tracks: [{ id: "track", programme: "programme", key: "stage-1", name: "Stage 1" }],
       agenda_slots: [{ id: "slot", programme: "programme", track: "track", kind: "session", published: true, session: "session", start_at: "2026-09-19T08:10:00.000Z", end_at: "2026-09-19T08:45:00.000Z" }],
       sessions: [{ id: "session", slug: "systems", title: "Systems", published: true, speakers: ["speaker"] }],
-      speakers: [{ id: "speaker", slug: "ada", display_name: "Ada Lovelace", published: true }],
+      speakers: [{ id: "speaker", slug: "ada", display_name: "Ada Lovelace", photo: "ada.jpg", published: true }],
     }[collection] || []));
 
     const agenda = await loadPublicAgenda();
 
     expect(agenda.days[0].programmes[0].slots[0].session?.speakers).toEqual([
-      { slug: "ada", name: "Ada Lovelace" },
+      { slug: "ada", name: "Ada Lovelace", photoUrl: expect.stringMatching(/\/api\/files\/speakers\/speaker\/ada\.jpg$/) },
     ]);
     expect(fetchAllRecords).toHaveBeenCalledWith("speakers", {
       filter: "published = true",
-      fields: "id,slug,display_name,published",
+      fields: "id,slug,display_name,photo,appearance_events,published",
       sort: "slug,id",
     });
     expect(fetchAllRecords).toHaveBeenCalledWith("sessions", {

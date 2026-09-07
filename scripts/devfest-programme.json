@@ -1,0 +1,22 @@
+{
+  "source": "https://gdg.community.dev/events/details/google-gdg-skopje-presents-pre-devfest-days-day-zero-x-whatthegooglestack-2/",
+  "event_id": "nwc9vwy867naauc",
+  "event_name": "DevFest",
+  "title": "Pre-DevFest Days: Day Zero x WhatThe(Google)Stack",
+  "date": "2026-09-16",
+  "location": "Faculty of Computer Science & Engineering (FINKI), 16 Руѓер Бошковиќ, Skopje",
+  "timing_policy": "Starting time: TBA. No timed slots are created.",
+  "speaker_policy": "The source lists Roushanak Rahmat and Josefine Schaefer separately from talks. Retain their existing event appearances, but do not infer session assignments.",
+  "sessions": [
+    {
+      "slug": "agentic-accessibility",
+      "title": "Agentic Accessibility",
+      "description": "A look at using AI agents to catch accessibility problems missing alt text, bad contrast, broken semantic structure before they ship, instead of relying on manual audits after the fact. The pitch: accessibility built into the pipeline, not bolted on at the end."
+    },
+    {
+      "slug": "designing-multi-agent-systems-sequential-parallel-and-beyond-with-adk",
+      "title": "Designing Multi-Agent Systems: Sequential, Parallel, and Beyond with ADK",
+      "description": "A practical session on architecting multi-agent systems with Google's Agent Development Kit — when to chain agents sequentially, when to run them in parallel, and how to decide which orchestration pattern actually fits your problem."
+    }
+  ]
+}
