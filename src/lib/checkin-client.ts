@@ -24,7 +24,17 @@ export interface IssuedCheckinQR extends CheckinAdminResult {
   qrDataUrl?: string;
 }
 export const checkinStatus = () => command<CheckinStatusDTO>({ operation: "status" });
-export const previewCheckinStation = (code: string) => command<CheckinPreviewDTO>({ operation: "preview", code });
+export async function previewCheckinStation(code: string): Promise<CheckinPreviewDTO> {
+  if (typeof window === "undefined" || !navigator.locks) {
+    throw new Error("Safe station provisioning requires a browser with Web Locks over HTTPS. Use a current browser to continue.");
+  }
+  // Serialize cookie establishment across same-origin tabs, through receipt of
+  // the complete response. A delayed first preview must never overwrite an
+  // identity another tab has already confirmed. No secret goes into the lock.
+  return navigator.locks.request("wts-checkin-client-preview", { mode: "exclusive" }, () =>
+    command<CheckinPreviewDTO>({ operation: "preview", code }),
+  );
+}
 export const bindCheckinStation = (code: string, confirmation: CheckinConfirmation) => command<CheckinStatusDTO>({ operation: "bind", code, confirmation });
 export const checkinAdminList = (bindingPage = 1, auditPage = 1) => command<CheckinAdminDTO>({ operation: "admin_list", bindingPage, auditPage });
 export const checkinAdminControl = (input: CheckinAdminCommand) => command<IssuedCheckinQR>({ operation: "admin_control", command: input });

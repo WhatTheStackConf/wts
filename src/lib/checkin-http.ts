@@ -114,8 +114,8 @@ export async function handleCheckinRequest(request: Request, deps: CheckinHttpDe
     if (parsed.operation === "status") return response(await service.status(clientToken));
     if (parsed.operation === "preview") {
       const preview = await service.preview(parsed.code, clientToken);
-      // Establish identity before confirmation, so concurrent confirmations use
-      // the same database-unique client rather than creating independent phones.
+      // The browser serializes previews across tabs until the response arrives.
+      // Establish identity before confirmation; never replace an existing cookie.
       const secure = process.env.NODE_ENV === "production" || new URL(request.url).protocol === "https:" || request.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https";
       const cookie = clientToken ? undefined : `${CLIENT_COOKIE}=${randomBytes(32).toString("hex")}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict${secure ? "; Secure" : ""}`;
       return response(preview, 200, cookie);

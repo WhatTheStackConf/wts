@@ -49,6 +49,8 @@ The shell intentionally remains unready even after station/system restore. Succe
 
 The restart scenario closes a real persistent Chromium browser process and reopens its private profile; it does not substitute a storage-state injection for browser restart. It then clears cookies/browser storage and verifies a new unbound session. Negative API cases verify operator/admin separation, absent/foreign Origin, malformed provisioning input, content type, privacy headers and no audit writes.
 
+Concurrent first-time previews use a same-origin Web Lock until the response body is received, so a delayed preview cannot replace another tab's confirmed identity cookie. Browsers without Web Locks fail closed before sending a provisioning request; use a current browser over HTTPS (the loopback fixture is a trustworthy development origin). A test-only loopback reverse proxy holds **real** preview responses before Chromium processes their `Set-Cookie` headers. This reproduced the two-binding race before the fix; ordinary Playwright request interception alone did not reproduce that response-ordering bug.
+
 Screenshots are written to the corresponding test's `test-results/checkin/` directory (`admin-desktop.png`, `operator-mobile-bound.png`, `admin-mobile-revoked.png`). Playwright retains failures and traces. Missing prerequisites fail rather than becoming skipped green tests.
 
 For explicitly requested manual inspection, `pnpm test:checkin-browser --inspect` builds the same disposable stack and prints its loopback URL and private fixture path. It holds until SIGTERM/SIGINT, then stops its children and removes its temporary data. Never publish the fixture contents. A manual hold is not a passing automated gate.
@@ -59,13 +61,16 @@ For explicitly requested manual inspection, `pnpm test:checkin-browser --inspect
 - `pnpm check`: **passed**, zero errors; 87 existing warnings remain visible.
 - `pnpm typecheck`: **passed**, including browser tests.
 - `pnpm build`: **passed**, including generated server JavaScript syntax verification.
-- `pnpm test:checkin-browser`: **7 scenarios passed**, using the production server and a real Chromium process restart. Desktop and mobile screenshots were inspected; the mobile checks also assert no document overflow.
-- `pnpm test:checkin-browser --repeat-each=2`: **14 passed**, confirming both consecutive runs against the disposable stack.
+- `pnpm test:checkin-browser`: **9 scenarios passed**, using the production server and a real Chromium process restart. Desktop and mobile screenshots were inspected; the mobile checks also assert no document overflow.
+- `pnpm test:checkin-browser --grep 'concurrent first previews' --repeat-each=5`: **5 passed**, exercising delayed response ordering across two tabs.
+- The original seven-scenario suite also passed twice consecutively (**14 passed**) before the two cross-tab safety scenarios were added.
 
 ### Code review
 
 - **Standards:** no blocking documented-standard findings remain. One non-blocking advisory: share the prerequisite migration/hook manifest between persistence and browser fixtures to reduce future drift.
-- **Spec:** no unresolved findings for this provisioning slice. The review's stale cross-station confirmation finding was fixed with binding-version fencing and a retained real-PocketBase regression test.
+- **Spec:** the review's stale cross-station confirmation finding was fixed with binding-version fencing and a retained real-PocketBase regression test. A delayed earlier review exposed an additional first-preview identity race that the initial final review missed; it was reproduced through the real browser/HTTP/PocketBase path and fixed with cross-tab preview serialization.
+
+Follow-up Standards/Spec reviews found no blocking issues after adding the browser-environment guard. A pending preview deliberately retains the cross-tab lock until its response settles or its tab closes; other tabs' previews wait, while status, binding confirmation and admin controls remain independent. Explicit stalled-request cancellation coverage remains a non-blocking follow-up.
 
 Browser verification exposed a Nitro/Rolldown server chunk-linking defect: compilation succeeded but the generated server exported an undefined namespace. `nitro.inlineDynamicImports` avoids that second-pass server splitting; client route splitting remains enabled. The build now runs `scripts/check-server-bundle.mjs` so invalid emitted JavaScript fails the build instead of surviving until deployment.
 

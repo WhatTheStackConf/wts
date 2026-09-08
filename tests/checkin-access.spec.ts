@@ -52,3 +52,17 @@ test("checkin document excludes telemetry and lost status fails closed with retr
   await expect(page.getByText("Binding: unbound", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Scan attendee", exact: true })).toBeDisabled();
 });
+
+test("provisioning fails closed when cross-tab locking is unavailable", async ({ page, state }) => {
+  await login(page, state.users.operator); await page.goto("/checkin");
+  await expect(page.getByLabel("Station provisioning code")).toBeVisible();
+  await page.evaluate(() => Object.defineProperty(navigator, "locks", { value: undefined, configurable: true }));
+  let previews = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/checkin") && request.postDataJSON()?.operation === "preview") previews++;
+  });
+  await page.getByLabel("Station provisioning code").fill("f".repeat(64));
+  await page.getByRole("button", { name: "Review station", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Safe station provisioning requires a browser with Web Locks over HTTPS. Use a current browser to continue.");
+  expect(previews).toBe(0);
+});

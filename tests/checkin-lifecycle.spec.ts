@@ -1,6 +1,7 @@
 import { chromium, type Page, type Locator } from "@playwright/test";
 import { join } from "node:path";
 import { test, expect, login, status, sessionCookieHeader } from "./checkin-fixtures";
+import { delayedPreviewProxy } from "./checkin-delayed-preview-proxy";
 
 async function confirmAdmin(page: Page, button: Locator) {
   await button.click();
@@ -171,6 +172,51 @@ test("persistent browser restart and logout preserve station, clearing site data
     await expect(phone.getByText("Binding: unbound", { exact: true })).toBeVisible();
     expect((await status(phone)).binding).toBeNull();
   } finally { await context.close(); }
+  expect(unexpected).toEqual([]);
+});
+
+test("concurrent first previews in two tabs preserve one browser identity", async ({ browser, state, db, actorPage }) => {
+  const admin = await actorPage(state.users.admin);
+  await admin.goto("/admin/checkin");
+  const station = admin.getByRole("article", { name: "Station 3", exact: true });
+  await expect(station).toBeVisible(); await enable(admin, station);
+  const code = await issue(admin, station);
+  const before = (await db.collection("checkin_bindings").getList(1, 1)).totalItems;
+  const proxy = await delayedPreviewProxy(state.baseURL);
+  const context = await browser.newContext({ baseURL: proxy.origin, serviceWorkers: "block" });
+  const unexpected: string[] = [];
+  await context.route("**/*", async (route) => {
+    if ([proxy.origin, state.pbUrl].includes(new URL(route.request().url()).origin)) return route.continue();
+    if (["fetch", "xhr"].includes(route.request().resourceType())) unexpected.push(new URL(route.request().url()).origin);
+    await route.abort("blockedbyclient");
+  });
+  try {
+    const page = await context.newPage();
+    await login(page, state.users.operator); await page.goto("/checkin");
+    const second = await context.newPage(); await second.goto("/checkin");
+    await page.getByLabel("Station provisioning code").fill(code);
+    await page.getByRole("button", { name: "Review station", exact: true }).click();
+    await proxy.firstArrived.promise;
+    await second.getByLabel("Station provisioning code").fill(code);
+    await second.getByRole("button", { name: "Review station", exact: true }).click();
+    await expect(second.getByRole("button", { name: "Review station", exact: true })).toBeDisabled();
+    // Give an unsafe second request a bounded opportunity to leave before any
+    // identity cookie exists. Safe cross-tab serialization keeps it queued.
+    await Promise.race([proxy.secondArrived.promise, new Promise((resolve) => setTimeout(resolve, 250))]);
+    proxy.first.resolve();
+    await page.getByRole("button", { name: "Confirm station binding", exact: true }).click();
+    await expect(page.getByText("Binding: bound", { exact: true })).toBeVisible();
+    const original = (await status(page)).binding.id;
+    await proxy.secondArrived.promise;
+    proxy.second.resolve();
+    await second.getByRole("button", { name: "Confirm station binding", exact: true }).click();
+    await expect(second.getByText("Binding: bound", { exact: true })).toBeVisible();
+    expect((await status(second)).binding.id).toBe(original);
+    expect((await db.collection("checkin_bindings").getList(1, 1)).totalItems).toBe(before + 1);
+  } finally {
+    proxy.first.resolve(); proxy.second.resolve();
+    await context.close(); await proxy.close();
+  }
   expect(unexpected).toEqual([]);
 });
 
