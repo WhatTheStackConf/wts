@@ -35,10 +35,7 @@ function isLocalPocketBaseHostname(hostname: string): boolean {
 function isLocalPocketBaseUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return (
-      isLocalPocketBaseHostname(parsed.hostname) &&
-      (parsed.port === "8090" || parsed.port === "")
-    );
+    return isLocalPocketBaseHostname(parsed.hostname);
   } catch {
     return false;
   }
@@ -80,8 +77,10 @@ export function getPocketBasePublicBaseUrl(): string {
     }
     // Align 127.0.0.1 vs localhost with the host you actually opened in the browser.
     try {
-      if (new URL(fromEnv).hostname !== new URL(localBrowser).hostname) {
-        return localBrowser.replace(/\/$/, "");
+      const configured = new URL(fromEnv);
+      if (configured.hostname !== new URL(localBrowser).hostname) {
+        configured.hostname = new URL(localBrowser).hostname;
+        return configured.toString().replace(/\/$/, "");
       }
     } catch {
       /* keep env URL */

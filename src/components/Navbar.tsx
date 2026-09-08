@@ -5,6 +5,7 @@ import { clientOnly } from "@solidjs/web";
 import { Icon } from "~/components/Icon";
 import { useAuth } from "~/lib/auth-context";
 import { fetchCfpConfig } from "~/lib/cfp-utils";
+import { checkinOperatorAuthorized } from "~/lib/route-authorization";
 
 const LoginMenu = clientOnly(() => import("./LoginMenu"));
 
@@ -14,6 +15,11 @@ export const Navbar = () => {
   const [isDrawerOpen, setIsDrawerOpen] = createSignal(false);
   const [cfpConfig] = createResource(fetchCfpConfig);
   let animationTimer: number | undefined;
+  const canCheckin = () => mounted() && checkinOperatorAuthorized({
+    loading: auth.isLoading(),
+    authenticated: auth.isAuthenticated(),
+    role: auth.user?.role,
+  });
 
   onSettled(() => {
     setMounted(true);
@@ -128,6 +134,14 @@ export const Navbar = () => {
                   </a>
                 </li>
               )}
+
+              <Show when={canCheckin()}>
+                <li>
+                  <a href="/checkin" target="_self" class="text-secondary-500 hover:text-secondary-400">
+                    Check-in
+                  </a>
+                </li>
+              </Show>
 
               <li>
                 <a href="/tickets">Grab a ticket!</a>
@@ -315,6 +329,14 @@ export const Navbar = () => {
                 </a>
               </li>
             )}
+
+            <Show when={canCheckin()}>
+              <li>
+                <a href="/checkin" target="_self" onClick={closeDrawer} class="text-secondary-500 hover:bg-secondary-500/10">
+                  Check-in
+                </a>
+              </li>
+            </Show>
 
             <li>
               <a href="/tickets" onClick={closeDrawer}>

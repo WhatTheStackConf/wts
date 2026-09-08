@@ -162,6 +162,16 @@ export const requireReviewerSession = async (): Promise<{ pb: PocketBase; user: 
   }
 };
 
+/** Refreshes human authority independently of any Station Client Binding. */
+export const requireCheckinOperatorSession = async (): Promise<{ pb: PocketBase; user: SessionUser }> => {
+  requireSessionMutation();
+  const session = await refreshRequestSession(false);
+  if (session.user.role !== "checkin_operator" && session.user.role !== "admin") {
+    throw new Error("Unauthorized");
+  }
+  return session;
+};
+
 export const requireAdmin = async (): Promise<SessionUser> => {
   const user = await requireAuth();
   if (user.role !== "admin") throw new Error("Unauthorized");

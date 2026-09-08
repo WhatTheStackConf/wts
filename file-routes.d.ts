@@ -57,6 +57,12 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/checkin";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/checkin")>;
+      $$route?: undefined;
+    },
+    {
       path: "/confirm-password-reset";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/confirm-password-reset")>;
@@ -153,6 +159,12 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/admin/checkin";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/admin/checkin")>;
+      $$route?: undefined;
+    },
+    {
       path: "/admin/gamification";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/admin/gamification")>;
@@ -210,6 +222,12 @@ declare module "virtual:file-routes" {
       path: "/admin/weights";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/admin/weights")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/api/checkin";
+      page: false;
+      $POST: FileRouteLazyRef<typeof import("./src/routes/api/checkin")>;
       $$route?: undefined;
     },
     {
@@ -518,6 +536,14 @@ declare module "virtual:file-routes" {
       children?: undefined;
     },
     {
+      path: "/checkin";
+      id: "/checkin";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/checkin")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
       path: "/tickets";
       id: "/tickets";
       page: true;
@@ -682,6 +708,14 @@ declare module "virtual:file-routes" {
       id: "/speaker-guide";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/speaker-guide")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/admin/checkin";
+      id: "/admin/checkin";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/admin/checkin")>;
       $$route?: undefined;
       children?: undefined;
     },

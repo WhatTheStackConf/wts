@@ -9,6 +9,7 @@ import type { SessionUser } from "~/lib/session-policy";
 export {
   requireAdmin,
   requireAuth,
+  requireCheckinOperatorSession,
   requireReviewer,
   requireReviewerSession,
 } from "~/lib/server-auth-core";

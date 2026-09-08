@@ -7,7 +7,11 @@ import { adminFetchAllUsers, adminUpdateUser, adminDeleteUser, adminFetchUserSpe
 import { UserRecord } from "~/lib/pocketbase-types";
 import { getGravatarUrl } from "~/lib/gravatar";
 
-const ROLES = ["user", "reviewer", "admin"];
+const ROLES = ["user", "reviewer", "checkin_operator", "admin"] satisfies UserRecord["role"][];
+
+function roleLabel(role: string) {
+    return role === "checkin_operator" ? "Check-in Operator" : role.toUpperCase();
+}
 
 export default function AdminUsersTable() {
     const auth = useAuth();
@@ -47,7 +51,7 @@ export default function AdminUsersTable() {
     };
 
     const handleRoleChange = async (userId: string, newRole: string) => {
-        if (!confirm(`Are you sure you want to change this user's role to ${newRole}?`)) return;
+        if (!confirm(`Are you sure you want to change this user's role to ${roleLabel(newRole)}?`)) return;
 
         setUpdating(userId);
         try {
@@ -149,7 +153,7 @@ export default function AdminUsersTable() {
                                                     user.role === 'reviewer' ? 'bg-secondary-500/20 text-secondary-300' :
                                                         'bg-white/10 text-gray-400'
                                                     }`}>
-                                                    {(user.role || 'user').toUpperCase()}
+                                                    {roleLabel(user.role || 'user')}
                                                 </div>
                                                 <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-900 rounded-box w-52 border border-white/10 text-white">
                                                     <For each={ROLES}>
@@ -159,7 +163,7 @@ export default function AdminUsersTable() {
                                                                     class={user.role === role ? "active" : ""}
                                                                     onClick={() => handleRoleChange(user.id, role)}
                                                                 >
-                                                                    {role.toUpperCase()}
+                                                                    {roleLabel(role)}
                                                                 </a>
                                                             </li>
                                                         )}
@@ -257,7 +261,7 @@ export default function AdminUsersTable() {
                                                             user.role === 'reviewer' ? 'bg-secondary-500/20 text-secondary-300' :
                                                                 'bg-white/10 text-gray-400'
                                                             }`}>
-                                                            {(user.role || 'user').toUpperCase()}
+                                                            {roleLabel(user.role || 'user')}
                                                         </div>
                                                         <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-900 rounded-box w-52 border border-white/10 text-white">
                                                             <For each={ROLES}>
@@ -267,7 +271,7 @@ export default function AdminUsersTable() {
                                                                             class={user.role === role ? "active" : ""}
                                                                             onClick={() => handleRoleChange(user.id, role)}
                                                                         >
-                                                                            {role.toUpperCase()}
+                                                                            {roleLabel(role)}
                                                                         </a>
                                                                     </li>
                                                                 )}

@@ -5,6 +5,7 @@ import type { UserRecord } from "~/lib/pocketbase-types";
 import {
     adminAuthorized,
     authenticated,
+    checkinOperatorAuthorized,
     reviewerAuthorized,
 } from "~/lib/route-authorization";
 
@@ -88,6 +89,44 @@ export function useRequireReviewer() {
     );
 
     return { isLoading, authorized, user };
+}
+
+/** UI gate for /checkin; every operation also refreshes server-side authority. */
+export function useRequireCheckinOperator() {
+    const auth = useAuth();
+    const navigate = useNavigate();
+    const authorized = createMemo(() => checkinOperatorAuthorized({
+        loading: auth.isLoading(),
+        authenticated: auth.isAuthenticated(),
+        role: auth.user?.role,
+    }));
+
+    createEffect(
+      () => ({
+        loading: auth.isLoading(),
+        authenticated: auth.isAuthenticated(),
+        authorized: authorized(),
+      }),
+      ({ loading, authenticated, authorized }) => {
+        if (loading) return;
+        if (!authenticated) {
+            try {
+                // Provisioning QR material must never persist across login.
+                window.localStorage.setItem("redirect_url", "/checkin");
+            } catch {
+                // Login still works when browser storage is unavailable.
+            }
+            scheduleRedirect(navigate, "/login");
+            return;
+        }
+        if (!authorized) scheduleRedirect(navigate, "/");
+      },
+    );
+
+    const user = createMemo((): UserRecord | null =>
+        authorized() ? (auth.user as UserRecord) : null,
+    );
+    return { isLoading: auth.isLoading, authorized, user };
 }
 
 export function useRequireAuth() {

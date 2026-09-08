@@ -20,6 +20,10 @@ export default defineConfig({
   ],
   nitro: {
     preset: "node-server",
+    // Nitro's second Rolldown pass can emit an undefined namespace export when
+    // splitting the Solid SSR/API graph. Keep server imports together until the
+    // upstream chunk-linking bug is fixed; client route splitting is unchanged.
+    inlineDynamicImports: true,
     routeRules: {
       "/assets/**": {
         headers: { "cache-control": "public, max-age=31536000, immutable" },

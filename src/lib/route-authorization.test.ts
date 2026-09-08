@@ -2,21 +2,34 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   adminAuthorized,
   authorizedResourceSource,
+  checkinOperatorAuthorized,
   reviewerAuthorized,
 } from "~/lib/route-authorization";
 
 describe("privileged route authorization", () => {
-  const roles = [undefined, "user", "reviewer", "admin"] as const;
+  const roles = [undefined, "user", "reviewer", "checkin_operator", "admin"] as const;
 
   it("does not authorize or fetch while authentication is loading", () => {
     for (const role of roles) {
       const state = { loading: true, authenticated: role !== undefined, role };
       expect(adminAuthorized(state)).toBe(false);
       expect(reviewerAuthorized(state)).toBe(false);
+      expect(checkinOperatorAuthorized(state)).toBe(false);
     }
     const fetcher = vi.fn();
     if (authorizedResourceSource(false)) fetcher();
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("authorizes only operators and admins for /checkin without widening existing privileged routes", () => {
+    for (const role of roles) {
+      expect(checkinOperatorAuthorized({ loading: false, authenticated: false, role })).toBe(false);
+      expect(checkinOperatorAuthorized({ loading: false, authenticated: true, role }))
+        .toBe(role === "checkin_operator" || role === "admin");
+    }
+    const operator = { loading: false, authenticated: true, role: "checkin_operator" } as const;
+    expect(adminAuthorized(operator)).toBe(false);
+    expect(reviewerAuthorized(operator)).toBe(false);
   });
 
   it("authorizes only admins for admin routes", () => {

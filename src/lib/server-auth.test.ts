@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({
     email: "user@example.test",
     name: "Test User",
     avatar: "",
-    role: "reviewer" as const,
+    role: "reviewer",
     verified: true,
   },
   token: "",
@@ -59,6 +59,7 @@ import {
   serverLoginWithTokenCore as serverLoginWithToken,
   serverLogoutCore as serverLogout,
 } from "~/lib/server-auth-core";
+import { requireAdmin, requireCheckinOperatorSession, requireReviewerSession } from "~/lib/server-auth";
 
 function validToken(): string {
   const exp = Math.floor(Date.now() / 1000) + 3600;
@@ -83,6 +84,8 @@ function requestEvent(options: { cookie?: string; origin?: string; method?: stri
 
 describe("server authentication", () => {
   beforeEach(() => {
+    state.refreshedRecord.role = "reviewer";
+    state.refreshedRecord.verified = true;
     state.token = validToken();
     state.getRequestEvent.mockReset();
     state.authWithPassword.mockReset();
@@ -103,6 +106,85 @@ describe("server authentication", () => {
     expect(cookie).toContain("SameSite=Lax");
     expect(cookie).toContain("Path=/");
     expect(cookie).toContain("pb_auth_managed=1");
+  });
+
+  it("preserves the Check-in Operator role through password login, token login and session refresh", async () => {
+    state.refreshedRecord.role = "checkin_operator";
+    const event = requestEvent({ cookie: "pb_auth=current-value" });
+    state.getRequestEvent.mockReturnValue(event);
+    state.authWithPassword.mockResolvedValue({ token: state.token, record: state.refreshedRecord });
+
+    for (const result of [
+      await serverLogin("operator@example.test", "temporary-password"),
+      await serverLoginWithToken(state.token),
+      await getSession(),
+    ]) {
+      expect(result).toEqual(state.refreshedRecord);
+      expect(result).not.toHaveProperty("token");
+    }
+  });
+
+  it.each(["checkin_operator", "admin"])("authorizes %s for check-in using the current authenticated session", async (role) => {
+    state.refreshedRecord.role = role;
+    const event = requestEvent({ cookie: "pb_auth=current-value; pb_auth_managed=1" });
+    state.getRequestEvent.mockReturnValue(event);
+
+    const session = await requireCheckinOperatorSession();
+    expect(session.user).toEqual(state.refreshedRecord);
+    expect(session.pb.authStore.record).toEqual(state.refreshedRecord);
+    expect(state.authRefresh).toHaveBeenCalledOnce();
+    expect(event.response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it.each(["user", "reviewer", "unknown"])("denies %s check-in authority", async (role) => {
+    state.refreshedRecord.role = role;
+    state.getRequestEvent.mockReturnValue(requestEvent({ cookie: "pb_auth=current-value" }));
+    await expect(requireCheckinOperatorSession()).rejects.toThrow("Unauthorized");
+  });
+
+  it("rechecks operator grants and verification on every call", async () => {
+    state.refreshedRecord.role = "checkin_operator";
+    state.getRequestEvent.mockReturnValue(requestEvent({ cookie: "pb_auth=current-value" }));
+    await expect(requireCheckinOperatorSession()).resolves.toHaveProperty("user.role", "checkin_operator");
+    state.refreshedRecord.role = "user";
+    await expect(requireCheckinOperatorSession()).rejects.toThrow("Unauthorized");
+    state.refreshedRecord.role = "checkin_operator";
+    state.refreshedRecord.verified = false;
+    await expect(requireCheckinOperatorSession()).rejects.toThrow("Unauthorized");
+    expect(state.authRefresh).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not grant operator users reviewer or admin authority", async () => {
+    state.refreshedRecord.role = "checkin_operator";
+    state.getRequestEvent.mockReturnValue(requestEvent({ cookie: "pb_auth=current-value" }));
+    await expect(requireAuth()).resolves.toHaveProperty("role", "checkin_operator");
+    await expect(requireReviewerSession()).rejects.toThrow("Unauthorized");
+    await expect(requireAdmin()).rejects.toThrow("Unauthorized");
+    state.refreshedRecord.role = "admin";
+    await expect(requireReviewerSession()).resolves.toHaveProperty("user.role", "admin");
+    await expect(requireAdmin()).resolves.toHaveProperty("role", "admin");
+  });
+
+  it("requires a session and same-origin POST before refreshing check-in authority", async () => {
+    state.refreshedRecord.role = "checkin_operator";
+    for (const options of [
+      {},
+      { cookie: "pb_auth=current-value", method: "GET" },
+      { cookie: "pb_auth=current-value", origin: "https://attacker.example" },
+    ]) {
+      state.getRequestEvent.mockReturnValue(requestEvent(options));
+      await expect(requireCheckinOperatorSession()).rejects.toThrow("Unauthorized");
+    }
+    expect(state.authRefresh).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when PocketBase rejects or cannot refresh operator authority", async () => {
+    state.refreshedRecord.role = "checkin_operator";
+    state.getRequestEvent.mockReturnValue(requestEvent({ cookie: "pb_auth=current-value" }));
+    state.authRefresh.mockRejectedValueOnce(Object.assign(new Error("Invalid token"), { status: 401 }));
+    await expect(requireCheckinOperatorSession()).rejects.toThrow("Unauthorized");
+    state.authRefresh.mockRejectedValueOnce(new Error("PocketBase unavailable"));
+    await expect(requireCheckinOperatorSession()).rejects.toThrow("PocketBase unavailable");
   });
 
   it("validates temporary OAuth or rollout tokens before setting a cookie", async () => {

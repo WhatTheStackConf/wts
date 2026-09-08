@@ -45,6 +45,11 @@ const AdminDashboard = () => {
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                                <div class="glass-panel p-6 rounded-xl border border-white/10 h-full flex flex-col">
+                                    <h3 class="text-xl font-bold text-white mb-4">CHECK-IN STATIONS</h3>
+                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">Configure station identities, provisioning QRs, client bindings and emergency stops. Admission and printing remain disabled.</p>
+                                    <a href="/admin/checkin" target="_self" class="btn btn-outline btn-primary w-full font-mono mt-auto">MANAGE STATIONS</a>
+                                </div>
                                 <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-primary-500/50 transition-colors group h-full flex flex-col">
                                     <div class="flex items-center gap-4 mb-4">
                                         <div class="p-3 rounded-lg bg-primary-500/20 text-primary-300">

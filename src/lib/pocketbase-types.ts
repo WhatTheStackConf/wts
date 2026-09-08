@@ -10,7 +10,7 @@ export interface UserRecord extends RecordModel {
   avatar: string;
   created: string;
   updated: string;
-  role: "user" | "reviewer" | "admin";
+  role: "user" | "reviewer" | "checkin_operator" | "admin";
   verified?: boolean;
 }
 
@@ -696,8 +696,52 @@ export interface AuthData {
   token: string;
 }
 
+/** Private server-only station ledger records; use checkin-contract DTOs in browsers. */
+export interface CheckinSystemRecord extends RecordModel {
+  edition: "WTS2026";
+  enabled: boolean;
+  version: number;
+  generation: number;
+}
+export interface CheckinStationRecord extends CheckinSystemRecord {
+  label: string;
+  location: string;
+  printer_ref: string;
+  provision_code_hash: string;
+}
+export interface CheckinBindingRecord extends RecordModel {
+  identity_hash: string;
+  station: string;
+  version: number;
+  revoked: boolean;
+  last_seen_at: string;
+}
+export interface CheckinAuditEventRecord extends RecordModel {
+  actor_user_id: string;
+  actor_name: string;
+  actor_role: "admin" | "checkin_operator";
+  operation: "bind" | "set_system_enabled" | "set_station_enabled" | "configure_station" | "rotate_provision_code" | "revoke_binding";
+  station_id: string;
+  binding_id: string;
+  admin_action_id: string;
+  reason: "" | "security" | "device_replacement" | "maintenance" | "incident" | "configuration" | "operations_restored";
+  note: string;
+  outcome: "applied";
+  state: { before: Record<string, unknown> | null; after: Record<string, unknown> };
+}
+export interface CheckinCollectionRecords {
+  checkin_system: CheckinSystemRecord;
+  checkin_stations: CheckinStationRecord;
+  checkin_bindings: CheckinBindingRecord;
+  checkin_audit_events: CheckinAuditEventRecord;
+}
+
 // Union type for all possible collections
 export type CollectionRecord =
+  | CheckinSystemRecord
+  | CheckinStationRecord
+  | CheckinBindingRecord
+  | CheckinAuditEventRecord
   | UserRecord
   | CfpApplicantRecord
   | CfpSubmissionRecord

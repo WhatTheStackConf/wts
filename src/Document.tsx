@@ -1,7 +1,10 @@
-import type { ParentProps } from "solid-js";
-import { HydrationScript } from "@solidjs/web";
+import { Show, type ParentProps } from "solid-js";
+import { HydrationScript, getRequestEvent } from "@solidjs/web";
+import { isCheckinPath } from "~/lib/checkin-privacy";
 
 export default function Document(props: ParentProps) {
+  const request = getRequestEvent()?.request;
+  const operational = request ? isCheckinPath(new URL(request.url).pathname) : false;
   return (
     <html lang="en" data-theme="night">
       <head>
@@ -23,9 +26,9 @@ export default function Document(props: ParentProps) {
           crossorigin="anonymous"
         />
         <HydrationScript />
-        <script>
+        <Show when={!operational}><script>
           {`window.addEventListener('load',function(){var started=false,timer;
-function start(){if(started)return;started=true;clearTimeout(timer);['pointerdown','keydown','scroll'].forEach(function(event){window.removeEventListener(event,start)});var run=function(){var s=document.createElement('script');s.async=true;s.fetchPriority='low';s.src='https://umami.foundry.mk/script.js';s.dataset.websiteId='7eac874e-f8d2-4d48-8b71-aa34d1b2cd78';document.head.appendChild(s);
+function start(){if(started)return;started=true;clearTimeout(timer);['pointerdown','keydown','scroll'].forEach(function(event){window.removeEventListener(event,start)});var run=function(){if(/^\\/(?:admin\\/|api\\/)?checkin(?:\\/|$)/.test(location.pathname))return;var s=document.createElement('script');s.async=true;s.fetchPriority='low';s.src='https://umami.foundry.mk/script.js';s.dataset.websiteId='7eac874e-f8d2-4d48-8b71-aa34d1b2cd78';document.head.appendChild(s);
 !function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -38,10 +41,10 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
 fbq('init', '2475235909644118');
 fbq('track', 'PageView')};if('requestIdleCallback'in window){window.requestIdleCallback(run,{timeout:5000})}else{setTimeout(run,0)}}
 ['pointerdown','keydown','scroll'].forEach(function(event){window.addEventListener(event,start,{once:true,passive:true})});timer=setTimeout(start,30000)},{once:true});`}
-        </script>
+        </script></Show>
       </head>
       <body>
-        <noscript>
+        <Show when={!operational}><noscript>
           <img
             height="1"
             width="1"
@@ -49,7 +52,7 @@ fbq('track', 'PageView')};if('requestIdleCallback'in window){window.requestIdleC
             src="https://www.facebook.com/tr?id=2475235909644118&ev=PageView&noscript=1"
             alt=""
           />
-        </noscript>
+        </noscript></Show>
         {props.children}
       </body>
     </html>

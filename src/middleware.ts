@@ -2,6 +2,7 @@ import { createAPIHandler } from "filesystem-routing/api";
 import routes from "virtual:file-routes";
 import { getRequestEvent } from "@solidjs/web";
 import { Router } from "~/router";
+import { isCheckinPath, protectCheckinResponse } from "~/lib/checkin-privacy";
 import {
   hasValidSpeakerGuidePassword,
   requiresSpeakerGuidePassword,
@@ -52,4 +53,9 @@ async function preserveDeclaredStatus(
   });
 }
 
-export default [preserveDeclaredStatus, protectSpeakerGuide, createAPIHandler(routes)];
+async function protectCheckin(request: Request, next: (request?: Request) => Promise<Response>) {
+  const response = await next();
+  return isCheckinPath(new URL(request.url).pathname) ? protectCheckinResponse(response) : response;
+}
+
+export default [preserveDeclaredStatus, protectSpeakerGuide, protectCheckin, createAPIHandler(routes)];

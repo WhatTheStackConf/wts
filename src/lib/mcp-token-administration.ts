@@ -10,6 +10,7 @@ import { MCP_SCOPES, normalizeMcpScopes, type McpScope } from "~/lib/mcp-auth";
 import { normalizeNewMcpTokenExpiry } from "~/lib/mcp-token-policy";
 import { createMcpTokenMaterial } from "~/lib/mcp-token-utils";
 import { randomUUID } from "node:crypto";
+import type { SessionUser } from "~/lib/session-policy";
 
 export type McpTokenStatus = "active" | "expired" | "revoked" | "owner_disabled";
 
@@ -24,7 +25,7 @@ export interface McpTokenAdministrationActor {
 }
 
 export interface McpTokenAdministrationUser extends McpTokenOwner {
-  role: "user" | "reviewer" | "admin";
+  role: SessionUser["role"];
 }
 
 export interface McpTokenStoredRecord {

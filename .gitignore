@@ -39,3 +39,7 @@ pb_data
 .playwright-mcp/
 .impeccable
 .commandcode
+
+# Disposable Check-in browser artifacts (test-only sessions/codes)
+/playwright-report/
+/test-results/
