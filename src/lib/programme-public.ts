@@ -10,12 +10,20 @@ import type {
 } from "~/lib/pocketbase-types";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
 
+/** Date/event assignment is known, but the session itself has no clock time yet. */
+export interface PublicSessionAnnouncement {
+  dayDate: string;
+  event: PublicAgendaEvent;
+  eventStartTime?: string;
+  locationLabel?: string;
+}
+
 export interface PublicSessionSchedule {
   dayDate: string;
   dayTitle: string;
   event: PublicAgendaEvent;
   startAt: string;
-  endAt: string;
+  endAt?: string;
   trackName?: string;
   locationLabel?: string;
 }
@@ -24,6 +32,8 @@ export interface PublicAgendaSession {
   slug: string;
   title: string;
   format?: string;
+  /** Organizer-announced session timing, possibly without a confirmed end. */
+  schedule?: PublicSessionSchedule;
   speakers: { slug: string; name: string; photoUrl?: string | null }[];
 }
 
@@ -82,8 +92,10 @@ export interface PublicEventProgramme {
   event: PublicAgendaEvent;
   tracks: PublicAgendaTrack[];
   slots: PublicAgendaSlot[];
-  /** Announced lineup without a confirmed running order or clock times. */
+  /** Announced lineup; individual timings may be only partially confirmed. */
   untimed?: {
+    startTime?: string;
+    endTime?: string;
     title?: string;
     locationLabel?: string;
     speakers?: PublicAgendaSession["speakers"];

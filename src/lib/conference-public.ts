@@ -1,6 +1,6 @@
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
-import { addAnnouncedWeekProgrammes } from "~/lib/conference-week-agenda";
+import { addAnnouncedWeekProgrammes, announcedWeekSessionAppearance, announcedWeekSessionSchedule } from "~/lib/conference-week-agenda";
 import {
   buildPublicAgenda,
   derivePublicSessionSchedule,
@@ -12,6 +12,7 @@ import {
   type PublicAgendaTrack,
   type PublicEventProgramme,
   type PublicSessionSchedule,
+  type PublicSessionAnnouncement,
 } from "~/lib/programme-public";
 import type { AgendaSlotRecord, AgendaTrackRecord, AppearanceEventRecord, ConferenceDayRecord, EventProgrammeRecord, SpeakerRecord, SessionRecord } from "~/lib/pocketbase-types";
 import {
@@ -197,6 +198,7 @@ export interface PublicSessionDetail {
   abstract: string;
   format?: string;
   schedule?: PublicSessionSchedule;
+  announcement?: PublicSessionAnnouncement;
   speakers: PublicSpeakerSummary[];
   /** Populated when related-sessions feature ships; empty at launch. */
   relatedSessions: PublicSessionCard[];
@@ -427,7 +429,7 @@ export const fetchPublicSessions = async (): Promise<PublicSessionCard[]> => {
   );
 };
 
-/** Published timed slots plus explicitly announced, untimed weekday lineups. */
+/** Published timed slots plus explicitly announced weekday lineups and partial times. */
 export const loadPublicAgenda = async (): Promise<PublicAgenda> => {
   const admin = getAdminPB();
   const [days, events, programmes, tracks, slots, sessions, speakers] = await Promise.all([
@@ -501,16 +503,21 @@ function scheduleFromPublicAgenda(
       };
     }
   }
+  for (const day of agenda.days) {
+    for (const programme of day.programmes) {
+      const announced = programme.untimed?.sessions.find((item) => item.slug === sessionSlug)?.schedule;
+      if (announced) return announced;
+    }
+  }
   return undefined;
 }
 
 /** Loads one allowlisted Published programme snapshot for Conference Guide composition. */
-export const fetchPublicConferenceGuideProgramme = async (): Promise<PublicConferenceGuideProgramme> => {
-  "use server";
+export const loadPublicConferenceGuideProgramme = async (): Promise<PublicConferenceGuideProgramme> => {
   const [speakerRows, rawSessionRows, agenda] = await Promise.all([
     fetchPublishedSpeakersRows(),
     fetchPublishedSessionsRows(),
-    fetchPublicAgenda(),
+    loadPublicAgenda(),
   ]);
   const sessionRows = rawSessionRows as Array<SessionRecord & {
     expand?: { speakers?: SpeakerRow[] };
@@ -539,6 +546,11 @@ export const fetchPublicConferenceGuideProgramme = async (): Promise<PublicConfe
   return { agenda, sessions, speakers };
 };
 
+export const fetchPublicConferenceGuideProgramme = async (): Promise<PublicConferenceGuideProgramme> => {
+  "use server";
+  return loadPublicConferenceGuideProgramme();
+};
+
 export const fetchHasPublishedSessions = async (): Promise<boolean> => {
   "use server";
   const admin = getAdminPB();
@@ -549,10 +561,9 @@ export const fetchHasPublishedSessions = async (): Promise<boolean> => {
   return rows.length > 0;
 };
 
-export const fetchPublicSessionBySlug = async (
+export const loadPublicSessionBySlug = async (
   slug: string,
 ): Promise<PublicSessionDetail | null> => {
-  "use server";
   const admin = getAdminPB();
   const escaped = slug.replace(/"/g, '\\"');
   const rows = (await admin.fetchAllRecords("sessions", {
@@ -586,7 +597,7 @@ export const fetchPublicSessionBySlug = async (
         new Map((days as ConferenceDayRecord[]).map((day) => [day.id, day])),
         new Map((tracks as AgendaTrackRecord[]).map((track) => [track.id, track])),
       )
-    : undefined;
+    : announcedWeekSessionSchedule(session, events as AppearanceEventRecord[]);
 
   return {
     slug: session.slug,
@@ -594,7 +605,13 @@ export const fetchPublicSessionBySlug = async (
     abstract: session.abstract,
     format: session.format || undefined,
     schedule,
+    announcement: schedule ? undefined : announcedWeekSessionAppearance(session, events as AppearanceEventRecord[]),
     speakers,
     relatedSessions: [],
   };
+};
+
+export const fetchPublicSessionBySlug = async (slug: string): Promise<PublicSessionDetail | null> => {
+  "use server";
+  return loadPublicSessionBySlug(slug);
 };

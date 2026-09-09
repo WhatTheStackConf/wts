@@ -43,6 +43,7 @@ function isNext(events: TimelineEvent[]) {
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-US", {
+    timeZone: "Europe/Skopje",
     month: "long",
     day: "numeric",
     year: "numeric",

@@ -42,12 +42,12 @@ describe("untimed weekday agendas", () => {
     ] as SpeakerRecord[];
     const result = addAnnouncedWeekProgrammes({ days: [] }, events, sessions, speakers);
     expect(result.days[1].programmes[0].untimed?.sessions).toEqual([
-      { slug: "fundamentals-of-native-ios-development", title: "iOS", format: undefined, speakers: [{ slug: "mia", name: "Mia", photoUrl: null }] },
+      { slug: "fundamentals-of-native-ios-development", title: "iOS", format: undefined, schedule: expect.objectContaining({ startAt: "2026-09-15T18:00:00+02:00", endAt: undefined, locationLabel: "Base42 Hackerspace, Rimska 25, 1000 Skopje" }), speakers: [{ slug: "mia", name: "Mia", photoUrl: null }] },
     ]);
     expect(JSON.stringify(result)).not.toMatch(/private|cfp_submission|Saturday only|"DDD"/);
     expect(result.days[1].programmes[0].untimed?.access).toBe("Free entry. No ticket required.");
     expect(result.days[1].programmes[0].untimed?.cta).toBeUndefined();
-    expect(untimedWeekProgrammes.flatMap((definition) => [...definition.sessions])).toHaveLength(16);
+    expect(untimedWeekProgrammes.flatMap((definition) => [...definition.sessions])).toHaveLength(18);
   });
 
   it("projects sourced DevFest talks without inventing speaker assignments or times", () => {
@@ -138,6 +138,79 @@ describe("untimed weekday agendas", () => {
     expect(unrelatedProgrammes.every((programme) => programme.untimed?.unassignedSpeakers === undefined)).toBe(true);
   });
 
+  it("publishes confirmed event/session starts without inventing end times", () => {
+    const sessions = ["requests-lies-and-stack-traces", "ddd-for-ai-assisted-development", "fundamentals-of-native-ios-development"]
+      .map((slug): SessionRecord => ({ id: slug, slug, title: slug, abstract: "", created: "", updated: "", collectionId: "sessions", collectionName: "sessions", published: true, speakers: [] }));
+    const result = addAnnouncedWeekProgrammes({ days: [] }, events, sessions, []);
+    const programmes = result.days.flatMap((day) => day.programmes);
+    expect(programmes.map((programme) => [programme.event.name, programme.untimed?.startTime, programme.untimed?.endTime])).toEqual([
+      ["InfoSec Monday", "14:00", "18:00"],
+      ["Workshop Tuesday: iOS + AI", "16:00", undefined],
+      ["DevFest", "17:00", undefined],
+      ["MAUI Day", "10:00", undefined],
+      ["Workshop Thursday", undefined, undefined],
+      ["Angular Day", undefined, undefined],
+    ]);
+    const monday = programmes[0].untimed!.sessions[0].schedule!;
+    expect(monday.startAt).toBe("2026-09-14T14:00:00+02:00");
+    expect(monday.endAt).toBe("2026-09-14T18:00:00+02:00");
+    expect(Date.parse(monday.endAt!) - Date.parse(monday.startAt)).toBe(4 * 60 * 60 * 1000);
+    const tuesday = programmes[1].untimed!.sessions;
+    expect(tuesday.map((session) => [session.slug, session.schedule?.startAt, session.schedule?.endAt])).toEqual([
+      ["ddd-for-ai-assisted-development", "2026-09-15T16:00:00+02:00", undefined],
+      ["fundamentals-of-native-ios-development", "2026-09-15T18:00:00+02:00", undefined],
+    ]);
+    expect(tuesday.every((session) => session.schedule?.locationLabel === "Base42 Hackerspace, Rimska 25, 1000 Skopje")).toBe(true);
+    expect(conferenceWeekTracks[0].summary).toContain("four-hour");
+    expect(conferenceWeekTracks[0].summary).not.toContain("full-day");
+  });
+
+  it("times only Faris's Thursday workshop from 16:30 to 20:00", () => {
+    const session: SessionRecord = {
+      id: "faris-workshop", slug: "workshop-payments-and-monetization-at-scale-for-frontend-engineers",
+      title: "Payments and Monetization at Scale for Frontend Engineers", abstract: "", speakers: [], published: true,
+      created: "", updated: "", collectionId: "sessions", collectionName: "sessions",
+    };
+    const thursday = addAnnouncedWeekProgrammes({ days: [] }, events, [session], []).days[3];
+    const programme = thursday.programmes.find((item) => item.event.name === "Workshop Thursday")!;
+    expect(programme.untimed?.sessions[0].schedule).toMatchObject({
+      dayDate: "2026-09-17", event: { name: "Workshop Thursday" },
+      startAt: "2026-09-17T16:30:00+02:00", endAt: "2026-09-17T20:00:00+02:00",
+    });
+    const schedule = programme.untimed!.sessions[0].schedule!;
+    expect(Date.parse(schedule.endAt!) - Date.parse(schedule.startAt)).toBe(12600000);
+    expect(programme.untimed?.summary).toContain("16:30–20:00 (3.5 hours, Skopje time)");
+    expect(programme.untimed?.startTime).toBeUndefined();
+    expect(thursday.programmes[0].untimed?.startTime).toBe("10:00");
+    const hidden = addAnnouncedWeekProgrammes({ days: [] }, events, [{ ...session, published: false }], []);
+    expect(hidden.days[3].programmes[1].untimed?.sessions).toEqual([]);
+  });
+
+  it("adds Akshata's DevFest talk and Santosh's Angular talk using their published records", () => {
+    const sessions = [
+      { slug: "building-a-distributed-multi-agent-system", title: "Building a distributed multi-agent system with Google Cloud", speakers: ["akshata"], published: true },
+      { slug: "the-monorepo-multiplier", title: "The Monorepo Multiplier: 10x Your Team with Better Architecture", speakers: ["santosh"], published: true },
+      { slug: "a-brief-history-of-code-review", title: "Saturday talk", speakers: ["santosh"], published: true },
+    ] as SessionRecord[];
+    const speakers = [
+      { id: "akshata", slug: "akshata-mohanty", display_name: "Akshata Mohanty", appearance_events: ["event-2"], published: true },
+      { id: "santosh", slug: "santosh-yadav", display_name: "Santosh Yadav", appearance_events: ["event-5"], published: true },
+    ] as SpeakerRecord[];
+    const result = addAnnouncedWeekProgrammes({ days: [] }, events, sessions, speakers);
+    const devfest = result.days[2].programmes[0].untimed!;
+    const angular = result.days[4].programmes[0].untimed!;
+    expect(devfest.sessions.map((session) => session.slug)).toEqual(["building-a-distributed-multi-agent-system"]);
+    expect(devfest.sessions[0].speakers[0].name).toBe("Akshata Mohanty");
+    expect(devfest.sessions[0].schedule).toBeUndefined();
+    expect(angular.sessions.map((session) => session.slug)).toEqual(["the-monorepo-multiplier"]);
+    expect(angular.sessions[0].speakers[0].name).toBe("Santosh Yadav");
+    expect(angular.unassignedSpeakers).toEqual([]);
+    expect(JSON.stringify(result)).not.toContain("Saturday talk");
+    const hidden = addAnnouncedWeekProgrammes({ days: [] }, events, sessions.map((session) => ({ ...session, published: false })), speakers);
+    expect(hidden.days[2].programmes[0].untimed?.sessions).toEqual([]);
+    expect(hidden.days[4].programmes[0].untimed?.unassignedSpeakers?.[0].name).toBe("Santosh Yadav");
+  });
+
   it("does not publish hidden events or duplicate an existing timed programme", () => {
     expect(addAnnouncedWeekProgrammes({ days: [] }, events.map((event) => ({ ...event, published: false })), [], []).days).toEqual([]);
     const input: PublicAgenda = { days: [{ key: "monday", localDate: "2026-09-14", title: "Monday", programmes: [
@@ -197,7 +270,7 @@ describe("Conference week copy", () => {
     const tuesday = conferenceWeekTracks.find((track) => track.date === "2026-09-15");
 
     expect(tuesday?.name).toBe("Workshop Tuesday: iOS + AI");
-    expect(tuesday?.summary).toBe("An iOS workshop plus an AI talk.");
+    expect(tuesday?.summary).toBe("An AI talk at 16:00, followed by an iOS workshop at 18:00, both at Base42 Hackerspace.");
     expect(tuesday?.access).toBe("Free entry. No ticket required.");
     expect(tuesday?.cta).toBeUndefined();
   });

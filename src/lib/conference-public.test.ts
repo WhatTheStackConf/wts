@@ -7,6 +7,8 @@ vi.mock("~/lib/pocketbase-admin-service", () => ({
 }));
 
 import {
+  loadPublicConferenceGuideProgramme,
+  loadPublicSessionBySlug,
   loadPublicAgenda,
   loadPublicSpeakerBySlug,
   loadPublicSpeakerTeaser,
@@ -53,6 +55,48 @@ describe("PocketBase image thumbnails", () => {
     ).toBe(
       `/api/image?src=${encodeURIComponent(url)}&width=320 320w, /api/image?src=${encodeURIComponent(url)}&width=640 640w, /api/image?src=${encodeURIComponent(url)}&width=1280 1280w`,
     );
+  });
+});
+
+describe("announced session detail timing", () => {
+  it("shows the new talk's own event/date without inventing a session time", async () => {
+    for (const [slug, event, date, start] of [
+      ["building-a-distributed-multi-agent-system", "DevFest", "2026-09-16", "17:00"],
+      ["the-monorepo-multiplier", "Angular Day", "2026-09-18", undefined],
+    ] as const) {
+      fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
+        sessions: [{ id: "talk", slug, title: slug, abstract: "", format: "talk", published: true, speakers: [] }],
+        appearance_events: [{ id: "event", name: event, published: true }],
+      }[collection] || []));
+      const session = await loadPublicSessionBySlug(slug);
+      expect(session?.schedule).toBeUndefined();
+      expect(session?.announcement).toMatchObject({ dayDate: date, event: { name: event }, eventStartTime: start });
+    }
+  });
+
+  it("prefers a later published slot to an earlier announced session in the public snapshot", async () => {
+    fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
+      sessions: [{ id: "ios", slug: "fundamentals-of-native-ios-development", title: "iOS", abstract: "", published: true, speakers: [] }],
+      appearance_events: [{ id: "tuesday", name: "Workshop Tuesday", published: true }, { id: "main", name: "Main", published: true }],
+      conference_days: [{ id: "saturday", key: "main-day", local_date: "2026-09-19", title: "Main day", published: true }],
+      event_programmes: [{ id: "programme", day: "saturday", appearance_event: "main" }],
+      agenda_slots: [{ id: "slot", programme: "programme", session: "ios", kind: "session", published: true, start_at: "2026-09-19T08:00:00Z", end_at: "2026-09-19T09:00:00Z" }],
+    }[collection] || []));
+    const data = await loadPublicConferenceGuideProgramme();
+    expect(data.sessions[0].schedule).toMatchObject({ startAt: "2026-09-19T08:00:00Z", endAt: "2026-09-19T09:00:00Z", event: { name: "Main" } });
+  });
+  it("uses the same confirmed start on the session page and hides it when its event is unpublished", async () => {
+    fetchAllRecords.mockReset();
+    let eventPublished = true;
+    fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
+      sessions: [{ id: "ios", slug: "fundamentals-of-native-ios-development", title: "iOS", abstract: "", format: "workshop", published: true, speakers: [] }],
+      appearance_events: [{ id: "tuesday", name: "Workshop Tuesday", published: eventPublished }],
+      agenda_slots: [], event_programmes: [], conference_days: [], agenda_tracks: [],
+    }[collection] || []));
+    const session = await loadPublicSessionBySlug("fundamentals-of-native-ios-development");
+    expect(session?.schedule).toMatchObject({ startAt: "2026-09-15T18:00:00+02:00", endAt: undefined, locationLabel: "Base42 Hackerspace, Rimska 25, 1000 Skopje" });
+    eventPublished = false;
+    expect((await loadPublicSessionBySlug("fundamentals-of-native-ios-development"))?.schedule).toBeUndefined();
   });
 });
 

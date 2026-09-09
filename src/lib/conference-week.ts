@@ -21,6 +21,9 @@ export interface ConferenceWeekTrack {
   name: string;
   /** ISO date, only where the schedule is confirmed. */
   date?: string;
+  /** Confirmed local clock times in Europe/Skopje; absent means unannounced. */
+  startTime?: string;
+  endTime?: string;
   summary: string;
   /** Named draws for this track. Kept short; the Speakers section carries the full roster. */
   highlights?: readonly string[];
@@ -40,31 +43,37 @@ export interface ConferenceWeekTrack {
   href?: string;
 }
 
+export const farisWorkshopTime = { startTime: "16:30", endTime: "20:00" } as const;
+
 export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
   {
     name: "InfoSec Monday",
     date: "2026-09-14",
+    startTime: "14:00",
+    endTime: "18:00",
     summary:
-      "We start with a full-day cybersecurity and application-security workshop.",
+      "We start with a four-hour cybersecurity and application-security workshop.",
     access: "Included with your WTS ticket. Seats are limited; registration opens closer to September.",
   },
   {
     name: "Workshop Tuesday: iOS + AI",
     date: "2026-09-15",
+    startTime: "16:00",
     summary:
-      "An iOS workshop plus an AI talk.",
+      "An AI talk at 16:00, followed by an iOS workshop at 18:00, both at Base42 Hackerspace.",
     access: "Free entry. No ticket required.",
   },
   {
     name: "DevFest",
     date: "2026-09-16",
+    startTime: "17:00",
     summary:
       "GDG Skopje takes Wednesday: practical AI, accessibility, and agentic systems at Pre-DevFest Days: Day Zero x WhatThe(Google)Stack.",
     highlights: [
       "Roushanak Rahmat, IBM - Google Developer Expert in AI & Cloud",
       "Josefine Schaefer, Storyblok - GDE and Accessibility Engineer",
+      "Akshata Mohanty - Building a distributed multi-agent system with Google Cloud",
     ],
-    moreSpeakers: true,
     cta: {
       label: "Grab a GDG ticket",
       href: "https://gdg.community.dev/events/details/google-gdg-skopje-presents-pre-devfest-days-day-zero-x-whatthegooglestack-2/",
@@ -74,6 +83,7 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
   {
     name: "MAUI Day",
     date: "2026-09-17",
+    startTime: "10:00",
     summary:
       ".NET MAUI gets a full day at FINKI, with speakers from Microsoft and the wider .NET community.",
     highlights: ["Stephane Delcroix, Principal Software Engineer at Microsoft"],
@@ -88,7 +98,7 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     name: "Workshop Thursday",
     date: "2026-09-17",
     summary:
-      "Long-form workshops on software architecture, payments, and frontend engineering. The kind of sessions that don't fit into 35 minutes.",
+      `Long-form workshops on software architecture, payments, and frontend engineering. Faris Aziz's Payments and Monetization at Scale for Frontend Engineers workshop runs ${farisWorkshopTime.startTime}–${farisWorkshopTime.endTime} (3.5 hours, Skopje time).`,
     cta: {
       label: "Get a workshop ticket",
       href: "/tickets",

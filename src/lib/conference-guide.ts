@@ -9,7 +9,9 @@ import {
 import type {
   PublicAgenda,
   PublicAgendaEvent,
+  PublicAgendaSession,
   PublicAgendaSlot,
+  PublicEventProgramme,
   PublicSessionDetail,
   PublicSpeakerDetail,
 } from "~/lib/conference-public";
@@ -234,7 +236,75 @@ function sessionSchedule(agenda: PublicAgenda, slug: string, origin: string) {
       };
     }
   }
+  // A published timed slot wins even if an earlier day contains a lineup mention.
+  for (const day of agenda.days) {
+    for (const programme of day.programmes) {
+      const session = programme.untimed?.sessions.find((item) => item.slug === slug);
+      if (!session) continue;
+      const schedule = session.schedule;
+      return {
+        status: "announced" as const,
+        day_key: day.key,
+        local_date: day.localDate,
+        day_title: normalizeGuideText(day.title),
+        appearance_event: mapAgendaEvent(programme.event),
+        ...(schedule ? { start_time: localTime(schedule.startAt) } : {}),
+        ...(schedule?.endAt ? {
+          end_time: localTime(schedule.endAt),
+          end_local_date: localDate(schedule.endAt),
+          end_status: "announced" as const,
+        } : { end_status: "not_announced" as const }),
+        location: optionalGuideText(schedule?.locationLabel || programme.untimed?.locationLabel),
+        // Do not invent a track key from a display name.
+        track: undefined,
+        agenda_url: `${origin}/agenda`,
+      };
+    }
+  }
   return { status: "not_scheduled" as const };
+}
+
+function mapAnnouncedSpeakers(speakers: PublicAgendaSession["speakers"], origin: string) {
+  return speakers.map((speaker) => ({
+    slug: speaker.slug,
+    display_name: normalizeGuideText(speaker.name),
+    resource_uri: slugUri("speakers", speaker.slug),
+    canonical_url: publicProfileUrl(origin, "speakers", speaker.slug),
+  }));
+}
+
+function mapAnnouncedProgramme(
+  announced: NonNullable<PublicEventProgramme["untimed"]>,
+  agenda: PublicAgenda,
+  origin: string,
+) {
+  const ctaUrl = announced.cta?.href.startsWith("/") && !announced.cta.href.startsWith("//")
+    ? `${origin}${announced.cta.href}`
+    : canonicalExternalUrl(announced.cta?.href);
+  return {
+    title: optionalGuideText(announced.title),
+    ...(announced.startTime ? { start_time: announced.startTime } : {}),
+    ...(announced.endTime ? { end_time: announced.endTime } : {}),
+    location: optionalGuideText(announced.locationLabel),
+    summary: normalizeGuideText(announced.summary),
+    access: optionalGuideText(announced.access),
+    cta: announced.cta && ctaUrl
+      ? { label: normalizeGuideText(announced.cta.label), canonical_url: ctaUrl }
+      : undefined,
+    highlights: announced.highlights?.map(normalizeGuideText),
+    speakers: announced.speakers ? mapAnnouncedSpeakers(announced.speakers, origin) : undefined,
+    unassigned_speakers: announced.unassignedSpeakers
+      ? mapAnnouncedSpeakers(announced.unassignedSpeakers, origin) : undefined,
+    sessions: announced.sessions.map((session) => ({
+      slug: session.slug,
+      title: normalizeGuideText(session.title),
+      format: optionalGuideText(session.format),
+      resource_uri: slugUri("sessions", session.slug),
+      canonical_url: publicProfileUrl(origin, "sessions", session.slug),
+      schedule: sessionSchedule(agenda, session.slug, origin),
+      speakers: mapAnnouncedSpeakers(session.speakers, origin),
+    })),
+  };
 }
 
 function mapSession(session: PublicSessionDetail, agenda: PublicAgenda, origin: string) {
@@ -367,6 +437,9 @@ function mapProgramme(data: ConferenceGuidePublishedData, origin: string) {
         programmes: day.programmes.map((programme) => ({
           appearance_event: mapAgendaEvent(programme.event),
           slots: programme.slots.map((slot) => mapAgendaSlot(slot, day.key, origin)),
+          ...(programme.untimed ? {
+            announced: mapAnnouncedProgramme(programme.untimed, data.agenda, origin),
+          } : {}),
         })),
       })),
     },
@@ -400,6 +473,7 @@ interface PlanningInputOutcome {
     | "excluded"
     | "not_published_or_missing"
     | "unscheduled"
+    | "end_time_not_announced"
     | "unavailable"
     | "selected"
     | "not_selected_conflict";
@@ -474,7 +548,7 @@ function searchableSessionFields(session: GuideSession): SearchableField[] {
           { field: "track" as const, value: session.schedule.track.name },
         ]
       : []),
-    ...(session.schedule.status === "scheduled" && session.schedule.location
+    ...(session.schedule.status !== "not_scheduled" && session.schedule.location
       ? [{ field: "location" as const, value: session.schedule.location }]
       : []),
   ];
@@ -528,7 +602,7 @@ function matchesSessionFilters(
   if (!filters) return true;
   if (
     filters.date &&
-    (session.schedule.status !== "scheduled" || session.schedule.local_date !== filters.date)
+    (session.schedule.status === "not_scheduled" || session.schedule.local_date !== filters.date)
   ) return false;
   if (
     filters.format &&
@@ -552,7 +626,7 @@ function matchesSessionFilters(
   if (
     filters.location &&
     (
-      session.schedule.status !== "scheduled" ||
+      session.schedule.status === "not_scheduled" ||
       !session.schedule.location ||
       comparableFilterText(session.schedule.location) !== comparableFilterText(filters.location)
     )
@@ -944,7 +1018,10 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
         } else {
           const scheduled = scheduledBySlug.get(slug);
           if (!scheduled) {
-            outcome = "unscheduled";
+            const schedule = sessionsBySlug.get(slug)?.schedule;
+            outcome = schedule?.status === "announced" && schedule.start_time && !schedule.end_time
+              ? "end_time_not_announced"
+              : "unscheduled";
           } else if (!candidateIsAvailable(scheduled, input.availability_windows)) {
             outcome = "unavailable";
           } else {

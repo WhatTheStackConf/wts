@@ -6,6 +6,7 @@ import { fetchSessionBySlug } from "~/lib/speakers-public";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
 import { proseArticleClasses } from "~/components/MDXContent";
 import { sanitizeHtml } from "~/lib/sanitize-html";
+import { conferenceWeekDayLabel } from "~/lib/conference-week";
 import { SCHEDULE_TIME_ZONE } from "~/lib/programme";
 import NotFound from "../[...404]";
 
@@ -108,6 +109,16 @@ export default function SessionDetail() {
                       <p class="speaker-session-chip mt-5 w-fit">{s().format}</p>
                     </Show>
 
+                    <Show when={s().announcement}>
+                      {(announcement) => <div class="mt-6 space-y-2 text-sm font-mono text-secondary-300">
+                        <p>Event: {announcement().event.name}</p>
+                        <p><time datetime={announcement().dayDate}>{conferenceWeekDayLabel(announcement().dayDate)}</time></p>
+                        <Show when={announcement().eventStartTime}><p>Event starts at {announcement().eventStartTime} · Skopje time</p></Show>
+                        <p>Session time: TBA</p>
+                        <Show when={announcement().locationLabel}><p>Location: {announcement().locationLabel}</p></Show>
+                        <a href={`/agenda?day=${announcement().dayDate}`} class="underline underline-offset-4">View this day's agenda</a>
+                      </div>}
+                    </Show>
                     <Show when={hasSchedule()}>
                       <ul class="mt-6 flex flex-wrap gap-3 list-none p-0 m-0 text-sm font-mono text-secondary-300">
                         <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
@@ -117,8 +128,10 @@ export default function SessionDetail() {
                         <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
                           <span class="text-secondary-500">Time</span>
                           <span>
-                            <time datetime={s().schedule!.startAt}>{formatScheduleDate(s().schedule!.startAt)}</time> -{" "}
-                            <time datetime={s().schedule!.endAt}>{formatScheduleEnd(s().schedule!.endAt)}</time>
+                            <time datetime={s().schedule!.startAt}>{formatScheduleDate(s().schedule!.startAt)}</time>
+                            <Show when={s().schedule!.endAt} fallback=" · End time TBA">
+                              {(end) => <> – <time datetime={end()}>{formatScheduleEnd(end())}</time></>}
+                            </Show>
                           </span>
                         </li>
                         <li class="inline-flex items-center gap-2 rounded-full border border-secondary-500/25 bg-secondary-600/10 px-3 py-1.5">
