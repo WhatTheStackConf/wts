@@ -1,0 +1,118 @@
+import { createHash, randomBytes } from "node:crypto";
+import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
+import type PocketBase from "pocketbase";
+import type { AgentReadinessDTO, Work as Attempt, Authorization } from "./protocol.js";
+
+interface Options { now?: () => number; heartbeatIntervalMs?: number; heartbeatTimeoutMs?: number; authorizationTtlMs?: number }
+interface Replies {
+  heartbeat: { station: AgentReadinessDTO };
+  status: { station: AgentReadinessDTO };
+  work: { attempts: Attempt[] };
+  authorize: Authorization;
+  start: { attemptId: string; started: true; reportUntil: string };
+  outcome: { attemptId: string; outcome: "protocol_complete" | "output_uncertain" };
+}
+type Operation = keyof Replies;
+class Rejected extends Error {
+  constructor(readonly status: number) { super("Agent request rejected."); }
+}
+const fields: Record<Operation, string[]> = {
+  heartbeat: ["stationId", "agentIdentity", "printerIdentity", "journalIdentity", "profileId", "protocolGeneration", "schemaGeneration", "journalSequence", "journalDigest", "journalState"],
+  status: ["stationId"], work: ["stationId"],
+  authorize: ["stationId", "attemptId", "payloadHash", "authorizationHash"],
+  start: ["stationId", "attemptId", "payloadHash", "authorizationHash"],
+  outcome: ["stationId", "attemptId", "authorizationHash", "outcome"],
+};
+function shape(value: unknown, keys: string[]): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+function matches(value: unknown, regex: RegExp) { return typeof value === "string" && regex.test(value); }
+function validate(operation: string, payload: unknown): asserts operation is Operation {
+  if (!Object.hasOwn(fields, operation) || !shape(payload, fields[operation as Operation])) throw new Rejected(400);
+  if (!matches(payload.stationId, /^wts2026station[123]$/)) throw new Rejected(400);
+  for (const [key, value] of Object.entries(payload)) {
+    if (["payloadHash", "authorizationHash", "journalDigest"].includes(key) && !matches(value, /^[a-f0-9]{64}$/)) throw new Rejected(400);
+    if (["agentIdentity", "printerIdentity", "journalIdentity"].includes(key) && !matches(value, /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/)) throw new Rejected(400);
+    if (key === "attemptId" && !matches(value, /^[a-z0-9]{15}$/)) throw new Rejected(400);
+    if (key === "profileId" && !matches(value, /^(?:[a-z0-9]{15})?$/)) throw new Rejected(400);
+    if (["protocolGeneration", "schemaGeneration", "journalSequence"].includes(key) && (!Number.isSafeInteger(value) || (value as number) < 1)) throw new Rejected(400);
+  }
+  if (operation === "heartbeat" && !["healthy", "lost", "corrupt", "restored"].includes(String(payload.journalState))) throw new Rejected(400);
+  if (operation === "outcome" && !["protocol_complete", "output_uncertain"].includes(String(payload.outcome))) throw new Rejected(400);
+}
+
+/** Independently supervised, outbound-agent-only boundary. Never sends device I/O. */
+export class Coordinator {
+  private readonly owner = randomBytes(32).toString("hex");
+  private readonly now: () => number;
+  private readonly config: Required<Omit<Options, "now">>;
+  private server?: Server;
+  private active = false;
+  constructor(private readonly pb: PocketBase, options: Options = {}) {
+    this.now = options.now ?? Date.now;
+    this.config = { heartbeatIntervalMs: options.heartbeatIntervalMs ?? 5000, heartbeatTimeoutMs: options.heartbeatTimeoutMs ?? 15000, authorizationTtlMs: options.authorizationTtlMs ?? 10000 };
+  }
+  private async command<T>(operation: string, data: object = {}): Promise<T> {
+    try {
+      return await this.pb.send<T>("/api/wts/checkin-agents", { method: "POST", body: { ...data, operation, owner: this.owner, nowMs: this.now() }, requestKey: null, signal: AbortSignal.timeout(5000) });
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      throw new Rejected(status && [400, 403, 409].includes(status) ? status : 503);
+    }
+  }
+  async listen(host = "127.0.0.1", port = 0): Promise<string> {
+    if (this.server || this.active) throw new Rejected(409);
+    await this.command("machine_acquire", { config: this.config });
+    this.active = true;
+    const server = createServer({ maxHeaderSize: 8192, requestTimeout: 10000, headersTimeout: 10000 }, (req, res) => { void this.handle(req, res); });
+    server.maxRequestsPerSocket = 100;
+    server.timeout = 10000;
+    this.server = server;
+    try {
+      await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(port, host, () => { server.removeListener("error", reject); resolve(); }); });
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Rejected(503);
+      return `http://${host.includes(":") ? `[${host}]` : host}:${address.port}`;
+    } catch { await this.close(); throw new Rejected(503); }
+  }
+  async pulse(): Promise<{ generation: number }> {
+    if (!this.active) throw new Rejected(503);
+    return this.command("machine_pulse");
+  }
+  async close(): Promise<void> {
+    const server = this.server; this.server = undefined;
+    if (server) await new Promise<void>((resolve) => { server.close(() => resolve()); server.closeAllConnections(); });
+    if (this.active) { this.active = false; try { await this.command("machine_release"); } catch { /* A fenced owner must not release its successor. */ } }
+  }
+  /** Privileged in-process producer seam ONLY; deliberately absent from HTTP. */
+  async prepareAttempt(agentId: string, payloadHash: string): Promise<Attempt> {
+    if (!this.active || !matches(agentId, /^[a-z0-9]{15}$/) || !matches(payloadHash, /^[a-f0-9]{64}$/)) throw new Rejected(400);
+    return this.command("machine_prepare", { agentId, payloadHash });
+  }
+  async machine<K extends Operation>(credential: string, operation: K, payload: unknown): Promise<Replies[K]> {
+    if (!matches(credential, /^wts_agent_[a-f0-9]{64}$/)) throw new Rejected(403);
+    validate(operation, payload);
+    if (!this.active) throw new Rejected(503);
+    const credentialHash = createHash("sha256").update(`wts2026:agent:${credential}`).digest("hex");
+    return this.command(`machine_${operation}`, { credentialHash, payload });
+  }
+  private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const reply = (status: number, value: unknown) => {
+      const body = JSON.stringify(value);
+      if (Buffer.byteLength(body) > 16384) return reply(503, { error: "Agent request rejected." });
+      res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" }); res.end(body);
+    };
+    try {
+      if (req.method !== "POST" || req.url !== "/v1/agent") throw new Rejected(404);
+      if (req.headers.cookie !== undefined || req.headers.origin !== undefined || req.headers["sec-fetch-site"] !== undefined || !matches(req.headers.authorization, /^Bearer wts_agent_[a-f0-9]{64}$/)) throw new Rejected(403);
+      if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers["content-type"] || "")) throw new Rejected(415);
+      if (Number(req.headers["content-length"]) > 8192) throw new Rejected(413);
+      const chunks: Buffer[] = []; let size = 0;
+      for await (const chunk of req) { size += chunk.length; if (size > 8192) throw new Rejected(413); chunks.push(Buffer.from(chunk)); }
+      let body: unknown; try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new Rejected(400); }
+      if (!shape(body, ["operation", "payload"]) || typeof body.operation !== "string") throw new Rejected(400);
+      validate(body.operation, body.payload);
+      reply(200, await this.machine(req.headers.authorization!.slice(7), body.operation, body.payload));
+    } catch (error) { reply(error instanceof Rejected ? error.status : 503, { error: "Agent request rejected." }); }
+  }
+}

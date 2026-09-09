@@ -1,0 +1,39 @@
+[Unit]
+Description=WTS outbound station agent (protocol only)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=wts-checkin-agent
+Group=wts-checkin-agent
+WorkingDirectory=/opt/wts
+StateDirectory=wts-checkin-agent
+StateDirectoryMode=0700
+RuntimeDirectory=wts-checkin-agent
+RuntimeDirectoryMode=0700
+LoadCredential=agent-token:/etc/wts-checkin/agent-token
+ExecStart=/usr/bin/flock --nonblock --no-fork /var/lib/wts-checkin-agent/owner.lock /usr/bin/node /opt/wts/.output/checkin-runtime/cli.js agent /etc/wts-checkin/agent.json
+Restart=on-failure
+RestartPreventExitStatus=78
+RestartSec=30
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+DevicePolicy=closed
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

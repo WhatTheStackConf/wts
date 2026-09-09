@@ -163,7 +163,9 @@ describe("durable authenticated Check-in Stations", () => {
       expect(overview.system).toEqual({ edition: "WTS2026", enabled: false, version: 1, generation: 1 });
       for (const station of overview.stations) {
         expect(station).toMatchObject({ enabled: false, ready: false, version: 1, generation: 1, provisionCodeIssued: false });
-        expect(station.unreadyReasons).toContain("coordinator_unavailable");
+        // Connection is now reported by the independently authenticated agent
+        // status query, not a hardcoded disconnected state in the binding shell.
+        expect(station.unreadyReasons).toContain("agent_readiness_separate");
       }
       expect(await service.status()).toMatchObject({ bindingState: "unbound", station: null, operationsEnabled: false });
       const anonymous = new PocketBase(test.baseUrl);

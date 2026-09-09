@@ -59,10 +59,10 @@ async function ready(url, child) {
 const env = Object.fromEntries(["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "CI", "PLAYWRIGHT_BROWSERS_PATH", "PNPM_HOME"].flatMap((key) => process.env[key] ? [[key, process.env[key]]] : []));
 try {
   await mkdir(appDir);
-  for (const directory of ["src", "public", "content", "scripts"]) {
+  for (const directory of ["src", "public", "content", "scripts", "runtime"]) {
     await cp(join(repo, directory), join(appDir, directory), { recursive: true, filter: (path) => !path.split(/[\\/]/).some((part) => part.startsWith(".env")) });
   }
-  for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.json", "vite.config.ts", "velite.config.ts"]) {
+  for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.json", "tsconfig.checkin-runtime.json", "vite.config.ts", "velite.config.ts"]) {
     await cp(join(repo, name), join(appDir, name));
   }
   await mkdir(join(appDir, "node_modules"));

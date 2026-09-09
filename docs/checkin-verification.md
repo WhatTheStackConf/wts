@@ -132,3 +132,39 @@ The new default suites are `checkin-label-renderer.test.ts`, `checkin-label-prof
 - The focused remediation review found **no remaining blocking findings**. It independently exercised malformed/mismatched configure/approve responses and submitted-payload isolation; the production renderer and full browser execution evidence are the parent-run gates above, not inferred from that review's module harness.
 
 These are local software results, not remote GitHub CI, deployment, real attendee mutations, physical calibration, printer/Pi readiness or event-use approval. Runtime follow-up #31 and owner-led printed legibility/feed/calibration follow-up #32 remain outstanding. The existing non-failing Vitest shutdown warning and minimal-fixture diagnostics remain visible.
+
+## Station agents and readiness verification (2026-09-09)
+
+Issue [#48](https://github.com/WhatTheStackConf/wts/issues/48). Runtime configuration, supervision, recovery and limitations are documented in [checkin-station-agents.md](checkin-station-agents.md).
+
+All final code gates ran against the isolated staged-tree snapshot `ace908a36b4306c5cf61576edaffee03931e09b5`, excluding unrelated programme edits and `.env` files. Dependency/cache/output isolation was retained. Only verification/runbook documentation changed afterward.
+
+| Gate | Actual result |
+| --- | --- |
+| `pnpm test` | **588 passed across 54 files** |
+| `pnpm check` | **Passed: zero errors, 87 existing warnings** |
+| `pnpm typecheck` | **Passed**, including standalone runtime and browser sources |
+| `pnpm build` | **Passed**, including server syntax verification and standalone NodeNext runtime compilation |
+| `pnpm test:checkin-browser` | **25 passed**, against a separately built and booted production server |
+
+### Verified behavior
+
+- Separate machine bearer issuance/revocation uses live admin authorization, immutable command identity, version fences and bounded audits. Human User sessions, Station Client Bindings and provisioning QRs cannot substitute for machine authentication; agents cannot enter browser/admin or direct collection APIs.
+- Real temporary PocketBase tests cover heartbeat freshness at the exact 15-second threshold, the 10-second authorization boundary, expired/revoked credentials, cross-station requests, protocol/profile/identity mismatch, sticky journal quarantine, stops/restores, coordinator replacement and stale generations. The configurable defaults remain 5-second heartbeat, 15-second timeout and authorization validity no longer than 10 seconds.
+- Compiled coordinator and outbound-agent CLIs performed a real loopback handshake with a file-backed SQLite journal. Removing that disposable journal produced a bounded failure report and persisted quarantine. No physical device, USB command or production credential was used.
+- Durable receipt/authorization/outcome tests exercise reopen, payload conflicts, delayed responses, exact retries, lost start responses and no repeated possibly-started boundary. Started-attempt outcomes remain reportable through the narrowly scoped protocol after credential expiry/revocation. Unresolved output blocks the entire fixed station, including replacement agents.
+- The six new browser scenarios exercise actual admin issuance/revocation and operator binding/readiness, one-time masked credentials, secret-free readback, access isolation, malformed/lost response retries and failed readiness refreshes. Controlled heartbeat evidence is explicitly injected through the disposable privileged fixture, not represented as a real Pi. The UI distinguishes connection, compatibility, profile approval, journal state, coordinator availability and administrative stop. Mobile overflow and keyboard-focus checks pass. Admission and printing remain disabled throughout.
+- New suites are explicitly registered in the default manifest selection: agent client, human HTTP, agent persistence, coordinator persistence/protocol, combined agent/coordinator protocol and local runtime/CLI tests. The existing browser glob and CI workflow cover the new browser file and runtime compilation.
+
+### Review and failure evidence
+
+- **Standards:** both P2 findings were corrected: validated failed administrative commands retain a bounded failed Admin Action after authority rollback, with safe exact retry; profile configuration now reserves its action before changing station state. Source-import, JSX control-flow and shared journal-error classification findings were also corrected. The follow-up Standards review passed.
+- **Spec:** the reviewer reproduced a journal-history bypass in real PocketBase: sequence 100 followed by credential rotation could accept sequence 2. Rotation now preserves retained station/journal watermarks, including rotation away/back. Regression tests reject the old snapshot and accept an ordinary higher sequence. The follow-up Spec review passed.
+- The station-wide unresolved-output regression failed before the SQL existence check was added, including a case with both completed and unresolved attempts. Disabling browser success-envelope validation made three retained client tests fail; restoring validation returned them to green. The CLI non-restart exit-status regression also failed before the supervisor-budget fix.
+- The first complete suite exposed a retained #45 assertion for a hardcoded disconnected coordinator. Its assertion now reflects the separate live agent-readiness query, and the new persistence suite explicitly verifies the initial unavailable/never-seen/unconfigured states. The corrected full suite passed; no failing test was skipped or removed.
+
+### Remaining operational limits
+
+No push, remote CI result, deployment, live attendee mutation, physical calibration, real Pi/printer readiness or event-use approval is established by these checks. The systemd templates passed local syntax verification only with this workstation's actual Node path substituted into temporary copies; target executable paths and supervision must be verified before deployment. Node's experimental SQLite warning, Vitest's non-failing shutdown warning and disposable minimal-schema diagnostics remain visible.
+
+A hard crash or storage failure between domain rollback and failed-action persistence can leave no failed Admin Action. Authority changes still roll back; absence of a failure record is not proof that no command was submitted. Purge/backup orchestration and physical-output recovery remain their later slices, not capabilities enabled by this protocol-only release.

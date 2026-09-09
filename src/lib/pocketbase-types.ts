@@ -705,6 +705,7 @@ export interface CheckinSystemRecord extends RecordModel {
   generation: number;
 }
 export interface CheckinStationRecord extends CheckinSystemRecord {
+  profile_config_version: number;
   label: string;
   location: string;
   printer_ref: string;
@@ -736,7 +737,7 @@ export interface CheckinAuditEventRecord extends RecordModel {
   actor_user_id: string;
   actor_name: string;
   actor_role: "admin" | "checkin_operator";
-  operation: "bind" | "set_system_enabled" | "set_station_enabled" | "configure_station" | "rotate_provision_code" | "revoke_binding" | "configure_event" | "select_event" | "configure_label_profile" | "approve_label_profile";
+  operation: "bind" | "set_system_enabled" | "set_station_enabled" | "configure_station" | "rotate_provision_code" | "revoke_binding" | "configure_event" | "select_event" | "configure_label_profile" | "approve_label_profile" | "issue_agent" | "revoke_agent";
   station_id: string;
   binding_id: string;
   admin_action_id: string;
@@ -764,7 +765,32 @@ export interface CheckinLabelApprovalRecord extends RecordModel {
   admin_action_id: string;
   created: string;
 }
+/** Private machine records; never serialize credentials or journal hashes to browsers. */
+export interface CheckinAgentRecord extends RecordModel {
+  revision: number; station: string; credential_hash: string; agent_identity: string;
+  printer_identity: string; journal_identity: string; profile_id: string; expires_at: string;
+  revoked: boolean; quarantined: boolean; compatibility: string; last_heartbeat_at: string;
+  journal_sequence: number; journal_digest: string; reported_profile: string;
+  protocol_generation: number; schema_generation: number;
+}
+export interface CheckinCoordinatorRecord extends RecordModel {
+  owner: string; generation: number; last_seen_at: string; heartbeat_interval_ms: number;
+  heartbeat_timeout_ms: number; authorization_ttl_ms: number;
+}
+export interface CheckinAgentAttemptRecord extends RecordModel {
+  station: string; agent_id: string; profile_id: string; payload_hash: string;
+  station_generation: number; system_generation: number; coordinator_generation: number;
+}
+export interface CheckinAgentAuthorizationRecord extends RecordModel {
+  attempt_id: string; agent_id: string; authorization_hash: string; expires_at: string;
+  station_generation: number; system_generation: number; coordinator_generation: number;
+  started_at: string; report_until: string; outcome: "" | "protocol_complete" | "output_uncertain";
+}
 export interface CheckinCollectionRecords {
+  checkin_agents: CheckinAgentRecord;
+  checkin_coordinator: CheckinCoordinatorRecord;
+  checkin_agent_attempts: CheckinAgentAttemptRecord;
+  checkin_agent_authorizations: CheckinAgentAuthorizationRecord;
   checkin_label_profiles: CheckinLabelProfileRecord;
   checkin_label_approvals: CheckinLabelApprovalRecord;
   checkin_events: CheckinEventRecord;
@@ -776,6 +802,10 @@ export interface CheckinCollectionRecords {
 
 // Union type for all possible collections
 export type CollectionRecord =
+  | CheckinAgentRecord
+  | CheckinCoordinatorRecord
+  | CheckinAgentAttemptRecord
+  | CheckinAgentAuthorizationRecord
   | CheckinLabelProfileRecord
   | CheckinLabelApprovalRecord
   | CheckinEventRecord

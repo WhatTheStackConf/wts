@@ -1,0 +1,32 @@
+import { afterAll, beforeAll, expect, it } from "vite-plus/test";
+import { startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
+import { CheckinAgentService } from "~/lib/checkin-agent-service";
+import { CheckinService } from "~/lib/checkin-service";
+
+let fixture: Awaited<ReturnType<typeof startCheckinPocketBase>>;
+beforeAll(async () => { fixture = await startCheckinPocketBase(); });
+afterAll(async () => { await fixture?.cleanup(); });
+it("issues only a one-time separate credential, fences competing commands and persists secret-free replay", async () => {
+  const admin = await fixture.user("admin");
+  const control = new CheckinService(fixture.pb, admin.actor);
+  const agents = new CheckinAgentService(fixture.pb, admin.actor);
+  const initial = await agents.adminList();
+  expect(initial.stations[0]).toMatchObject({ credentialState: "not_issued", coordinator: "unavailable", connection: "never_seen", profile: "unconfigured", operationsEnabled: false, readyForAuthorization: false });
+  const station = initial.stations[0];
+  await control.adminControl({ operation: "configure_station", operationId: crypto.randomUUID(), expectedVersion: station.stationVersion, stationId: station.stationId, label: "Station One", location: "Test", printerRef: "test-printer", reason: "configuration" });
+  const command = { operationId: crypto.randomUUID(), stationId: station.stationId, expectedStationVersion: station.stationVersion + 1, reason: "configuration" as const, note: "Test provisioning", agentIdentity: "test-pi", printerIdentity: "test-printer", journalIdentity: "test-journal", profileId: "", credentialLifetimeHours: 24 };
+  const issued = await agents.issue(command);
+  expect(issued.credential).toMatch(/^wts_agent_[a-f0-9]{64}$/);
+  expect(issued.station).toMatchObject({ credentialState: "active", journal: "unknown", profile: "unconfigured" });
+  await fixture.restart();
+  const replay = await agents.issue(command);
+  expect(replay).toMatchObject({ replayed: true, actionId: issued.actionId });
+  expect(replay).not.toHaveProperty("credential");
+  expect(JSON.stringify(await agents.adminList())).not.toContain(issued.credential);
+  await expect(agents.issue({ ...command, operationId: crypto.randomUUID() })).rejects.toMatchObject({ code: "conflict" });
+  await expect(agents.issue({ ...command, note: "Changed" })).rejects.toMatchObject({ code: "conflict" });
+  const operator = await fixture.user("checkin_operator");
+  await expect(new CheckinAgentService(fixture.pb, operator.actor).adminList()).rejects.toMatchObject({ code: "forbidden" });
+  await fixture.pb.collection("users").update(admin.record.id, { role: "user" });
+  await expect(agents.issue(command)).rejects.toMatchObject({ code: "forbidden" });
+});

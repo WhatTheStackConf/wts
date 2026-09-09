@@ -29,6 +29,7 @@
   },
   "include": [
     "src",
+    "runtime",
     "vite.config.ts",
     "playwright.config.ts",
     "tests/checkin*.ts"

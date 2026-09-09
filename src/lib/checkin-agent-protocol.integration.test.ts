@@ -1,0 +1,58 @@
+import { afterAll, beforeAll, expect, it } from "vite-plus/test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
+import { CheckinService } from "~/lib/checkin-service";
+import { CheckinAgentService } from "~/lib/checkin-agent-service";
+import { CheckinLabelProfileService } from "~/lib/checkin-label-profile-service";
+import { SYNTHETIC_LABEL_CONFIG } from "~/lib/checkin-label-render-contract";
+import { Coordinator } from "../../runtime/checkin/coordinator";
+import { AgentRuntime, HttpAgentTransport } from "../../runtime/checkin/agent";
+import { AgentJournal } from "../../runtime/checkin/journal";
+
+let fixture: Awaited<ReturnType<typeof startCheckinPocketBase>>;
+beforeAll(async () => { fixture = await startCheckinPocketBase(); });
+afterAll(async () => { await fixture?.cleanup(); });
+it("runs a local outbound handshake with a durable journal and permits only known own attempts at the fenced start boundary", async () => {
+  const admin = await fixture.user("admin"); const human = new CheckinService(fixture.pb, admin.actor); const provision = new CheckinAgentService(fixture.pb, admin.actor);
+  const stationId = "wts2026station1";
+  await human.adminControl({ operation: "configure_station", operationId: crypto.randomUUID(), expectedVersion: 1, stationId, label: "Test Station", location: "Test", printerRef: "test-printer", reason: "configuration" });
+  await human.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), expectedVersion: 2, stationId, enabled: true, reason: "configuration" });
+  await human.adminControl({ operation: "set_system_enabled", operationId: crypto.randomUUID(), expectedVersion: 1, enabled: true, reason: "configuration" });
+  const profiles = new CheckinLabelProfileService(fixture.pb, admin.actor);
+  const profile = await profiles.configure({ operationId: crypto.randomUUID(), stationId, expectedVersion: 0, expectedStationVersion: 3, reason: "configuration", note: "Synthetic test geometry only", config: { ...SYNTHETIC_LABEL_CONFIG, synthetic: false, printerRef: "test-printer", stockRef: "test-stock" } });
+  await profiles.approve({ operationId: crypto.randomUUID(), profileId: profile.profile.id, expectedVersion: 1, expectedStationVersion: 3, reason: "configuration", note: "Test-only attestation. No actual calibration.", physicalConfirmation: true });
+  const identity = { stationId, agentIdentity: "test-pi", printerIdentity: "test-printer", journalIdentity: "test-journal", profileId: profile.profile.id };
+  const issued = await provision.issue({ ...identity, stationId, operationId: crypto.randomUUID(), expectedStationVersion: 3, reason: "configuration", note: "Test only", credentialLifetimeHours: 24 });
+  expect((await profiles.get(profile.profile.id)).approval).toBe("approved");
+  let now = Date.now(); const coordinator = new Coordinator(fixture.pb, { now: () => now });
+  const url = await coordinator.listen();
+  const root = mkdtempSync(join(tmpdir(), "wts-agent-journal-")); const path = join(root, "journal.sqlite");
+  AgentJournal.provision(path, identity);
+  let journal = new AgentJournal(path, identity);
+  try {
+    const agent = new AgentRuntime(identity, journal, new HttpAgentTransport(url, issued.credential!), { now: () => now });
+    expect((await agent.heartbeat()).station).toMatchObject({ connection: "connected", profile: "approved", journal: "healthy", readyForAuthorization: true, operationsEnabled: false });
+    expect(await agent.work()).toEqual({ attempts: [] });
+    await expect(agent.authorize({ attemptId: "forgedattempt00", profileId: profile.profile.id, payloadHash: "a".repeat(64) })).rejects.toThrow();
+    const work = await coordinator.prepareAttempt(issued.station.agentId!, "b".repeat(64));
+    const auth = await agent.authorize(work);
+    now += 10000; await coordinator.pulse();
+    await expect(agent.start(work.attemptId)).rejects.toThrow();
+    now += 5000; await coordinator.pulse();
+    expect((await coordinator.machine(issued.credential!, "status", { stationId })).station).toMatchObject({ connection: "stale", readyForAuthorization: false });
+    await agent.heartbeat();
+    const next = await coordinator.prepareAttempt(issued.station.agentId!, "c".repeat(64));
+    await agent.authorize(next); expect(await agent.start(next.attemptId)).toMatchObject({ started: true });
+    await provision.revoke({ operationId: crypto.randomUUID(), stationId, expectedStationVersion: 4, agentId: issued.station.agentId!, reason: "security", note: "Test revocation" });
+    await expect(agent.heartbeat()).rejects.toThrow();
+    await expect(agent.work()).rejects.toThrow();
+    expect(await agent.report(next.attemptId, "output_uncertain")).toMatchObject({ outcome: "output_uncertain" });
+    journal.close(); journal = new AgentJournal(path, identity);
+    const recovered = new AgentRuntime(identity, journal, new HttpAgentTransport(url, issued.credential!), { now: () => now });
+    expect(await recovered.report(next.attemptId, "output_uncertain")).toMatchObject({ outcome: "output_uncertain" });
+    await expect(recovered.start(next.attemptId)).rejects.toThrow();
+    expect(auth.expiresAt).toBeTruthy();
+  } finally { journal.close(); await coordinator.close(); rmSync(root, { recursive: true, force: true }); }
+});

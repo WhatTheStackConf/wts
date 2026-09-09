@@ -50,7 +50,7 @@ routerAdd("POST", "/api/wts/checkin-labels", (e) => {
       const station = stationFor(record.getString("station"));
       // Effective approval fails closed after ANY station version change, even
       // replacing a printer and subsequently restoring its old display reference.
-      const current = approved && latest(station.id).id === record.id && approved.getInt("station_version") === station.getInt("version") && record.getInt("station_version") === station.getInt("version") && config.printerRef === station.getString("printer_ref");
+      const current = approved && latest(station.id).id === record.id && approved.getInt("station_version") === (station.getInt("profile_config_version") || station.getInt("version")) && record.getInt("station_version") === (station.getInt("profile_config_version") || station.getInt("version")) && config.printerRef === station.getString("printer_ref");
       return { id: record.id, stationId: record.getString("station"), version: record.getInt("version"), approval: current ? "approved" : "unapproved", config };
     }
     if (body.operation === "list") {
@@ -58,7 +58,8 @@ routerAdd("POST", "/api/wts/checkin-labels", (e) => {
       if (stations.length > 3) fail("unavailable", 503);
       const profiles = stations.map((station) => latest(station.id)).filter(Boolean);
       const profileStationVersions = {};
-      for (const profile of profiles) profileStationVersions[profile.id] = profile.getInt("station_version");
+      // Present the current command fence when only agent credentials changed.
+      for (const profile of profiles) { const station = stationFor(profile.getString("station")); const effective = station.getInt("profile_config_version") || station.getInt("version"); profileStationVersions[profile.id] = profile.getInt("station_version") === effective ? station.getInt("version") : profile.getInt("station_version"); }
       result = { profiles: profiles.map(dto), profileStationVersions, stations: stations.map((station) => ({ id: station.id, label: station.getString("label"), printerRef: station.getString("printer_ref"), version: station.getInt("version") })), operationsEnabled: false }; return;
     }
     if (body.operation === "get") {
@@ -88,7 +89,7 @@ routerAdd("POST", "/api/wts/checkin-labels", (e) => {
     if (approving && !existing) fail("invalid_input");
     const station = stationFor(approving ? existing.getString("station") : command.stationId);
     if (station.getInt("version") !== command.expectedStationVersion) fail("conflict", 409);
-    if (approving && existing.getInt("station_version") !== station.getInt("version")) fail("conflict", 409);
+    if (approving && existing.getInt("station_version") !== (station.getInt("profile_config_version") || station.getInt("version"))) fail("conflict", 409);
     const config = approving ? JSON.parse(existing.getString("config")) : command.config;
     validate(config);
     if (!station.getString("printer_ref") || station.getString("printer_ref") !== config.printerRef) fail("invalid_input");
@@ -107,9 +108,10 @@ routerAdd("POST", "/api/wts/checkin-labels", (e) => {
     const action = new Record(app.findCollectionByNameOrId("admin_actions"));
     const values = { actor_user: actor.id, mcp_token: "", source: "admin_ui", operation_kind: "checkin." + operation, target_collection: "checkin_label_profiles", target_id: target.id, operation_id: command.operationId, input_fingerprint: fingerprint, idempotency_key: key, status: "pending", before_summary: before, after_summary: after, attempt_count: 1, attempt_token: $security.randomString(32), lease_expires_at: "", completed_at: new Date().toISOString() };
     for (const field in values) action.set(field, values[field]); app.save(action);
+    if (!approving) { station.set("profile_config_version", 0); app.save(station); }
     if (approving) {
       const approval = new Record(app.findCollectionByNameOrId("checkin_label_approvals"));
-      approval.set("profile", target.id); approval.set("station_version", station.getInt("version")); approval.set("physical_confirmation", true); approval.set("admin_action_id", action.id); app.save(approval);
+      approval.set("profile", target.id); approval.set("station_version", station.getInt("profile_config_version") || station.getInt("version")); approval.set("physical_confirmation", true); approval.set("admin_action_id", action.id); app.save(approval);
     } else { target.set("admin_action_id", action.id); app.save(target); }
     result = { actionId: action.id, replayed: false, profile: after };
     action.set("status", "applied"); action.set("replay_result", result); app.save(action);

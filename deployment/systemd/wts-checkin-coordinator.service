@@ -1,0 +1,35 @@
+[Unit]
+Description=WTS check-in coordinator (separate from web/PocketBase)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=wts-checkin-coordinator
+Group=wts-checkin-coordinator
+WorkingDirectory=/opt/wts
+LoadCredential=pocketbase:/etc/wts-checkin/pocketbase-credential.json
+ExecStart=/usr/bin/node /opt/wts/.output/checkin-runtime/cli.js coordinator /etc/wts-checkin/coordinator.json
+Restart=on-failure
+RestartPreventExitStatus=78
+RestartSec=30
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+DevicePolicy=closed
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

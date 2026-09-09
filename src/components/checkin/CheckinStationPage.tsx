@@ -1,6 +1,7 @@
 import { For, Show, createSignal, onSettled } from "solid-js";
 import { CheckinLayout } from "~/components/checkin/CheckinLayout";
 import { CheckinEventSelector } from "~/components/checkin/CheckinEventSelector";
+import { BoundAgentReadiness } from "~/components/checkin/AgentReadiness";
 import { useRequireCheckinOperator } from "~/lib/route-guards";
 import { createAsyncResource } from "~/lib/async-resource";
 import { bindCheckinStation, checkinStatus, previewCheckinStation } from "~/lib/checkin-client";
@@ -12,6 +13,7 @@ const readinessMessages: Record<string, string> = {
   coordinator_unavailable: "Coordinator is not connected.",
   hievents_unconfigured: "Hi.Events admission integration is not configured.",
   printer_unavailable: "Printer agent and physical readiness are not verified.",
+  agent_readiness_separate: "Agent connection, compatibility and physical profile approval require separate checks.",
   event_configuration_missing: "Event admission lists are not configured.",
   notifications_unconfigured: "Admin notification delivery is not configured.",
   admission_and_printing_not_implemented: "Admission and printing are not implemented in this release.",
@@ -105,6 +107,7 @@ export default function CheckinStationPage() {
             <Show when={current().station}>{(station) => <StationReadiness station={station()} />}</Show>
             <Show when={current().bindingState === "bound" && current().binding && current().station}>
               <CheckinEventSelector status={current()} verifying={status.loading} />
+              <BoundAgentReadiness stationId={current().station!.id} />
             </Show>
             <Show when={current().bindingState === "revoked"}>
               <p role="alert" class="text-error">This browser binding was revoked. Ask an admin for help; logging in again does not restore it.</p>

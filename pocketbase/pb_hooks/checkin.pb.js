@@ -16,7 +16,7 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
   }
   function stationDTO(app, record, system) {
     const activeBindingCount = app.countRecords("checkin_bindings", $dbx.exp("station = {:id} AND revoked = false AND last_seen_at >= {:cutoff}", { id: record.id, cutoff: cutoff.replace("T", " ") }));
-    const reasons = ["coordinator_unavailable", "hievents_unconfigured", "printer_unavailable", "notifications_unconfigured", "admission_and_printing_not_implemented"];
+    const reasons = ["agent_readiness_separate", "hievents_unconfigured", "notifications_unconfigured", "admission_and_printing_not_implemented"];
     if (!system.getBool("enabled")) reasons.unshift("system_disabled");
     if (!record.getBool("enabled")) reasons.unshift("station_disabled");
     return { id: record.id, edition: "WTS2026", label: record.getString("label"), location: record.getString("location"), printerRef: record.getString("printer_ref"), enabled: record.getBool("enabled"), version: record.getInt("version"), generation: record.getInt("generation"), provisionCodeIssued: Boolean(record.getString("provision_code_hash")), activeBindingCount, multiplePhonesWarning: activeBindingCount > 2, ready: false, unreadyReasons: reasons };
@@ -159,6 +159,7 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
       if (op === "revoke_binding") target.set("revoked", true);
       target.set("version", target.getInt("version") + 1);
       if (kind !== "checkin_bindings") target.set("generation", target.getInt("generation") + 1);
+      if (kind === "checkin_stations") target.set("profile_config_version", 0);
       const after = snapshot(target, kind);
       const action = new Record(app.findCollectionByNameOrId("admin_actions"));
       const values = { actor_user: actor.id, mcp_token: "", source: "admin_ui", operation_kind: "checkin." + op, target_collection: kind, target_id: target.id, operation_id: command.operationId, input_fingerprint: fingerprint, idempotency_key: key, status: "pending", before_summary: before, after_summary: after, attempt_count: 1, attempt_token: $security.randomString(32), lease_expires_at: "", completed_at: now.toISOString() };
