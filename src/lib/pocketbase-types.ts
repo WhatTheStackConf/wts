@@ -1,4 +1,5 @@
 import { RecordModel } from "pocketbase";
+import type { LabelProfileConfig } from "~/lib/checkin-label-render-contract";
 
 // User collection type
 export interface UserRecord extends RecordModel {
@@ -735,17 +736,37 @@ export interface CheckinAuditEventRecord extends RecordModel {
   actor_user_id: string;
   actor_name: string;
   actor_role: "admin" | "checkin_operator";
-  operation: "bind" | "set_system_enabled" | "set_station_enabled" | "configure_station" | "rotate_provision_code" | "revoke_binding" | "configure_event" | "select_event";
+  operation: "bind" | "set_system_enabled" | "set_station_enabled" | "configure_station" | "rotate_provision_code" | "revoke_binding" | "configure_event" | "select_event" | "configure_label_profile" | "approve_label_profile";
   station_id: string;
   binding_id: string;
   admin_action_id: string;
   event_id: string;
+  label_profile_id: string;
   reason: "" | "security" | "device_replacement" | "maintenance" | "incident" | "configuration" | "operations_restored";
   note: string;
   outcome: "applied";
   state: { before: Record<string, unknown> | null; after: Record<string, unknown> };
 }
+/** Immutable configuration; effective approval is computed by the command seam. */
+export interface CheckinLabelProfileRecord extends RecordModel {
+  station: string;
+  station_version: number;
+  version: number;
+  config: LabelProfileConfig;
+  admin_action_id: string;
+  created: string;
+}
+/** Immutable physical attestation, not perpetual production authorization. */
+export interface CheckinLabelApprovalRecord extends RecordModel {
+  profile: string;
+  station_version: number;
+  physical_confirmation: boolean;
+  admin_action_id: string;
+  created: string;
+}
 export interface CheckinCollectionRecords {
+  checkin_label_profiles: CheckinLabelProfileRecord;
+  checkin_label_approvals: CheckinLabelApprovalRecord;
   checkin_events: CheckinEventRecord;
   checkin_system: CheckinSystemRecord;
   checkin_stations: CheckinStationRecord;
@@ -755,6 +776,8 @@ export interface CheckinCollectionRecords {
 
 // Union type for all possible collections
 export type CollectionRecord =
+  | CheckinLabelProfileRecord
+  | CheckinLabelApprovalRecord
   | CheckinEventRecord
   | CheckinSystemRecord
   | CheckinStationRecord

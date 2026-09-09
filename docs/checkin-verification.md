@@ -99,3 +99,36 @@ The required deployed discovery/configuration proof remains outstanding in [chec
 - **Spec:** one medium finding. An event remained selectable when its mapped list later became unavailable. The retained real-PocketBase regression failed with `available` instead of `upstream_unavailable` before the fix and passes afterward. Catalogue and selection now check exact active list and affiliation mappings, bind the evidence to configuration generation, and withhold context on missing/incomplete reads. The browser fixture also expires a configured list and checks the actual UI plus a rejected selection request.
 
 All three findings were corrected. The default suite, check, typecheck, production build and all 11 browser scenarios were rerun successfully after those changes. The 87 baseline warnings and Vitest shutdown warning remain non-failing; no remote CI or deployment is asserted.
+
+## Name Label profiles and rendering verification (2026-09-09)
+
+Issue [#47](https://github.com/WhatTheStackConf/wts/issues/47); usage and production-boundary contracts are in [checkin-name-labels.md](checkin-name-labels.md).
+
+Verification used an isolated snapshot of the staged implementation (code tree `25c50de21635b9198c4893138a82922047b67a5b`), excluding concurrent, unrelated agenda/week edits and `.env` files. Dependency/cache/build output and disposable PocketBase/upstream instances were isolated. Subsequent verification-document edits do not change the tested code.
+
+| Gate | Actual result |
+| --- | --- |
+| `pnpm test` | **559 passed across 48 files** |
+| `pnpm typecheck` | **Passed** |
+| `pnpm check` | **Passed: zero errors, 87 pre-existing warnings** |
+| `pnpm build` | **Passed**, including emitted server syntax verification |
+| `pnpm test:checkin-browser` | **19 passed**, with a separately built and booted production server |
+
+The new default suites are `checkin-label-renderer.test.ts`, `checkin-label-profiles.integration.test.ts` and `checkin-label-http.test.ts`. The existing browser glob/CI job runs `checkin-labels.spec.ts` and `checkin-label-profiles.spec.ts` alongside all retained station/event scenarios.
+
+### Observed behavior
+
+- Actual pinned Noto Sans Regular/Bold bytes, hashes, glyph coverage and no-fallback errors were verified. Deterministic PNGs, independent shrinking/ellipsis, blank affiliation, grapheme boundaries, two-row bounds, offsets, rotation, immutable input snapshots and payload identity were exercised through the renderer boundary.
+- Real temporary PocketBase tests verified version persistence/restart, immutable profile/approval records, live role revocation, direct-access denial, exact replay, competing versions, approval replay, atomic rollback of profile/approval plus Admin Action/audit, and permanent invalidation after station/printer changes. A superseded profile remains previewable but is not effectively approved for new production work.
+- Actual admin forms configured explicit dot geometry and recorded **test-only simulated** physical attestation. Synthetic profiles could not be approved. Editing an approved profile produced a new unapproved version; same-reference station edits and printer replacement visibly required a new profile.
+- The browser decoded and compared actual PNG pixels with the displayed canvas. Mixed Cyrillic/Latin, diacritics and descenders, long-name ellipsis and blank affiliation rasters were visually inspected. The site's original font produced missing glyphs in editable Cyrillic text despite a correct raster; loading the pinned Noto display font fixed the inputs and row summaries. Corrected 320px preview and 320/390px configuration/confirmation screenshots were inspected, with no visible horizontal clipping. Automated overflow, focus and font-readiness checks passed; a blocked display-font request produced an actionable disabled preview.
+- Preview did not add Admin Actions or check-in audits. No admission or physical printing operation was enabled. Labels and PNG metadata excluded email/QR/upstream capability fields; rasterization created no spool files.
+
+### Review and regression evidence
+
+- **Standards:** no findings in the independent staged-diff review.
+- **Spec:** one medium finding was reproduced and fixed: HTTP 200 with valid but malformed JSON (`{}`, `null` or an error object) previously resolved successfully, allowing the UI to discard a frozen command. Shared browser-safe schemas now validate success envelopes and expected profile/version/configuration before resolving; malformed or mismatched results retain an ambiguous same-command retry. The retained unit test failed with `{}` before the fix. Real-browser regressions commit on the real server, substitute each malformed response, fail a catalogue refresh, and then converge the exact UUID/reason/note/geometry retry to one persisted version/action/audit. The transport-loss case is also retained.
+- Earlier failures (missing UI, an ambiguous test locator, a boolean data-attribute assertion and an incomplete storage validator) were corrected rather than counted as passes. The full gate results above are from the reviewed, corrected implementation.
+- The focused remediation review found **no remaining blocking findings**. It independently exercised malformed/mismatched configure/approve responses and submitted-payload isolation; the production renderer and full browser execution evidence are the parent-run gates above, not inferred from that review's module harness.
+
+These are local software results, not remote GitHub CI, deployment, real attendee mutations, physical calibration, printer/Pi readiness or event-use approval. Runtime follow-up #31 and owner-led printed legibility/feed/calibration follow-up #32 remain outstanding. The existing non-failing Vitest shutdown warning and minimal-fixture diagnostics remain visible.

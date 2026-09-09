@@ -231,6 +231,12 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/api/checkin-labels";
+      page: false;
+      $POST: FileRouteLazyRef<typeof import("./src/routes/api/checkin-labels")>;
+      $$route?: undefined;
+    },
+    {
       path: "/api/checkin";
       page: false;
       $POST: FileRouteLazyRef<typeof import("./src/routes/api/checkin")>;
