@@ -66,6 +66,7 @@ export interface CheckinAuditDTO {
   operation: string;
   stationId: CheckinStationId | "";
   bindingId: string;
+  eventId?: string;
   reason: CheckinReasonCode | "";
   note: string;
   outcome: "applied";

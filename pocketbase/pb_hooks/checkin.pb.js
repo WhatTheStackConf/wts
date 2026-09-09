@@ -16,7 +16,7 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
   }
   function stationDTO(app, record, system) {
     const activeBindingCount = app.countRecords("checkin_bindings", $dbx.exp("station = {:id} AND revoked = false AND last_seen_at >= {:cutoff}", { id: record.id, cutoff: cutoff.replace("T", " ") }));
-    const reasons = ["coordinator_unavailable", "hievents_unconfigured", "printer_unavailable", "event_configuration_missing", "notifications_unconfigured", "admission_and_printing_not_implemented"];
+    const reasons = ["coordinator_unavailable", "hievents_unconfigured", "printer_unavailable", "notifications_unconfigured", "admission_and_printing_not_implemented"];
     if (!system.getBool("enabled")) reasons.unshift("system_disabled");
     if (!record.getBool("enabled")) reasons.unshift("station_disabled");
     return { id: record.id, edition: "WTS2026", label: record.getString("label"), location: record.getString("location"), printerRef: record.getString("printer_ref"), enabled: record.getBool("enabled"), version: record.getInt("version"), generation: record.getInt("generation"), provisionCodeIssued: Boolean(record.getString("provision_code_hash")), activeBindingCount, multiplePhonesWarning: activeBindingCount > 2, ready: false, unreadyReasons: reasons };
@@ -31,7 +31,7 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
     return { items: records.slice(0, 50).map(project), page: index, hasMore: records.length > 50 };
   }
   function auditDTO(record) {
-    return { id: record.id, actorUserId: record.getString("actor_user_id"), actorName: record.getString("actor_name"), actorRole: record.getString("actor_role"), operation: record.getString("operation"), stationId: record.getString("station_id"), bindingId: record.getString("binding_id"), reason: record.getString("reason"), note: record.getString("note"), outcome: record.getString("outcome"), createdAt: record.getString("created") };
+    return { id: record.id, actorUserId: record.getString("actor_user_id"), actorName: record.getString("actor_name"), actorRole: record.getString("actor_role"), operation: record.getString("operation"), stationId: record.getString("station_id"), bindingId: record.getString("binding_id"), eventId: record.getString("event_id"), reason: record.getString("reason"), note: record.getString("note"), outcome: record.getString("outcome"), createdAt: record.getString("created") };
   }
   function statusDTO(app, system, binding, state) {
     const bound = binding && !binding.getBool("revoked");
@@ -159,12 +159,12 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
       if (op === "revoke_binding") target.set("revoked", true);
       target.set("version", target.getInt("version") + 1);
       if (kind !== "checkin_bindings") target.set("generation", target.getInt("generation") + 1);
-      app.save(target);
       const after = snapshot(target, kind);
       const action = new Record(app.findCollectionByNameOrId("admin_actions"));
       const values = { actor_user: actor.id, mcp_token: "", source: "admin_ui", operation_kind: "checkin." + op, target_collection: kind, target_id: target.id, operation_id: command.operationId, input_fingerprint: fingerprint, idempotency_key: key, status: "pending", before_summary: before, after_summary: after, attempt_count: 1, attempt_token: $security.randomString(32), lease_expires_at: "", completed_at: now.toISOString() };
       for (const field in values) action.set(field, values[field]);
       app.save(action);
+      app.save(target);
       result = { actionId: action.id, replayed: false };
       if (kind === "checkin_system") result.system = systemDTO(target);
       else if (kind === "checkin_stations") result.station = stationDTO(app, target, system);

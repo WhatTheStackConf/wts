@@ -715,21 +715,38 @@ export interface CheckinBindingRecord extends RecordModel {
   version: number;
   revoked: boolean;
   last_seen_at: string;
+  selected_event: string;
+  selected_event_generation: number;
+  selected_binding_version: number;
+  selection_version: number;
+}
+export interface CheckinEventRecord extends RecordModel {
+  edition: "WTS2026";
+  source_key: string;
+  upstream_event_id: string;
+  title: string;
+  member: boolean;
+  list_id: string;
+  affiliation: { questionId: string; productIds: string[] } | null;
+  enabled: boolean;
+  generation: number;
 }
 export interface CheckinAuditEventRecord extends RecordModel {
   actor_user_id: string;
   actor_name: string;
   actor_role: "admin" | "checkin_operator";
-  operation: "bind" | "set_system_enabled" | "set_station_enabled" | "configure_station" | "rotate_provision_code" | "revoke_binding";
+  operation: "bind" | "set_system_enabled" | "set_station_enabled" | "configure_station" | "rotate_provision_code" | "revoke_binding" | "configure_event" | "select_event";
   station_id: string;
   binding_id: string;
   admin_action_id: string;
+  event_id: string;
   reason: "" | "security" | "device_replacement" | "maintenance" | "incident" | "configuration" | "operations_restored";
   note: string;
   outcome: "applied";
   state: { before: Record<string, unknown> | null; after: Record<string, unknown> };
 }
 export interface CheckinCollectionRecords {
+  checkin_events: CheckinEventRecord;
   checkin_system: CheckinSystemRecord;
   checkin_stations: CheckinStationRecord;
   checkin_bindings: CheckinBindingRecord;
@@ -738,6 +755,7 @@ export interface CheckinCollectionRecords {
 
 // Union type for all possible collections
 export type CollectionRecord =
+  | CheckinEventRecord
   | CheckinSystemRecord
   | CheckinStationRecord
   | CheckinBindingRecord

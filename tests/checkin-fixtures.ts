@@ -12,6 +12,8 @@ export interface CheckinFixtureState {
   pbUrl: string;
   superuserEmail: string;
   password: string;
+  upstreamURL: string;
+  upstreamToken: string;
   users: Record<"admin" | "operator" | "ordinary" | "handoff", Account>;
 }
 export function fixtureState(): CheckinFixtureState {
@@ -22,6 +24,7 @@ export function fixtureState(): CheckinFixtureState {
   for (const url of [state.baseURL, state.pbUrl]) {
     if (new URL(url).hostname !== "127.0.0.1" || new URL(url).protocol !== "http:") throw new Error("Refusing non-loopback fixture");
   }
+  if (new URL(state.upstreamURL).hostname !== "127.0.0.1" || new URL(state.upstreamURL).protocol !== "https:") throw new Error("Refusing non-loopback synthetic upstream");
   return state;
 }
 

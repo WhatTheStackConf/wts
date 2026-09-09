@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { cp, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { get as httpsGet } from "node:https";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -73,6 +74,12 @@ try {
   const appPort = await port();
   const pbUrl = `http://127.0.0.1:${pbPort}`;
   const baseURL = `http://127.0.0.1:${appPort}`;
+  const upstreamURL = `https://127.0.0.1:${await port()}`;
+  const upstreamToken = `${Buffer.from('{"alg":"HS256","typ":"JWT"}').toString("base64url")}.${Buffer.from('{"account_id":77}').toString("base64url")}.${randomBytes(24).toString("base64url")}`;
+  const certPath = join(root, "upstream-cert.pem");
+  // Trust only this per-run synthetic TLS certificate, not arbitrary upstreams.
+  const certificate = spawnSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-noenc", "-keyout", join(root, "upstream-key.pem"), "-out", certPath, "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"], { env, stdio: "ignore" });
+  if (certificate.status !== 0) throw new Error("Could not generate disposable upstream TLS certificate; openssl is required");
   const password = `Disposable-${randomBytes(24).toString("hex")}!`;
   const superuserEmail = "browser-root@example.test";
   Object.assign(env, {
@@ -80,9 +87,23 @@ try {
     POCKETBASE_URL: pbUrl, PUBLIC_POCKETBASE_URL: pbUrl, POCKETBASE_PUBLIC_URL: pbUrl, VITE_POCKETBASE_URL: pbUrl,
     POCKETBASE_SUPERUSER_EMAIL: superuserEmail, POCKETBASE_SUPERUSER_PASSWORD: password,
     PUBLIC_SITE_URL: baseURL, SITE_URL: baseURL, VITE_SITE_URL: baseURL,
-    HIEVENTS_API_URL: "http://127.0.0.1:1", HIEVENTS_API_KEY: "", HIEVENTS_EMAIL: "", HIEVENTS_PASSWORD: "", HIEVENTS_EVENT_ID: "",
+    HIEVENTS_API_URL: `${upstreamURL}/api`, HIEVENTS_API_KEY: upstreamToken, HIEVENTS_ACCOUNT_ID: "77", HIEVENTS_EMAIL: "", HIEVENTS_PASSWORD: "", HIEVENTS_EVENT_ID: "",
+    NODE_EXTRA_CA_CERTS: certPath, WTS_SYNTHETIC_UPSTREAM_ROOT: root,
     VITE_TURNSTILE_SITE_KEY: "", VITE_LISTMONK_LIST_ID: "",
   });
+  const upstreamProcess = start(process.execPath, [join(repo, "scripts/checkin-hievents-fixture.mjs")]);
+  const ca = await readFile(certPath);
+  let upstreamReady = false;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (upstreamProcess.exitCode !== null) throw new Error("Synthetic upstream exited before readiness");
+    upstreamReady = await new Promise((resolve) => {
+      const req = httpsGet(`${upstreamURL}/health`, { ca, timeout: 500 }, (response) => { response.resume(); resolve(response.statusCode === 200); });
+      req.on("error", () => resolve(false)); req.on("timeout", () => { req.destroy(); resolve(false); });
+    });
+    if (upstreamReady) break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  if (!upstreamReady) throw new Error("Synthetic upstream TLS health check failed");
   const migrationsDir = join(root, "pb_migrations");
   const hooksDir = join(root, "pb_hooks");
   const dataDir = join(root, "pb_data");
@@ -125,7 +146,7 @@ try {
   const appProcess = start(process.execPath, ["--import", join(repo, "scripts/checkin-browser-egress.mjs"), join(appDir, ".output/server/index.mjs")]);
   await ready(`${baseURL}/login`, appProcess);
   const statePath = join(root, "fixture.json");
-  await writeFile(statePath, JSON.stringify({ disposable: true, root, baseURL, pbUrl, superuserEmail, password, users }), { mode: 0o600 });
+  await writeFile(statePath, JSON.stringify({ disposable: true, root, baseURL, pbUrl, superuserEmail, password, users, upstreamURL, upstreamToken }), { mode: 0o600 });
   if (process.argv.includes("--inspect")) {
     console.log(`Disposable inspection ready: ${baseURL}\nFixture: ${statePath}\nSend SIGTERM to runner ${process.pid} to stop and delete all disposable state.`);
     await new Promise(() => {});

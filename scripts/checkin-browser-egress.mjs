@@ -1,6 +1,7 @@
 // Loaded only into the disposable built server. No response simulation: any
 // unexpected external fetch fails rather than ever reaching a real dependency.
-const allowed = new Set([process.env.POCKETBASE_URL, process.env.SITE_URL]);
+// The third loopback service is an explicitly synthetic upstream, never Hi.Events.
+const allowed = new Set([process.env.POCKETBASE_URL, process.env.SITE_URL, new URL(process.env.HIEVENTS_API_URL).origin]);
 for (const origin of allowed) {
   if (!origin || new URL(origin).hostname !== "127.0.0.1") throw new Error("Disposable egress guard requires loopback services");
 }

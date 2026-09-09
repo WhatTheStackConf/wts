@@ -1,5 +1,5 @@
 export function isCheckinPath(pathname: string): boolean {
-  return /^\/(?:admin\/|api\/)?checkin(?:\/|$)/.test(pathname);
+  return pathname === "/api/checkin-events" || /^\/(?:admin\/|api\/)?checkin(?:\/|$)/.test(pathname);
 }
 
 /** A fresh document at the operational boundary has no third-party execution or

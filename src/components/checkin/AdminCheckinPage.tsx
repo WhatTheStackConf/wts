@@ -1,5 +1,6 @@
 import { For, Show, createSignal } from "solid-js";
 import { CheckinLayout } from "~/components/checkin/CheckinLayout";
+import { CheckinEventAdmin } from "~/components/checkin/CheckinEventAdmin";
 import { StationReadiness } from "~/components/checkin/CheckinStationPage";
 import { useRequireAdmin } from "~/lib/route-guards";
 import { createAsyncResource } from "~/lib/async-resource";
@@ -73,6 +74,7 @@ export default function AdminCheckinPage() {
     <CheckinLayout title="Check-in administration">
       <Show when={guard.authorized()}>
         <p class="alert alert-warning">Software provisioning only. No admission or print work can start. Stops preserve work; restoring a scope changes its authorization generation, never authorizes replay.</p>
+        <CheckinEventAdmin />
         <div aria-live="polite">
           <Show when={error()}><p role="alert" class="alert alert-error">{error()}</p></Show>
           <Show when={message()}><p class="alert alert-success">{message()}</p></Show>
@@ -153,7 +155,7 @@ export default function AdminCheckinPage() {
               <ul class="space-y-3"><For each={current().audit.items}>{(entry) => (
                 <li class="rounded-lg border border-base-content/20 p-4 space-y-1 break-words">
                   <p>{entry.createdAt} · {entry.actorName} ({entry.actorRole})</p>
-                  <p>{entry.operation} · {entry.stationId || "System"} · {entry.outcome}</p>
+                  <p>{entry.operation} · {entry.eventId ? `Event ${entry.eventId}` : entry.stationId || "System"} · {entry.outcome}</p>
                   <p>{entry.reason} {entry.note}</p>
                 </li>
               )}</For></ul>

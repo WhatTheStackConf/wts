@@ -1,5 +1,6 @@
 import { For, Show, createSignal, onSettled } from "solid-js";
 import { CheckinLayout } from "~/components/checkin/CheckinLayout";
+import { CheckinEventSelector } from "~/components/checkin/CheckinEventSelector";
 import { useRequireCheckinOperator } from "~/lib/route-guards";
 import { createAsyncResource } from "~/lib/async-resource";
 import { bindCheckinStation, checkinStatus, previewCheckinStation } from "~/lib/checkin-client";
@@ -50,10 +51,17 @@ export default function CheckinStationPage() {
       if (match) setCode(match[1]);
       else setError("Invalid provisioning link. Scan the current station QR again.");
     }
-    const timer = window.setInterval(() => {
+    const refreshStatus = () => {
       if (guard.authorized() && !document.hidden) void actions.refetch().catch(() => undefined);
-    }, 5000);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(refreshStatus, 5000);
+    window.addEventListener("focus", refreshStatus);
+    document.addEventListener("visibilitychange", refreshStatus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshStatus);
+      document.removeEventListener("visibilitychange", refreshStatus);
+    };
   });
 
   async function review(event: SubmitEvent) {
@@ -81,7 +89,7 @@ export default function CheckinStationPage() {
   return (
     <CheckinLayout title="Your Check-in Station">
       <Show when={guard.authorized()}>
-        <div class="alert alert-warning" role="note">Provisioning only. Attendee admission, camera scanning, lookup and Name Label printing are not enabled in this release.</div>
+        <div class="alert alert-warning" role="note">Provisioning and event selection only. Attendee admission, camera scanning, lookup and Name Label printing are not enabled in this release.</div>
         <div aria-live="polite" class="space-y-2">
           <Show when={message()}><p class="alert alert-success">{message()}</p></Show>
           <Show when={error()}><p role="alert" class="alert alert-error">{error()}</p></Show>
@@ -95,6 +103,9 @@ export default function CheckinStationPage() {
             <p class="font-bold">System: {current().system.enabled ? "enabled for provisioning" : "stopped"}</p>
             <p>Binding: {current().bindingState}</p>
             <Show when={current().station}>{(station) => <StationReadiness station={station()} />}</Show>
+            <Show when={current().bindingState === "bound" && current().binding && current().station}>
+              <CheckinEventSelector status={current()} verifying={status.loading} />
+            </Show>
             <Show when={current().bindingState === "revoked"}>
               <p role="alert" class="text-error">This browser binding was revoked. Ask an admin for help; logging in again does not restore it.</p>
             </Show>
