@@ -41,6 +41,27 @@
   --noise: 0;
 }
 
+/* Same pinned bytes as the server renderer; scope to Name Label administration. */
+@font-face {
+  font-family: "WTS Name Label";
+  src: url("/fonts/checkin-label/NotoSans-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "WTS Name Label";
+  src: url("/fonts/checkin-label/NotoSans-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+.wts-name-label-text {
+  font-family: "WTS Name Label", sans-serif;
+}
+
 @font-face {
   font-family: "Space Grotesk";
   src: url("/fonts/space-grotesk-latin.woff2") format("woff2");
