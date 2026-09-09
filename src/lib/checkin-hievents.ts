@@ -1,6 +1,8 @@
 /** Server-only admission discovery. No imports from the ticket/gamification adapter.
  * Source contract and deployment prerequisites: docs/checkin-hievents-contract.md.
  */
+import { CheckinReadError, createCheckinUpstreamReader, type CheckinReadDependencies } from "~/lib/checkin-upstream-read";
+
 export type DiscoveryFailureReason = "configuration" | "invalid_event_id" | "transport" | "http" | "contract" | "limit";
 export type DiscoveryResult<T> =
   | { status: "complete"; data: T }
@@ -45,11 +47,11 @@ function event(value: unknown): DiscoveredEvent {
   const row = record(value);
   return { id: id(row.id), title: title(row.title) };
 }
-function serverConfig(): CheckinDiscoveryConfig {
+export function checkinServerConfig(): CheckinDiscoveryConfig {
   if (typeof window !== "undefined") return {};
   return { apiUrl: process.env.HIEVENTS_API_URL, apiKey: process.env.HIEVENTS_API_KEY, accountId: process.env.HIEVENTS_ACCOUNT_ID };
 }
-function configuration(input: CheckinDiscoveryConfig): { base: string; key: string } | null {
+export function checkinDiscoveryConfiguration(input: CheckinDiscoveryConfig): { base: string; key: string } | null {
   try {
     if (typeof window !== "undefined" || !input.apiUrl || !input.apiKey || !input.accountId) return null;
     const url = new URL(input.apiUrl);
@@ -65,50 +67,15 @@ function configuration(input: CheckinDiscoveryConfig): { base: string; key: stri
 }
 
 /** Lazy server environment read; injected transport is the approved #44 fixture seam. */
-export function createCheckinDiscoveryAdapter(input?: CheckinDiscoveryConfig, transport: typeof fetch = fetch): CheckinDiscoveryAdapter {
-  const config = configuration(input ?? serverConfig());
+export function createCheckinDiscoveryAdapter(input?: CheckinDiscoveryConfig, transport: typeof fetch = fetch, dependencies?: CheckinReadDependencies): CheckinDiscoveryAdapter {
+  const config = checkinDiscoveryConfiguration(input ?? checkinServerConfig());
   async function run<T>(work: (scope: ReadScope) => Promise<T>): Promise<DiscoveryResult<T>> {
     if (!config) return { status: "unavailable", reason: "configuration" };
     const scope: ReadScope = { acceptedPages: 0, read };
     try { return { status: "complete", data: await work(scope) }; }
-    catch (error) { return { status: scope.acceptedPages ? "partial" : "unavailable", reason: error instanceof DiscoveryError ? error.reason : "transport" }; }
+    catch (error) { return { status: scope.acceptedPages ? "partial" : "unavailable", reason: error instanceof DiscoveryError || error instanceof CheckinReadError ? error.reason : "transport" }; }
   }
-  async function read(path: string): Promise<Record<string, unknown>> {
-    if (!config) throw new DiscoveryError("configuration");
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => { controller.abort(); reject(new DiscoveryError("transport")); }, 10_000);
-    });
-    async function consume() {
-      const response = await transport(`${config!.base}/${path}`, {
-        method: "GET", redirect: "error", credentials: "omit", cache: "no-store",
-        headers: { Authorization: `Bearer ${config!.key}`, Accept: "application/json" },
-        signal: controller.signal,
-      });
-      if (response.status !== 200 || response.redirected) { void response.body?.cancel().catch(() => undefined); throw new DiscoveryError("http"); }
-      const limit = 2 * 1024 * 1024;
-      if (Number(response.headers.get("content-length")) > limit) { void response.body?.cancel().catch(() => undefined); throw new DiscoveryError("limit"); }
-      const reader = response.body?.getReader();
-      requireContract(reader);
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      try {
-        while (true) {
-          const chunk = await reader.read();
-          if (chunk.done) break;
-          size += chunk.value.byteLength;
-          if (size > limit) { void reader.cancel().catch(() => undefined); throw new DiscoveryError("limit"); }
-          chunks.push(chunk.value);
-        }
-      } finally { reader.releaseLock(); }
-      try { return record(JSON.parse(Buffer.concat(chunks).toString("utf8"))); }
-      catch { throw new DiscoveryError("contract"); }
-    }
-    // Also bounds injected/buggy transports that ignore AbortSignal.
-    try { return await Promise.race([consume(), timeout]); }
-    finally { clearTimeout(timer); }
-  }
+  const read = config ? createCheckinUpstreamReader(config, transport, dependencies) : async () => { throw new DiscoveryError("configuration"); };
   return {
     discover: () => run((scope) => paginated(scope, `${config!.base}/events`, "events", event)),
     options: (eventId) => run(async (scope) => {

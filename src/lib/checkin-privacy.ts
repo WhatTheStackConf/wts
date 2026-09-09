@@ -1,5 +1,5 @@
 export function isCheckinPath(pathname: string): boolean {
-  return ["/api/checkin-events", "/api/checkin-labels"].includes(pathname) || /^\/(?:admin\/|api\/)?checkin(?:\/|$)/.test(pathname);
+  return ["/api/checkin-events", "/api/checkin-labels", "/api/checkin-arrivals"].includes(pathname) || /^\/(?:admin\/|api\/)?checkin(?:\/|$)/.test(pathname);
 }
 
 /** A fresh document at the operational boundary has no third-party execution or

@@ -1,5 +1,7 @@
 import { RecordModel } from "pocketbase";
 import type { LabelProfileConfig } from "~/lib/checkin-label-render-contract";
+import type { CheckinEventContext } from "~/lib/checkin-event-contract";
+import type { CheckinArrivalDecision } from "~/lib/checkin-arrival-contract";
 
 // User collection type
 export interface UserRecord extends RecordModel {
@@ -737,16 +739,18 @@ export interface CheckinAuditEventRecord extends RecordModel {
   actor_user_id: string;
   actor_name: string;
   actor_role: "admin" | "checkin_operator";
-  operation: "bind" | "set_system_enabled" | "set_station_enabled" | "configure_station" | "rotate_provision_code" | "revoke_binding" | "configure_event" | "select_event" | "configure_label_profile" | "approve_label_profile" | "issue_agent" | "revoke_agent";
+  operation: "bind" | "set_system_enabled" | "set_station_enabled" | "configure_station" | "rotate_provision_code" | "revoke_binding" | "configure_event" | "select_event" | "configure_label_profile" | "approve_label_profile" | "issue_agent" | "revoke_agent" | "arrival_begin" | "arrival_result";
   station_id: string;
   binding_id: string;
   admin_action_id: string;
   event_id: string;
   label_profile_id: string;
+  workflow_id: string;
+  arrival_command_id: string;
   reason: "" | "security" | "device_replacement" | "maintenance" | "incident" | "configuration" | "operations_restored";
   note: string;
   outcome: "applied";
-  state: { before: Record<string, unknown> | null; after: Record<string, unknown> };
+  state: { before: Record<string, unknown> | null; after: Record<string, unknown> } | { state: "pending" | CheckinArrivalDecision["state"] };
 }
 /** Immutable configuration; effective approval is computed by the command seam. */
 export interface CheckinLabelProfileRecord extends RecordModel {
@@ -786,7 +790,48 @@ export interface CheckinAgentAuthorizationRecord extends RecordModel {
   station_generation: number; system_generation: number; coordinator_generation: number;
   started_at: string; report_until: string; outcome: "" | "protocol_complete" | "output_uncertain";
 }
+/** Private immutable reservation snapshots; browser DTOs omit upstream identities and configuration. */
+export interface CheckinArrivalWorkflowRecord extends RecordModel {
+  edition: "WTS2026";
+  upstream_event_id: string;
+  upstream_attendee_id: string;
+  station_id: string;
+  event_id: string;
+  event_title: string;
+  list_id: string;
+  context: CheckinEventContext;
+  source_key: string;
+  profile_id: string;
+  profile_config: LabelProfileConfig;
+  affiliation_mapping: { questionId: string; productIds: string[] } | null;
+  name: string;
+  affiliation: string;
+  state: "not_submitted";
+  operation_id: string;
+  created: string;
+}
+export interface CheckinArrivalCommandRecord extends RecordModel {
+  operation_id: string;
+  payload_hash: string;
+  qr_hash: string;
+  context: CheckinEventContext;
+  source_key: string;
+  affiliation_choice: "fetch" | "blank";
+  prior_operation_id: string;
+  actor_user_id: string;
+  station_id: string;
+  event_id: string;
+  status: "pending" | "final";
+  result: CheckinArrivalDecision | null;
+  workflow_id: string;
+  completed_at: string;
+  completed_day: string;
+  history_visible: boolean;
+  created: string;
+}
 export interface CheckinCollectionRecords {
+  checkin_arrival_workflows: CheckinArrivalWorkflowRecord;
+  checkin_arrival_commands: CheckinArrivalCommandRecord;
   checkin_agents: CheckinAgentRecord;
   checkin_coordinator: CheckinCoordinatorRecord;
   checkin_agent_attempts: CheckinAgentAttemptRecord;
@@ -802,6 +847,8 @@ export interface CheckinCollectionRecords {
 
 // Union type for all possible collections
 export type CollectionRecord =
+  | CheckinArrivalWorkflowRecord
+  | CheckinArrivalCommandRecord
   | CheckinAgentRecord
   | CheckinCoordinatorRecord
   | CheckinAgentAttemptRecord

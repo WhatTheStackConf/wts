@@ -62,7 +62,14 @@ test("synthetic upstream: real admin mapping and independent phone event selecti
   expect(first.configuration.affiliation).toEqual({ questionId: "801", productIds: ["601"] });
   expect((await db.collection("checkin_events").getOne(first.configuration.id)).upstream_event_id).toBe("501");
   await page.getByRole("button", { name: "Refresh administration", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Check-in audit", exact: true }).getByText(/configure_event/)).toHaveCount(4);
+  // Other independently exercised workflows may already have configured events.
+  // Verify these exact actions rather than assuming the shared audit page is empty.
+  for (const configured of [first, second, unconfigured, disabled]) {
+    const audits = await db.collection("checkin_audit_events").getFullList({ filter: db.filter("admin_action_id = {:id}", { id: configured.actionId }) });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({ operation: "configure_event", event_id: configured.configuration.id });
+    await expect(page.getByRole("region", { name: "Check-in audit", exact: true }).getByText(`configure_event · Event ${configured.configuration.id} · applied`, { exact: true }).first()).toBeVisible();
+  }
   await page.setViewportSize({ width: 390, height: 844 });
   await region.getByLabel("Hi.Events event", { exact: true }).selectOption("501");
   await expect(region.getByLabel("Affiliation question (optional)", { exact: true })).toHaveValue("801");

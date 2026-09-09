@@ -168,3 +168,41 @@ All final code gates ran against the isolated staged-tree snapshot `ace908a36b43
 No push, remote CI result, deployment, live attendee mutation, physical calibration, real Pi/printer readiness or event-use approval is established by these checks. The systemd templates passed local syntax verification only with this workstation's actual Node path substituted into temporary copies; target executable paths and supervision must be verified before deployment. Node's experimental SQLite warning, Vitest's non-failing shutdown warning and disposable minimal-schema diagnostics remain visible.
 
 A hard crash or storage failure between domain rollback and failed-action persistence can leave no failed Admin Action. Authority changes still roll back; absence of a failure record is not proof that no command was submitted. Purge/backup orchestration and physical-output recovery remain their later slices, not capabilities enabled by this protocol-only release.
+
+## Arrival preflight verification (2026-09-09)
+
+Issue [#49](https://github.com/WhatTheStackConf/wts/issues/49). Behavior, operator instructions and remaining integration limits are in [arrival preflight](checkin-arrival-preflight.md).
+
+Final manifest gates ran against isolated staged tree `88c0b28c4caa3ee0406f6879bd35664748ec52b8`, excluding unrelated programme/week changes and `.env` files. Browser verification used tree `7a075a19fc1a9bd6ec06542bff380a63ef4fd66a`; the only subsequent code-tree change was an explicit boolean comparator in a persistence test to remove a new lint warning. Production code and browser tests are identical between those trees. This verification record was added afterward.
+
+| Gate | Actual result |
+| --- | --- |
+| `pnpm test` | **739 passed across 59 files** |
+| `pnpm check` | **Passed: zero errors, 87 existing warnings** |
+| `pnpm typecheck` | **Passed** |
+| `pnpm build` | **Passed**, including emitted server syntax and standalone runtime compilation |
+| `pnpm test:checkin-browser` | **29 scenarios passed**, against the built production server |
+| Fresh disposable runs of `--grep 'arrival answer outages'` | **Both additional runs passed** |
+
+### Observed behavior and boundaries
+
+- Real PocketBase tests race independent actors/stations and verify global command identity, changed-payload conflicts, unique stable attendee workflows, immutable configuration/affiliation/profile inputs, atomic rollback on an injected audit failure, restart persistence and browser/Pi direct-access denial. Feature migrations and hooks are copied unchanged.
+- Live role, binding, system/station/event generations, selected-list eligibility and dependency/profile readiness fence acceptance. Existing work can reopen without another upstream read or available printer, but cannot change station or originating event. Admins can inspect all stations without a binding.
+- The separate GET-only adapter verifies exact case-sensitive QR identity, selected-list membership and complete simple pagination. Tests distinguish failed affiliation reads from absent answers, reject unexpected eligibility, validate detail identities and exclude email, QR/capabilities and raw diagnostics from projections. Shared budget tests cover concurrency, observed limits, stale headers, Retry-After, maximum attempts, timeouts and early timer wakeups.
+- Actual browser forms exercise reservation, same/foreign-station repeats, missing/rejected/unavailable states, explicit retry/blank continuation, event changes, reload, malformed committed responses and forbidden wire access. A held real server response verifies privacy after rebinding. Mobile overflow/focus checks pass. Screenshot inspection caught and then verified the correction of missing Cyrillic glyphs using the pinned Name Label display face.
+- Terminal continuations resolve earlier read exceptions through immutable command/audit evidence. Current-day history marks them resolved; next-day unresolved queries exclude them before pagination. Original results still replay unchanged.
+- No admission POST, print intent, actual Pi/printer action or production attendee mutation is performed. Synthetic upstream, physical attestation and heartbeat fixtures are labeled tests. The read budget is process-local, not a distributed deployment guarantee.
+
+### Standards
+
+The initial review found one P2: duplicated QR validators disagreed on case. Two retained tests failed before introducing one browser-safe uppercase-only predicate. The follow-up Standards review found no remaining hard-standard findings.
+
+### Spec
+
+The initial review found P1 retained/delayed foreign-station result visibility after rebinding and P2 permanently unresolved exceptions after terminal continuations. The browser privacy regression and real-PocketBase continuation regressions failed before their fixes. The follow-up Spec review closed both findings and reported no new findings.
+
+An additional timer regression reproduced an early wake returning dependency-unavailable instead of waiting the remaining safe backoff. The reader now rechecks the remaining delay within the original bounded allowance. Its regression passes, as do the final full browser run and two separate fresh-database outage runs. A mutation test also proved that inverted exact-identity matching breaks the pagination regression; restoring the adapter returned it to green.
+
+Earlier failures included an incorrect locked-collection expectation, stale banner/audit-count assumptions in retained browser tests, and a test interception left active during a negative access probe. They were corrected, not skipped or counted as passes. The final isolated test command still emits a non-failing Nitro development-worker path diagnostic and Vitest shutdown warning; the production bundle separately builds, boots and passes browser verification. Node's experimental SQLite warning and minimal-fixture collection diagnostics remain visible.
+
+These are local software results. No push, remote CI, deployment, deployed-account contract verification, hardware calibration or event-use approval is claimed. Admission/printing remain disabled; runtime/device follow-ups #31 and #32 remain outstanding.

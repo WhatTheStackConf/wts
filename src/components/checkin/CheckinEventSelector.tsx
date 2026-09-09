@@ -2,6 +2,8 @@ import { For, Show, createSignal, onSettled } from "solid-js";
 import { createAsyncResource } from "~/lib/async-resource";
 import type { CheckinStatusDTO } from "~/lib/checkin-contract";
 import { checkinEventCatalogue, selectCheckinEvent } from "~/lib/checkin-event-client";
+import { CheckinArrivalPreflight } from "~/components/checkin/CheckinArrivalPreflight";
+import { CheckinArrivalWork } from "~/components/checkin/CheckinArrivalWork";
 import type { CheckinEventAvailability } from "~/lib/checkin-event-contract";
 
 const availabilityMessages: Record<CheckinEventAvailability, string> = {
@@ -12,7 +14,7 @@ const availabilityMessages: Record<CheckinEventAvailability, string> = {
   upstream_unavailable: "Upstream unavailable — configuration cannot be verified",
 };
 interface CheckinEventSelectorProps {
-  status: CheckinStatusDTO;
+  status: CheckinStatusDTO | undefined;
   verifying: boolean;
 }
 
@@ -20,7 +22,7 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
   // Do not fan out full upstream discovery on every 5-second station heartbeat.
   // Refresh on binding/station fences, focus, explicit refresh and each selection.
   // The server always revalidates mappings and generations for new requests.
-  const [catalogue, actions] = createAsyncResource(() => props.status.bindingState === "bound" ? `${props.status.binding?.id}:${props.status.binding?.version}:${props.status.station?.generation}:${props.status.system.generation}` : undefined, checkinEventCatalogue);
+  const [catalogue, actions] = createAsyncResource(() => props.status?.bindingState === "bound" ? `${props.status?.binding?.id}:${props.status?.binding?.version}:${props.status?.station?.generation}:${props.status?.system.generation}` : undefined, checkinEventCatalogue);
   const [choice, setChoice] = createSignal("");
   const [pending, setPending] = createSignal(false);
   const [error, setError] = createSignal("");
@@ -28,18 +30,18 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
   const verified = () => {
     const data = catalogue();
     return !!data && !catalogue.error && !catalogue.loading && !props.verifying && !pending()
-      && props.status.bindingState === "bound" && !!props.status.binding && !props.status.binding.revoked
-      && props.status.system.enabled && !!props.status.station?.enabled
-      && data.fence.bindingVersion === props.status.binding.version
-      && data.fence.stationGeneration === props.status.station.generation
-      && data.fence.systemGeneration === props.status.system.generation;
+      && props.status?.bindingState === "bound" && !!props.status?.binding && !props.status?.binding.revoked
+      && props.status?.system.enabled && !!props.status?.station?.enabled
+      && data.fence.bindingVersion === props.status?.binding.version
+      && data.fence.stationGeneration === props.status?.station.generation
+      && data.fence.systemGeneration === props.status?.system.generation;
   };
   const contextAvailable = () => {
     const data = catalogue();
     const context = data?.context;
     return verified() && data?.selected?.availability === "available" && !!context
       && context.eventId === data.selected.id && context.eventGeneration === data.selected.generation
-      && context.bindingId === props.status.binding?.id && context.stationId === props.status.station?.id
+      && context.bindingId === props.status?.binding?.id && context.stationId === props.status?.station?.id
       && context.bindingVersion === data.fence.bindingVersion && context.selectionVersion === data.fence.selectionVersion
       && context.stationGeneration === data.fence.stationGeneration && context.systemGeneration === data.fence.systemGeneration;
   };
@@ -73,9 +75,10 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
   }
 
   return (
+    <>
     <section aria-label="This phone's event" class="min-w-0 border-t border-base-content/20 pt-4 space-y-4 break-words">
       <h2 class="text-xl font-bold">Current event for this phone</h2>
-      <p class="font-bold">Station: {props.status.station?.label || "Unavailable"}</p>
+      <p class="font-bold">Station: {props.status?.station?.label || "Unavailable"}</p>
       <div aria-live="polite" class="space-y-2">
         <Show when={catalogue.loading || props.verifying}><p role="status">Refreshing this phone's event context…</p></Show>
         <Show when={catalogue.error}><p role="alert" class="alert alert-error">Event catalogue unavailable. Any previously selected event below is unverified, not ready for new work.</p></Show>
@@ -111,5 +114,8 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
       )}</Show>
       <p class="font-bold text-warning">Not ready for event use. No admission, scanning or printing is enabled.</p>
     </section>
+    <CheckinArrivalPreflight context={contextAvailable() ? catalogue()?.context ?? null : null} eventTitle={catalogue()?.selected?.title ?? ""} stationLabel={props.status?.station?.label ?? ""} verifying={props.verifying} bindingScope={props.status?.bindingState === "bound" && props.status.binding && !props.status.binding.revoked ? `${props.status.binding.id}:${props.status.binding.version}:${props.status.station?.id}` : undefined} />
+    <CheckinArrivalWork unavailable={props.verifying} stationKey={props.status?.bindingState === "bound" && props.status.binding && !props.status.binding.revoked ? `${props.status.binding.id}:${props.status.binding.version}` : undefined} />
+    </>
   );
 }

@@ -91,7 +91,7 @@ export default function CheckinStationPage() {
   return (
     <CheckinLayout title="Your Check-in Station">
       <Show when={guard.authorized()}>
-        <div class="alert alert-warning" role="note">Provisioning and event selection only. Attendee admission, camera scanning, lookup and Name Label printing are not enabled in this release.</div>
+        <div class="alert alert-warning" role="note">Provisioning, event selection and arrival preflight only. Attendee admission, camera scanning, lookup and Name Label printing are not enabled in this release.</div>
         <div aria-live="polite" class="space-y-2">
           <Show when={message()}><p class="alert alert-success">{message()}</p></Show>
           <Show when={error()}><p role="alert" class="alert alert-error">{error()}</p></Show>
@@ -106,7 +106,6 @@ export default function CheckinStationPage() {
             <p>Binding: {current().bindingState}</p>
             <Show when={current().station}>{(station) => <StationReadiness station={station()} />}</Show>
             <Show when={current().bindingState === "bound" && current().binding && current().station}>
-              <CheckinEventSelector status={current()} verifying={status.loading} />
               <BoundAgentReadiness stationId={current().station!.id} />
             </Show>
             <Show when={current().bindingState === "revoked"}>
@@ -119,6 +118,7 @@ export default function CheckinStationPage() {
             </div>
           </section>
         )}</Show>
+        <CheckinEventSelector status={status()} verifying={status.loading || !!status.error} />
         <section class="rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-4">
           <h2 class="text-xl font-bold">Provision this phone</h2>
           <p>Use your phone's camera to open a station QR after logging in, or paste its opaque code below. Reviewing a QR does not change your binding. Confirming another station replaces this browser's binding, never transfers work.</p>

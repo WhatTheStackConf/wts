@@ -2,6 +2,7 @@ import { For, Show, createSignal } from "solid-js";
 import { CheckinLayout } from "~/components/checkin/CheckinLayout";
 import { CheckinEventAdmin } from "~/components/checkin/CheckinEventAdmin";
 import { CheckinLabelAdmin } from "~/components/checkin/CheckinLabelAdmin";
+import { CheckinArrivalWork } from "~/components/checkin/CheckinArrivalWork";
 import { CheckinAgentAdmin } from "~/components/checkin/CheckinAgentAdmin";
 import { StationReadiness } from "~/components/checkin/CheckinStationPage";
 import { useRequireAdmin } from "~/lib/route-guards";
@@ -75,10 +76,11 @@ export default function AdminCheckinPage() {
   return (
     <CheckinLayout title="Check-in administration">
       <Show when={guard.authorized()}>
-        <p class="alert alert-warning">Software provisioning only. No admission or print work can start. Stops preserve work; restoring a scope changes its authorization generation, never authorizes replay.</p>
+        <p class="alert alert-warning">Software provisioning and arrival preflight only. No admission or print work can start. Stops preserve work; restoring a scope changes its authorization generation, never authorizes replay.</p>
         <CheckinEventAdmin />
         <CheckinLabelAdmin />
         <CheckinAgentAdmin />
+        <CheckinArrivalWork allStations />
         <div aria-live="polite">
           <Show when={error()}><p role="alert" class="alert alert-error">{error()}</p></Show>
           <Show when={message()}><p class="alert alert-success">{message()}</p></Show>

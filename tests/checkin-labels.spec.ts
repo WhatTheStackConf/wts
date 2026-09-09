@@ -66,5 +66,5 @@ test("synthetic Name Label: loaded font raster, independent rows and no side eff
   }
   expect((await db.collection("admin_actions").getList(1, 1)).totalItems).toBe(beforeActions);
   expect((await db.collection("checkin_audit_events").getList(1, 1)).totalItems).toBe(beforeAudit);
-  await expect(page.getByText("Software provisioning only. No admission or print work can start.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Software provisioning and arrival preflight only. No admission or print work can start.", { exact: false })).toBeVisible();
 });
