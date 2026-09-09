@@ -23,6 +23,30 @@ const programme: PublicEventProgramme = {
 
 const renderProgramme = (value = programme) => renderToString(() => <AgendaProgramme programme={value} id="test-programme" />);
 
+describe("confirmed weekday time rendering", () => {
+  it("renders event starts and partial session times without a contradictory TBA heading", async () => {
+    const { addAnnouncedWeekProgrammes } = await import("~/lib/conference-week-agenda");
+    const { untimedWeekProgrammes } = await import("~/lib/conference-week-agenda");
+    const events = untimedWeekProgrammes.map((definition, index) => ({ id: String(index), name: definition.eventName, published: true }));
+    const sessions = ["requests-lies-and-stack-traces", "ddd-for-ai-assisted-development", "fundamentals-of-native-ios-development"].map((slug) => ({ id: slug, slug, title: slug, abstract: "", created: "", updated: "", collectionId: "sessions", collectionName: "sessions", published: true, speakers: [] }));
+    const agenda = addAnnouncedWeekProgrammes({ days: [] }, events as import("~/lib/pocketbase-types").AppearanceEventRecord[], sessions, []);
+    const monday = renderProgramme(agenda.days[0].programmes[0]).replace(/<!--.*?-->/g, "");
+    expect(monday).toContain("14:00–18:00");
+    expect(monday).not.toContain("Starting time: TBA");
+    expect(monday).not.toContain("End time TBA");
+    const tuesday = renderProgramme(agenda.days[1].programmes[0]);
+    expect(tuesday).toContain("Starting time: 16:00");
+    expect(tuesday).toContain('datetime="2026-09-15T16:00:00+02:00"');
+    expect(tuesday).toContain('datetime="2026-09-15T18:00:00+02:00"');
+    expect(tuesday).toContain("End time TBA");
+    expect(tuesday).not.toContain("Running order and session times: TBA");
+    expect(tuesday).not.toContain("sessions, times TBA");
+    expect(renderProgramme(agenda.days[2].programmes[0])).toContain("Starting time: 17:00");
+    expect(renderProgramme(agenda.days[3].programmes[0])).toContain("Starting time: 10:00");
+    expect(renderProgramme(agenda.days[4].programmes[0])).toContain("Starting time: TBA");
+  });
+});
+
 describe("agenda day filtering", () => {
   const days: PublicAgendaDay[] = [
     { key: "monday", localDate: "2026-09-14", title: "InfoSec Monday", programmes: [] },

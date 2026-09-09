@@ -95,6 +95,120 @@ function publishedData(): ConferenceGuidePublishedData {
   };
 }
 
+function announcedPublishedData(): ConferenceGuidePublishedData {
+  const data = publishedData();
+  const event = { name: "Workshop Tuesday: iOS + AI", compactLabel: "Tuesday" };
+  data.agenda.days.unshift({
+    key: "tuesday", localDate: "2026-09-15", title: "Workshop Tuesday",
+    programmes: [{
+      event, tracks: [], slots: [],
+      untimed: {
+        startTime: "16:00", title: "<b>Tuesday workshops</b>",
+        locationLabel: "Base42 Hackerspace, Rimska 25, 1000 Skopje",
+        summary: "<p>Free &amp; public.</p>",
+        sessions: [{
+          slug: "ddd-for-ai-assisted-development", title: "DDD for AI-assisted development", speakers: [],
+          schedule: {
+            dayDate: "2026-09-15", dayTitle: "Workshop Tuesday", event,
+            startAt: "2026-09-15T14:00:00.000Z",
+            locationLabel: "Base42 Hackerspace, Rimska 25, 1000 Skopje",
+          },
+        }, { slug: "lineup-only", title: "Lineup only", speakers: [] }],
+      },
+    }],
+  });
+  for (const session of data.agenda.days[0].programmes[0].untimed!.sessions) {
+    data.sessions.push({ slug: session.slug, title: session.title, speakers: [], abstract: "Public development session", relatedSessions: [] });
+  }
+  return data;
+}
+
+describe("announced weekday Conference Guide", () => {
+  it("keeps announced ranges separate from plannable slots and prefers a later published slot", async () => {
+    const data = announcedPublishedData();
+    const announced = data.agenda.days[0].programmes[0].untimed!;
+    announced.endTime = "20:00";
+    announced.sessions[0].schedule!.endAt = "2026-09-15T18:00:00.000Z";
+    announced.sessions.push({ slug: "safe-systems", title: "Earlier lineup mention", speakers: [] });
+    const guide = createConferenceGuide({ loadPublishedData: async () => data });
+    const session = await guide.getSession("ddd-for-ai-assisted-development");
+    expect(session?.schedule).toMatchObject({
+      status: "announced", start_time: "16:00", end_time: "20:00", end_local_date: "2026-09-15", end_status: "announced",
+    });
+    expect((await guide.getSession("safe-systems"))?.schedule).toMatchObject({
+      status: "scheduled", local_date: "2026-09-19", start_time: "10:00", end_time: "10:35",
+    });
+    const plan = await guide.planProposedSchedule({ ranked_session_slugs: ["ddd-for-ai-assisted-development", "safe-systems"] });
+    expect(plan.selected_sessions.map((session) => session.slug)).toEqual(["safe-systems"]);
+    expect(plan.input_outcomes[0].outcome).toBe("unscheduled");
+  });
+
+  it("versions announced changes and allowlists lineup speakers and links", async () => {
+    const data = announcedPublishedData();
+    const announced = data.agenda.days[0].programmes[0].untimed!;
+    const publicSpeaker = { slug: "ada-example", name: "<b>Ada &amp; Example</b>", photoUrl: "https://pb.example/private-id/photo.jpg" };
+    announced.speakers = [publicSpeaker];
+    announced.unassignedSpeakers = [publicSpeaker];
+    announced.sessions[0].speakers = [publicSpeaker];
+    announced.cta = { label: "<b>Register</b>", href: "/tickets" };
+    const guide = createConferenceGuide({ loadPublishedData: async () => data, programmeTtlMs: 0 });
+    const before = await guide.getAgenda();
+    expect(before.days[0].programmes[0].announced).toMatchObject({
+      cta: { label: "Register", canonical_url: "https://wts.sh/tickets" },
+      speakers: [{ slug: "ada-example", display_name: "Ada & Example", canonical_url: "https://wts.sh/speakers/ada-example" }],
+      unassigned_speakers: [{ slug: "ada-example" }],
+    });
+    expect(JSON.stringify(before)).not.toMatch(/private-id|photoUrl|<b>/);
+    announced.startTime = "17:00";
+    const eventChanged = await guide.getAgenda();
+    expect(eventChanged.metadata.programme_version).not.toBe(before.metadata.programme_version);
+    announced.sessions[0].schedule!.startAt = "2026-09-15T15:00:00.000Z";
+    announced.cta = { label: "Unsafe", href: "javascript:alert(1)" };
+    const sessionChanged = await guide.getAgenda();
+    expect(sessionChanged.metadata.programme_version).not.toBe(eventChanged.metadata.programme_version);
+    expect(sessionChanged.days[0].programmes[0].announced?.cta).toBeUndefined();
+    expect((await guide.getSession("ddd-for-ai-assisted-development"))?.schedule).toMatchObject({ start_time: "17:00" });
+  });
+
+  it("searches partial schedules by their announced date and venue, and rejects unknown ends in planning", async () => {
+    const guide = createConferenceGuide({ loadPublishedData: async () => announcedPublishedData() });
+    const search = await guide.searchSessions({
+      query: "Base42", filters: { date: "2026-09-15", location: "base42 hackerspace, rimska 25, 1000 skopje" },
+    });
+    expect(search.results.map((session) => session.slug)).toContain("ddd-for-ai-assisted-development");
+    expect(search.results.find((session) => session.slug === "ddd-for-ai-assisted-development")?.schedule)
+      .toMatchObject({ status: "announced", start_time: "16:00", end_status: "not_announced" });
+    const plan = await guide.planProposedSchedule({ must_attend_slugs: ["ddd-for-ai-assisted-development", "lineup-only"] });
+    expect(plan.selected_sessions).toEqual([]);
+    expect(plan.input_outcomes).toEqual([
+      { slug: "ddd-for-ai-assisted-development", requested_as: ["must_attend"], outcome: "end_time_not_announced" },
+      { slug: "lineup-only", requested_as: ["must_attend"], outcome: "unscheduled" },
+    ]);
+    expect(plan.unresolved_hard_constraints[0].reason).toBe("end_time_not_announced");
+  });
+
+  it("exposes event starts and lineup sessions without inventing session ends or inheriting event starts", async () => {
+    const guide = createConferenceGuide({ loadPublishedData: async () => announcedPublishedData() });
+    const agenda = await guide.getAgenda();
+    expect(agenda.days[0].programmes[0]).toMatchObject({
+      slots: [],
+      announced: {
+        title: "Tuesday workshops", start_time: "16:00", summary: "Free & public.",
+        location: "Base42 Hackerspace, Rimska 25, 1000 Skopje",
+        sessions: [
+          { slug: "ddd-for-ai-assisted-development", schedule: { status: "announced", local_date: "2026-09-15", start_time: "16:00", end_status: "not_announced" } },
+          { slug: "lineup-only", schedule: { status: "announced", local_date: "2026-09-15" } },
+        ],
+      },
+    });
+    const session = await guide.getSession("ddd-for-ai-assisted-development");
+    expect(session?.schedule).toMatchObject({ status: "announced", start_time: "16:00", end_status: "not_announced" });
+    expect(session?.schedule).not.toHaveProperty("end_time");
+    expect((await guide.getSession("lineup-only"))?.schedule).not.toHaveProperty("start_time");
+    expect(JSON.stringify(agenda)).not.toContain("2026-09-15T14:00");
+  });
+});
+
 function searchablePublishedData(): ConferenceGuidePublishedData {
   const data = publishedData();
   data.agenda.days[0].programmes[0].slots.push(

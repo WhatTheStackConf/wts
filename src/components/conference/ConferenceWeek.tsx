@@ -45,6 +45,13 @@ function TrackCard(props: { track: ConferenceWeekTrack }) {
           </p>
         </div>
 
+        <Show when={props.track.startTime}>
+          <p class="relative z-10 mb-3 font-mono text-sm font-bold text-accent-300">
+            <Show when={props.track.endTime} fallback={`Starts at ${props.track.startTime}`}>
+              {props.track.startTime}–{props.track.endTime}
+            </Show> · Skopje time
+          </p>
+        </Show>
         <p class="relative z-10 m-0 text-base leading-relaxed text-dark-50">
           {props.track.summary}
         </p>

@@ -87,7 +87,9 @@ export function AgendaProgramme(props: AgendaProgrammeProps) {
         <section aria-labelledby={props.id}>
           <header class="bg-black/15 px-5 py-5 md:px-8">
             <h3 id={props.id} class="text-xl font-bold text-white">{untimed().title || props.programme.event.name}</h3>
-            <p class="mt-2 font-mono text-sm font-bold text-primary-300">Starting time: TBA</p>
+            <p class="mt-2 font-mono text-sm font-bold text-primary-300"><Show when={untimed().endTime} fallback={<Show when={untimed().startTime} fallback={<Show when={untimed().sessions.some((session) => session.schedule)} fallback="Starting time: TBA">Confirmed session times below</Show>}>{`Starting time: ${untimed().startTime}`}</Show>}>
+                {untimed().startTime}–{untimed().endTime}
+              </Show><Show when={untimed().startTime}> · Skopje time</Show></p>
             <Show when={untimed().locationLabel}><p class="mt-2 text-sm text-secondary-200">Location: {untimed().locationLabel}</p></Show>
             <p class="mt-3 max-w-3xl text-sm leading-relaxed text-secondary-100/85">{untimed().summary}</p>
             <Show when={untimed().speakers?.length}>
@@ -109,11 +111,21 @@ export function AgendaProgramme(props: AgendaProgrammeProps) {
           </header>
           <div class="px-5 py-5 md:px-8">
             <Show when={untimed().sessions.length > 0} fallback={<p class="text-sm text-secondary-200">Session lineup: TBA</p>}>
-              <p class="mb-4 text-sm text-secondary-200">Confirmed sessions. Running order and session times: TBA.</p>
-              <ul class="grid gap-4 md:grid-cols-2" aria-label={`${props.programme.event.name} — sessions, times TBA`}>
+              <p class="mb-4 text-sm text-secondary-200"><Show when={untimed().sessions.some((session) => session.schedule)} fallback="Confirmed sessions. Running order and session times: TBA.">
+                Confirmed session starts below. Unannounced end times remain TBA.
+              </Show></p>
+              <ul class="grid gap-4 md:grid-cols-2" aria-label={`${props.programme.event.name} — sessions${untimed().sessions.some((session) => session.schedule) ? "" : ", times TBA"}`}>
                 <For each={untimed().sessions}>
                   {(session) => (
                     <li class="min-w-0 rounded-lg border border-white/15 bg-dark-800 p-4">
+                      <Show when={session.schedule}>
+                        {(schedule) => <p class="mb-2 font-mono text-sm font-bold text-primary-300">
+                          <time datetime={schedule().startAt}>{timeFormatter.format(new Date(schedule().startAt))}</time>
+                          <Show when={schedule().endAt} fallback=" · End time TBA">
+                            {(end) => <> – <time datetime={end()}>{timeFormatter.format(new Date(end()))}</time></>}
+                          </Show>
+                        </p>}
+                      </Show>
                       <Show when={session.format}><p class="font-mono text-xs text-secondary-200">{session.format}</p></Show>
                       <h4 class="mt-2 text-base font-bold leading-snug text-white [overflow-wrap:anywhere]">
                         <a href={`/sessions/${session.slug}`} class={linkClass}>{session.title}</a>

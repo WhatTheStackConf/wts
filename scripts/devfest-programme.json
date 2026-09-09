@@ -5,8 +5,8 @@
   "title": "Pre-DevFest Days: Day Zero x WhatThe(Google)Stack",
   "date": "2026-09-16",
   "location": "Faculty of Computer Science & Engineering (FINKI), 16 Руѓер Бошковиќ, Skopje",
-  "timing_policy": "Starting time: TBA. No timed slots are created.",
-  "speaker_policy": "Organizer-confirmed assignments: Josefine Schaefer presents Agentic Accessibility; Roushanak Rahmat presents Designing Multi-Agent Systems (ADK). Akshata Mohanty remains announced without a session.",
+  "timing_policy": "Event starts at 17:00 Europe/Skopje. Individual session times remain TBA; no timed slots are created.",
+  "speaker_policy": "Organizer-confirmed assignments: Josefine Schaefer presents Agentic Accessibility; Roushanak Rahmat presents Designing Multi-Agent Systems (ADK). Akshata Mohanty now has the separately published session building-a-distributed-multi-agent-system, included by the website lineup; this historical importer owns only the two sessions below.",
   "sessions": [
     {
       "slug": "agentic-accessibility",
