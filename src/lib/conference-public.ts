@@ -252,15 +252,15 @@ function mapSpeakerDetail(
   };
 }
 
-function sortByDisplayName<T extends { displayName: string }>(items: T[]): T[] {
+function sortByDisplayName<T extends { displayName: string; slug: string }>(items: T[]): T[] {
   return [...items].sort((a, b) =>
-    a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }),
+    a.displayName.localeCompare(b.displayName, "en", { sensitivity: "base" }) || a.slug.localeCompare(b.slug, "en"),
   );
 }
 
-function sortByTitle<T extends { title: string }>(items: T[]): T[] {
+function sortByTitle<T extends { title: string; slug: string }>(items: T[]): T[] {
   return [...items].sort((a, b) =>
-    a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
+    a.title.localeCompare(b.title, "en", { sensitivity: "base" }) || a.slug.localeCompare(b.slug, "en"),
   );
 }
 
@@ -276,17 +276,19 @@ function shuffleArray<T>(items: readonly T[]): T[] {
 
 export const TEASER_SPEAKER_LIMIT = 9;
 
-async function fetchPublishedSpeakersRows(): Promise<SpeakerRow[]> {
+async function fetchPublishedSpeakersRows(signal?: AbortSignal): Promise<SpeakerRow[]> {
   const admin = getAdminPB();
   const rows = await admin.fetchAllRecords("speakers", {
+    ...(signal ? { signal } : {}),
     filter: "published = true",
   });
   return rows as SpeakerRow[];
 }
 
-async function fetchPublishedSessionsRows(): Promise<SessionRecord[]> {
+async function fetchPublishedSessionsRows(signal?: AbortSignal): Promise<SessionRecord[]> {
   const admin = getAdminPB();
   const rows = await admin.fetchAllRecords("sessions", {
+    ...(signal ? { signal } : {}),
     filter: "published = true",
     expand: "speakers",
     sort: "title",
@@ -294,8 +296,9 @@ async function fetchPublishedSessionsRows(): Promise<SessionRecord[]> {
   return rows as SessionRecord[];
 }
 
-async function fetchPublishedAppearanceEventsRows(): Promise<AppearanceEventRecord[]> {
+async function fetchPublishedAppearanceEventsRows(signal?: AbortSignal): Promise<AppearanceEventRecord[]> {
   const rows = await getAdminPB().fetchAllRecords("appearance_events", {
+    ...(signal ? { signal } : {}),
     filter: "published = true",
     fields: "id,name,compact_label,published,display_order",
     sort: "display_order,name,id",
@@ -430,10 +433,12 @@ export const fetchPublicSessions = async (): Promise<PublicSessionCard[]> => {
 };
 
 /** Published timed slots plus explicitly announced weekday lineups and partial times. */
-export const loadPublicAgenda = async (): Promise<PublicAgenda> => {
+export const loadPublicAgenda = async (signal?: AbortSignal): Promise<PublicAgenda> => {
   const admin = getAdminPB();
+  const requestOptions = signal ? { signal } : {};
   const [days, events, programmes, tracks, slots, sessions, speakers] = await Promise.all([
     admin.fetchAllRecords("conference_days", {
+      ...requestOptions,
       filter: "published = true",
       fields: "id,key,local_date,title,display_order,published",
       sort: "display_order,local_date,id",
@@ -441,29 +446,35 @@ export const loadPublicAgenda = async (): Promise<PublicAgenda> => {
     admin.fetchAllRecords("appearance_events", {
       filter: "published = true",
       fields: "id,name,compact_label,destination_url,published,display_order",
+      ...requestOptions,
       sort: "display_order,name,id",
     }),
     admin.fetchAllRecords("event_programmes", {
       fields: "id,day,appearance_event,display_order",
+      ...requestOptions,
       sort: "day,display_order,id",
     }),
     admin.fetchAllRecords("agenda_tracks", {
       fields: "id,programme,key,name,location_label,display_order",
+      ...requestOptions,
       sort: "programme,display_order,id",
     }),
     admin.fetchAllRecords("agenda_slots", {
       filter: "published = true",
       fields: "id,programme,track,start_at,end_at,kind,published,display_order,location_label,session,title,summary",
+      ...requestOptions,
       sort: "programme,start_at,track,display_order,id",
     }),
     admin.fetchAllRecords("sessions", {
       filter: "published = true",
       fields: "id,slug,title,format,published,speakers",
+      ...requestOptions,
       sort: "title,id",
     }),
     admin.fetchAllRecords("speakers", {
       filter: "published = true",
       fields: "id,slug,display_name,photo,appearance_events,published",
+      ...requestOptions,
       sort: "slug,id",
     }),
   ]);
@@ -513,33 +524,42 @@ function scheduleFromPublicAgenda(
 }
 
 /** Loads one allowlisted Published programme snapshot for Conference Guide composition. */
-export const loadPublicConferenceGuideProgramme = async (): Promise<PublicConferenceGuideProgramme> => {
-  const [speakerRows, rawSessionRows, agenda] = await Promise.all([
-    fetchPublishedSpeakersRows(),
-    fetchPublishedSessionsRows(),
-    loadPublicAgenda(),
+export const loadPublicConferenceGuideProgramme = async (signal?: AbortSignal): Promise<PublicConferenceGuideProgramme> => {
+  const [speakerRows, rawSessionRows, agenda, appearanceEvents] = await Promise.all([
+    fetchPublishedSpeakersRows(signal),
+    fetchPublishedSessionsRows(signal),
+    loadPublicAgenda(signal),
+    fetchPublishedAppearanceEventsRows(signal),
   ]);
   const sessionRows = rawSessionRows as Array<SessionRecord & {
     expand?: { speakers?: SpeakerRow[] };
   }>;
 
-  const sessions = sortByTitle(sessionRows.map((session) => ({
-    slug: session.slug,
-    title: session.title,
-    abstract: session.abstract,
-    format: session.format || undefined,
-    schedule: scheduleFromPublicAgenda(agenda, session.slug),
-    speakers: sortByDisplayName(
-      (session.expand?.speakers ?? [])
-        .filter((speaker) => speaker.published)
-        .map((speaker) => mapSpeakerSummary(speaker)),
-    ),
-    relatedSessions: [],
-  })));
+  const sessions = sortByTitle(sessionRows.map((session): PublicSessionDetail => {
+    const schedule = scheduleFromPublicAgenda(agenda, session.slug);
+    return {
+      slug: session.slug,
+      title: session.title,
+      abstract: session.abstract,
+      format: session.format || undefined,
+      schedule,
+      announcement: schedule ? undefined : announcedWeekSessionAppearance(session, appearanceEvents),
+      speakers: sortByDisplayName(
+        (session.expand?.speakers ?? [])
+          .filter((speaker) => speaker.published)
+          .map((speaker) => ({
+            ...mapSpeakerSummary(speaker, appearanceEventsForSpeaker(appearanceEvents, speaker)),
+            sessionCount: sessionsForSpeaker(rawSessionRows, speaker.id).length,
+          })),
+      ),
+      relatedSessions: [],
+    };
+  }));
   const speakers = sortByDisplayName(
     speakerRows.map((speaker) => mapSpeakerDetail(
       speaker,
       sessionsForSpeaker(rawSessionRows, speaker.id),
+      appearanceEventsForSpeaker(appearanceEvents, speaker),
     )),
   );
 
