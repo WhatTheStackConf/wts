@@ -1,3 +1,4 @@
+import { angularDaySessionSchedule, angularDayTalks, buildAngularDayProgramme } from "~/lib/angular-day-agenda";
 import { conferenceWeekTracks, farisWorkshopTime } from "~/lib/conference-week";
 import type { AppearanceEventRecord, SessionRecord, SpeakerRecord } from "~/lib/pocketbase-types";
 import type { PublicAgenda, PublicEventProgramme, PublicSessionAnnouncement, PublicSessionSchedule } from "~/lib/programme-public";
@@ -29,11 +30,9 @@ export const untimedWeekProgrammes = [
   { name: "Workshop Thursday", eventName: "Workshop Thursday", sessions: [
     "workshop-payments-and-monetization-at-scale-for-frontend-engineers",
   ] },
-  { name: "Angular Day", eventName: "Angular Day", includeUnassignedSpeakers: true, sessions: [
-    // The other published Signal Forms record duplicates this speaker/title.
-    "probabilistic-ai-to-deterministic-applications",
-    "same-crud-10-times", "beyond-the-chatbox", "offline-first-zero-cost", "the-monorepo-multiplier",
-  ] },
+  { name: "Angular Day", eventName: "Angular Day",
+    sessions: angularDayTalks.flatMap((talk) => talk.session ? [talk.session] : []),
+  },
 ] as const;
 
 /** Preserve event/date-only announcements without treating event starts as talk starts. */
@@ -65,6 +64,10 @@ export function announcedWeekSessionSchedule(
   if (!session.published) return undefined;
   const definition = untimedWeekProgrammes.find((item) => item.sessions.some((slug) => slug === session.slug));
   const isFarisWorkshop = session.slug === "workshop-payments-and-monetization-at-scale-for-frontend-engineers";
+  if (definition?.eventName === "Angular Day") {
+    const event = events.find((item) => item.published && item.name === definition.eventName);
+    return event ? angularDaySessionSchedule(session, event) : undefined;
+  }
   if (!definition || (!isFarisWorkshop && !["InfoSec Monday", "Workshop Tuesday"].includes(definition.eventName))) return undefined;
   const event = events.find((item) => item.published && item.name === definition.eventName);
   const copy = conferenceWeekTracks.find((item) => item.name === definition.name);
@@ -82,7 +85,7 @@ export function announcedWeekSessionSchedule(
   };
 }
 
-/** Add only announced weekday lineups; never expose private PocketBase draft slots.
+/** Add announced weekday lineups and confirmed Angular times; never expose private PocketBase draft slots.
  * An existing published timed programme takes precedence over its TBA fallback.
  */
 export function addAnnouncedWeekProgrammes(
@@ -105,11 +108,14 @@ export function addAnnouncedWeekProgrammes(
       day = { key: `week-${copy.date}`, localDate: copy.date, title: copy.date === "2026-09-17" ? "MAUI Day & Workshop Thursday" : copy.name, programmes: [] };
       days.push(day);
     }
+    if (definition.eventName === "Angular Day") {
+      day.programmes.push(buildAngularDayProgramme(event, sessions, speakers));
+      continue;
+    }
     const selectedSessions = definition.sessions.flatMap((slug) => {
       const session = visibleSessions.get(slug);
       return session ? [session] : [];
     });
-    const assignedSpeakerIds = new Set(selectedSessions.flatMap((session) => session.speakers || []));
     const programme: PublicEventProgramme = {
       event: { name: copy.name, compactLabel: event.compact_label || copy.name, destinationUrl: copy.href || event.destination_url || undefined },
       tracks: [],
@@ -118,10 +124,6 @@ export function addAnnouncedWeekProgrammes(
         startTime: copy.startTime,
         endTime: copy.endTime,
         locationLabel: copy.locationLabel,
-        ...("includeUnassignedSpeakers" in definition ? {
-          unassignedSpeakers: publicAgendaSpeakers(speakers.filter((speaker) =>
-            speaker.appearance_events?.includes(event.id) && !assignedSpeakerIds.has(speaker.id))),
-        } : {}),
         ...("details" in definition ? {
           title: definition.details.title,
           // Published event appearances announce speakers independently of sessions.

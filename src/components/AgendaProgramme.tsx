@@ -62,8 +62,8 @@ function SlotContent(props: { slot: PublicAgendaSlot }) {
           {(session) => <a href={`/sessions/${session().slug}`} class={linkClass}>{session().title}</a>}
         </Show>
       </h4>
-      <Show when={props.slot.session?.speakers.length}>
-        <AgendaSpeakers speakers={props.slot.session?.speakers || []} />
+      <Show when={props.slot.session?.speakers.length || props.slot.speakers?.length}>
+        <AgendaSpeakers speakers={props.slot.session?.speakers || props.slot.speakers || []} />
       </Show>
       <Show when={props.slot.summary}>
         <p class="mt-2 max-w-3xl text-sm leading-relaxed text-secondary-100/85">{props.slot.summary}</p>
@@ -174,6 +174,19 @@ function TimedAgendaProgramme(props: AgendaProgrammeProps) {
     <section aria-labelledby={props.id}>
       <header class="bg-black/15 px-5 py-5 md:px-8">
         <h3 id={props.id} class="text-xl font-bold text-white">{props.programme.event.name}</h3>
+        <Show when={props.programme.details}>
+          {(details) => <>
+            <p class="mt-3 max-w-3xl text-sm leading-relaxed text-secondary-100/85">{details().summary}</p>
+            <Show when={details().access}><p class="mt-3 text-sm text-secondary-200">{details().access}</p></Show>
+            <Show when={details().cta}>
+              {(cta) => <a href={cta().href} class={`mt-3 inline-flex min-h-11 items-center text-sm text-white ${linkClass}`}>{cta().label}</a>}
+            </Show>
+            <Show when={details().unassignedSpeakers?.length}>
+              <p class="mt-4 text-sm font-bold text-white">Additional announced speakers · times and topics TBD</p>
+              <AgendaSpeakers speakers={details().unassignedSpeakers || []} label="Additional announced speakers" />
+            </Show>
+          </>}
+        </Show>
         <Show when={tracks().length > 1}>
           <p class="mt-2 text-sm leading-relaxed text-secondary-100/85">Choose your stage, or compare parallel sessions on a larger screen. Programme-wide items are for everyone.</p>
         </Show>

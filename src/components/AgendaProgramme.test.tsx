@@ -43,7 +43,10 @@ describe("confirmed weekday time rendering", () => {
     expect(tuesday).not.toContain("sessions, times TBA");
     expect(renderProgramme(agenda.days[2].programmes[0])).toContain("Starting time: 17:00");
     expect(renderProgramme(agenda.days[3].programmes[0])).toContain("Starting time: 10:00");
-    expect(renderProgramme(agenda.days[4].programmes[0])).toContain("Starting time: TBA");
+    const angular = renderProgramme(agenda.days[4].programmes[0]);
+    expect(angular).toContain("Doors open at 10:00; talks start at 10:30");
+    expect(angular).toContain('datetime="2026-09-18T14:00:00+02:00"');
+    expect(angular).not.toContain("Starting time: TBA");
   });
 });
 
@@ -92,6 +95,26 @@ describe("agenda day filtering", () => {
 });
 
 describe("public agenda programme", () => {
+  it("renders a scheduled speaker with an unannounced topic without a fake session link", () => {
+    const html = renderProgramme({
+      event: { name: "Angular Day", compactLabel: "Angular" }, tracks: [],
+      details: { summary: "Doors open at 10:00; talks start at 10:30.", access: "Free entry.", cta: { label: "Reserve a free ticket", href: "https://tickets.example" } },
+      slots: [{
+        kind: "other", title: "Kiril Zafirov — Topic: TBD", summary: "Block 2",
+        startAt: "2026-09-18T12:45:00+02:00", endAt: "2026-09-18T13:15:00+02:00",
+        speakers: [{ slug: "kiril-zafirov", name: "Kiril Zafirov", photoUrl: "https://pb.example/kiril.jpg" }],
+      }],
+    });
+    expect(html).toContain('datetime="2026-09-18T12:45:00+02:00"');
+    expect(html).toContain('datetime="2026-09-18T13:15:00+02:00"');
+    expect(html).toContain('href="/speakers/kiril-zafirov"');
+    expect(html).toContain("kiril.jpg");
+    expect(html).toContain("Block 2");
+    expect(html).toContain("Topic: TBD");
+    expect(html).toContain("Reserve a free ticket");
+    expect(html).not.toMatch(/href="\/sessions\/|Starting time: TBA|Running order and session times: TBA/);
+  });
+
   it("uses compact speaker circles with lazy images and a missing-photo fallback", () => {
     const speakers = [
       { slug: "ana", name: "Ana Example", photoUrl: "https://pb.example/api/files/speakers/ana/photo.jpg" },
