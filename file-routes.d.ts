@@ -457,6 +457,18 @@ declare module "virtual:file-routes" {
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/speakers/[slug]/promo")>;
       $$route?: undefined;
+    },
+    {
+      path: "/api/public/v1/*path";
+      page: false;
+      $HEAD: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/[...path]")>;
+      $GET: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/[...path]")>;
+      $POST: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/[...path]")>;
+      $PUT: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/[...path]")>;
+      $DELETE: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/[...path]")>;
+      $PATCH: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/[...path]")>;
+      $OPTIONS: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/[...path]")>;
+      $$route?: undefined;
     }
   ];
   export default routes;
