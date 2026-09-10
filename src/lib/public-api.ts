@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { isIP } from "node:net";
+import { publicApiDiscovery, publicApiOpenApi } from "~/lib/public-api-openapi";
 import type { PublicConferenceGuideProgramme, PublicSpeakerSummary } from "~/lib/conference-public";
 
 export interface PublicApiEvent {
@@ -30,7 +31,8 @@ function publicApiResponse(request: Request, body: unknown, status = 200, extra:
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": METHODS,
         "Access-Control-Allow-Headers": "Accept, Content-Type, If-None-Match",
-        "Access-Control-Expose-Headers": "ETag, Retry-After",
+        "Access-Control-Expose-Headers": "ETag, Retry-After, Link",
+        Link: '</api/public/v1/openapi.json>; rel="service-desc"; type="application/vnd.oai.openapi+json"',
         "X-Content-Type-Options": "nosniff",
         ...extra,
       },
@@ -126,6 +128,19 @@ export function createPublicApi(dependencies: PublicApiDependencies) {
       return error("method_not_allowed", "Use GET to read public conference data.", 405, { Allow: METHODS });
     }
     const url = new URL(request.url);
+    const isDiscovery = /^\/api\/public\/v1\/?$/.test(url.pathname);
+    const isOpenApi = /^\/api\/public\/v1\/openapi\.json\/?$/.test(url.pathname);
+    if (isDiscovery || isOpenApi) {
+      if (request.method === "OPTIONS") return respond(null, 204, { Allow: METHODS });
+      const body = isOpenApi ? publicApiOpenApi : {
+        data: publicApiDiscovery, meta: { apiVersion: "1", timeZone: "Europe/Skopje" },
+      };
+      const etag = `"${createHash("sha256").update(JSON.stringify(body)).digest("hex")}"`;
+      const headers = { ETag: etag, "Cache-Control": "public, max-age=300, must-revalidate" };
+      const unchanged = request.headers.get("if-none-match")?.split(",")
+        .some((value) => value.trim() === "*" || value.trim().replace(/^W\//, "") === etag);
+      return unchanged ? respond(null, 304, headers) : respond(body, 200, headers);
+    }
     const match = /^\/api\/public\/v1\/(speakers|sessions|agenda)(?:\/([^/]+))?\/?$/.exec(url.pathname);
     if (!match || (match[1] === "agenda" && match[2])) {
       return error("not_found", "Public resource not found.", 404);

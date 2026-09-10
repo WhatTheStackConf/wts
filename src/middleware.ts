@@ -37,7 +37,11 @@ async function preserveDeclaredStatus(
   request: Request,
   next: (request?: Request) => Promise<Response>,
 ) {
-  const matches = Router.match(new URL(request.url).pathname);
+  const pathname = new URL(request.url).pathname;
+  // Public API routes own their status, including when opened in a browser.
+  // The page router's catch-all must not turn valid JSON discovery into a 404.
+  if (/^\/api\/public\/v1(?:\/|$)/.test(pathname)) return next();
+  const matches = Router.match(pathname);
   const isNotFoundPage =
     request.method === "GET" &&
     request.headers.get("accept")?.includes("text/html") === true &&

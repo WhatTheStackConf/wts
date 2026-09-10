@@ -2,6 +2,16 @@
 
 A read-only interface for workshop apps and other clients. No account, API key, PocketBase SDK, AI model, or MCP client is needed. Base URL after deployment: `https://wts.sh/api/public/v1`.
 
+## Discovery and OpenAPI
+
+- `GET /api/public/v1` returns the endpoint catalogue and the specification URL.
+- `GET /api/public/v1/openapi.json` returns the **OpenAPI 3.1.1 document directly**, without the `data`/`meta` envelope, ready for import into OpenAPI-compatible tools.
+- Public API responses advertise the specification using a `Link` header with `rel="service-desc"`; browsers can read that header through CORS.
+
+Import `https://wts.sh/api/public/v1/openapi.json` into Postman or load it into Swagger Editor/UI to browse operations, schemas and examples. OpenAPI-compatible client generators can use the same document; individual generator/version compatibility is not guaranteed. The spec targets the existing production endpoints and does not require credentials. It distinguishes list cards from detail relationships, optional versus nullable fields, HTML-rich text, and the existing timestamp representations.
+
+Discovery and the spec support GET/HEAD/OPTIONS, ETags and five-minute HTTP caching. They do not load PocketBase or consume the data-read budget, and remain available if programme reads fail. The spec describes the five conference-data paths; these metadata URLs are documented here and in its introduction. Examples are synthetic, not cached copies of live people or sessions. Tests validate the document with Swagger Parser and actual HTTP response bodies with JSON Schema (Ajv).
+
 ## Endpoints
 
 | GET path | `data` |
@@ -22,7 +32,7 @@ curl --fail-with-body https://wts.sh/api/public/v1/agenda
 
 ## JSON contract
 
-Every successful GET returns an ordinary JSON object (not JSON-RPC):
+Every successful conference-data GET (and the discovery catalogue) returns an ordinary JSON object (not JSON-RPC):
 
 ```json
 {
