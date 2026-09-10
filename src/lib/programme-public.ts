@@ -77,6 +77,8 @@ export interface PublicAgendaSlot {
   locationLabel?: string;
   track?: PublicAgendaTrack;
   session?: PublicAgendaSession;
+  /** Announced speaker in a timed slot whose topic has not been published. */
+  speakers?: PublicAgendaSession["speakers"];
   title?: string;
   summary?: string;
 }
@@ -92,6 +94,13 @@ export interface PublicEventProgramme {
   event: PublicAgendaEvent;
   tracks: PublicAgendaTrack[];
   slots: PublicAgendaSlot[];
+  /** Entry details retained when an announced lineup gains a timetable. */
+  details?: {
+    summary: string;
+    access?: string;
+    cta?: { label: string; href: string };
+    unassignedSpeakers?: PublicAgendaSession["speakers"];
+  };
   /** Announced lineup; individual timings may be only partially confirmed. */
   untimed?: {
     startTime?: string;

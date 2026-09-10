@@ -24,7 +24,7 @@ describe("untimed weekday agendas", () => {
       "Small FINKI amphitheater, Technical Campus, Skopje",
     ];
     const programmes = addAnnouncedWeekProgrammes({ days: [] }, events, [], []).days.flatMap((day) => day.programmes);
-    expect(programmes.map((programme) => programme.untimed?.locationLabel)).toEqual(venues);
+    expect(programmes.map((programme) => programme.untimed?.locationLabel || programme.slots[0]?.locationLabel)).toEqual(venues);
     expect(conferenceWeekTracks.slice(0, 6).map((track) => track.locationLabel)).toEqual(venues);
     untimedWeekProgrammes.forEach((definition, index) => {
       for (const slug of definition.sessions) {
@@ -39,7 +39,7 @@ describe("untimed weekday agendas", () => {
     });
   });
 
-  it("adds all five weekdays, groups Thursday, preserves Saturday and has no fake timestamps", () => {
+  it("adds all five weekdays, groups Thursday and times only the confirmed Angular programme", () => {
     const input: PublicAgenda = { days: [{ key: "saturday", localDate: "2026-09-19", title: "Main Conference Day", programmes: [] }] };
     const result = addAnnouncedWeekProgrammes(input, events, [], []);
     expect(result.days.map((day) => day.localDate)).toEqual([
@@ -48,8 +48,10 @@ describe("untimed weekday agendas", () => {
     expect(result.days[3].programmes.map((programme) => programme.event.name)).toEqual(["MAUI Day", "Workshop Thursday"]);
     const weekdayProgrammes = result.days.slice(0, -1).flatMap((day) => day.programmes);
     expect(weekdayProgrammes).toHaveLength(6);
-    expect(weekdayProgrammes.every((programme) => programme.untimed && programme.slots.length === 0)).toBe(true);
-    expect(JSON.stringify(weekdayProgrammes)).not.toMatch(/startAt|endAt/);
+    const untimed = weekdayProgrammes.filter((programme) => programme.event.name !== "Angular Day");
+    expect(untimed.every((programme) => programme.untimed && programme.slots.length === 0)).toBe(true);
+    expect(JSON.stringify(untimed)).not.toMatch(/startAt|endAt/);
+    expect(weekdayProgrammes.at(-1)?.slots).toHaveLength(9);
     expect(input.days).toHaveLength(1);
     expect(result.days.at(-1)).toEqual(input.days[0]);
     expect(addAnnouncedWeekProgrammes(result, events, [], [])).toEqual(result);
@@ -114,10 +116,10 @@ describe("untimed weekday agendas", () => {
   it("announces Angular event members without borrowing other talks or duplicating assigned speakers", () => {
     const angularEvents = [{ id: "angular", name: "Angular Day", published: true }] as AppearanceEventRecord[];
     const sessions = [
-      { slug: "probabilistic-ai-to-deterministic-applications", title: "Selected Angular talk", published: true, speakers: ["nicolas"] },
-      { slug: "same-crud-10-times", title: "Selected CRUD talk", published: true, speakers: ["aleksandar"] },
+      { slug: "probabilistic-ai-to-deterministic-applications", title: "Selected Angular talk", published: true, speakers: ["michael"] },
+      { slug: "same-crud-10-times", title: "Selected CRUD talk", published: true, speakers: ["nicolas"] },
       { slug: "beyond-the-chatbox", title: "Selected chatbox talk", published: true, speakers: ["angel"] },
-      { slug: "offline-first-zero-cost", title: "Selected offline talk", published: true, speakers: ["michael"] },
+      { slug: "offline-first-zero-cost", title: "Selected offline talk", published: true, speakers: ["aleksandar"] },
       { slug: "main-day-kiril", title: "Kiril main-day topic", published: true, speakers: ["kiril"] },
       { slug: "main-day-santosh", title: "Santosh main-day topic", published: true, speakers: ["santosh"] },
     ] as SessionRecord[];
@@ -131,17 +133,62 @@ describe("untimed weekday agendas", () => {
       { id: "no-event", slug: "no-event", display_name: "No event", published: true },
     ] as SpeakerRecord[];
     const programme = addAnnouncedWeekProgrammes({ days: [] }, angularEvents, sessions, speakers).days[0].programmes[0];
-    expect(programme.untimed?.unassignedSpeakers).toEqual([
+    expect(programme.details?.unassignedSpeakers).toEqual([
       { slug: "another-speaker", name: "Another Speaker", photoUrl: null },
-      { slug: "kiril-zafirov", name: "Kiril Zafirov", photoUrl: expect.stringMatching(/\/api\/files\/speakers\/kiril\/kiril\.jpg$/) },
-      { slug: "santosh-yadav", name: "Santosh Yadav", photoUrl: null },
     ]);
-    expect(programme.untimed?.sessions.map((session) => session.slug)).toEqual([
-      "probabilistic-ai-to-deterministic-applications", "same-crud-10-times", "beyond-the-chatbox", "offline-first-zero-cost",
+    expect(programme.slots.flatMap((slot) => slot.session ? [slot.session.slug] : [])).toEqual([
+      "same-crud-10-times", "beyond-the-chatbox", "offline-first-zero-cost", "probabilistic-ai-to-deterministic-applications",
     ]);
-    expect(programme.untimed?.speakers).toBeUndefined();
-    expect(programme.slots).toEqual([]);
-    expect(JSON.stringify(programme)).not.toMatch(/main-day|private|Unpublished|Unrelated|No event|startAt|endAt/);
+    expect(programme.untimed).toBeUndefined();
+    expect(programme.slots[6]).toMatchObject({
+      kind: "other", startAt: "2026-09-18T12:45:00+02:00", endAt: "2026-09-18T13:15:00+02:00",
+      title: "Kiril Zafirov — Topic: TBD", summary: "Block 2",
+      speakers: [{ slug: "kiril-zafirov", name: "Kiril Zafirov", photoUrl: expect.stringMatching(/\/api\/files\/speakers\/kiril\/kiril\.jpg$/) }],
+    });
+    expect(programme.slots[6].session).toBeUndefined();
+    expect(JSON.stringify(programme)).not.toMatch(/main-day|private|Unpublished|Unrelated|No event/);
+  });
+
+  it("uses the confirmed Angular order, six half-hour talks and both quarter-hour breaks", () => {
+    const event = { id: "angular", name: "Angular Day", published: true } as AppearanceEventRecord;
+    const assignments = [
+      ["nicolas-frizzarin", "same-crud-10-times"],
+      ["angel-petrushevski", "beyond-the-chatbox"],
+      ["aleksandar-atanasov", "offline-first-zero-cost"],
+      ["santosh-yadav", "the-monorepo-multiplier"],
+      ["kiril-zafirov", undefined],
+      ["michael-egger-zikes", "probabilistic-ai-to-deterministic-applications"],
+    ];
+    const speakers = assignments.map(([slug]) => ({ id: slug, slug, display_name: slug, published: true, appearance_events: [event.id] })) as SpeakerRecord[];
+    const sessions = assignments.flatMap(([speaker, slug]) => slug ? [{ id: slug, slug, title: slug, speakers: [speaker], published: true }] : []) as SessionRecord[];
+    const programme = addAnnouncedWeekProgrammes({ days: [] }, [event], [...sessions].reverse(), [...speakers].reverse()).days[0].programmes[0];
+    expect(programme.slots.map((slot) => [slot.startAt.slice(11, 16), slot.endAt.slice(11, 16), slot.session?.speakers[0].slug || slot.speakers?.[0].slug || slot.title])).toEqual([
+      ["10:00", "10:30", "Doors open"],
+      ["10:30", "11:00", "nicolas-frizzarin"],
+      ["11:00", "11:30", "angel-petrushevski"],
+      ["11:30", "12:00", "aleksandar-atanasov"],
+      ["12:00", "12:15", "Break"],
+      ["12:15", "12:45", "santosh-yadav"],
+      ["12:45", "13:15", "kiril-zafirov"],
+      ["13:15", "13:45", "michael-egger-zikes"],
+      ["13:45", "14:00", "Break"],
+    ]);
+    expect(programme.slots.filter((slot) => slot.summary).map((slot) => slot.summary)).toEqual([
+      "Block 1", "Block 1", "Block 1", "Block 2", "Block 2", "Block 2",
+    ]);
+    expect(programme.details?.unassignedSpeakers).toEqual([]);
+    expect(programme.details?.cta?.label).toBe("Reserve a free ticket");
+    for (const slot of programme.slots) {
+      expect(slot.locationLabel).toBe("Small FINKI amphitheater, Technical Campus, Skopje");
+      expect(slot.startAt).toMatch(/^2026-09-18T.*\+02:00$/);
+      if (!slot.session) continue;
+      const session = sessions.find((item) => item.slug === slot.session?.slug)!;
+      expect(announcedWeekSessionSchedule(session, [event])).toMatchObject({ startAt: slot.startAt, endAt: slot.endAt, locationLabel: slot.locationLabel });
+      expect(announcedWeekSessionSchedule({ ...session, published: false }, [event])).toBeUndefined();
+      expect(announcedWeekSessionSchedule(session, [{ ...event, published: false }])).toBeUndefined();
+    }
+    const timed = { days: [{ key: "friday", localDate: "2026-09-18", title: "Angular Day", programmes: [programme] }] };
+    expect(addAnnouncedWeekProgrammes(timed, [event], sessions, speakers)).toEqual(timed);
   });
 
   it("keeps Angular appearances visible until a selected public session is available", () => {
@@ -150,14 +197,14 @@ describe("untimed weekday agendas", () => {
     const session = { slug: "beyond-the-chatbox", title: "Confirmed topic", speakers: ["speaker"], published: false } as SessionRecord;
     for (const sessions of [[], [session]]) {
       const programme = addAnnouncedWeekProgrammes({ days: [] }, angularEvents, sessions, speakers).days[0].programmes[0];
-      expect(programme.untimed?.sessions).toEqual([]);
-      expect(programme.untimed?.unassignedSpeakers).toEqual([{ slug: "speaker", name: "Announced Speaker", photoUrl: null }]);
-      expect(programme.slots).toEqual([]);
+      expect(programme.slots.every((slot) => !slot.session)).toBe(true);
+      expect(programme.details?.unassignedSpeakers).toEqual([{ slug: "speaker", name: "Announced Speaker", photoUrl: null }]);
+      expect(programme.slots).toHaveLength(9);
       expect(JSON.stringify(programme)).not.toContain("Confirmed topic");
     }
     const assigned = addAnnouncedWeekProgrammes({ days: [] }, angularEvents, [{ ...session, published: true }], speakers).days[0].programmes[0];
-    expect(assigned.untimed?.unassignedSpeakers).toEqual([]);
-    expect(assigned.untimed?.sessions[0].speakers).toEqual([{ slug: "speaker", name: "Announced Speaker", photoUrl: null }]);
+    expect(assigned.details?.unassignedSpeakers).toEqual([]);
+    expect(assigned.slots[2].session?.speakers).toEqual([{ slug: "speaker", name: "Announced Speaker", photoUrl: null }]);
     const unrelatedProgrammes = addAnnouncedWeekProgrammes({ days: [] }, events, [], speakers).days
       .flatMap((day) => day.programmes).filter((programme) => programme.event.name !== "Angular Day");
     expect(unrelatedProgrammes.every((programme) => programme.untimed?.unassignedSpeakers === undefined)).toBe(true);
@@ -223,17 +270,17 @@ describe("untimed weekday agendas", () => {
     ] as SpeakerRecord[];
     const result = addAnnouncedWeekProgrammes({ days: [] }, events, sessions, speakers);
     const devfest = result.days[2].programmes[0].untimed!;
-    const angular = result.days[4].programmes[0].untimed!;
+    const angular = result.days[4].programmes[0];
     expect(devfest.sessions.map((session) => session.slug)).toEqual(["building-a-distributed-multi-agent-system"]);
     expect(devfest.sessions[0].speakers[0].name).toBe("Akshata Mohanty");
     expect(devfest.sessions[0].schedule).toBeUndefined();
-    expect(angular.sessions.map((session) => session.slug)).toEqual(["the-monorepo-multiplier"]);
-    expect(angular.sessions[0].speakers[0].name).toBe("Santosh Yadav");
-    expect(angular.unassignedSpeakers).toEqual([]);
+    expect(angular.slots.flatMap((slot) => slot.session ? [slot.session.slug] : [])).toEqual(["the-monorepo-multiplier"]);
+    expect(angular.slots[5].session?.speakers[0].name).toBe("Santosh Yadav");
+    expect(angular.details?.unassignedSpeakers).toEqual([]);
     expect(JSON.stringify(result)).not.toContain("Saturday talk");
     const hidden = addAnnouncedWeekProgrammes({ days: [] }, events, sessions.map((session) => ({ ...session, published: false })), speakers);
     expect(hidden.days[2].programmes[0].untimed?.sessions).toEqual([]);
-    expect(hidden.days[4].programmes[0].untimed?.unassignedSpeakers?.[0].name).toBe("Santosh Yadav");
+    expect(hidden.days[4].programmes[0].slots[5].speakers?.[0].name).toBe("Santosh Yadav");
   });
 
   it("does not publish hidden events or duplicate an existing timed programme", () => {

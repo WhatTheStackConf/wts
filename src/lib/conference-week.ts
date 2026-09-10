@@ -128,8 +128,10 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     name: "Angular Day",
     locationLabel: conferenceWeekVenues.finki,
     date: "2026-09-18",
+    startTime: "10:00",
+    endTime: "14:00",
     summary:
-      "Angular and frontend engineering with Angular Macedonia and the international community: AI-powered applications, offline-first development, and monorepo architecture. Explore the programme for announced talks and speakers.",
+      "Doors open at 10:00; talks start at 10:30. Two blocks of three 30-minute presentations, each followed by a 15-minute break, finish at 14:00. Angular and frontend engineering with Angular Macedonia and the international community: AI-powered applications, offline-first development, and monorepo architecture.",
     access: "Free entry. 50 seats; reserve your ticket.",
     freeTicketProductId: 17,
     cta: { label: "Reserve a free ticket", href: conferenceWeekBookingUrl },

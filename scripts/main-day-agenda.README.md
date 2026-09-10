@@ -14,6 +14,8 @@ For an already-published revision-1 database, do **not** use stage/publish to re
 
 The requested Monday–Friday TBA views are a separate, explicitly announced marketing lineup in `src/lib/conference-week-agenda.ts`, not publication of draft Event Programmes or Slots. They reuse the public homepage announcements and only expose published Appearance Events, Sessions, and Speakers. They intentionally remain visible while the corresponding timed Conference Day is still a draft (including the existing Monday draft). Publishing a timed programme replaces its TBA fallback. Hiding a timed day alone does not withdraw the public announcement: unpublish the Appearance Event or remove its explicit announcement to withdraw that lineup.
 
+Angular Day's organizer-confirmed `2026-09-18` timetable is projected by `src/lib/angular-day-agenda.ts` through the same announcement layer. Doors open at 10:00; six 30-minute presentation slots start at 10:30, with breaks at 12:00–12:15 and 13:45–14:00 (Europe/Skopje). It reuses the five selected public Angular sessions; Kiril Zafirov has a timed speaker placeholder until an Angular topic is explicitly assigned. No PocketBase records are created or published by this projection. A published PocketBase programme still takes precedence. Source changes require a frontend release.
+
 ## Preflight and backup
 
 - Read-only default: `python3 -B scripts/main-day-agenda.py dry-run`.

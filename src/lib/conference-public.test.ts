@@ -59,18 +59,26 @@ describe("PocketBase image thumbnails", () => {
 });
 
 describe("announced session detail timing", () => {
-  it("shows the new talk's own event/date without inventing a session time", async () => {
+  it("shows event-only DevFest timing and the confirmed Angular session time", async () => {
     for (const [slug, event, date, start] of [
       ["building-a-distributed-multi-agent-system", "DevFest", "2026-09-16", "17:00"],
-      ["the-monorepo-multiplier", "Angular Day", "2026-09-18", undefined],
+      ["the-monorepo-multiplier", "Angular Day", "2026-09-18", "10:00"],
     ] as const) {
       fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
         sessions: [{ id: "talk", slug, title: slug, abstract: "", format: "talk", published: true, speakers: [] }],
         appearance_events: [{ id: "event", name: event, published: true }],
       }[collection] || []));
       const session = await loadPublicSessionBySlug(slug);
-      expect(session?.schedule).toBeUndefined();
-      expect(session?.announcement).toMatchObject({ dayDate: date, event: { name: event }, eventStartTime: start });
+      if (event === "Angular Day") {
+        expect(session?.schedule).toMatchObject({
+          dayDate: date, event: { name: event },
+          startAt: "2026-09-18T12:15:00+02:00", endAt: "2026-09-18T12:45:00+02:00",
+          locationLabel: "Small FINKI amphitheater, Technical Campus, Skopje",
+        });
+      } else {
+        expect(session?.schedule).toBeUndefined();
+        expect(session?.announcement).toMatchObject({ dayDate: date, event: { name: event }, eventStartTime: start });
+      }
     }
   });
 
