@@ -28,6 +28,18 @@ const renderWeek = (speakers?: PublicSpeakerSummary[]) =>
 const cards = (html: string) => html.match(/<article\b[^>]*>[\s\S]*?<\/article>/g) ?? [];
 
 describe("homepage conference week cards", () => {
+  it("shows each event's confirmed venue without stale Tuesday or MAUI locations", () => {
+    const renderedCards = cards(renderWeek());
+    const venues = [
+      "Base42 Hackerspace, Rimska 25, 1000 Skopje", "Netaville, Skopje",
+      "Small FINKI amphitheater, Technical Campus, Skopje", "INNOFeit, Technical Campus, Skopje",
+      "Base42 Hackerspace, Rimska 25, 1000 Skopje", "Small FINKI amphitheater, Technical Campus, Skopje",
+    ];
+    venues.forEach((venue, index) => expect(renderedCards[index]).toContain(venue));
+    expect(renderedCards[1]).not.toContain("Base42");
+    expect(renderedCards[3]).not.toContain("FINKI");
+  });
+
   it.each([undefined, [], [speaker("unrelated", "Unrelated Speaker", ["Another Event"])]] as const)(
     "keeps static events, confirmed times and ticket CTAs visible without matching roster data (%j)",
     (roster) => {

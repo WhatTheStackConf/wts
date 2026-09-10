@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { conferenceGuideContent } from "~/lib/conference-guide-content";
-import { addAnnouncedWeekProgrammes, untimedWeekProgrammes } from "~/lib/conference-week-agenda";
+import { addAnnouncedWeekProgrammes, announcedWeekSessionAppearance, announcedWeekSessionSchedule, untimedWeekProgrammes } from "~/lib/conference-week-agenda";
 import type { AppearanceEventRecord, SessionRecord, SpeakerRecord } from "~/lib/pocketbase-types";
 import type { PublicAgenda } from "~/lib/programme-public";
 import {
@@ -13,6 +13,31 @@ describe("untimed weekday agendas", () => {
   const events = untimedWeekProgrammes.map((definition, index) => ({
     id: `event-${index}`, name: definition.eventName, published: true,
   })) as AppearanceEventRecord[];
+
+  it("uses the organizer-confirmed venue for every weekday programme and session", () => {
+    const venues = [
+      "Base42 Hackerspace, Rimska 25, 1000 Skopje",
+      "Netaville, Skopje",
+      "Small FINKI amphitheater, Technical Campus, Skopje",
+      "INNOFeit, Technical Campus, Skopje",
+      "Base42 Hackerspace, Rimska 25, 1000 Skopje",
+      "Small FINKI amphitheater, Technical Campus, Skopje",
+    ];
+    const programmes = addAnnouncedWeekProgrammes({ days: [] }, events, [], []).days.flatMap((day) => day.programmes);
+    expect(programmes.map((programme) => programme.untimed?.locationLabel)).toEqual(venues);
+    expect(conferenceWeekTracks.slice(0, 6).map((track) => track.locationLabel)).toEqual(venues);
+    untimedWeekProgrammes.forEach((definition, index) => {
+      for (const slug of definition.sessions) {
+        const session: SessionRecord = {
+          id: slug, slug, title: slug, abstract: "", published: true, speakers: [],
+          created: "", updated: "", collectionId: "sessions", collectionName: "sessions",
+        };
+        expect(announcedWeekSessionAppearance(session, events)?.locationLabel).toBe(venues[index]);
+        const schedule = announcedWeekSessionSchedule(session, events);
+        if (schedule) expect(schedule.locationLabel).toBe(venues[index]);
+      }
+    });
+  });
 
   it("adds all five weekdays, groups Thursday, preserves Saturday and has no fake timestamps", () => {
     const input: PublicAgenda = { days: [{ key: "saturday", localDate: "2026-09-19", title: "Main Conference Day", programmes: [] }] };
@@ -42,7 +67,7 @@ describe("untimed weekday agendas", () => {
     ] as SpeakerRecord[];
     const result = addAnnouncedWeekProgrammes({ days: [] }, events, sessions, speakers);
     expect(result.days[1].programmes[0].untimed?.sessions).toEqual([
-      { slug: "fundamentals-of-native-ios-development", title: "iOS", format: undefined, schedule: expect.objectContaining({ startAt: "2026-09-15T18:00:00+02:00", endAt: undefined, locationLabel: "Base42 Hackerspace, Rimska 25, 1000 Skopje" }), speakers: [{ slug: "mia", name: "Mia", photoUrl: null }] },
+      { slug: "fundamentals-of-native-ios-development", title: "iOS", format: undefined, schedule: expect.objectContaining({ startAt: "2026-09-15T18:00:00+02:00", endAt: undefined, locationLabel: "Netaville, Skopje" }), speakers: [{ slug: "mia", name: "Mia", photoUrl: null }] },
     ]);
     expect(JSON.stringify(result)).not.toMatch(/private|cfp_submission|Saturday only|"DDD"/);
     expect(result.days[1].programmes[0].untimed?.access).toBe("Free entry. 50 seats; reserve your ticket.");
@@ -160,7 +185,7 @@ describe("untimed weekday agendas", () => {
       ["ddd-for-ai-assisted-development", "2026-09-15T16:00:00+02:00", undefined],
       ["fundamentals-of-native-ios-development", "2026-09-15T18:00:00+02:00", undefined],
     ]);
-    expect(tuesday.every((session) => session.schedule?.locationLabel === "Base42 Hackerspace, Rimska 25, 1000 Skopje")).toBe(true);
+    expect(tuesday.every((session) => session.schedule?.locationLabel === "Netaville, Skopje")).toBe(true);
     expect(conferenceWeekTracks[0].summary).toContain("four-hour");
     expect(conferenceWeekTracks[0].summary).not.toContain("full-day");
   });
@@ -274,7 +299,8 @@ describe("Conference week copy", () => {
     expect(tuesday?.name).toBe("Workshop Tuesday: iOS + AI");
     expect(tuesday?.summary).toContain("DDD for AI-Assisted Development at 16:00");
     expect(tuesday?.summary).toContain("Fundamentals of Native iOS Development at 18:00");
-    expect(tuesday?.summary).toContain("Base42 Hackerspace");
+    expect(tuesday?.summary).not.toContain("Base42");
+    expect(tuesday?.locationLabel).toBe("Netaville, Skopje");
     expect(tuesday?.access).toBe("Free entry. 50 seats; reserve your ticket.");
     expect(tuesday?.cta?.label).toBe("Reserve a free ticket");
   });

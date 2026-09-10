@@ -94,7 +94,7 @@ describe("announced session detail timing", () => {
       agenda_slots: [], event_programmes: [], conference_days: [], agenda_tracks: [],
     }[collection] || []));
     const session = await loadPublicSessionBySlug("fundamentals-of-native-ios-development");
-    expect(session?.schedule).toMatchObject({ startAt: "2026-09-15T18:00:00+02:00", endAt: undefined, locationLabel: "Base42 Hackerspace, Rimska 25, 1000 Skopje" });
+    expect(session?.schedule).toMatchObject({ startAt: "2026-09-15T18:00:00+02:00", endAt: undefined, locationLabel: "Netaville, Skopje" });
     eventPublished = false;
     expect((await loadPublicSessionBySlug("fundamentals-of-native-ios-development"))?.schedule).toBeUndefined();
   });

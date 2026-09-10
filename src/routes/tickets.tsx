@@ -164,6 +164,9 @@ export default function Tickets() {
                           <article class="flex min-w-0 flex-col rounded-xl border border-primary-500/30 bg-base-200/70 p-5">
                             <h3 class="font-star text-xl text-primary-300"><a href={track()?.href}>{release.title}</a></h3>
                             <p class="mt-2 font-mono text-sm text-accent-300">{conferenceWeekDayLabel(track()!.date!)}</p>
+                            <Show when={track()?.locationLabel}>
+                              <p class="mt-2 text-sm text-secondary-200">{track()?.locationLabel}</p>
+                            </Show>
                             <p class="my-4 text-sm text-secondary-100">{track()?.access}</p>
                             <div class="mt-auto">
                               <span class="mb-3 block font-star text-2xl text-white">FREE</span>

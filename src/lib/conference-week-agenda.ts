@@ -1,4 +1,3 @@
-import { conferenceGuideContent } from "~/lib/conference-guide-content";
 import { conferenceWeekTracks, farisWorkshopTime } from "~/lib/conference-week";
 import type { AppearanceEventRecord, SessionRecord, SpeakerRecord } from "~/lib/pocketbase-types";
 import type { PublicAgenda, PublicEventProgramme, PublicSessionAnnouncement, PublicSessionSchedule } from "~/lib/programme-public";
@@ -18,7 +17,6 @@ export const untimedWeekProgrammes = [
     "building-a-distributed-multi-agent-system",
   ], details: {
     title: "Pre-DevFest Days: Day Zero x WhatThe(Google)Stack",
-    locationLabel: "Faculty of Computer Science & Engineering (FINKI), Skopje",
   } },
   { name: "MAUI Day", eventName: "MAUI Day", sessions: [
     "building-your-first-net-maui-app-workshop",
@@ -38,11 +36,6 @@ export const untimedWeekProgrammes = [
   ] },
 ] as const;
 
-function preConferenceLocation(): string {
-  const venue = conferenceGuideContent.preConferenceVenue;
-  return `${venue.name}, ${venue.address}`;
-}
-
 /** Preserve event/date-only announcements without treating event starts as talk starts. */
 export function announcedWeekSessionAppearance(
   session: SessionRecord,
@@ -58,7 +51,7 @@ export function announcedWeekSessionAppearance(
     dayDate: copy.date,
     event: { name: copy.name, compactLabel: event.compact_label || copy.name, destinationUrl: copy.href || event.destination_url || undefined },
     eventStartTime: copy.startTime,
-    locationLabel: "details" in definition ? definition.details.locationLabel : undefined,
+    locationLabel: copy.locationLabel,
   };
 }
 
@@ -85,7 +78,7 @@ export function announcedWeekSessionSchedule(
     event: { name: copy.name, compactLabel: event.compact_label || copy.name },
     startAt: `${copy.date}T${start}:00+02:00`,
     endAt: timing.endTime ? `${copy.date}T${timing.endTime}:00+02:00` : undefined,
-    locationLabel: preConferenceLocation(),
+    locationLabel: copy.locationLabel,
   };
 }
 
@@ -124,14 +117,13 @@ export function addAnnouncedWeekProgrammes(
       untimed: {
         startTime: copy.startTime,
         endTime: copy.endTime,
-        ...(["InfoSec Monday", "Workshop Tuesday"].includes(definition.eventName) ? { locationLabel: preConferenceLocation() } : {}),
+        locationLabel: copy.locationLabel,
         ...("includeUnassignedSpeakers" in definition ? {
           unassignedSpeakers: publicAgendaSpeakers(speakers.filter((speaker) =>
             speaker.appearance_events?.includes(event.id) && !assignedSpeakerIds.has(speaker.id))),
         } : {}),
         ...("details" in definition ? {
           title: definition.details.title,
-          locationLabel: definition.details.locationLabel,
           // Published event appearances announce speakers independently of sessions.
           speakers: publicAgendaSpeakers(speakers.filter((speaker) => speaker.appearance_events?.includes(event.id))),
         } : {}),

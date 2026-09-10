@@ -61,6 +61,12 @@ export function TrackCard(props: TrackCardProps) {
             </Show> · Skopje time
           </p>
         </Show>
+        <Show when={props.track.locationLabel}>
+          <p class="relative z-10 mb-3 text-sm leading-relaxed text-secondary-200">
+            <span class="font-mono text-xs uppercase tracking-[0.18em]">Venue</span>{" "}
+            {props.track.locationLabel}
+          </p>
+        </Show>
         <p class="relative z-10 m-0 text-base leading-relaxed text-dark-50">
           {props.track.summary}
         </p>

@@ -24,6 +24,8 @@ export interface ConferenceWeekTrack {
   /** Confirmed local clock times in Europe/Skopje; absent means unannounced. */
   startTime?: string;
   endTime?: string;
+  /** Organizer-confirmed venue, shared by cards, agendas and session details. */
+  locationLabel?: string;
   summary: string;
   /** Named draws for this track. Kept short; the Speakers section carries the full roster. */
   highlights?: readonly string[];
@@ -50,14 +52,22 @@ export const farisWorkshopTime = { startTime: "16:30", endTime: "20:00" } as con
 // This Hi.Events deployment supports event checkout, not product query links.
 export const conferenceWeekBookingUrl = "https://hievents.foundry.mk/event/5/whatthestack-2026";
 
+export const conferenceWeekVenues = {
+  base42: "Base42 Hackerspace, Rimska 25, 1000 Skopje",
+  netaville: "Netaville, Skopje",
+  finki: "Small FINKI amphitheater, Technical Campus, Skopje",
+  innofeit: "INNOFeit, Technical Campus, Skopje",
+} as const;
+
 export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
   {
     name: "InfoSec Monday",
+    locationLabel: conferenceWeekVenues.base42,
     date: "2026-09-14",
     startTime: "14:00",
     endTime: "18:00",
     summary:
-      "Requests, Lies, and Stack Traces: a four-hour, hands-on API security workshop at Base42 Hackerspace. Break and fix vulnerabilities, including the mistakes that keep appearing in AI-generated code.",
+      "Requests, Lies, and Stack Traces: a four-hour, hands-on API security workshop. Break and fix vulnerabilities, including the mistakes that keep appearing in AI-generated code.",
     access: "Free entry. 20 seats; one ticket covers InfoSec Monday and its workshop.",
     freeTicketProductId: 15,
     cta: { label: "Reserve a free ticket", href: conferenceWeekBookingUrl },
@@ -65,10 +75,11 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
   },
   {
     name: "Workshop Tuesday: iOS + AI",
+    locationLabel: conferenceWeekVenues.netaville,
     date: "2026-09-15",
     startTime: "16:00",
     summary:
-      "DDD for AI-Assisted Development at 16:00, followed by Fundamentals of Native iOS Development at 18:00. Both sessions take place at Base42 Hackerspace; one ticket covers the whole evening.",
+      "DDD for AI-Assisted Development at 16:00, followed by Fundamentals of Native iOS Development at 18:00. One ticket covers the whole evening.",
     access: "Free entry. 50 seats; reserve your ticket.",
     freeTicketProductId: 16,
     cta: { label: "Reserve a free ticket", href: conferenceWeekBookingUrl },
@@ -76,6 +87,7 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
   },
   {
     name: "DevFest",
+    locationLabel: conferenceWeekVenues.finki,
     date: "2026-09-16",
     startTime: "17:00",
     summary:
@@ -89,10 +101,11 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
   },
   {
     name: "MAUI Day",
+    locationLabel: conferenceWeekVenues.innofeit,
     date: "2026-09-17",
     startTime: "10:00",
     summary:
-      "A full day of .NET MAUI at FINKI: build your first app, explore offline AI agents, improve reliability, and get into XAML, hot reload, and how MAUI pages work.",
+      "A full day of .NET MAUI: build your first app, explore offline AI agents, improve reliability, and get into XAML, hot reload, and how MAUI pages work.",
     cta: {
       label: "Register for MAUI Day",
       href: "https://www.eventbrite.nl/e/net-maui-day-skopje-2026-tickets-1992309951697",
@@ -101,9 +114,10 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
   },
   {
     name: "Workshop Thursday",
+    locationLabel: conferenceWeekVenues.base42,
     date: "2026-09-17",
     summary:
-      `Faris Aziz's Payments and Monetization at Scale for Frontend Engineers workshop runs ${farisWorkshopTime.startTime}–${farisWorkshopTime.endTime} (3.5 hours, Skopje time) at Base42 Hackerspace. Work through checkout, subscriptions, and payment failures with React, Next.js, and Stripe.`,
+      `Faris Aziz's Payments and Monetization at Scale for Frontend Engineers workshop runs ${farisWorkshopTime.startTime}–${farisWorkshopTime.endTime} (3.5 hours, Skopje time). Work through checkout, subscriptions, and payment failures with React, Next.js, and Stripe.`,
     cta: {
       label: "Get a workshop ticket",
       href: conferenceWeekBookingUrl,
@@ -112,6 +126,7 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
   },
   {
     name: "Angular Day",
+    locationLabel: conferenceWeekVenues.finki,
     date: "2026-09-18",
     summary:
       "Angular and frontend engineering with Angular Macedonia and the international community: AI-powered applications, offline-first development, and monorepo architecture. Explore the programme for announced talks and speakers.",
