@@ -469,6 +469,18 @@ declare module "virtual:file-routes" {
       $PATCH: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/[...path]")>;
       $OPTIONS: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/[...path]")>;
       $$route?: undefined;
+    },
+    {
+      path: "/api/public/v1/";
+      page: false;
+      $HEAD: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/index")>;
+      $GET: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/index")>;
+      $POST: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/index")>;
+      $PUT: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/index")>;
+      $DELETE: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/index")>;
+      $PATCH: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/index")>;
+      $OPTIONS: FileRouteLazyRef<typeof import("./src/routes/api/public/v1/index")>;
+      $$route?: undefined;
     }
   ];
   export default routes;

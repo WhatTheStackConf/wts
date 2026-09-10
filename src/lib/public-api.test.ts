@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import SwaggerParser from "@apidevtools/swagger-parser";
+import { Ajv2020 } from "ajv/dist/2020";
+import addFormats from "ajv-formats";
+import { publicApiOpenApi } from "~/lib/public-api-openapi";
 
 const fetchAllRecords = vi.hoisted(() => vi.fn());
 vi.mock("~/lib/pocketbase-admin-service", () => ({
@@ -54,6 +58,73 @@ beforeEach(() => {
 });
 
 describe("public JSON interface", () => {
+  it("publishes a valid OpenAPI document whose examples and actual responses match its schemas", async () => {
+    const api = createPublicApi({ loadProgramme: loadPublicConferenceGuideProgramme });
+    const response = await api({ request: new Request(`${root}openapi.json`) });
+    expect(response.status).toBe(200);
+    await SwaggerParser.validate(await response.json());
+    const ajv = new Ajv2020({ strictSchema: false, allErrors: true });
+    addFormats(ajv);
+    const operations = new Set<string>();
+    for (const [path, item] of Object.entries(publicApiOpenApi.paths ?? {})) {
+      const operation = item?.get;
+      expect(operation?.operationId).toBeTruthy();
+      expect(operations.has(operation!.operationId!)).toBe(false);
+      operations.add(operation!.operationId!);
+      const success = operation?.responses["200"];
+      if (!success || "$ref" in success) throw new Error(`Missing success response for ${path}`);
+      const media = success.content?.["application/json"];
+      expect(media?.schema).toBeTruthy();
+      const validate = ajv.compile({ ...media!.schema, components: publicApiOpenApi.components });
+      expect(validate(media!.example), JSON.stringify(validate.errors)).toBe(true);
+      const concretePath = path.replace("{slug}", path.startsWith("/speakers") ? "ada" : "engines");
+      const actual = await api({ request: new Request(`${root.slice(0, -1)}${concretePath}`) });
+      expect(actual.status).toBe(200);
+      expect(validate(await actual.json()), JSON.stringify(validate.errors)).toBe(true);
+    }
+    expect(operations.size).toBe(5);
+    const validateSpeaker = ajv.compile({ $ref: "#/components/schemas/SpeakerDetail", components: publicApiOpenApi.components });
+    expect(validateSpeaker({ slug: "ada", displayName: "Ada" })).toBe(false);
+    const speaker = await api({ request: new Request(`${root}speakers/ada`) });
+    const body = await speaker.json();
+    expect(validateSpeaker({ ...body.data, email: "private@example.test" })).toBe(false);
+    const error = await api({ request: new Request(`${root}speakers/absent`) });
+    const validateError = ajv.compile({ $ref: "#/components/schemas/Error", components: publicApiOpenApi.components });
+    expect(validateError(await error.json()), JSON.stringify(validateError.errors)).toBe(true);
+  });
+
+  it("serves discovery and OpenAPI without loading PocketBase or consuming read capacity", async () => {
+    const loadProgramme = vi.fn().mockRejectedValue(new Error("Database unavailable"));
+    const api = createPublicApi({ loadProgramme, limits: { global: 1 } });
+    for (const path of ["", "openapi.json"]) {
+      const response = await api({ request: new Request(`${root}${path}`) });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Link")).toContain('</api/public/v1/openapi.json>; rel="service-desc"');
+      expect(response.headers.get("Access-Control-Expose-Headers")).toContain("Link");
+      const body = await response.json();
+      if (path) {
+        expect(body.openapi).toBe("3.1.1");
+        expect(body.security).toEqual([]);
+        expect(Object.keys(body.paths)).toEqual(expect.arrayContaining([
+          "/speakers", "/speakers/{slug}", "/sessions", "/sessions/{slug}", "/agenda",
+        ]));
+        expect(body.paths).not.toHaveProperty("/partners");
+      } else {
+        expect(body.data.openapi).toBe("/api/public/v1/openapi.json");
+        expect(body.data.endpoints).toContainEqual({ method: "GET", path: "/api/public/v1/sessions/{slug}" });
+      }
+      const head = await api({ request: new Request(`${root}${path}`, { method: "HEAD" }) });
+      expect(head.status).toBe(200);
+      expect(await head.text()).toBe("");
+      expect((await api({ request: new Request(`${root}${path}`, { method: "OPTIONS" }) })).status).toBe(204);
+      const unchanged = await api({ request: new Request(`${root}${path}`, { headers: { "If-None-Match": response.headers.get("ETag")! } }) });
+      expect(unchanged.status).toBe(304);
+    }
+    expect(loadProgramme).not.toHaveBeenCalled();
+    expect((await api({ request: new Request(`${root}speakers`) })).status).toBe(503);
+    expect((await api({ request: new Request(`${root}openapi.json`) })).status).toBe(200);
+  });
+
   it("rejects malformed encodings before routing without intercepting unrelated requests", async () => {
     const next = vi.fn(async () => new Response("downstream"));
     for (const slug of ["%ZZ", "%C0%AF", "%00"]) {

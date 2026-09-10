@@ -7,6 +7,9 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import PocketBase from "pocketbase";
+import SwaggerParser from "@apidevtools/swagger-parser";
+import { Ajv2020 } from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
 
 // Real built server + real PocketBase, exclusively disposable SYNTHETIC records.
 // Run pnpm build first. No dotenv files, production credentials, or data are read.
@@ -135,6 +138,22 @@ try {
   const app = start(process.execPath, [join(root, ".output/server/index.mjs")]);
   const api = `${baseUrl}/api/public/v1`;
   await ready(`${api}/speakers`, app);
+  let spec;
+  for (const suffix of ["", "/", "/openapi.json"]) {
+    for (const accept of ["application/json", "text/html"]) {
+      const response = await fetch(`${api}${suffix}`, { headers: { Accept: accept } });
+      assert.equal(response.status, 200, `Discovery ${suffix} with Accept ${accept}`);
+      assert(response.headers.get("link").includes('rel="service-desc"'));
+      const data = await response.json();
+      if (suffix === "/openapi.json") {
+        assert.equal(data.openapi, "3.1.1");
+        spec = data;
+      } else assert.equal(data.data.openapi, "/api/public/v1/openapi.json");
+    }
+  }
+  await SwaggerParser.validate(structuredClone(spec));
+  const ajv = new Ajv2020({ strictSchema: false, allErrors: true });
+  addFormats(ajv);
   const results = [];
   for (const path of ["speakers", "speakers/ada", "sessions", "sessions/engines", "agenda"]) {
     const response = await fetch(`${api}/${path}`, { headers: { Origin: "https://workshop.example" } });
@@ -144,6 +163,10 @@ try {
     assert(!text.includes("PRIVATE_") && !text.includes(user.id) && !text.includes("draft-speaker") && !text.includes("draft-session"), path);
     assert(!/"(?:origin|user|cfp_applicant|collectionId|collectionName|room|published)":/.test(text), path);
     const body = JSON.parse(text);
+    const specPath = `/${path.includes("/") ? `${path.split("/")[0]}/{slug}` : path}`;
+    const schema = spec.paths[specPath].get.responses["200"].content["application/json"].schema;
+    const validate = ajv.compile({ ...schema, components: spec.components });
+    assert(validate(body), `${path}: ${JSON.stringify(validate.errors)}`);
     assert.equal(body.meta.apiVersion, "1");
     if (path === "speakers") assert.deepEqual(body.data.map((s) => s.slug), ["ada"]);
     if (path === "sessions") assert.deepEqual(body.data.map((s) => s.slug), ["engines"]);
@@ -182,7 +205,7 @@ try {
     assert.equal(raw.status, 403, `Raw ${collection} must remain private`);
   }
   console.log(JSON.stringify({ result: "passed", fixture: "synthetic", pocketbase: version.stdout.trim(), endpoints: results,
-    verified: ["publication filtering", "private fields excluded", "raw PocketBase locked", "CORS", "ETag/304", "HEAD/OPTIONS", "write rejection", "malformed input and liveness"] }, null, 2));
+    verified: ["OpenAPI validation and response conformance", "root discovery", "publication filtering", "private fields excluded", "raw PocketBase locked", "CORS", "ETag/304", "HEAD/OPTIONS", "write rejection", "malformed input and liveness"] }, null, 2));
 } finally {
   await clean();
 }
