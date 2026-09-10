@@ -4,9 +4,11 @@ import type { CheckinArrivalHistory, CheckinArrivalHistoryQuery, CheckinArrivalI
 
 const localId = z.string().regex(/^[a-z0-9]{15}$/);
 const timestamp = z.string().min(1).max(40);
-const workflow = z.strictObject({ id: localId, stationId: z.enum(CHECKIN_STATION_IDS), eventId: localId, eventTitle: z.string().max(300), state: z.literal("not_submitted"), name: z.string().max(300), affiliation: z.string().max(300), profileId: z.string().min(1).max(100), createdAt: timestamp });
+const workflow = z.strictObject({ id: localId, stationId: z.enum(CHECKIN_STATION_IDS), eventId: localId, eventTitle: z.string().max(300), state: z.enum(["not_submitted", "admission_pending", "accepted", "existing_unattributed", "rejected", "admission_uncertain"]), name: z.string().max(300), affiliation: z.string().max(300), profileId: z.string().min(1).max(100), createdAt: timestamp });
 const variants = [
   z.strictObject({ state: z.enum(["reserved", "existing"]), workflow }),
+  z.strictObject({ state: z.literal("accepted"), workflow, printIntentId: localId }),
+  z.strictObject({ state: z.enum(["admission_pending", "admission_uncertain", "existing_unattributed"]), workflow }),
   z.strictObject({ state: z.literal("already_handled") }),
   z.strictObject({ state: z.literal("rejected"), reason: z.enum(["invalid_identity", "not_in_list", "cancelled", "awaiting_payment", "unknown_eligibility", "already_checked_in"]) }),
   z.strictObject({ state: z.literal("dependency_unavailable") }),
@@ -14,7 +16,10 @@ const variants = [
 ] as const;
 const decision = z.discriminatedUnion("state", variants);
 const envelope = { operationId: z.uuid(), replayed: z.boolean(), operationsEnabled: z.literal(false) };
-const resultSchema = z.discriminatedUnion("state", [variants[0].extend(envelope), variants[1].extend(envelope), variants[2].extend(envelope), variants[3].extend(envelope), variants[4].extend(envelope)]);
+const resultSchema = z.discriminatedUnion("state", [
+  variants[0].extend(envelope), variants[1].extend(envelope), variants[2].extend(envelope),
+  variants[3].extend(envelope), variants[4].extend(envelope), variants[5].extend(envelope), variants[6].extend(envelope),
+]);
 const historySchema = z.strictObject({
   items: z.array(z.strictObject({ id: localId, operationId: z.uuid(), stationId: z.enum(CHECKIN_STATION_IDS), eventId: localId, createdAt: timestamp, completedAt: timestamp.nullable(), resolvedByOperationId: z.uuid().optional(), result: decision })).max(100),
   nextCursor: z.string().max(200).nullable(), day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), operationsEnabled: z.literal(false),

@@ -806,8 +806,12 @@ export interface CheckinArrivalWorkflowRecord extends RecordModel {
   affiliation_mapping: { questionId: string; productIds: string[] } | null;
   name: string;
   affiliation: string;
-  state: "not_submitted";
+  state: "not_submitted" | "admission_pending" | "accepted" | "existing_unattributed" | "rejected" | "admission_uncertain";
   operation_id: string;
+  admission_attempt_id: string;
+  print_intent_id: string;
+  admission_completed_at: string;
+  admission_completed_day: string;
   created: string;
 }
 export interface CheckinArrivalCommandRecord extends RecordModel {
@@ -827,11 +831,48 @@ export interface CheckinArrivalCommandRecord extends RecordModel {
   completed_at: string;
   completed_day: string;
   history_visible: boolean;
+  admission_attempt_id: string;
+  created: string;
+}
+export type CheckinArrivalAttemptState = "claimed" | "pre_send_failed" | "possibly_sent" | "accepted" | "existing_unattributed" | "rejected" | "uncertain";
+export interface CheckinArrivalAttemptRecord extends RecordModel {
+  workflow_id: string;
+  command_id: string;
+  station_id: string;
+  upstream_event_id: string;
+  upstream_attendee_id: string;
+  list_id: string;
+  source_key: string;
+  station_generation: number;
+  system_generation: number;
+  coordinator_generation: number;
+  state: CheckinArrivalAttemptState;
+  send_boundary_at: string;
+  completed_at: string;
+  result_fingerprint: string;
+  pre_send_failures: number;
+  next_retry_at: string;
+  created: string;
+}
+export type CheckinPrintAttemptState = "queued" | "dispatched" | "completed" | "uncertain" | "cancelled";
+export interface CheckinPrintAttemptRecord extends RecordModel {
+  workflow_id: string;
+  station_id: string;
+  purpose: "initial" | "replacement";
+  state: CheckinPrintAttemptState;
+  profile_id: string;
+  profile_config: LabelProfileConfig;
+  name: string;
+  affiliation: string;
+  payload_hash: string;
+  predecessor_attempt_id: string;
   created: string;
 }
 export interface CheckinCollectionRecords {
   checkin_arrival_workflows: CheckinArrivalWorkflowRecord;
   checkin_arrival_commands: CheckinArrivalCommandRecord;
+  checkin_arrival_attempts: CheckinArrivalAttemptRecord;
+  checkin_print_attempts: CheckinPrintAttemptRecord;
   checkin_agents: CheckinAgentRecord;
   checkin_coordinator: CheckinCoordinatorRecord;
   checkin_agent_attempts: CheckinAgentAttemptRecord;
@@ -849,6 +890,8 @@ export interface CheckinCollectionRecords {
 export type CollectionRecord =
   | CheckinArrivalWorkflowRecord
   | CheckinArrivalCommandRecord
+  | CheckinArrivalAttemptRecord
+  | CheckinPrintAttemptRecord
   | CheckinAgentRecord
   | CheckinCoordinatorRecord
   | CheckinAgentAttemptRecord

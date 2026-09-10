@@ -22,7 +22,7 @@ export function CheckinArrivalWork(props: CheckinArrivalWorkProps) {
     const seen = new Set<string>();
     return (data()?.items ?? []).filter((item) => {
       const decision = item.result;
-      const id = decision.state === "reserved" || decision.state === "existing" ? `work:${decision.workflow.id}` : `command:${item.id}`;
+      const id = "workflow" in decision ? `work:${decision.workflow.id}` : `command:${item.id}`;
       if (seen.has(id)) return false;
       seen.add(id); return true;
     });

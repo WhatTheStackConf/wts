@@ -20,6 +20,24 @@ export interface JournalAttempt extends Work {
   reportUntil?: string;
   outcome?: Outcome;
 }
+export interface AdmissionJob {
+  attemptId: string; workflowId: string; commandId: string; stationId: string; eventId: string;
+  sourceKey: string; upstreamEventId: string; upstreamAttendeeId: string; upstreamListId: string;
+  context: Record<string, unknown>; affiliation: Record<string, unknown> | null; coordinatorGeneration: number;
+}
+export interface AdmissionAttendee {
+  upstreamAttendeeId: string; publicId: string; productId: string; alreadyCheckedIn: boolean; listCapability?: string;
+  eligibility?: "eligible" | "not_in_list" | "cancelled" | "awaiting_payment" | "unknown_eligibility";
+}
+export type AdmissionOutcome =
+  | { state: "newly_checked_in"; fingerprint: string }
+  | { state: "existing_unattributed"; fingerprint: string }
+  | { state: "rejected"; reason: "not_in_list" | "cancelled" | "awaiting_payment" | "unknown_eligibility" }
+  | { state: "uncertain" };
+export interface AdmissionProcessor {
+  attendee(job: AdmissionJob): Promise<AdmissionAttendee | null>;
+  admit(job: AdmissionJob, attendee: AdmissionAttendee): Promise<AdmissionOutcome>;
+}
 export interface AgentReadinessDTO {
   stationId: string; stationLabel: string; stationVersion: number; agentId: string | null;
   credentialState: "not_issued" | "active" | "expired" | "revoked"; credentialExpiresAt: string | null;

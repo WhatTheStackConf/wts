@@ -4,10 +4,11 @@
  * NOT the LengthAwarePaginator used for event discovery. No deployed version
  * claim or production readiness follows from this conservative source contract.
  */
+import { createHash } from "node:crypto";
 import { createCheckinEventSource } from "~/lib/checkin-event-source";
 import { checkinDiscoveryConfiguration, checkinServerConfig, createCheckinDiscoveryAdapter, type CheckinDiscoveryConfig, type EventOptions } from "~/lib/checkin-hievents";
 import { createCheckinUpstreamReader, type CheckinReadDependencies } from "~/lib/checkin-upstream-read";
-import { isCheckinArrivalQrIdentity, type CheckinArrivalSource, type ArrivalResolution } from "~/lib/checkin-arrival-source";
+import { isCheckinArrivalQrIdentity, type CheckinArrivalSource, type ArrivalResolution, type ArrivalAdmission, type ArrivalAttendee } from "~/lib/checkin-arrival-source";
 import type { CheckinEventSnapshot } from "~/lib/checkin-event-contract";
 export { isCheckinArrivalQrIdentity } from "~/lib/checkin-arrival-source";
 
@@ -39,6 +40,35 @@ function navigation(value: unknown, endpoint: string, page: number | null, perPa
     requireContract(key === "page" || (key === "per_page" && (value === "25" || value === String(perPage))) || (key === "query" && value === query));
   }
   requireContract(url.searchParams.getAll("per_page").length <= 1 && url.searchParams.getAll("query").length <= 1);
+}
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${canonical(object[key])}`).join(",")}}`;
+}
+function admissionCheckin(value: unknown, attendee: ArrivalAttendee, listId: string): string {
+  const row = record(value);
+  const checkinId = id(row.id);
+  requireContract(id(row.attendee_id) === attendee.upstreamAttendeeId && id(row.check_in_list_id) === listId && id(row.order_id));
+  requireContract(typeof row.checked_in_at === "string" && Number.isFinite(Date.parse(row.checked_in_at)));
+  requireContract(typeof row.short_id === "string" && /^[A-Za-z0-9_-]{1,255}$/.test(row.short_id));
+  return createHash("sha256").update(canonical({ id: checkinId, attendee_id: row.attendee_id, check_in_list_id: row.check_in_list_id, order_id: row.order_id, checked_in_at: row.checked_in_at })).digest("hex");
+}
+
+function attendeeFromDetail(value: unknown, expectedId: string, snapshot: CheckinEventSnapshot): ArrivalAttendee {
+  const detail = record(value);
+  requireContract(id(detail.id) === expectedId && id(detail.event_id) === snapshot.upstreamEventId);
+  requireContract(isCheckinArrivalQrIdentity(detail.public_id));
+  requireContract(typeof detail.product_id === "number" || typeof detail.product_id === "string");
+  requireContract(typeof detail.first_name === "string" && (typeof detail.last_name === "string" || detail.last_name === null));
+  const name = label(`${detail.first_name} ${detail.last_name ?? ""}`, [detail.public_id as string]);
+  requireContract(name.length > 0);
+  const checkIn = detail.check_in;
+  if (checkIn !== undefined && checkIn !== null) {
+    requireContract(record(checkIn).attendee_id !== undefined);
+  }
+  return { upstreamAttendeeId: expectedId, publicId: detail.public_id as string, productId: id(detail.product_id), name, alreadyCheckedIn: checkIn !== undefined && checkIn !== null };
 }
 
 /** Lazy SSR configuration; injected transport/time is the approved test seam. */
@@ -151,6 +181,60 @@ export function createCheckinArrivalAdapter(input?: CheckinDiscoveryConfig, tran
         const text = label(answer.text_answer, [attendee.publicId, config.key, ...Object.values(options.serverOnly.listCapabilities)]);
         return text ? { state: "present", text } : { state: "missing" };
       } catch { return { state: "unavailable" }; }
+    },
+    async admissionAttendee(snapshot, upstreamAttendeeId) {
+      try {
+        id(upstreamAttendeeId);
+        requireContract(config && snapshot.sourceKey === sourceKey);
+        const body = await read!(`events/${snapshot.upstreamEventId}/attendees/${upstreamAttendeeId}`);
+        const attendee = attendeeFromDetail(body.data, upstreamAttendeeId, snapshot);
+        const resolved = await this.resolve(snapshot, attendee.publicId);
+        if (resolved.state !== "eligible" || resolved.attendee.upstreamAttendeeId !== upstreamAttendeeId || resolved.attendee.productId !== attendee.productId) return null;
+        attendee.alreadyCheckedIn = resolved.attendee.alreadyCheckedIn;
+        return resolved.attendee;
+      } catch { return null; }
+    },
+    async admit(snapshot, attendee): Promise<ArrivalAdmission> {
+      if (!config || snapshot.sourceKey !== sourceKey || !isCheckinArrivalQrIdentity(attendee.publicId)) return { state: "uncertain" };
+      if (attendee.alreadyCheckedIn) return { state: "existing_unattributed", fingerprint: createHash("sha256").update(canonical({ attendee: attendee.upstreamAttendeeId, list: snapshot.upstreamListId })).digest("hex") };
+      try {
+        const options = await ready(snapshot);
+        const list = options.lists.find((entry) => entry.id === snapshot.upstreamListId);
+        requireContract(list);
+        const capability = options.serverOnly.listCapabilities[list.id];
+        requireContract(typeof capability === "string" && /^[A-Za-z0-9_-]{1,255}$/.test(capability));
+        const response = await transport(`${config.base}/public/check-in-lists/${capability}/check-ins`, {
+          method: "POST", redirect: "error", credentials: "omit", cache: "no-store",
+          headers: { Authorization: `Bearer ${config.key}`, Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ attendees: [{ public_id: attendee.publicId, action: "check-in" }] }),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (response.status === 429 || response.status >= 500) { void response.body?.cancel(); return { state: "uncertain" }; }
+        if (response.status !== 200 && ![403, 409, 422].includes(response.status)) { void response.body?.cancel(); return { state: "uncertain" }; }
+        const length = response.headers.get("content-length");
+        requireContract(length === null || (/^\d+$/.test(length) && Number(length) <= 2 * 1024 * 1024));
+        const reader = response.body?.getReader(); requireContract(reader);
+        const chunks: Uint8Array[] = []; let size = 0;
+        try {
+          while (true) {
+            const part = await reader.read(); if (part.done) break;
+            size += part.value.byteLength; requireContract(size <= 2 * 1024 * 1024); chunks.push(part.value);
+          }
+        } finally { reader.releaseLock(); }
+        let body: Record<string, unknown>;
+        try { body = record(JSON.parse(Buffer.concat(chunks).toString("utf8"))); } catch { return { state: "uncertain" }; }
+        const errors = body.errors === undefined ? {} : record(body.errors);
+        const hasAttendeeError = Object.hasOwn(errors, attendee.publicId);
+        let fingerprint: string | null = null;
+        if (Array.isArray(body.data) && body.data.length === 1) {
+          try { fingerprint = admissionCheckin(body.data[0], attendee, snapshot.upstreamListId); } catch { fingerprint = null; }
+        }
+        if (hasAttendeeError) return { state: "existing_unattributed", fingerprint: fingerprint ?? createHash("sha256").update(canonical({ attendee: attendee.upstreamAttendeeId, list: snapshot.upstreamListId })).digest("hex") };
+        if (response.status !== 200) return { state: "uncertain" };
+        requireContract(Array.isArray(body.data) && body.data.length <= 1);
+        if (Object.keys(errors).length > 0 || !fingerprint) return { state: "uncertain" };
+        return { state: "newly_checked_in", fingerprint };
+      } catch { return { state: "uncertain" }; }
     },
   };
 }

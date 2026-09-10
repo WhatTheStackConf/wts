@@ -16,7 +16,7 @@ export interface CheckinArrivalWorkflow {
   stationId: CheckinStationId;
   eventId: string;
   eventTitle: string;
-  state: "not_submitted";
+  state: "not_submitted" | "admission_pending" | "accepted" | "existing_unattributed" | "rejected" | "admission_uncertain";
   name: string;
   affiliation: string;
   profileId: string;
@@ -24,6 +24,8 @@ export interface CheckinArrivalWorkflow {
 }
 export type CheckinArrivalDecision =
   | { state: "reserved" | "existing"; workflow: CheckinArrivalWorkflow }
+  | { state: "accepted"; workflow: CheckinArrivalWorkflow; printIntentId: string }
+  | { state: "admission_pending" | "admission_uncertain" | "existing_unattributed"; workflow: CheckinArrivalWorkflow }
   | { state: "already_handled" }
   | { state: "rejected"; reason: CheckinArrivalRejection }
   | { state: "dependency_unavailable" }
@@ -58,6 +60,7 @@ export interface CheckinArrivalHistory {
   day: string;
   operationsEnabled: false;
 }
+
 export interface CheckinArrivalServiceContract {
   preflight(bindingToken: string | undefined, input: CheckinArrivalInput): Promise<CheckinArrivalResult>;
   history(bindingToken: string | undefined, query?: CheckinArrivalHistoryQuery): Promise<CheckinArrivalHistory>;

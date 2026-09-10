@@ -12,13 +12,29 @@ const rejectionMessages = {
   already_checked_in: "This attendee is already checked in upstream. No new admission or Name Label was authorized.",
 };
 export function ArrivalDecision(props: { decision: CheckinArrivalDecision }) {
-  const work = () => { const current = props.decision; return current.state === "reserved" || current.state === "existing" ? current.workflow : undefined; };
+  const work = () => { const current = props.decision; return "workflow" in current ? current.workflow : undefined; };
   const reason = () => props.decision.state === "rejected" ? rejectionMessages[props.decision.reason] : "";
+  const heading = () => ({
+    accepted: "Accepted by Hi.Events",
+    reserved: "Arrival reserved",
+    existing: "Existing arrival work",
+    admission_pending: "Admission pending",
+    existing_unattributed: "Existing upstream check-in",
+    admission_uncertain: "Admission outcome uncertain",
+    rejected: "Arrival rejected",
+    already_handled: "Already handled at another station",
+    dependency_unavailable: "Dependency unavailable",
+    needs_affiliation_choice: "Affiliation choice required",
+  }[props.decision.state] ?? "Arrival result");
   return <div class="space-y-2 wts-name-label-text">
     <Show when={work()}>{(workflow) => <>
-      <p class="font-bold">Not submitted to Hi.Events</p>
+      <p class="font-bold">{heading()}</p>
       <Show when={props.decision.state === "reserved"}><p>Arrival reserved. Admission and printing are intentionally disabled in this release.</p></Show>
       <Show when={props.decision.state === "existing"}><p>Existing arrival work reopened. No additional workflow was created.</p></Show>
+      <Show when={props.decision.state === "admission_pending"}><p>Admission is in progress in the supervised coordinator. Do not rescan or submit another admission.</p></Show>
+      <Show when={props.decision.state === "accepted"}><p>Admission accepted. One initial Name Label print intent is queued; physical dispatch is not enabled in this release.</p><p>Print intent: <span class="break-all">{(props.decision as Extract<CheckinArrivalDecision, { state: "accepted" }>).printIntentId}</span></p></Show>
+      <Show when={props.decision.state === "existing_unattributed"}><p>Hi.Events reports an existing check-in, but WTS cannot attribute it to this admission. An admin must decide; no label was authorized.</p></Show>
+      <Show when={props.decision.state === "admission_uncertain"}><p>The admission outcome is uncertain. An admin must reconcile it; no label was authorized and no automatic retry will be made.</p></Show>
       <p>Owning station: {workflow().stationId} · Originating event: {workflow().eventTitle} · Event ID {workflow().eventId}</p>
       <p class="text-lg font-bold">{workflow().name}</p>
       <p>Affiliation: {workflow().affiliation || "Blank"}</p>
@@ -29,7 +45,7 @@ export function ArrivalDecision(props: { decision: CheckinArrivalDecision }) {
     <Show when={reason()}><p class="font-bold">Arrival rejected. {reason()}</p></Show>
     <Show when={props.decision.state === "dependency_unavailable"}><p class="font-bold">Dependency unavailable. Validation could not be completed; this is not a missing attendee result.</p></Show>
     <Show when={props.decision.state === "needs_affiliation_choice"}><p class="font-bold">Affiliation read failed. Retry the read or explicitly choose a blank affiliation. Missing data has not been assumed.</p></Show>
-    <p>No admission request or print intent was created by this preflight.</p>
+    <Show when={!["accepted", "admission_pending", "existing_unattributed", "admission_uncertain"].includes(props.decision.state)}><p>No admission request or print intent was created by this preflight.</p></Show>
   </div>;
 }
 interface CheckinArrivalPreflightProps {

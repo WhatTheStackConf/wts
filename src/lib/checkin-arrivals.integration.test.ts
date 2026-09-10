@@ -441,3 +441,70 @@ it("races independent actors and stations into one immutable not-submitted workf
     }
   } finally { await first.coordinator.close(); await t.cleanup(); }
 });
+
+it("releases a claim when pre-send reads are unavailable and permits a later retry", { timeout: 60_000 }, async () => {
+  const t = await setup(); const runtime = await ready(t); await runtime.coordinator.listen();
+  try {
+    await runtime.heartbeat();
+    const command = { ...t.command(), context: await context(t) };
+    expect(await t.service.preflight(t.token, command)).toMatchObject({ state: "reserved" });
+    expect(await runtime.coordinator.processAdmissions({ attendee: async () => null, admit: async () => { throw new Error("must not send"); } })).toBe(1);
+    expect(await t.pb.collection("checkin_arrival_workflows").getFirstListItem("state = 'not_submitted'")).toMatchObject({ state: "not_submitted" });
+    const attemptsAfterRelease = await t.pb.collection("checkin_arrival_attempts").getFullList();
+    expect(attemptsAfterRelease).toHaveLength(1);
+    expect(attemptsAfterRelease[0]).toMatchObject({ state: "pre_send_failed", pre_send_failures: 1, next_retry_at: expect.any(String) });
+    expect(await runtime.coordinator.processAdmissions({ attendee: async () => { throw new Error("backoff must hold"); }, admit: async () => { throw new Error("must not send"); } })).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    let posts = 0;
+    expect(await runtime.coordinator.processAdmissions({
+      attendee: async (job) => ({ upstreamAttendeeId: job.upstreamAttendeeId, publicId: qrIdentity, productId: "401", alreadyCheckedIn: false }),
+      admit: async () => { posts++; return { state: "newly_checked_in", fingerprint: "f".repeat(64) }; },
+    })).toBe(1);
+    expect(posts).toBe(1);
+    expect(await t.pb.collection("checkin_arrival_workflows").getFirstListItem("state = 'accepted'")).toMatchObject({ state: "accepted" });
+  } finally { await runtime.coordinator.close(); await t.cleanup(); }
+});
+
+it("claims one reservation before the upstream POST and atomically creates exactly one initial print intent", { timeout: 60_000 }, async () => {
+  const t = await setup(); const runtime = await ready(t); await runtime.coordinator.listen();
+  try {
+    await runtime.heartbeat();
+    const command = { ...t.command(), context: await context(t) };
+    expect(await t.service.preflight(t.token, command)).toMatchObject({ state: "reserved" });
+    let posts = 0;
+    const processed = await runtime.coordinator.processAdmissions({
+      attendee: async (job) => ({ upstreamAttendeeId: job.upstreamAttendeeId, publicId: qrIdentity, productId: "401", alreadyCheckedIn: false }),
+      admit: async () => { posts++; return { state: "newly_checked_in", fingerprint: "d".repeat(64) }; },
+    });
+    expect(processed).toBe(1); expect(posts).toBe(1);
+    const workflow = await t.pb.collection("checkin_arrival_workflows").getFirstListItem("state = 'accepted'");
+    expect(workflow).toMatchObject({ state: "accepted", admission_completed_day: expect.any(String) });
+    const attempts = await t.pb.collection("checkin_arrival_attempts").getFullList();
+    expect(attempts).toHaveLength(1); expect(attempts[0]).toMatchObject({ state: "accepted", result_fingerprint: "d".repeat(64) });
+    const prints = await t.pb.collection("checkin_print_attempts").getFullList();
+    expect(prints).toHaveLength(1); expect(prints[0]).toMatchObject({ workflow_id: workflow.id, purpose: "initial", state: "queued", name: "Тест Attendee", affiliation: "Test organisation" });
+    const commandRow = await t.pb.collection("checkin_arrival_commands").getFirstListItem(`operation_id = '${command.operationId}'`);
+    expect(commandRow.result).toMatchObject({ state: "accepted", printIntentId: prints[0].id });
+    expect(await runtime.coordinator.processAdmissions({ attendee: async () => null, admit: async () => { posts++; return { state: "uncertain" }; } })).toBe(0);
+    expect(posts).toBe(1);
+  } finally { await runtime.coordinator.close(); await t.cleanup(); }
+});
+
+it("keeps a lost admission outcome uncertain and never automatically repeats its POST", { timeout: 60_000 }, async () => {
+  const t = await setup(); const runtime = await ready(t); await runtime.coordinator.listen();
+  try {
+    await runtime.heartbeat();
+    const command = { ...t.command(), context: await context(t) };
+    await t.service.preflight(t.token, command);
+    let posts = 0;
+    await expect(runtime.coordinator.processAdmissions({
+      attendee: async (job) => ({ upstreamAttendeeId: job.upstreamAttendeeId, publicId: qrIdentity, productId: "401", alreadyCheckedIn: false }),
+      admit: async () => { posts++; throw new Error("lost response"); },
+    })).resolves.toBe(1);
+    expect(posts).toBe(1);
+    expect(await t.pb.collection("checkin_arrival_workflows").getFirstListItem("state = 'admission_uncertain'")).toMatchObject({ state: "admission_uncertain", print_intent_id: "" });
+    expect(await t.pb.collection("checkin_print_attempts").getFullList()).toEqual([]);
+    expect(await runtime.coordinator.processAdmissions({ attendee: async () => null, admit: async () => { posts++; return { state: "newly_checked_in", fingerprint: "e".repeat(64) }; } })).toBe(0);
+    expect(posts).toBe(1);
+  } finally { await runtime.coordinator.close(); await t.cleanup(); }
+});

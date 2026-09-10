@@ -50,7 +50,7 @@ test("arrival preflight reserves exact list members, isolates stations and prese
     expect(first.state).toBe("reserved");
     if (first.state !== "reserved") throw new Error("Expected reserved synthetic arrival");
     expect(first.workflow).toMatchObject({ stationId: setup.stations[0].stationId, eventId: setup.events[0].id, state: "not_submitted", name: "Ана O’Neill", affiliation: "Synthetic organisation" });
-    await expect(result(phone).getByText("Not submitted to Hi.Events", { exact: true })).toBeVisible();
+    await expect(result(phone).getByText("Arrival reserved", { exact: true })).toBeVisible();
     await expect(result(phone).getByText("Ана O’Neill", { exact: true })).toBeVisible();
     expect(await phone.evaluate(async () => {
       const loaded = await document.fonts.load('700 16px "WTS Name Label"', "Ана O’Neill");
@@ -121,7 +121,7 @@ test("arrival answer outages require explicit retry or blank and delayed continu
     const retried = phone.waitForResponse((response) => response.url().endsWith(endpoint) && response.request().postDataJSON()?.operation === "preflight");
     await preflight(phone).getByRole("button", { name: "Retry affiliation read", exact: true }).click();
     expect(await (await retried).json()).toMatchObject({ state: "reserved", workflow: { eventId: setup.events[0].id, affiliation: "Synthetic organisation" } });
-    await expect(result(phone).getByText("Not submitted to Hi.Events", { exact: true })).toBeVisible();
+    await expect(result(phone).getByText("Arrival reserved", { exact: true })).toBeVisible();
     await queue(phone).getByRole("button", { name: "Refresh arrival work", exact: true }).click();
     await expect(queue(phone).getByText("Resolved preflight exception", { exact: true }).first()).toBeVisible();
     const history = await arrivalCommand<CheckinArrivalHistory>(phone, endpoint, { operation: "history", query: {} });
@@ -157,7 +157,7 @@ test("arrival malformed committed response keeps an exact-payload retry despite 
     await expect(preflight(phone).getByLabel("Attendee QR identity", { exact: true })).toHaveAttribute("readonly", "");
     await queue(phone).getByRole("button", { name: "Refresh arrival work", exact: true }).click();
     await retry.click();
-    await expect(result(phone).getByText("Not submitted to Hi.Events", { exact: true })).toBeVisible();
+    await expect(result(phone).getByText("Arrival reserved", { exact: true })).toBeVisible();
     expect(submitted).toHaveLength(2);
     expect(submitted[1]).toEqual(submitted[0]);
     expect(saved?.state).toBe("reserved");

@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import type PocketBase from "pocketbase";
-import type { AgentReadinessDTO, Work as Attempt, Authorization } from "./protocol.js";
+import type { AgentReadinessDTO, Work as Attempt, Authorization, AdmissionJob, AdmissionOutcome, AdmissionProcessor } from "./protocol.js";
 
 interface Options { now?: () => number; heartbeatIntervalMs?: number; heartbeatTimeoutMs?: number; authorizationTtlMs?: number }
 interface Replies {
@@ -60,6 +60,14 @@ export class Coordinator {
       throw new Rejected(status && [400, 403, 409].includes(status) ? status : 503);
     }
   }
+  private async admissionCommand<T>(operation: string, data: object = {}): Promise<T> {
+    try {
+      return await this.pb.send<T>("/api/wts/checkin-arrivals", { method: "POST", body: { ...data, operation, owner: this.owner, nowMs: this.now() }, requestKey: null, signal: AbortSignal.timeout(5000) });
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      throw new Rejected(status && [400, 403, 409].includes(status) ? status : 503);
+    }
+  }
   async listen(host = "127.0.0.1", port = 0): Promise<string> {
     if (this.server || this.active) throw new Rejected(409);
     await this.command("machine_acquire", { config: this.config });
@@ -88,6 +96,65 @@ export class Coordinator {
   async prepareAttempt(agentId: string, payloadHash: string): Promise<Attempt> {
     if (!this.active || !matches(agentId, /^[a-z0-9]{15}$/) || !matches(payloadHash, /^[a-f0-9]{64}$/)) throw new Rejected(400);
     return this.command("machine_prepare", { agentId, payloadHash });
+  }
+  /** Claim one reserved arrival and persist its possibly-sent boundary. */
+  async claimAdmission(): Promise<AdmissionJob | null> {
+    if (!this.active) throw new Rejected(503);
+    const result = await this.admissionCommand<{ job: AdmissionJob | null }>("machine_admission_claim");
+    return result.job;
+  }
+  /** Complete an admission attempt after the external response is classified. */
+  async recordAdmissionResult(attemptId: string, outcome: AdmissionOutcome): Promise<{ attemptId: string; state: string }> {
+    if (!this.active || !matches(attemptId, /^[a-z0-9]{15}$/)) throw new Rejected(400);
+    return this.admissionCommand("machine_admission_result", { attemptId, outcome });
+  }
+  private async fenceAdmissionSend(job: AdmissionJob): Promise<void> {
+    await this.admissionCommand("machine_admission_fence", { attemptId: job.attemptId, coordinatorGeneration: job.coordinatorGeneration });
+  }
+  private async releaseAdmission(job: AdmissionJob): Promise<void> {
+    await this.admissionCommand("machine_admission_release", { attemptId: job.attemptId });
+  }
+  private async reconcileAdmissions(): Promise<void> {
+    await this.admissionCommand("machine_admission_reconcile");
+  }
+  /** Process bounded work in the coordinator process; never exposed by its HTTP server. */
+  async processAdmissions(processor: AdmissionProcessor, limit = 10): Promise<number> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Rejected(400);
+    await this.reconcileAdmissions();
+    let processed = 0;
+    while (processed < limit) {
+      const job = await this.claimAdmission();
+      if (!job) break;
+      let outcome: AdmissionOutcome | null = null;
+      let sendFenced = false;
+      try {
+        const attendee = await processor.attendee(job);
+        if (!attendee) {
+          await this.releaseAdmission(job);
+        } else if (attendee.eligibility && attendee.eligibility !== "eligible") {
+          outcome = { state: "rejected", reason: attendee.eligibility };
+        } else {
+          await this.fenceAdmissionSend(job);
+          sendFenced = true;
+          outcome = attendee.alreadyCheckedIn
+            ? { state: "existing_unattributed", fingerprint: createHash("sha256").update(`wts2026:existing:${job.upstreamEventId}:${job.upstreamAttendeeId}:${job.upstreamListId}`).digest("hex") }
+            : await processor.admit(job, attendee);
+        }
+      } catch {
+        if (sendFenced) outcome = { state: "uncertain" };
+        else try { await this.releaseAdmission(job); } catch { /* A failed release is recovered by the next coordinator generation. */ }
+      }
+      if (outcome) {
+        try { await this.recordAdmissionResult(job.attemptId, outcome); }
+        catch (error) {
+          if (!sendFenced) throw error;
+          await this.reconcileAdmissions();
+        }
+      }
+      processed++;
+      if (!outcome) break;
+    }
+    return processed;
   }
   async machine<K extends Operation>(credential: string, operation: K, payload: unknown): Promise<Replies[K]> {
     if (!matches(credential, /^wts_agent_[a-f0-9]{64}$/)) throw new Rejected(403);

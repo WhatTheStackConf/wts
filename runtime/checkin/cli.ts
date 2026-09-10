@@ -2,6 +2,7 @@ import { readFileSync, statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import PocketBase from "pocketbase";
 import { Coordinator } from "./coordinator.js";
+import { createAdmissionProcessorFromEnvironment } from "./admission.js";
 import { AgentJournal } from "./journal.js";
 import { AgentRuntime, HttpAgentTransport, reportJournalFailure } from "./agent.js";
 import { AgentError, journalFailureState, object, safeUrl, validIdentity } from "./protocol.js";
@@ -48,7 +49,18 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       if (host !== "127.0.0.1" && host !== "::1") throw new AgentError("invalid_config");
       const urlBound = await coordinator.listen(host, bounded(config.port, 8787, 0, 65535));
       console.log(JSON.stringify({ category: "coordinator_ready", port: Number(new URL(urlBound).port) }));
-      try { while (!stopped) { await pause(interval); if (!stopped) await coordinator.pulse(); } }
+      const admission = createAdmissionProcessorFromEnvironment();
+      try {
+        while (!stopped) {
+          await pause(interval);
+          if (stopped) break;
+          await coordinator.pulse();
+          if (admission) {
+            try { await coordinator.processAdmissions(admission); }
+            catch { /* Keep the supervisor heartbeat alive; the durable boundary remains for review. */ }
+          }
+        }
+      }
       finally { await coordinator.close(); pb.authStore.clear(); }
       return;
     }

@@ -38,7 +38,7 @@ function snapshot(sourceKey: string): CheckinEventSnapshot {
 }
 
 const identity = { upstreamAttendeeId: "901", publicId, productId: "601", name: "Ана O’Neill", alreadyCheckedIn: false };
-const checkIn = { id: 1101, attendee_id: 901, check_in_list_id: 701, order_id: 1001, checked_in_at: "2026-09-09T10:00:00Z" };
+const checkIn = { id: 1101, attendee_id: 901, check_in_list_id: 701, order_id: 1001, checked_in_at: "2026-09-09T10:00:00Z", short_id: "chk_SYNTHETIC1234" };
 function detail(question_answers: unknown = []) { return { data: { ...row, event_id: 501, question_answers } }; }
 function adapterFor(...bodies: unknown[]) {
   const upstream = transport(...bodies);
@@ -188,5 +188,19 @@ describe("read-only arrival Hi.Events adapter", () => {
     expect(upstream.calls.at(-1)?.url).toBe(`${base}/${attendeePath}?page=1&per_page=25&query=${publicId}`);
     for (const call of upstream.calls) { expect(call.init?.method).toBe("GET"); expect(call.init?.body).toBeUndefined(); }
     expect(upstream.calls.at(-1)?.init?.headers).not.toHaveProperty("Authorization");
+  });
+  it("prepares the exact attendee and list capability before the coordinator send fence", async () => {
+    const upstream = transport(detail(), ...ready(), attendees([row]));
+    const adapter = createCheckinArrivalAdapter(config, upstream.fetcher);
+    const attendee = await adapter.admissionAttendee!(snapshot(adapter.sourceKey), "901");
+    expect(attendee).toMatchObject({ upstreamAttendeeId: "901", publicId, productId: "601", alreadyCheckedIn: false });
+    expect(upstream.calls.map((call) => call.init?.method)).toEqual(["GET", "GET", "GET", "GET", "GET", "GET"]);
+  });
+  it("classifies a validated new upstream check-in and does not retry its POST", async () => {
+    const upstream = transport(...ready(), Response.json({ data: [checkIn], errors: {} }));
+    const adapter = createCheckinArrivalAdapter(config, upstream.fetcher);
+    expect(await adapter.admit!(snapshot(adapter.sourceKey), identity)).toMatchObject({ state: "newly_checked_in", fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(upstream.calls.at(-1)?.init?.method).toBe("POST");
+    expect(upstream.calls.filter((call) => call.init?.method === "POST")).toHaveLength(1);
   });
 });

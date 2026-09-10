@@ -13,23 +13,164 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
   function safeText(v, max, required) { return typeof v === "string" && v.length <= max && (!required || !!v.trim()) && !/[\x00-\x1f\x7f<>@]|:\/\/|www\.|[a-f0-9]{64}|wts_mcp_|bearer\s|password|secret|token\s*[:=]|\/dev\//i.test(v); }
   let result;
   e.app.runInTransaction((app) => {
-    const actor = typeof b.actorUserId === "string" && find(app, "users", "id = {:id}", { id: b.actorUserId });
-    if (!actor || !actor.getBool("verified") || !["admin", "checkin_operator"].includes(actor.getString("role"))) fail("forbidden", 403);
+    const machine = typeof b.operation === "string" && b.operation.startsWith("machine_");
+    const actor = machine ? null : typeof b.actorUserId === "string" && find(app, "users", "id = {:id}", { id: b.actorUserId });
+    if (!machine && (!actor || !actor.getBool("verified") || !["admin", "checkin_operator"].includes(actor.getString("role")))) fail("forbidden", 403);
     const allHistory = b.operation === "history" && b.query && b.query.scope === "all";
     if (allHistory && actor.getString("role") !== "admin") fail("forbidden", 403);
     const binding = hash(b.identityHash) && find(app, "checkin_bindings", "identity_hash = {:hash}", { hash: b.identityHash });
-    if (!binding && !allHistory) fail("invalid_binding", 403);
-    if (binding && binding.getBool("revoked")) fail("revoked_binding", 403);
+    if (!machine && !binding && !allHistory) fail("invalid_binding", 403);
+    if (!machine && binding && binding.getBool("revoked")) fail("revoked_binding", 403);
     const station = binding ? app.findRecordById("checkin_stations", binding.getString("station")) : null;
     const system = app.findRecordById("checkin_system", "wts2026system00");
-    const now = Date.now(); const iso = new Date(now).toISOString();
+    const now = machine && Number.isSafeInteger(b.nowMs) ? b.nowMs : Date.now(); const iso = new Date(now).toISOString();
     function localDay(time) {
       const year = new Date(time).getUTCFullYear();
       const march = new Date(Date.UTC(year, 2, 31, 1)); march.setUTCDate(31 - march.getUTCDay());
       const october = new Date(Date.UTC(year, 9, 31, 1)); october.setUTCDate(31 - october.getUTCDay());
       return new Date(time + (time >= march.getTime() && time < october.getTime() ? 2 : 1) * 3600000).toISOString().slice(0, 10);
     }
-    function workflowDTO(w) { return { id: w.id, stationId: w.getString("station_id"), eventId: w.getString("event_id"), eventTitle: w.getString("event_title"), state: "not_submitted", name: w.getString("name"), affiliation: w.getString("affiliation"), profileId: w.getString("profile_id"), createdAt: w.getString("created") }; }
+    function workflowDTO(w) { return { id: w.id, stationId: w.getString("station_id"), eventId: w.getString("event_id"), eventTitle: w.getString("event_title"), state: w.getString("state"), name: w.getString("name"), affiliation: w.getString("affiliation"), profileId: w.getString("profile_id"), createdAt: w.getString("created") }; }
+    if (machine) {
+      const runtime = app.findRecordById("checkin_coordinator", "wts2026coord000");
+      if (!hash(b.owner) || runtime.getString("owner") !== b.owner) fail("forbidden", 403);
+      const seen = Date.parse(runtime.getString("last_seen_at"));
+      if (!Number.isFinite(seen) || now - seen < 0 || now - seen >= runtime.getInt("heartbeat_timeout_ms")) fail("unavailable", 503);
+      function currentAgent(stationId) { return find(app, "checkin_agents", "station = {:station}", { station: stationId }, "-revision"); }
+      function ready(station, agent) {
+        if (!system.getBool("enabled") || !station.getBool("enabled") || !agent || agent.getBool("revoked") || agent.getBool("quarantined")) return false;
+        const heartbeat = Date.parse(agent.getString("last_heartbeat_at"));
+        if (!Number.isFinite(heartbeat) || now - heartbeat < 0 || now - heartbeat >= runtime.getInt("heartbeat_timeout_ms")) return false;
+        if (!Date.parse(agent.getString("expires_at")) || Date.parse(agent.getString("expires_at")) <= now || agent.getString("compatibility") !== "compatible") return false;
+        const profile = find(app, "checkin_label_profiles", "station = {:station}", { station: station.id }, "-version");
+        const approval = profile && find(app, "checkin_label_approvals", "profile = {:profile}", { profile: profile.id });
+        if (!profile || profile.id !== agent.getString("profile_id") || profile.id !== agent.getString("reported_profile") || profile.getInt("station_version") !== (station.getInt("profile_config_version") || station.getInt("version")) || !approval || approval.getInt("station_version") !== (station.getInt("profile_config_version") || station.getInt("version"))) return false;
+        const config = json(profile, "config");
+        if (!config || config.synthetic || config.printerRef !== station.getString("printer_ref") || config.printerRef !== agent.getString("printer_identity")) return false;
+        return true;
+      }
+      function admissionAudit(command, workflow, operation, state) {
+        const human = find(app, "users", "id = {:id}", { id: command.getString("actor_user_id") });
+        if (!human || !human.getBool("verified") || !["admin", "checkin_operator"].includes(human.getString("role"))) fail("forbidden", 403);
+        const audit = new Record(app.findCollectionByNameOrId("checkin_audit_events"));
+        const name = human.getString("name").trim();
+        set(audit, { actor_user_id: human.id, actor_name: safeText(name, 200, true) ? name.slice(0, 80) : "Authorized User", actor_role: human.getString("role"), operation, station_id: command.getString("station_id"), binding_id: json(command, "context").bindingId || "", event_id: command.getString("event_id"), arrival_command_id: command.id, workflow_id: workflow.id, outcome: "applied", state: { state } });
+        app.save(audit);
+      }
+      function markUncertain(attempt) {
+        if (attempt.getString("state") !== "possibly_sent") return;
+        const workflow = app.findRecordById("checkin_arrival_workflows", attempt.getString("workflow_id"));
+        const command = app.findRecordById("checkin_arrival_commands", attempt.getString("command_id"));
+        set(attempt, { state: "uncertain" }); set(workflow, { state: "admission_uncertain" });
+        app.save(attempt);
+        set(command, { result: { state: "admission_uncertain", workflow: workflowDTO(workflow) }, completed_at: "", completed_day: "", workflow_id: workflow.id, admission_attempt_id: attempt.id, history_visible: true });
+        app.save(command); admissionAudit(command, workflow, "admission_result", "admission_uncertain");
+      }
+      if (b.operation === "machine_admission_reconcile") {
+        for (const attempt of app.findRecordsByFilter("checkin_arrival_attempts", "state = 'possibly_sent'", "created,id", 100, 0)) markUncertain(attempt);
+        result = { reconciled: true }; return;
+      }
+      if (b.operation === "machine_admission_claim") {
+        const candidates = app.findRecordsByFilter("checkin_arrival_workflows", "state = 'not_submitted'", "created,id", 100, 0);
+        for (const workflow of candidates) {
+          const station = app.findRecordById("checkin_stations", workflow.getString("station_id"));
+          const agent = currentAgent(station.id);
+          if (!ready(station, agent)) continue;
+          const command = find(app, "checkin_arrival_commands", "operation_id = {:operation}", { operation: workflow.getString("operation_id") });
+          if (!command || command.getString("status") !== "final") continue;
+          const existingAttempt = find(app, "checkin_arrival_attempts", "workflow_id = {:workflow}", { workflow: workflow.id });
+          if (existingAttempt) {
+            const retryAt = Date.parse(existingAttempt.getString("next_retry_at"));
+            if (existingAttempt.getString("state") === "pre_send_failed" && (existingAttempt.getInt("pre_send_failures") >= 3 || Number.isFinite(retryAt) && now < retryAt)) continue;
+            if (existingAttempt.getString("state") !== "pre_send_failed" && !(existingAttempt.getString("state") === "claimed" && existingAttempt.getInt("coordinator_generation") !== runtime.getInt("generation"))) continue;
+          }
+          const attempt = existingAttempt || new Record(app.findCollectionByNameOrId("checkin_arrival_attempts"));
+          set(attempt, { workflow_id: workflow.id, command_id: command.id, station_id: station.id, upstream_event_id: workflow.getString("upstream_event_id"), upstream_attendee_id: workflow.getString("upstream_attendee_id"), list_id: workflow.getString("list_id"), source_key: workflow.getString("source_key"), station_generation: station.getInt("generation"), system_generation: system.getInt("generation"), coordinator_generation: runtime.getInt("generation"), state: "claimed", send_boundary_at: "", completed_at: "", result_fingerprint: "", next_retry_at: "" });
+          app.save(attempt);
+          set(workflow, { admission_attempt_id: attempt.id }); app.save(workflow);
+          set(command, { admission_attempt_id: attempt.id }); app.save(command);
+          admissionAudit(command, workflow, "admission_claim", "claimed");
+          result = { job: { attemptId: attempt.id, workflowId: workflow.id, commandId: command.id, stationId: station.id, eventId: workflow.getString("event_id"), sourceKey: workflow.getString("source_key"), upstreamEventId: workflow.getString("upstream_event_id"), upstreamAttendeeId: workflow.getString("upstream_attendee_id"), upstreamListId: workflow.getString("list_id"), context: json(workflow, "context"), affiliation: json(workflow, "affiliation_mapping"), coordinatorGeneration: runtime.getInt("generation") } };
+          return;
+        }
+        result = { job: null }; return;
+      }
+      if (b.operation === "machine_admission_release") {
+        if (!/^[a-z0-9]{15}$/.test(b.attemptId)) fail("invalid_input");
+        const attempt = app.findRecordById("checkin_arrival_attempts", b.attemptId);
+        const workflow = app.findRecordById("checkin_arrival_workflows", attempt.getString("workflow_id"));
+        const command = app.findRecordById("checkin_arrival_commands", attempt.getString("command_id"));
+        if (attempt.getString("state") !== "claimed" || workflow.getString("state") !== "not_submitted" || attempt.getInt("coordinator_generation") !== runtime.getInt("generation")) fail("conflict", 409);
+        const failures = attempt.getInt("pre_send_failures") + 1;
+        const delay = Math.min(60000, 1000 * 2 ** Math.min(failures - 1, 6));
+        set(attempt, { state: "pre_send_failed", completed_at: iso, pre_send_failures: failures, next_retry_at: failures < 3 ? new Date(now + delay).toISOString() : "" }); app.save(attempt);
+        admissionAudit(command, workflow, "admission_result", "pre_send_failed");
+        result = { released: true }; return;
+      }
+      if (b.operation === "machine_admission_fence") {
+        if (!/^[a-z0-9]{15}$/.test(b.attemptId) || !Number.isSafeInteger(b.coordinatorGeneration)) fail("invalid_input");
+        const attempt = app.findRecordById("checkin_arrival_attempts", b.attemptId);
+        const workflow = app.findRecordById("checkin_arrival_workflows", attempt.getString("workflow_id"));
+        const station = app.findRecordById("checkin_stations", attempt.getString("station_id"));
+        if (attempt.getString("state") !== "claimed" || workflow.getString("state") !== "not_submitted" || attempt.getInt("coordinator_generation") !== b.coordinatorGeneration || attempt.getInt("coordinator_generation") !== runtime.getInt("generation") || attempt.getInt("station_generation") !== station.getInt("generation") || attempt.getInt("system_generation") !== system.getInt("generation")) fail("conflict", 409);
+        const agent = currentAgent(station.id);
+        if (!ready(station, agent)) fail("unavailable", 503);
+        set(attempt, { state: "possibly_sent", send_boundary_at: iso }); app.save(attempt);
+        set(workflow, { state: "admission_pending" }); app.save(workflow);
+        admissionAudit(app.findRecordById("checkin_arrival_commands", attempt.getString("command_id")), workflow, "admission_claim", "possibly_sent");
+        result = { valid: true }; return;
+      }
+      if (b.operation === "machine_admission_result") {
+        if (!/^[a-z0-9]{15}$/.test(b.attemptId)) fail("invalid_input");
+        const attempt = app.findRecordById("checkin_arrival_attempts", b.attemptId);
+        const workflow = app.findRecordById("checkin_arrival_workflows", attempt.getString("workflow_id"));
+        const command = app.findRecordById("checkin_arrival_commands", attempt.getString("command_id"));
+        const outcome = b.outcome;
+        const claimedRejection = attempt.getString("state") === "claimed" && outcome?.state === "rejected";
+        if ((!claimedRejection && attempt.getString("state") !== "possibly_sent") || workflow.getString("state") !== (claimedRejection ? "not_submitted" : "admission_pending") || workflow.getString("admission_attempt_id") !== attempt.id || attempt.getInt("coordinator_generation") !== runtime.getInt("generation") || attempt.getInt("station_generation") !== app.findRecordById("checkin_stations", attempt.getString("station_id")).getInt("generation") || attempt.getInt("system_generation") !== system.getInt("generation")) fail("conflict", 409);
+        if (!outcome || typeof outcome !== "object" || Array.isArray(outcome) || !["newly_checked_in", "existing_unattributed", "rejected", "uncertain"].includes(outcome.state)) fail("invalid_input");
+        let decision;
+        if (outcome.state === "newly_checked_in" || outcome.state === "existing_unattributed") {
+          if (!hash(outcome.fingerprint)) fail("invalid_input");
+          const state = outcome.state === "newly_checked_in" ? "accepted" : "existing_unattributed";
+          set(attempt, { state: outcome.state === "newly_checked_in" ? "accepted" : "existing_unattributed", completed_at: iso, result_fingerprint: outcome.fingerprint });
+          set(workflow, { state, admission_completed_at: iso, admission_completed_day: localDay(now) });
+          if (state === "accepted") {
+            const print = new Record(app.findCollectionByNameOrId("checkin_print_attempts"));
+            const profileConfig = json(workflow, "profile_config");
+            const payloadHash = $security.sha256(canonical({ profileId: workflow.getString("profile_id"), profileConfig, name: workflow.getString("name"), affiliation: workflow.getString("affiliation") }));
+            set(print, { workflow_id: workflow.id, station_id: workflow.getString("station_id"), purpose: "initial", state: "queued", profile_id: workflow.getString("profile_id"), profile_config: profileConfig, name: workflow.getString("name"), affiliation: workflow.getString("affiliation"), payload_hash: payloadHash, predecessor_attempt_id: "" });
+            app.save(print);
+            set(workflow, { print_intent_id: print.id });
+            decision = { state: "accepted", workflow: workflowDTO(workflow), printIntentId: print.id };
+          } else decision = { state, workflow: workflowDTO(workflow) };
+        } else if (outcome.state === "rejected") {
+          if (!["not_in_list", "cancelled", "awaiting_payment", "unknown_eligibility"].includes(outcome.reason)) fail("invalid_input");
+          set(attempt, { state: "rejected", completed_at: iso }); set(workflow, { state: "rejected", admission_completed_at: iso, admission_completed_day: localDay(now) });
+          decision = { state: "rejected", reason: outcome.reason };
+        } else {
+          set(attempt, { state: "uncertain" }); set(workflow, { state: "admission_uncertain" });
+          decision = { state: "admission_uncertain", workflow: workflowDTO(workflow) };
+        }
+        app.save(attempt); app.save(workflow);
+        set(command, { result: decision, completed_at: decision.state === "admission_uncertain" || decision.state === "existing_unattributed" ? "" : iso, completed_day: decision.state === "admission_uncertain" || decision.state === "existing_unattributed" ? "" : localDay(now), workflow_id: workflow.id, admission_attempt_id: attempt.id, history_visible: true });
+        app.save(command); admissionAudit(command, workflow, "admission_result", decision.state);
+        result = { attemptId: attempt.id, state: decision.state }; return;
+      }
+      fail("invalid_input");
+    }
+    if (!machine && b.operation === "admission_retry") {
+      if (!binding || !station || !/^[a-z0-9]{15}$/.test(b.attemptId)) fail("invalid_input");
+      const attempt = app.findRecordById("checkin_arrival_attempts", b.attemptId);
+      const workflow = app.findRecordById("checkin_arrival_workflows", attempt.getString("workflow_id"));
+      const command = app.findRecordById("checkin_arrival_commands", attempt.getString("command_id"));
+      if (attempt.getString("state") !== "pre_send_failed" || workflow.getString("state") !== "not_submitted" || workflow.getString("station_id") !== station.id || attempt.getInt("pre_send_failures") < 3) fail("conflict", 409);
+      set(attempt, { pre_send_failures: 0, next_retry_at: "" }); app.save(attempt);
+      const audit = new Record(app.findCollectionByNameOrId("checkin_audit_events"));
+      const name = actor.getString("name").trim();
+      set(audit, { actor_user_id: actor.id, actor_name: safeText(name, 200, true) ? name.slice(0, 80) : "Authorized User", actor_role: actor.getString("role"), operation: "admission_result", station_id: station.id, binding_id: binding.id, event_id: command.getString("event_id"), arrival_command_id: command.id, workflow_id: workflow.id, outcome: "applied", state: { state: "retry_requested" } }); app.save(audit);
+      result = { retry: true }; return;
+    }
     function decision(command, all = false) {
       if (!all && command.getString("station_id") !== station.id) return { state: "already_handled" };
       return json(command, "result") || { state: "dependency_unavailable" };
@@ -141,7 +282,12 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
     if (priorResolved) {
       const existing = app.findRecordById("checkin_arrival_workflows", priorResolved.getString("workflow_id"));
       if (existing.getString("edition") !== "WTS2026" || existing.getString("upstream_event_id") !== event.getString("upstream_event_id") || existing.getString("source_key") !== b.sourceKey) fail("conflict", 409);
-      finish(existing.getString("station_id") === station.id ? { state: "existing", workflow: workflowDTO(existing) } : { state: "already_handled" }, existing); return;
+      if (existing.getString("station_id") !== station.id) { finish({ state: "already_handled" }, existing); return; }
+      const previous = json(priorResolved, "result");
+      if (previous && ["accepted", "admission_pending", "admission_uncertain", "existing_unattributed", "rejected"].includes(previous.state)) {
+        finish({ ...previous, workflow: workflowDTO(existing) }, existing); return;
+      }
+      finish({ state: "existing", workflow: workflowDTO(existing) }, existing); return;
     }
     const ready = readiness();
     if (b.operation === "begin") {
@@ -176,9 +322,21 @@ onRecordCreateRequest(() => { throw new ForbiddenError("Use arrival commands.");
 onRecordUpdateRequest(() => { throw new ForbiddenError("Use arrival commands."); }, "checkin_arrival_commands", "checkin_arrival_workflows");
 onRecordUpdate((e) => {
   const original = e.record.original();
-  if (original.getString("status") !== "pending" || e.record.getString("status") !== "final") throw new ForbiddenError("Arrival command results are immutable.");
-  for (const field of ["operation_id", "payload_hash", "qr_hash", "context", "source_key", "affiliation_choice", "prior_operation_id", "actor_user_id", "station_id", "event_id", "created"]) if (e.record.getString(field) !== original.getString(field)) throw new ForbiddenError("Arrival command identity is immutable.");
-  e.next();
+  const identity = ["operation_id", "payload_hash", "qr_hash", "context", "source_key", "affiliation_choice", "prior_operation_id", "actor_user_id", "station_id", "event_id", "created"];
+  for (const field of identity) if (e.record.getString(field) !== original.getString(field)) throw new ForbiddenError("Arrival command identity is immutable.");
+  if (original.getString("status") === "pending" && e.record.getString("status") === "final") return e.next();
+  if (original.getString("status") === "final" && e.record.getString("status") === "final") {
+    for (const field of ["payload_hash", "qr_hash", "context", "source_key", "affiliation_choice", "prior_operation_id", "actor_user_id", "station_id", "event_id"]) if (e.record.getString(field) !== original.getString(field)) throw new ForbiddenError("Arrival command identity is immutable.");
+    return e.next();
+  }
+  throw new ForbiddenError("Arrival command results are immutable.");
 }, "checkin_arrival_commands");
-onRecordUpdate(() => { throw new ForbiddenError("Reserved workflow snapshots are immutable."); }, "checkin_arrival_workflows");
+onRecordUpdate((e) => {
+  const original = e.record.original();
+  const allowed = (original.getString("state") === "not_submitted" && ["not_submitted", "admission_pending", "rejected"].includes(e.record.getString("state")))
+    || (original.getString("state") === "admission_pending" && ["accepted", "existing_unattributed", "rejected", "admission_uncertain"].includes(e.record.getString("state")));
+  if (!allowed) throw new ForbiddenError("Reserved workflow snapshots are immutable.");
+  for (const field of ["edition", "upstream_event_id", "upstream_attendee_id", "station_id", "event_id", "event_title", "list_id", "context", "source_key", "profile_id", "profile_config", "affiliation_mapping", "name", "affiliation", "operation_id", "created"]) if (e.record.getString(field) !== original.getString(field)) throw new ForbiddenError("Reserved workflow snapshots are immutable.");
+  e.next();
+}, "checkin_arrival_workflows");
 onRecordDelete(() => { throw new ForbiddenError("Arrival history requires an explicit lifecycle migration."); }, "checkin_arrival_commands", "checkin_arrival_workflows");
