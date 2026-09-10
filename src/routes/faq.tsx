@@ -8,6 +8,7 @@ import {
   conferenceTicketPrice,
 } from "~/lib/conference-guide-content";
 import { sanitizeHtml } from "~/lib/sanitize-html";
+import { conferenceWeekVenues } from "~/lib/conference-week";
 
 type FAQItem = {
   question: string;
@@ -25,7 +26,7 @@ const faqSections: FAQSection[] = [
     items: [
       {
         question: "When and where is the conference taking place?",
-        answer: `WhatTheStack 2026 will be held on <strong>${conferenceLongDate}</strong> at the <strong>${conferenceGuideContent.mainVenue.name}</strong> in ${conferenceLocation}. The conference will span the FINKI, FEIT, and Mechanical Engineering campuses, with ${conferenceGuideContent.mainVenue.spaces.outdoorStages} outdoor stages and ${conferenceGuideContent.mainVenue.spaces.indoorStages} indoor stages. Workshops and pre-conference events will also be held at <strong>${conferenceGuideContent.preConferenceVenue.name}</strong> (${conferenceGuideContent.preConferenceVenue.address}).`,
+        answer: `WhatTheStack 2026 will be held on <strong>${conferenceLongDate}</strong> at the <strong>${conferenceGuideContent.mainVenue.name}</strong> in ${conferenceLocation}. The conference will span the FINKI, FEIT, and Mechanical Engineering campuses, with ${conferenceGuideContent.mainVenue.spaces.outdoorStages} outdoor stages and ${conferenceGuideContent.mainVenue.spaces.indoorStages} indoor stages. Pre-conference venues depend on the event: InfoSec Monday and Workshop Thursday are at <strong>${conferenceWeekVenues.base42}</strong>; Workshop Tuesday is at <strong>${conferenceWeekVenues.netaville}</strong>; DevFest and Angular Day are at the <strong>${conferenceWeekVenues.finki}</strong>; MAUI Day is at <strong>${conferenceWeekVenues.innofeit}</strong>. See the <a href="/agenda?day=all">full week agenda</a> for each event's programme.`,
       },
       {
         question: "What can I expect at WhatTheStack?",

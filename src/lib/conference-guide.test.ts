@@ -975,6 +975,23 @@ describe("Conference Guide", () => {
     }
   });
 
+  it.each([true, false])("publishes the full event venue map even when programme availability is %s", async (available) => {
+    const guide = createConferenceGuide({ loadPublishedData: async () => {
+      if (!available) throw new Error("Temporarily unavailable");
+      return publishedData();
+    } });
+    const index = await guide.getIndex();
+    expect(index.logistics.pre_conference_venue.applies_to_events).toEqual(["InfoSec Monday", "Workshop Thursday"]);
+    expect(index.logistics.pre_conference_events).toEqual([
+      { name: "InfoSec Monday", local_date: "2026-09-14", location: "Base42 Hackerspace, Rimska 25, 1000 Skopje" },
+      { name: "Workshop Tuesday: iOS + AI", local_date: "2026-09-15", location: "Netaville, Skopje" },
+      { name: "DevFest", local_date: "2026-09-16", location: "Small FINKI amphitheater, Technical Campus, Skopje" },
+      { name: "MAUI Day", local_date: "2026-09-17", location: "INNOFeit, Technical Campus, Skopje" },
+      { name: "Workshop Thursday", local_date: "2026-09-17", location: "Base42 Hackerspace, Rimska 25, 1000 Skopje" },
+      { name: "Angular Day", local_date: "2026-09-18", location: "Small FINKI amphitheater, Technical Campus, Skopje" },
+    ]);
+  });
+
   it("combines deploy facts and Published DTOs into strict versioned resources", async () => {
     const guide = createConferenceGuide({
       content: conferenceGuideContent,

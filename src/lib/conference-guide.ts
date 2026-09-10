@@ -16,6 +16,7 @@ import type {
   PublicSpeakerDetail,
 } from "~/lib/conference-public";
 import type { PublicPartnerGroup } from "~/lib/partners-public";
+import { conferenceWeekTracks } from "~/lib/conference-week";
 
 export const CONFERENCE_GUIDE_URIS = {
   index: "wts://conference-guide/index",
@@ -394,7 +395,14 @@ function mapLogistics(content: ConferenceGuide, origin: string) {
       status: content.preConferenceVenue.status,
       name: normalizeGuideText(content.preConferenceVenue.name),
       address: normalizeGuideText(content.preConferenceVenue.address),
+      applies_to_events: conferenceWeekTracks
+        .filter((track) => track.locationLabel === `${content.preConferenceVenue.name}, ${content.preConferenceVenue.address}`)
+        .map((track) => track.name),
+      note: "This is not a shared venue for every pre-conference event. Use pre_conference_events for the event-specific venues.",
     },
+    pre_conference_events: conferenceWeekTracks
+      .filter((track) => track.locationLabel && !track.fullWidth)
+      .map((track) => ({ name: track.name, local_date: track.date, location: normalizeGuideText(track.locationLabel) })),
     tickets: {
       status: content.tickets.status,
       canonical_url: `${origin}${content.tickets.canonicalPath}`,
