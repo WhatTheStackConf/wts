@@ -27,6 +27,18 @@ const TICKET_ACTIVITY_KEY = "conference.main.ticket_present";
 const CHECKIN_ACTIVITY_KEY = "conference.main.checked_in";
 const STALE_AFTER_MS = Number(process.env.HIEVENTS_STATUS_STALE_MS) || 6 * 60 * 60 * 1000;
 
+// Product IDs are local to this WTS edition, not a global Hi.Events policy.
+const WTS_EVENT_ID = "5";
+const SATURDAY_PRODUCT_IDS = new Set(["2", "13"]);
+// Explicit negative evidence only: swag, dinner and weekday events. Unlisted
+// products remain unknown, so newly introduced IDs cannot revoke old progress.
+const KNOWN_NONMAIN_PRODUCT_IDS = new Set(["3", "4", "9", "14", "15", "16", "17"]);
+
+function isSaturdayAdmission(eventId: string, attendee: HiEventsSourceAttendee): boolean {
+  return eventId === WTS_EVENT_ID && attendee.eligibility === "eligible" &&
+    SATURDAY_PRODUCT_IDS.has(attendee.productId || "");
+}
+
 export interface HiEventsProfileStatusDto {
   state: HiEventsEvidenceState;
   lastSuccessfulSyncAt?: string;
@@ -162,6 +174,7 @@ function snapshotFingerprint(snapshot: Extract<HiEventsAttendeeSnapshot, { state
   const source = snapshot.attendees
     .map((attendee) => [
       attendee.stableId,
+      attendee.productId || "",
       emailHash(attendee.normalizedEmail),
       attendee.eligibility,
       attendee.checkedIn ? "checked" : "not_checked_in",
@@ -242,6 +255,8 @@ export class GamificationHiEventsEvidenceService {
       });
       return this.statusForUser(user);
     }
+
+    if (snapshot.eventId !== configuration.eventId) return safeStatus("unavailable");
 
     const normalized = normalizeHiEventsEmail(user.email);
     const matchingUsers = normalized
@@ -487,6 +502,7 @@ export class GamificationHiEventsEvidenceService {
   private async configuration(): Promise<ConferenceConfiguration> {
     const eventId = text(process.env.HIEVENTS_EVENT_ID);
     if (!eventId) throw new Error("Hi.Events event configuration is missing.");
+    if (eventId !== WTS_EVENT_ID) throw new Error("The Saturday product policy is only configured for WTS event 5.");
     const mission = await this.store.findOne<GamificationMissionRecord>(
       GAMIFICATION_COLLECTIONS.missions,
       { key: "conference.main", status: "active" },
@@ -516,6 +532,7 @@ export class GamificationHiEventsEvidenceService {
     snapshot: Extract<HiEventsAttendeeSnapshot, { state: "success" }>,
   ): Promise<EvidencePlan> {
     if (!snapshot.pagination.complete) throw new Error("Hi.Events reconciliation requires a complete source snapshot.");
+    if (snapshot.eventId !== configuration.eventId) throw new Error("Hi.Events snapshot does not match the configured event.");
     const [users, claims] = await Promise.all([
       this.usersForReconciliation(),
       this.store.list<GamificationActivityClaimRecord>(
@@ -568,11 +585,13 @@ export class GamificationHiEventsEvidenceService {
     }
     const correctedClaims = acceptedClaims.filter((claim) => {
       const source = claim.source_record_id ? attendeesBySourceId.get(claim.source_record_id) : undefined;
-      // Only source absence or an explicit ineligible fact is negative evidence.
-      // An unrecognized status is retained for support and must not revoke progress.
+      // Source absence or explicit ineligibility still corrects existing claims.
+      // Unknown status/product data is not negative evidence.
       if (!source || source.eligibility === "ineligible") return true;
       if (source.eligibility === "unknown") return false;
       if (claim.source_record_id && ambiguousSourceIds.has(claim.source_record_id)) return false;
+      if (configuration.eventId === WTS_EVENT_ID && KNOWN_NONMAIN_PRODUCT_IDS.has(source.productId || "")) return true;
+      if (!isSaturdayAdmission(configuration.eventId, source)) return false;
       const sourceUsers = source.normalizedEmail ? usersByEmail.get(source.normalizedEmail) || [] : [];
       if (sourceUsers.length !== 1 || sourceUsers[0].id !== claim.user) return true;
       return claim.activity === configuration.ticketActivity.id
@@ -580,7 +599,7 @@ export class GamificationHiEventsEvidenceService {
         : !source.checkedIn;
     });
     const correctedClaimIds = new Set(correctedClaims.map((claim) => claim.id));
-    for (const attendee of snapshot.attendees.filter((candidate) => candidate.eligibility === "eligible" && candidate.normalizedEmail)) {
+    for (const attendee of snapshot.attendees.filter((candidate) => isSaturdayAdmission(configuration.eventId, candidate) && candidate.normalizedEmail)) {
       if (ambiguousSourceIds.has(sourceRecordId(configuration.eventId, attendee))) continue;
       const usersForEmail = usersByEmail.get(attendee.normalizedEmail) || [];
       if (usersForEmail.length !== 1) {
@@ -628,7 +647,7 @@ export class GamificationHiEventsEvidenceService {
         snapshotFingerprint: snapshotFingerprint(snapshot),
         pagination: snapshot.pagination,
         matchCounts: {
-          eligibleAttendees: snapshot.attendees.filter((attendee) => attendee.eligibility === "eligible").length,
+          eligibleAttendees: snapshot.attendees.filter((attendee) => isSaturdayAdmission(configuration.eventId, attendee)).length,
           matchedUsers: matched.size,
           ambiguousMatches,
         },
@@ -642,7 +661,7 @@ export class GamificationHiEventsEvidenceService {
     configuration: ConferenceConfiguration,
     candidates: HiEventsSourceAttendee[],
   ): Promise<AwardOutcome> {
-    const eligible = candidates.filter((candidate) => candidate.eligibility === "eligible");
+    const eligible = candidates.filter((candidate) => isSaturdayAdmission(configuration.eventId, candidate));
     if (eligible.length === 0) return { ticketClaims: 0, checkinClaims: 0, state: "no_ticket", matchedCount: candidates.length, ambiguityCount: 0 };
     const ticketCandidate = [...eligible].sort((left, right) => left.stableId.localeCompare(right.stableId))[0];
     const checkinCandidate = eligible.filter((candidate) => candidate.checkedIn)

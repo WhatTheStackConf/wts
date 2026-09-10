@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { fetchHiEventsReleases } from "~/lib/hievents";
+import { fetchHiEventsAttendeeSnapshot, fetchHiEventsReleases } from "~/lib/hievents";
 
 function eventPayload(products: unknown[]) {
   return {
@@ -39,6 +39,35 @@ describe("HiEvents releases", () => {
       "Conference entry",
       "Workshop add-on",
     ]);
+  });
+
+  it("preserves zero-priced tickets and current availability", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => eventPayload([
+      product({ id: 15, title: "InfoSec Monday", price: 0, is_available: true }),
+      product({ id: 16, title: "Workshop Tuesday: iOS + AI", price: 0, is_available: false }),
+    ])));
+    const releases = await fetchHiEventsReleases();
+    expect(releases.map(({ id, price, is_available }) => ({ id, price, is_available }))).toEqual([
+      { id: 15, price: 0, is_available: true },
+      { id: 16, price: 0, is_available: false },
+    ]);
+  });
+
+  it("preserves numeric admission product IDs and refuses malformed identities", async () => {
+    const productIds = [2, 13, 15, 16, 17, "2", "13", undefined, null, 0, -1, 2.5, " 2", "02", {}];
+    const snapshot = await fetchHiEventsAttendeeSnapshot({
+      apiUrl: "https://tickets.example.com", eventId: "5", accessToken: "test-key",
+      fetcher: async () => new Response(JSON.stringify({
+        data: productIds.map((product_id, index) => ({ id: `attendee-${index}`, product_id, email: "attendee@example.test", status: "ACTIVE" })),
+        meta: { last_page: 1 },
+      }), { status: 200 }),
+    });
+    expect(snapshot.state).toBe("success");
+    if (snapshot.state !== "success") throw new Error("Expected a complete snapshot");
+    expect(snapshot.attendees.map((attendee) => attendee.productId)).toEqual([
+      "2", "13", "15", "16", "17", "2", "13", undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+    ]);
+    expect(snapshot.attendees.map((attendee) => attendee.stableId)).toEqual(productIds.map((_, index) => `attendee-${index}`));
   });
 
   it("omits products hidden behind a promo code", async () => {

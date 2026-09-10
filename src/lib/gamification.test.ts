@@ -4674,7 +4674,7 @@ function seedHiEventsConference(store: MemoryGamificationStore): void {
       mission: "mission-main",
       kind: "hievents",
       category: "attendance",
-      event_ref: { eventId: "main-event" },
+      event_ref: { eventId: "5" },
       per_user_claim_limit: 1,
       max_claims: 100,
       status: "active",
@@ -4730,6 +4730,7 @@ function attendee(overrides: Partial<HiEventsSourceAttendee> = {}): HiEventsSour
     email: "Ada@Example.com",
     normalizedEmail: "ada@example.com",
     eligibility: "eligible",
+    productId: "2",
     checkedIn: true,
     checkInStableId: "checkin-1",
     checkedInAt: timestamp,
@@ -4741,7 +4742,7 @@ function attendee(overrides: Partial<HiEventsSourceAttendee> = {}): HiEventsSour
 function completeSnapshot(attendees: HiEventsSourceAttendee[]) {
   return {
     state: "success" as const,
-    eventId: "main-event",
+    eventId: "5",
     fetchedAt: timestamp,
     sourceUpdatedAt: timestamp,
     pagination: { requestedPages: 2, completedPages: 2, totalPages: 2, complete: true },
@@ -4751,7 +4752,7 @@ function completeSnapshot(attendees: HiEventsSourceAttendee[]) {
 
 async function withHiEventsEvent<T>(work: () => Promise<T>): Promise<T> {
   const previous = process.env.HIEVENTS_EVENT_ID;
-  process.env.HIEVENTS_EVENT_ID = "main-event";
+  process.env.HIEVENTS_EVENT_ID = "5";
   try {
     return await work();
   } finally {
@@ -4761,6 +4762,139 @@ async function withHiEventsEvent<T>(work: () => Promise<T>): Promise<T> {
 }
 
 describe("Hi.Events gamification evidence", () => {
+  it("does not reuse the Saturday product policy for another configured Hi.Events event", async () => withHiEventsEvent(async () => {
+    const store = new MemoryGamificationStore();
+    seedHiEventsConference(store);
+    process.env.HIEVENTS_EVENT_ID = "6";
+    for (const id of ["main-ticket", "main-checkin"]) {
+      await store.update(GAMIFICATION_COLLECTIONS.activities, id, { event_ref: { eventId: "6" } });
+    }
+    const evidence = new GamificationHiEventsEvidenceService(store, {
+      clock: () => timestamp,
+      fetchSnapshot: async () => ({ ...completeSnapshot([attendee()]), eventId: "6" }),
+    });
+
+    expect(await evidence.refreshCurrentUser({ id: "user-1", email: "ada@example.com" }))
+      .toMatchObject({ state: "unavailable", ticketPresent: false, checkedIn: false });
+    expect(await evidence.previewAdminReconciliation()).toMatchObject({ state: "not_configured" });
+    await expect(evidence.applyAdminReconciliation({ id: "admin-1" }, "unreviewed", "other-event-sync"))
+      .rejects.toThrow("Saturday product policy");
+    expect(await store.list(GAMIFICATION_COLLECTIONS.activityClaims)).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.adminActions)).toEqual([]);
+  }));
+
+  it("rejects a snapshot from another event before awarding or correcting evidence", async () => withHiEventsEvent(async () => {
+    const store = new MemoryGamificationStore();
+    seedHiEventsConference(store);
+    let snapshot = completeSnapshot([attendee()]);
+    const evidence = new GamificationHiEventsEvidenceService(store, {
+      clock: () => timestamp,
+      fetchSnapshot: async () => snapshot,
+    });
+    const preview = await evidence.previewAdminReconciliation();
+    snapshot = { ...snapshot, eventId: "6" };
+    expect(await evidence.refreshCurrentUser({ id: "user-1", email: "ada@example.com" }))
+      .toMatchObject({ state: "unavailable", ticketPresent: false, checkedIn: false });
+    await expect(evidence.previewAdminReconciliation()).rejects.toThrow("configured event");
+    await expect(evidence.applyAdminReconciliation({ id: "admin-1" }, preview.snapshotFingerprint!, "mismatched-event-sync"))
+      .rejects.toThrow("configured event");
+    expect(await store.list(GAMIFICATION_COLLECTIONS.activityClaims)).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.adminActions)).toEqual([]);
+  }));
+
+  it.each(["3", "4", "9", "14", "15", "16", "17", "999", "", undefined])("excludes checked-in nonmain or unknown product %s from admin preview/apply", async (productId) => withHiEventsEvent(async () => {
+    const store = new MemoryGamificationStore();
+    seedHiEventsConference(store);
+    const evidence = new GamificationHiEventsEvidenceService(store, {
+      clock: () => timestamp,
+      fetchSnapshot: async () => completeSnapshot([attendee({ productId })]),
+    });
+
+    const preview = await evidence.previewAdminReconciliation();
+    expect(preview).toMatchObject({
+      state: "complete",
+      matchCounts: { eligibleAttendees: 0, matchedUsers: 0 },
+      proposed: { ticketClaims: 0, checkinClaims: 0, corrections: 0 },
+    });
+    expect(await store.list(GAMIFICATION_COLLECTIONS.hiEventsSyncRuns)).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.adminActions)).toEqual([]);
+    const applied = await evidence.applyAdminReconciliation({ id: "admin-1" }, preview.snapshotFingerprint!, "nonmain-sync");
+    expect(applied.applied).toEqual({ ticketClaims: 0, checkinClaims: 0, corrections: 0 });
+    expect(await evidence.statusForUser({ id: "user-1" })).toMatchObject({ ticketPresent: false, checkedIn: false });
+    expect(await store.list(GAMIFICATION_COLLECTIONS.activityClaims)).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.userAchievements)).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.xpEvents)).toEqual([]);
+  }));
+
+  describe.each(["refresh", "admin"])("Saturday admission through %s", (operation) => {
+    it.each([
+      { name: "standard Saturday entry", productId: "2", checkedIn: true, weekdays: false, state: "checked_in", claims: 2, checkinClaims: 1, totalXp: 30, leaderboardXp: 10 },
+      { name: "PROMO Saturday entry", productId: "13", checkedIn: true, weekdays: false, state: "checked_in", claims: 2, checkinClaims: 1, totalXp: 30, leaderboardXp: 10 },
+      { name: "unchecked Saturday plus checked-in weekdays", productId: "2", checkedIn: false, weekdays: true, state: "not_checked_in", claims: 1, checkinClaims: 0, totalXp: 10, leaderboardXp: 0 },
+      { name: "checked-in Saturday plus checked-in weekdays", productId: "13", checkedIn: true, weekdays: true, state: "checked_in", claims: 2, checkinClaims: 1, totalXp: 30, leaderboardXp: 10 },
+    ])("$name uses only Saturday evidence", async (scenario) => withHiEventsEvent(async () => {
+      const store = new MemoryGamificationStore();
+      seedHiEventsConference(store);
+      // Weekday records sort before Saturday, so they cannot accidentally win
+      // either the ticket or aggregate check-in candidate selection.
+      const candidates = [
+        ...(scenario.weekdays ? ["15", "16", "17"].map((productId) => attendee({
+          stableId: `a-weekday-${productId}`, productId, checkInStableId: `weekday-checkin-${productId}`,
+        })) : []),
+        attendee({ stableId: "z-saturday", productId: scenario.productId, checkedIn: scenario.checkedIn, checkInStableId: "saturday-checkin" }),
+      ];
+      const evidence = new GamificationHiEventsEvidenceService(store, {
+        clock: () => timestamp,
+        fetchSnapshot: async () => completeSnapshot(candidates),
+      });
+      if (operation === "admin") {
+        const preview = await evidence.previewAdminReconciliation();
+        expect(preview.matchCounts).toMatchObject({ eligibleAttendees: 1, matchedUsers: 1 });
+        expect(preview.proposed).toEqual({ ticketClaims: 1, checkinClaims: scenario.checkinClaims, corrections: 0 });
+        expect(await store.list(GAMIFICATION_COLLECTIONS.activityClaims)).toEqual([]);
+        const applied = await evidence.applyAdminReconciliation({ id: "admin-1" }, preview.snapshotFingerprint!, "saturday-sync");
+        expect(applied.applied).toEqual({ ticketClaims: 1, checkinClaims: scenario.checkinClaims, corrections: 0 });
+        const replayPreview = await evidence.previewAdminReconciliation();
+        expect(replayPreview.proposed).toEqual({ ticketClaims: 0, checkinClaims: 0, corrections: 0 });
+      } else {
+        await evidence.refreshCurrentUser({ id: "user-1", email: "ada@example.com" });
+        await evidence.refreshCurrentUser({ id: "user-1", email: "ada@example.com" });
+      }
+      expect(await evidence.statusForUser({ id: "user-1" }))
+        .toMatchObject({ state: scenario.state, ticketPresent: true, checkedIn: scenario.checkedIn });
+      const claims = await store.list(GAMIFICATION_COLLECTIONS.activityClaims, { status: "accepted" });
+      expect(claims).toHaveLength(scenario.claims);
+      for (const claim of claims) expect(claim).toMatchObject({
+        source_record_id: "5:z-saturday",
+        metadata: { hievents: { productId: scenario.productId } },
+      });
+      expect(await store.list(GAMIFICATION_COLLECTIONS.userAchievements, { status: "unlocked" })).toHaveLength(scenario.claims);
+      expect(await store.list(GAMIFICATION_COLLECTIONS.xpEvents)).toHaveLength(scenario.claims);
+      expect(await store.list(GAMIFICATION_COLLECTIONS.profiles)).toEqual([
+        expect.objectContaining({ total_xp: scenario.totalXp, leaderboard_xp: scenario.leaderboardXp }),
+      ]);
+      const runs = await store.list(GAMIFICATION_COLLECTIONS.hiEventsSyncRuns, { user: "user-1" });
+      expect(runs.at(-1)).toMatchObject({
+        source_stable_id: "z-saturday", checkin_id: scenario.checkedIn ? "saturday-checkin" : "",
+      });
+    }));
+  });
+
+  it.each(["3", "4", "9", "14", "15", "16", "17", "999", "", undefined])("does not award Saturday progress for checked-in nonmain or unknown product %s on refresh", async (productId) => withHiEventsEvent(async () => {
+    const store = new MemoryGamificationStore();
+    seedHiEventsConference(store);
+    const evidence = new GamificationHiEventsEvidenceService(store, {
+      clock: () => timestamp,
+      fetchSnapshot: async () => completeSnapshot([attendee({ productId })]),
+    });
+
+    expect(await evidence.refreshCurrentUser({ id: "user-1", email: "ada@example.com" }))
+      .toMatchObject({ state: "no_ticket", ticketPresent: false, checkedIn: false });
+    expect(await store.list(GAMIFICATION_COLLECTIONS.activityClaims)).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.userAchievements)).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.xpEvents)).toEqual([]);
+  }));
+
   it("matches only normalized authenticated email and awards fixed ticket/check-in outcomes once", async () => withHiEventsEvent(async () => {
     const store = new MemoryGamificationStore();
     seedHiEventsConference(store);
@@ -4851,7 +4985,7 @@ describe("Hi.Events gamification evidence", () => {
       clock: () => timestamp,
       fetchSnapshot: async () => ({
         state: "partial" as const,
-        eventId: "main-event",
+        eventId: "5",
         fetchedAt: timestamp,
         pagination: { requestedPages: 2, completedPages: 1, totalPages: 2, complete: false },
         reason: "request" as const,
@@ -4874,7 +5008,7 @@ describe("Hi.Events gamification evidence", () => {
     await evidence.applyAdminReconciliation({ id: "admin-1" }, firstPreview.snapshotFingerprint!, "initial-source-sync");
     snapshot = {
       state: "partial",
-      eventId: "main-event",
+      eventId: "5",
       fetchedAt: timestamp,
       pagination: { requestedPages: 2, completedPages: 1, totalPages: 2, complete: false },
       reason: "request",
@@ -4905,7 +5039,55 @@ describe("Hi.Events gamification evidence", () => {
     expect(runs.filter((run) => run.actor === "admin-1" && run.admin_action)).not.toHaveLength(0);
   }));
 
-  it("does not revoke accepted evidence when a complete snapshot has an unrecognized source status", async () => withHiEventsEvent(async () => {
+  it.each(["3", "4", "9", "14", "15", "16", "17"])("proposes corrections for accepted claims now explicitly tied to nonmain product %s without mutating progress on preview or refresh", async (productId) => withHiEventsEvent(async () => {
+    const store = new MemoryGamificationStore();
+    seedHiEventsConference(store);
+    let snapshot = completeSnapshot([attendee()]);
+    const evidence = new GamificationHiEventsEvidenceService(store, {
+      clock: () => timestamp,
+      fetchSnapshot: async () => snapshot,
+    });
+    await evidence.refreshCurrentUser({ id: "user-1", email: "ada@example.com" });
+    const rewardsBefore = structuredClone(await Promise.all([
+      store.list(GAMIFICATION_COLLECTIONS.activityClaims),
+      store.list(GAMIFICATION_COLLECTIONS.userAchievements),
+      store.list(GAMIFICATION_COLLECTIONS.xpEvents),
+    ]));
+
+    snapshot = completeSnapshot([attendee({ productId })]);
+    await evidence.refreshCurrentUser({ id: "user-1", email: "ada@example.com" });
+    const preview = await evidence.previewAdminReconciliation();
+    expect(preview.proposed).toEqual({ ticketClaims: 0, checkinClaims: 0, corrections: 2 });
+    expect(await Promise.all([
+      store.list(GAMIFICATION_COLLECTIONS.activityClaims),
+      store.list(GAMIFICATION_COLLECTIONS.userAchievements),
+      store.list(GAMIFICATION_COLLECTIONS.xpEvents),
+    ])).toEqual(rewardsBefore);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.adminActions)).toEqual([]);
+  }));
+
+  it.each(["999", "", undefined])("preserves accepted claims when product %s is unknown or missing rather than treating it as a correction", async (productId) => withHiEventsEvent(async () => {
+    const store = new MemoryGamificationStore();
+    seedHiEventsConference(store);
+    let snapshot = completeSnapshot([attendee()]);
+    const evidence = new GamificationHiEventsEvidenceService(store, {
+      clock: () => timestamp,
+      fetchSnapshot: async () => snapshot,
+    });
+    await evidence.refreshCurrentUser({ id: "user-1", email: "ada@example.com" });
+
+    snapshot = completeSnapshot([attendee({ productId, checkedIn: false })]);
+    const preview = await evidence.previewAdminReconciliation();
+    expect(preview.proposed).toEqual({ ticketClaims: 0, checkinClaims: 0, corrections: 0 });
+    const applied = await evidence.applyAdminReconciliation({ id: "admin-1" }, preview.snapshotFingerprint!, "unknown-product-sync");
+    expect(applied.applied).toEqual({ ticketClaims: 0, checkinClaims: 0, corrections: 0 });
+    expect(await store.list(GAMIFICATION_COLLECTIONS.activityClaims, { status: "accepted" })).toHaveLength(2);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.activityClaims, { status: "voided" })).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.userAchievements, { status: "unlocked" })).toHaveLength(2);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.xpEvents, { voided: true })).toEqual([]);
+  }));
+
+  it.each(["2", "15"])("does not revoke accepted evidence when a complete snapshot has an unrecognized source status for product %s", async (productId) => withHiEventsEvent(async () => {
     const store = new MemoryGamificationStore();
     seedHiEventsConference(store);
     let snapshot = completeSnapshot([attendee()]);
@@ -4916,7 +5098,7 @@ describe("Hi.Events gamification evidence", () => {
     const initial = await evidence.previewAdminReconciliation();
     await evidence.applyAdminReconciliation({ id: "admin-1" }, initial.snapshotFingerprint!, "known-status-sync");
 
-    snapshot = completeSnapshot([attendee({ eligibility: "unknown", sourceStatus: "pending_review" })]);
+    snapshot = completeSnapshot([attendee({ productId, eligibility: "unknown", sourceStatus: "pending_review" })]);
     const uncertain = await evidence.previewAdminReconciliation();
     const applied = await evidence.applyAdminReconciliation({ id: "admin-1" }, uncertain.snapshotFingerprint!, "unknown-status-sync");
 
@@ -4939,10 +5121,10 @@ describe("Hi.Events gamification evidence", () => {
 
     snapshot = await fetchHiEventsAttendeeSnapshot({
       apiUrl: "https://hievents.example",
-      eventId: "main-event",
+      eventId: "5",
       accessToken: "test-token",
       fetcher: async () => new Response(JSON.stringify({
-        data: [{ id: "attendee-1", status: "active" }],
+        data: [{ id: "attendee-1", product_id: "2", status: "active" }],
         meta: { last_page: 1 },
       }), { status: 200 }),
       now: () => timestamp,
@@ -4960,10 +5142,10 @@ describe("Hi.Events gamification evidence", () => {
 
     snapshot = await fetchHiEventsAttendeeSnapshot({
       apiUrl: "https://hievents.example",
-      eventId: "main-event",
+      eventId: "5",
       accessToken: "test-token",
       fetcher: async () => new Response(JSON.stringify({
-        data: [{ id: "attendee-1", email: "ada@example..com", status: "active" }],
+        data: [{ id: "attendee-1", product_id: "2", email: "ada@example..com", status: "active" }],
         meta: { last_page: 1 },
       }), { status: 200 }),
       now: () => timestamp,
@@ -4974,6 +5156,24 @@ describe("Hi.Events gamification evidence", () => {
     });
     const malformedEmail = await evidence.previewAdminReconciliation();
     expect(malformedEmail.proposed.corrections).toBe(0);
+  }));
+
+  it.each(["13", "15", undefined])("rejects an admin apply when only the source product changes to %s after preview", async (productId) => withHiEventsEvent(async () => {
+    const store = new MemoryGamificationStore();
+    seedHiEventsConference(store);
+    let snapshot = completeSnapshot([attendee()]);
+    const evidence = new GamificationHiEventsEvidenceService(store, {
+      clock: () => timestamp,
+      fetchSnapshot: async () => snapshot,
+    });
+    const preview = await evidence.previewAdminReconciliation();
+    snapshot = completeSnapshot([attendee({ productId })]);
+
+    await expect(evidence.applyAdminReconciliation({ id: "admin-1" }, preview.snapshotFingerprint!, "changed-product-sync"))
+      .rejects.toThrow("changed after the preview");
+    expect(await store.list(GAMIFICATION_COLLECTIONS.activityClaims)).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.adminActions)).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.hiEventsSyncRuns)).toEqual([]);
   }));
 
   it("rejects an admin apply when the complete source changed after preview", async () => withHiEventsEvent(async () => {

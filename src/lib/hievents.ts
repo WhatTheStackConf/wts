@@ -233,7 +233,13 @@ function sourceAttendee(raw: Record<string, unknown>, eventId: string): HiEvents
     ? { ...sourceEligibility, eligibility: "unknown" as const }
     : sourceEligibility;
   const checkIn = checkInFor(raw);
-  const productId = text(raw.product_id);
+  // Hi.Events returns numeric IDs. Do not lose them or repair malformed tokens
+  // before consumers decide which admission a ticket actually grants.
+  const productId = typeof raw.product_id === "number" && Number.isSafeInteger(raw.product_id) && raw.product_id > 0
+    ? String(raw.product_id)
+    : typeof raw.product_id === "string" && /^[1-9]\d*$/.test(raw.product_id)
+      ? raw.product_id
+      : undefined;
   const product = raw.product && typeof raw.product === "object" && !Array.isArray(raw.product)
     ? raw.product as Record<string, unknown>
     : {};
@@ -476,9 +482,9 @@ export async function fetchHiEventsReleases(): Promise<HiEventsRelease[]> {
         id: numberValue(ticket.id) || 0,
         title: text(ticket.title) || "Ticket",
         description: text(ticket.description) || null,
-        price: numberValue(ticket.price) || null,
+        price: ticket.price == null ? null : numberValue(ticket.price) ?? null,
         currency: text(ticket.currency) || "EUR",
-        is_available: true,
+        is_available: flag(ticket.is_available),
         sales_start_date: null,
         sales_end_date: null,
         quantity_sold: numberValue(ticket.quantity_sold) || 0,
