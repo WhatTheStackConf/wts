@@ -3,6 +3,7 @@ import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { Layout } from "../layouts/Layout";
 import { Hero } from "../components/Hero";
 import {
+  fetchPublishedSpeakers,
   fetchPublicSpeakerTeaser,
   TEASER_SPEAKER_LIMIT,
 } from "~/lib/speakers-public";
@@ -17,6 +18,7 @@ import { ConferenceWeek } from "~/components/conference/ConferenceWeek";
 
 export default function Home() {
   const [speakers] = createResource(fetchPublicSpeakerTeaser);
+  const [weekSpeakers] = createResource(() => fetchPublishedSpeakers());
   const [partnerGroups] = createResource(fetchPublicPartnerGroups);
 
   return (
@@ -27,7 +29,7 @@ export default function Home() {
       <div class="relative">
         <Hero />
 
-        <ConferenceWeek />
+        <ConferenceWeek speakers={weekSpeakers()} />
 
         <Loading>
           <Show when={(speakers()?.preview.length ?? 0) > 0}>

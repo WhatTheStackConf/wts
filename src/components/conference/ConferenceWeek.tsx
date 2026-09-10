@@ -1,5 +1,7 @@
-import { For, Show } from "solid-js";
+import { createMemo, For, Show } from "solid-js";
 import { HologramButton } from "~/components/HologramButton";
+import { getConferenceWeekSpeakers } from "~/lib/conference-week-speakers";
+import type { PublicSpeakerSummary } from "~/lib/speakers-public";
 import {
   conferenceWeekCta,
   conferenceWeekDayLabel,
@@ -11,8 +13,15 @@ import {
   type ConferenceWeekTrack,
 } from "~/lib/conference-week";
 
-function TrackCard(props: { track: ConferenceWeekTrack }) {
+interface TrackCardProps {
+  track: ConferenceWeekTrack;
+  speakers?: readonly PublicSpeakerSummary[];
+}
+
+export function TrackCard(props: TrackCardProps) {
   const external = () => Boolean(props.track.href?.startsWith("http"));
+  const externalCta = () => Boolean(props.track.cta?.href.startsWith("http"));
+  const speakers = createMemo(() => getConferenceWeekSpeakers(props.track, props.speakers));
 
   return (
     <li class={`min-w-0 h-full ${props.track.fullWidth ? "md:col-span-2" : ""}`}>
@@ -56,18 +65,21 @@ function TrackCard(props: { track: ConferenceWeekTrack }) {
           {props.track.summary}
         </p>
 
-        <Show when={props.track.highlights?.length}>
-          <ul class="relative z-10 mt-4 list-none border-t border-white/10 p-0 pt-3">
-            <For each={props.track.highlights}>
-              {(highlight) => (
+        <Show when={speakers().length}>
+          <ul
+            aria-label={`${props.track.name} speakers`}
+            class="relative z-10 mt-4 list-none border-t border-white/10 p-0 pt-3"
+          >
+            <For each={speakers()}>
+              {(speaker) => (
                 <li class="py-1 text-sm leading-snug text-dark-50">
-                  {`>`} {highlight}
+                  {`>`}{" "}
+                  <a href={`/speakers/${speaker.slug}`} class="link text-primary-200">
+                    {speaker.displayName}
+                  </a>
                 </li>
               )}
             </For>
-            <Show when={props.track.moreSpeakers}>
-              <li class="py-1 text-sm leading-snug text-dark-50/60">More speakers to come.</li>
-            </Show>
           </ul>
         </Show>
 
@@ -84,28 +96,29 @@ function TrackCard(props: { track: ConferenceWeekTrack }) {
           </div>
         </Show>
 
-        <Show when={props.track.cta}>
-          <div class="relative z-10 mt-auto border-t border-white/10 pt-4">
-            <a
-              href={props.track.cta!.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="week-entry-cta no-underline"
-            >
-              {props.track.cta!.label}
-              <span aria-hidden="true"> &#8599;</span>
-            </a>
-          </div>
-        </Show>
-
-        <Show when={props.track.access}>
-          <div class="relative z-10 mt-auto border-t border-white/10 pt-4">
-            <p class="m-0 text-sm leading-snug text-dark-50">
-              <span class="font-mono text-xs uppercase tracking-[0.18em] text-secondary-300">
-                Entry
-              </span>{" "}
-              {props.track.access}
-            </p>
+        <Show when={props.track.access || props.track.cta}>
+          <div class="relative z-10 mt-auto flex flex-col gap-3 border-t border-white/10 pt-4">
+            <Show when={props.track.access}>
+              <p class="m-0 text-sm leading-snug text-dark-50">
+                <span class="font-mono text-xs uppercase tracking-[0.18em] text-secondary-300">
+                  Entry
+                </span>{" "}
+                {props.track.access}
+              </p>
+            </Show>
+            <Show when={props.track.cta}>
+              <a
+                href={props.track.cta!.href}
+                target={externalCta() ? "_blank" : undefined}
+                rel={externalCta() ? "noopener noreferrer" : undefined}
+                class="week-entry-cta no-underline"
+              >
+                {props.track.cta!.label}
+                <Show when={externalCta()}>
+                  <span aria-hidden="true"> &#8599;</span>
+                </Show>
+              </a>
+            </Show>
           </div>
         </Show>
       </article>
@@ -113,7 +126,11 @@ function TrackCard(props: { track: ConferenceWeekTrack }) {
   );
 }
 
-export function ConferenceWeek() {
+interface ConferenceWeekProps {
+  speakers?: readonly PublicSpeakerSummary[];
+}
+
+export function ConferenceWeek(props: ConferenceWeekProps) {
   return (
     <section class="w-full max-w-6xl mx-auto px-3 md:px-0 pt-16 md:pt-20 pb-12 md:pb-16 fade-in-delay-1">
       <div class="glass-panel grid-scan rounded-3xl p-6 md:p-10 lg:p-12">
@@ -131,7 +148,7 @@ export function ConferenceWeek() {
 
         <ul class="relative z-30 grid list-none grid-cols-1 gap-4 p-0 m-0 md:grid-cols-2 md:gap-5">
           <For each={conferenceWeekTracks}>
-            {(track) => <TrackCard track={track} />}
+            {(track) => <TrackCard track={track} speakers={props.speakers} />}
           </For>
         </ul>
 

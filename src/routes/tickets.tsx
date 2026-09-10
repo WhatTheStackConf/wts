@@ -1,9 +1,11 @@
 import { Layout } from "../layouts/Layout";
 import { fetchHiEventsReleases, HiEventsRelease } from "../lib/hievents";
-import { Show, For } from "solid-js";
+import { Show, For, createMemo } from "solid-js";
 import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { HologramButton } from "../components/HologramButton";
 import { conferenceGuideContent } from "~/lib/conference-guide-content";
+import { groupTicketReleases } from "~/lib/ticket-groups";
+import { conferenceWeekTracks, conferenceWeekDayLabel } from "~/lib/conference-week";
 
 // Define the fetch function for releases API
 const fetchReleases = async (): Promise<HiEventsRelease[]> => {
@@ -38,15 +40,9 @@ function plainText(value: string | null): string {
 export default function Tickets() {
   const [releases] = createResource<HiEventsRelease[]>(fetchReleases);
 
-  const baseTickets = () =>
-    releases()?.filter(
-      (r) => r.title === "Conference entry" || r.title === "Student Ticket",
-    ) || [];
-
-  const addOns = () =>
-    releases()?.filter(
-      (r) => r.title !== "Conference entry" && r.title !== "Student Ticket",
-    ) || [];
+  const groups = createMemo(() => groupTicketReleases(releases() || []));
+  const baseTickets = () => groups().base;
+  const addOns = () => groups().addOns;
 
   const conferenceTicketLink = () =>
     baseTickets().find((release) => release.title === "Conference entry")
@@ -155,6 +151,35 @@ export default function Tickets() {
                   )}
                 </For>
               </div>
+
+              <Show when={groups().preConference.length > 0}>
+                <section class="mb-16 text-left" aria-labelledby="pre-conference-tickets">
+                  <h2 id="pre-conference-tickets" class="font-star text-3xl text-secondary-300">Free pre-conference events</h2>
+                  <p class="mt-3 mb-6 text-secondary-200">Reserve a ticket for each event you want to attend. These reservations are separate from Saturday's conference ticket.</p>
+                  <div class="grid gap-4 md:grid-cols-3">
+                    <For each={groups().preConference}>
+                      {(release) => {
+                        const track = () => conferenceWeekTracks.find((item) => item.freeTicketProductId === release.id);
+                        return (
+                          <article class="flex min-w-0 flex-col rounded-xl border border-primary-500/30 bg-base-200/70 p-5">
+                            <h3 class="font-star text-xl text-primary-300"><a href={track()?.href}>{release.title}</a></h3>
+                            <p class="mt-2 font-mono text-sm text-accent-300">{conferenceWeekDayLabel(track()!.date!)}</p>
+                            <p class="my-4 text-sm text-secondary-100">{track()?.access}</p>
+                            <div class="mt-auto">
+                              <span class="mb-3 block font-star text-2xl text-white">FREE</span>
+                              <Show when={release.is_available} fallback={<p class="font-mono text-sm text-secondary-200">Currently unavailable</p>}>
+                                <a href={release.purchase_link} target="_blank" rel="noopener noreferrer" class="week-entry-cta no-underline">
+                                  Reserve a free ticket <span aria-hidden="true">&#8599;</span>
+                                </a>
+                              </Show>
+                            </div>
+                          </article>
+                        );
+                      }}
+                    </For>
+                  </div>
+                </section>
+              </Show>
 
               {/* Add-ons Section */}
               <Show when={addOns().length > 0}>

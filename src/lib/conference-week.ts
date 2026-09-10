@@ -14,7 +14,7 @@ export const conferenceWeekEyebrow = "WhatTheStack, Monday to Saturday";
 export const conferenceWeekHeadline = "Saturday's the main event. We start Monday.";
 
 export const conferenceWeekIntro =
-  "That's how we've always done it. Smaller events and workshops run through the week before everyone meets at the main conference on Saturday. Some events are included with your WTS ticket; a couple need a separate one.";
+  "Smaller events and workshops run through the week before everyone meets at the main conference on Saturday. InfoSec Monday, Workshop Tuesday, and Angular Day are free, with limited seats: reserve a ticket for each event you want to attend. DevFest, MAUI Day, and Thursday's workshop have their own registration.";
 
 export interface ConferenceWeekTrack {
   /** Matches the `name` of the corresponding published appearance event. */
@@ -33,6 +33,8 @@ export interface ConferenceWeekTrack {
   moreSpeakers?: boolean;
   /** Entry details for free events or events covered by the WhatTheStack ticket. */
   access?: string;
+  /** Independent free reservations in the WTS 2026 Hi.Events catalogue. */
+  freeTicketProductId?: number;
   /** Days needing their own entry get an action instead of a note. */
   cta?: { label: string; href: string };
   /** An unannounced day, rendered as a teaser rather than a bookable track. */
@@ -45,6 +47,9 @@ export interface ConferenceWeekTrack {
 
 export const farisWorkshopTime = { startTime: "16:30", endTime: "20:00" } as const;
 
+// This Hi.Events deployment supports event checkout, not product query links.
+export const conferenceWeekBookingUrl = "https://hievents.foundry.mk/event/5/whatthestack-2026";
+
 export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
   {
     name: "InfoSec Monday",
@@ -52,16 +57,22 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     startTime: "14:00",
     endTime: "18:00",
     summary:
-      "We start with a four-hour cybersecurity and application-security workshop.",
-    access: "Included with your WTS ticket. Seats are limited; registration opens closer to September.",
+      "Requests, Lies, and Stack Traces: a four-hour, hands-on API security workshop at Base42 Hackerspace. Break and fix vulnerabilities, including the mistakes that keep appearing in AI-generated code.",
+    access: "Free entry. 20 seats; one ticket covers InfoSec Monday and its workshop.",
+    freeTicketProductId: 15,
+    cta: { label: "Reserve a free ticket", href: conferenceWeekBookingUrl },
+    href: "/agenda?day=2026-09-14",
   },
   {
     name: "Workshop Tuesday: iOS + AI",
     date: "2026-09-15",
     startTime: "16:00",
     summary:
-      "An AI talk at 16:00, followed by an iOS workshop at 18:00, both at Base42 Hackerspace.",
-    access: "Free entry. No ticket required.",
+      "DDD for AI-Assisted Development at 16:00, followed by Fundamentals of Native iOS Development at 18:00. Both sessions take place at Base42 Hackerspace; one ticket covers the whole evening.",
+    access: "Free entry. 50 seats; reserve your ticket.",
+    freeTicketProductId: 16,
+    cta: { label: "Reserve a free ticket", href: conferenceWeekBookingUrl },
+    href: "/agenda?day=2026-09-15",
   },
   {
     name: "DevFest",
@@ -69,11 +80,7 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     startTime: "17:00",
     summary:
       "GDG Skopje takes Wednesday: practical AI, accessibility, and agentic systems at Pre-DevFest Days: Day Zero x WhatThe(Google)Stack.",
-    highlights: [
-      "Roushanak Rahmat, IBM - Google Developer Expert in AI & Cloud",
-      "Josefine Schaefer, Storyblok - GDE and Accessibility Engineer",
-      "Akshata Mohanty - Building a distributed multi-agent system with Google Cloud",
-    ],
+
     cta: {
       label: "Grab a GDG ticket",
       href: "https://gdg.community.dev/events/details/google-gdg-skopje-presents-pre-devfest-days-day-zero-x-whatthegooglestack-2/",
@@ -85,9 +92,7 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     date: "2026-09-17",
     startTime: "10:00",
     summary:
-      ".NET MAUI gets a full day at FINKI, with speakers from Microsoft and the wider .NET community.",
-    highlights: ["Stephane Delcroix, Principal Software Engineer at Microsoft"],
-    moreSpeakers: true,
+      "A full day of .NET MAUI at FINKI: build your first app, explore offline AI agents, improve reliability, and get into XAML, hot reload, and how MAUI pages work.",
     cta: {
       label: "Register for MAUI Day",
       href: "https://www.eventbrite.nl/e/net-maui-day-skopje-2026-tickets-1992309951697",
@@ -98,18 +103,22 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     name: "Workshop Thursday",
     date: "2026-09-17",
     summary:
-      `Long-form workshops on software architecture, payments, and frontend engineering. Faris Aziz's Payments and Monetization at Scale for Frontend Engineers workshop runs ${farisWorkshopTime.startTime}–${farisWorkshopTime.endTime} (3.5 hours, Skopje time).`,
+      `Faris Aziz's Payments and Monetization at Scale for Frontend Engineers workshop runs ${farisWorkshopTime.startTime}–${farisWorkshopTime.endTime} (3.5 hours, Skopje time) at Base42 Hackerspace. Work through checkout, subscriptions, and payment failures with React, Next.js, and Stripe.`,
     cta: {
       label: "Get a workshop ticket",
-      href: "/tickets",
+      href: conferenceWeekBookingUrl,
     },
+    href: "/sessions/workshop-payments-and-monetization-at-scale-for-frontend-engineers",
   },
   {
     name: "Angular Day",
     date: "2026-09-18",
     summary:
-      "Angular and frontend engineering, put together with the local and international Angular community.",
-    access: "Included with your WTS ticket",
+      "Angular and frontend engineering with Angular Macedonia and the international community: AI-powered applications, offline-first development, and monorepo architecture. Explore the programme for announced talks and speakers.",
+    access: "Free entry. 50 seats; reserve your ticket.",
+    freeTicketProductId: 17,
+    cta: { label: "Reserve a free ticket", href: conferenceWeekBookingUrl },
+    href: "/agenda?day=2026-09-18",
   },
   {
     name: "Main Conference Day",
@@ -128,6 +137,7 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
       "Careers and Engineering Culture",
     ],
     fullWidth: true,
+    href: "/agenda?day=2026-09-19",
   },
 ];
 

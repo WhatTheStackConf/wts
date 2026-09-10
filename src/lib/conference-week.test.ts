@@ -45,8 +45,8 @@ describe("untimed weekday agendas", () => {
       { slug: "fundamentals-of-native-ios-development", title: "iOS", format: undefined, schedule: expect.objectContaining({ startAt: "2026-09-15T18:00:00+02:00", endAt: undefined, locationLabel: "Base42 Hackerspace, Rimska 25, 1000 Skopje" }), speakers: [{ slug: "mia", name: "Mia", photoUrl: null }] },
     ]);
     expect(JSON.stringify(result)).not.toMatch(/private|cfp_submission|Saturday only|"DDD"/);
-    expect(result.days[1].programmes[0].untimed?.access).toBe("Free entry. No ticket required.");
-    expect(result.days[1].programmes[0].untimed?.cta).toBeUndefined();
+    expect(result.days[1].programmes[0].untimed?.access).toBe("Free entry. 50 seats; reserve your ticket.");
+    expect(result.days[1].programmes[0].untimed?.cta?.label).toBe("Reserve a free ticket");
     expect(untimedWeekProgrammes.flatMap((definition) => [...definition.sessions])).toHaveLength(18);
   });
 
@@ -247,13 +247,16 @@ describe("Conference week copy", () => {
     }
   });
 
-  it("gives every separate-entry day an action rather than a note", () => {
+  it("gives every pre-conference day a booking action", () => {
     const withCta = conferenceWeekTracks.filter((track) => track.cta);
 
     expect(withCta.map((track) => track.name)).toEqual([
+      "InfoSec Monday",
+      "Workshop Tuesday: iOS + AI",
       "DevFest",
       "MAUI Day",
       "Workshop Thursday",
+      "Angular Day",
     ]);
     for (const track of withCta) {
       expect(track.cta!.label.trim()).not.toBe("");
@@ -261,18 +264,36 @@ describe("Conference week copy", () => {
         track.cta!.href.startsWith("https://") ||
           track.cta!.href === conferenceWeekCta.href,
       ).toBe(true);
-      // An action replaces the note; showing both would state entry twice.
-      expect(track.access).toBeUndefined();
+
     }
   });
 
-  it("describes Tuesday as a free iOS workshop plus an AI talk without a ticket CTA", () => {
+  it("describes Tuesday's confirmed sessions and requires a free reservation", () => {
     const tuesday = conferenceWeekTracks.find((track) => track.date === "2026-09-15");
 
     expect(tuesday?.name).toBe("Workshop Tuesday: iOS + AI");
-    expect(tuesday?.summary).toBe("An AI talk at 16:00, followed by an iOS workshop at 18:00, both at Base42 Hackerspace.");
-    expect(tuesday?.access).toBe("Free entry. No ticket required.");
-    expect(tuesday?.cta).toBeUndefined();
+    expect(tuesday?.summary).toContain("DDD for AI-Assisted Development at 16:00");
+    expect(tuesday?.summary).toContain("Fundamentals of Native iOS Development at 18:00");
+    expect(tuesday?.summary).toContain("Base42 Hackerspace");
+    expect(tuesday?.access).toBe("Free entry. 50 seats; reserve your ticket.");
+    expect(tuesday?.cta?.label).toBe("Reserve a free ticket");
+  });
+
+  it("links all cards and identifies the three free tickets in the real event checkout", () => {
+    for (const track of conferenceWeekTracks) expect(track.href).toBeTruthy();
+    const free = conferenceWeekTracks.filter((track) => ["InfoSec Monday", "Workshop Tuesday: iOS + AI", "Angular Day"].includes(track.name));
+    expect(free.map((track) => track.access)).toEqual([
+      "Free entry. 20 seats; one ticket covers InfoSec Monday and its workshop.",
+      "Free entry. 50 seats; reserve your ticket.",
+      "Free entry. 50 seats; reserve your ticket.",
+    ]);
+    expect(free.map((track) => track.freeTicketProductId)).toEqual([15, 16, 17]);
+    for (const track of free) {
+      expect(track.href).toBe(`/agenda?day=${track.date}`);
+      expect(track.cta?.href).toBe("https://hievents.foundry.mk/event/5/whatthestack-2026");
+      expect(track.cta?.label).toBe("Reserve a free ticket");
+    }
+    expect(JSON.stringify(conferenceWeekTracks)).not.toMatch(/registration opens|No ticket required|Included with your WTS ticket/);
   });
 
   it("spans the grid only for the main conference day", () => {
