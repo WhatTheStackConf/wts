@@ -49,7 +49,17 @@ function event(value: unknown): DiscoveredEvent {
 }
 export function checkinServerConfig(): CheckinDiscoveryConfig {
   if (typeof window !== "undefined") return {};
-  return { apiUrl: process.env.HIEVENTS_API_URL, apiKey: process.env.HIEVENTS_API_KEY, accountId: process.env.HIEVENTS_ACCOUNT_ID };
+  let apiUrl = process.env.HIEVENTS_API_URL;
+  // The shared legacy setting may be an origin; other consumers append /api.
+  // Normalize only that valid configuration form, without changing the shared
+  // environment or repairing unsafe URLs. Explicit adapter inputs stay strict.
+  if (apiUrl && /^https:\/\/[^/?#\\\s]+\/?$/.test(apiUrl)) {
+    try {
+      const url = new URL(apiUrl);
+      if (!url.username && !url.password && url.pathname === "/") apiUrl = `${apiUrl.replace(/\/$/, "")}/api`;
+    } catch { /* The existing configuration validator rejects invalid values. */ }
+  }
+  return { apiUrl, apiKey: process.env.HIEVENTS_API_KEY, accountId: process.env.HIEVENTS_ACCOUNT_ID };
 }
 export function checkinDiscoveryConfiguration(input: CheckinDiscoveryConfig): { base: string; key: string } | null {
   try {
@@ -108,10 +118,21 @@ export function createCheckinDiscoveryAdapter(input?: CheckinDiscoveryConfig, tr
       });
       uniqueIds(questions.map((question) => question.id));
       scope.acceptedPages++;
-      const products = await paginated(scope, `${config!.base}/${path}/products`, `${path}/products`, (value) => {
-        requireContract(id(record(value).event_id) === eventId);
-        return event(value);
-      });
+      const acceptedBeforeProducts = scope.acceptedPages;
+      let products: DiscoveredEvent[];
+      try {
+        products = await paginated(scope, `${config!.base}/${path}/products`, `${path}/products`, (value) => {
+          requireContract(id(record(value).event_id) === eventId);
+          return event(value);
+        });
+      } catch (error) {
+        // The deployed flat catalogue can fail with HTTP 500. Only that first-page
+        // failure permits the complete admin collection; never rescue partial or
+        // malformed pagination, auth/rate-limit failures, or transport failures.
+        if (!(error instanceof CheckinReadError) || error.reason !== "http" || error.status !== 500
+          || scope.acceptedPages !== acceptedBeforeProducts) throw error;
+        products = await categoryProducts(scope, `${path}/product-categories`, eventId);
+      }
       const productIds = new Set(products.map((product) => product.id));
       for (const option of [...lists, ...questions]) {
         requireContract(option.productIds.every((id) => productIds.has(id)));
@@ -119,6 +140,35 @@ export function createCheckinDiscoveryAdapter(input?: CheckinDiscoveryConfig, tr
       return { eventId, lists, questions, products, serverOnly: { listCapabilities } };
     }),
   };
+}
+
+async function categoryProducts(scope: ReadScope, path: string, eventId: string): Promise<DiscoveredEvent[]> {
+  const body = await scope.read(path);
+  // This authenticated admin endpoint is a complete Collection, not a paginator.
+  requireContract(Object.keys(body).length === 1 && Array.isArray(body.data));
+  if (body.data.length > 1000) throw new DiscoveryError("limit");
+  const categoryIds: string[] = [];
+  const products: DiscoveredEvent[] = [];
+  for (const value of body.data) {
+    const category = record(value);
+    const categoryId = id(category.id);
+    categoryIds.push(categoryId);
+    title(category.name);
+    // Deployed categories omit event_id; products must still prove event scope.
+    if ("event_id" in category) requireContract(id(category.event_id) === eventId);
+    requireContract(Array.isArray(category.products));
+    if (products.length + category.products.length > 1000) throw new DiscoveryError("limit");
+    for (const value of category.products) {
+      const product = record(value);
+      requireContract(id(product.event_id) === eventId);
+      if ("product_category_id" in product) requireContract(id(product.product_category_id) === categoryId);
+      products.push(event(product));
+    }
+  }
+  uniqueIds(categoryIds);
+  uniqueIds(products.map((product) => product.id));
+  scope.acceptedPages++;
+  return products;
 }
 
 function uniqueIds(value: unknown): string[] {
@@ -137,13 +187,21 @@ function count(value: unknown, min = 0): number {
   requireContract(typeof value === "number" && Number.isSafeInteger(value) && value >= min);
   return value;
 }
+function metadataAlias(endpoint: string): string {
+  // Hi.Events can emit Laravel pagination URLs with its reverse-proxy /api
+  // mount stripped. Accept only that exact same-origin metadata alias; requests
+  // are still constructed independently against the configured API endpoint.
+  const url = new URL(endpoint);
+  if (url.pathname.startsWith("/api/")) url.pathname = url.pathname.slice(4);
+  return url.href;
+}
 function link(value: unknown, endpoint: string, expectedPage: number | null, perPage: number): void {
   if (expectedPage === null) { requireContract(value === null); return; }
   requireContract(typeof value === "string" && value.length <= 4096 && !/[\s\\]/.test(value));
   let url: URL;
   try { url = new URL(value, endpoint); } catch { throw new DiscoveryError("contract"); }
   const target = new URL(endpoint);
-  requireContract(url.origin === target.origin && url.pathname === target.pathname && !url.hash && !url.username && !url.password);
+  requireContract(url.origin === target.origin && (url.pathname === target.pathname || url.pathname === new URL(metadataAlias(endpoint)).pathname) && !url.username && !url.password && !url.hash);
   requireContract(url.searchParams.getAll("page").length === 1 && url.searchParams.get("page") === String(expectedPage));
   // Laravel may omit query parameters. Validate links but construct page URLs locally.
   for (const [key, value] of url.searchParams) {
@@ -171,7 +229,7 @@ async function paginated<T extends { id: string }>(scope: ReadScope, endpoint: s
     perPage = size;
     requireContract(current <= last && body.data.length === Math.min(size, total - items.length));
     requireContract(meta.from === (total ? items.length + 1 : null) && meta.to === (total ? items.length + body.data.length : null));
-    requireContract(meta.path === endpoint);
+    requireContract(meta.path === endpoint || meta.path === metadataAlias(endpoint));
     link(links.first, endpoint, 1, size);
     link(links.last, endpoint, last, size);
     link(links.prev, endpoint, current > 1 ? current - 1 : null, size);

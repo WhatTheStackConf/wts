@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createCheckinDiscoveryAdapter, type CheckinDiscoveryConfig } from "./checkin-hievents.js";
+import { checkinServerConfig, createCheckinDiscoveryAdapter, type CheckinDiscoveryConfig } from "./checkin-hievents.js";
 import type { CheckinEventSource } from "./checkin-event-contract.js";
 
 function safeTitle(value: string, fallback: string): string {
@@ -9,7 +9,7 @@ function safeTitle(value: string, fallback: string): string {
 /** Separate from the existing ticket/gamification reader. Credentials and list
  * short IDs live only in this server-side adapter; DTOs are explicit allowlists. */
 export function createCheckinEventSource(input?: CheckinDiscoveryConfig, transport: typeof fetch = fetch): CheckinEventSource {
-  const config = input ?? { apiUrl: process.env.HIEVENTS_API_URL, apiKey: process.env.HIEVENTS_API_KEY, accountId: process.env.HIEVENTS_ACCOUNT_ID };
+  const config = input ?? checkinServerConfig();
   const adapter = createCheckinDiscoveryAdapter(config, transport);
   // Stable account+endpoint scope, not a credential hash: rotating a JWT must
   // not change event identity; changing accounts/servers must never retarget it.

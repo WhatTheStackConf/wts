@@ -20,7 +20,7 @@ Source references at that exact commit:
 
 Configure private server variables only:
 
-- `HIEVENTS_API_URL`: the complete HTTPS API base, including `/api`. No userinfo, query, fragment or embedded secret. No default production URL.
+- `HIEVENTS_API_URL`: the complete HTTPS API base, including `/api`, or a valid HTTPS origin in the shared legacy server environment. Check-in alone appends `/api` to that origin; it does not change the shared environment used by other consumers. Explicit adapter inputs still require the intended API base. No userinfo, query, fragment or embedded secret. No default production URL. The default event source uses the same normalized configuration, so its source key matches an explicit complete API base.
 - `HIEVENTS_API_KEY`: a pre-issued authenticated bearer JWT for this adapter. Despite the legacy variable name, this contract does not assume an opaque API-key header. The upstream validates its signature, expiry and permissions. Obtain/rotate it through separately authorized operations; this slice performs no login or token-renewal POST.
 - `HIEVENTS_ACCOUNT_ID`: exact positive decimal account ID, required to match the JWT claim. This comparison is configuration consistency, not local JWT authentication.
 
@@ -29,6 +29,16 @@ No `HIEVENTS_EVENT_ID`, public Appearance Event or title/year heuristic supplies
 The adapter issues GET only, refuses redirects, uses no cookies, bounds each response to 2 MiB and each read to 10 seconds. Arrival preflight (#49) adds a shared GET-only budget with at most three automatic attempts, jittered backoff and Retry-After handling; see [arrival preflight](checkin-arrival-preflight.md) for its process-local scope. Pagination must prove contiguous pages, constant totals/page size, expected row counts, unique IDs, matching page/path/first/last/prev/next and safe same-endpoint navigation links. It builds URLs locally, never follows an upstream next URL. Each collection is capped at 1,000 rows and 40 pages. Questions are a bounded complete collection. Missing metadata, duplicate/unsafe IDs, partial reads and cross-event product/question references fail closed. A dependency failure is `unavailable`; failure after a validated page is `partial`; neither returns a successful partial catalogue.
 
 Admin-safe projections contain IDs/titles and product scopes, never `short_id`, JWTs, upstream descriptions or raw diagnostics. Titles are bounded and suspicious private text receives a generic ID-based label. Only active, unexpired lists are offered for new mappings. Product-level text questions are offered for affiliation; order questions are not attendee affiliation inputs. An empty product selection adds no restriction beyond the question's own scope. Existing configured answers are read in later slices; this code creates no questions or answers.
+
+## Deployed product-catalogue compatibility
+
+The deployed reverse proxy also strips `/api` from Laravel pagination metadata. Validation accepts only the exact same-origin, `/api`-stripped alias of the requested endpoint, including navigation links. Requests still use locally constructed URLs at the configured API base; no metadata URL is followed. Page counts, continuity, query parameters, ownership and foreign-origin rejection remain enforced.
+
+The separately authorized release investigation reported that the deployed flat `/events/{event_id}/products` endpoint returns HTTP 500 while authenticated `/events/{event_id}/product-categories` returns the complete unpaginated admin collection, including hidden products. This observation motivates the fallback; the tests added here use synthetic transport fixtures, not live API calls or deployment proof.
+
+The paginated flat route remains first. Only a `CheckinReadError` with reason `http`, status `500`, and **no accepted product page** permits the category read. The existing bounded GET reader retains its retries and shared rate budget for both routes. A 401/403/429, other HTTP status, transport/contract/limit error, or a failure after any accepted product page never switches catalogues. Neither the API base/account nor stable source keys change.
+
+The fallback requires an exact `{ data: [...] }` envelope: no `meta`, `links`, `errors`, or other top-level keys. At most 1,000 categories and 1,000 products **in total across categories** are accepted. Every category has a valid unique ID, bounded nonblank `name` (not `title`), and a products array. Category `event_id` is not required (the deployed resource omits it); if present it must match. Every nested product has a globally unique valid ID, bounded nonblank title, and `event_id` matching the requested event; a supplied `product_category_id` must match its owning category. Hidden products are retained, not filtered. Invalid/duplicate rows fail the entire read rather than being skipped or deduplicated. List/question product-reference crosschecks and server-only list capabilities remain unchanged.
 
 ## Persistence, selection and downstream context
 

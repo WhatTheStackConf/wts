@@ -1,7 +1,20 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { createCheckinDiscoveryAdapter } from "~/lib/checkin-hievents";
+import { checkinDiscoveryConfiguration, checkinServerConfig, createCheckinDiscoveryAdapter } from "~/lib/checkin-hievents";
+import { createCheckinEventSource } from "~/lib/checkin-event-source";
 
 // Synthetic transport fixtures, not deployed discovery evidence or credentials.
+it.each(["https://admission.example.invalid", "https://admission.example.invalid/", "https://admission.example.invalid/api", "https://admission.example.invalid/api/"])("uses a canonical check-in API base for shared server setting %s", apiUrl => {
+  vi.stubEnv("HIEVENTS_API_URL", apiUrl); vi.stubEnv("HIEVENTS_API_KEY", token); vi.stubEnv("HIEVENTS_ACCOUNT_ID", "77");
+  try {
+    expect(checkinDiscoveryConfiguration(checkinServerConfig())).toEqual({ base, key: token });
+    expect(createCheckinEventSource().sourceKey).toBe(createCheckinEventSource(config).sourceKey);
+  } finally { vi.unstubAllEnvs(); }
+});
+it.each(["http://admission.example.invalid", "https://user:password@admission.example.invalid", "https://admission.example.invalid?key=bad", "not a URL"])("does not repair unsafe shared server setting %s", apiUrl => {
+  vi.stubEnv("HIEVENTS_API_URL", apiUrl); vi.stubEnv("HIEVENTS_API_KEY", token); vi.stubEnv("HIEVENTS_ACCOUNT_ID", "77");
+  try { expect(checkinDiscoveryConfiguration(checkinServerConfig())).toBeNull(); }
+  finally { vi.unstubAllEnvs(); }
+});
 const base = "https://admission.example.invalid/api";
 const token = `${Buffer.from('{"alg":"HS256","typ":"JWT"}').toString("base64url")}.${Buffer.from('{"account_id":77}').toString("base64url")}.c3ludGhldGlj`;
 const config = { apiUrl: base, apiKey: token, accountId: "77" };
@@ -32,7 +45,209 @@ function transport(...bodies: unknown[]) {
   return { calls, fetcher };
 }
 
+// Advance only the injected reader clock; exercise its real retries and budget.
+function readClock() {
+  let time = 0;
+  return { now: () => time, random: () => 0, sleep: async (ms: number) => { time += ms; } };
+}
+
+const category = { id: 901, name: "Tickets", products: [{ ...product, product_category_id: 901 }] };
+function failedReads(status = 500) {
+  return Array.from({ length: 3 }, () => new Response("private upstream diagnostic", { status }));
+}
+
 describe("read-only Hi.Events admission discovery", () => {
+  it("validates prefix-stripped pagination metadata without following its URLs", async () => {
+    const alias = (body: ReturnType<typeof page>) => ({ ...body,
+      meta: { ...body.meta, path: body.meta.path.replace("/api/", "/") },
+      links: Object.fromEntries(Object.entries(body.links).map(([key, value]) => [key, value?.replace("/api/", "/") ?? null])) });
+    const upstream = transport(alias(page("events", [event], 1, 2, 1)), alias(page("events", [{ ...event, id: 502 }], 2, 2, 1)));
+    expect(await createCheckinDiscoveryAdapter(config, upstream.fetcher).discover()).toEqual({ status: "complete", data: [{ id: "501", title: event.title }, { id: "502", title: event.title }] });
+    expect(upstream.calls.map(call => call.url)).toEqual([`${base}/events?page=1&per_page=25`, `${base}/events?page=2&per_page=25`]);
+  });
+  it("uses the complete authenticated category catalogue including hidden products after first-page product HTTP 500", async () => {
+    const hidden = { id: 602, event_id: "501", title: "Hidden admission", is_hidden: true };
+    const upstream = transport(page("events/501/check-in-lists", [{ ...list, products: [product, hidden] }]),
+      { data: [{ ...question, product_ids: [601, 602] }] }, ...failedReads(),
+      { data: [{ ...category, products: [...category.products, hidden] }] });
+    const result = await createCheckinDiscoveryAdapter(config, upstream.fetcher, readClock()).options("501");
+    expect(result).toEqual({ status: "complete", data: {
+      eventId: "501",
+      lists: [{ id: "701", title: "Admission list", productIds: ["601", "602"], isActive: true, isExpired: false }],
+      questions: [{ id: "801", title: "Organisation", type: "SINGLE_LINE_TEXT", belongsTo: "PRODUCT", productIds: ["601", "602"] }],
+      products: [{ id: "601", title: "Admission" }, { id: "602", title: "Hidden admission" }],
+      serverOnly: { listCapabilities: { "701": "synthetic-list-capability" } },
+    } });
+    expect(upstream.calls.map((call) => call.url)).toEqual([
+      `${base}/events/501/check-in-lists?page=1&per_page=25`, `${base}/events/501/questions`,
+      `${base}/events/501/products?page=1&per_page=25`, `${base}/events/501/products?page=1&per_page=25`,
+      `${base}/events/501/products?page=1&per_page=25`, `${base}/events/501/product-categories`,
+    ]);
+    for (const call of upstream.calls) {
+      expect(call.init).toMatchObject({ method: "GET", redirect: "error", credentials: "omit", cache: "no-store", headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+      expect(call.init?.body).toBeUndefined();
+    }
+    if (result.status !== "complete") throw new Error("Expected fixture options");
+    const { serverOnly: _secrets, ...safe } = result.data;
+    expect(JSON.stringify(safe)).not.toContain("synthetic-list-capability");
+    expect(JSON.stringify(safe)).not.toContain("private");
+  });
+
+  it.each([
+    ["missing data", {}], ["non-array data", { data: {} }], ["null category", { data: [null] }],
+    ["meta", { data: [category], meta: null }], ["links", { data: [category], links: null }],
+    ["errors", { data: [category], errors: [] }], ["extra envelope field", { data: [category], total: 1 }],
+    ["duplicate categories", { data: [category, { ...category, id: "901", products: [] }] }],
+    ["invalid category ID", { data: [{ ...category, id: "0901" }] }],
+    ["unsafe category ID", { data: [{ ...category, id: 9007199254740992 }] }],
+    ["missing category ID", { data: [{ name: "Tickets", products: [product] }] }],
+    ["foreign category when scope supplied", { data: [{ ...category, event_id: 502 }] }],
+    ["blank category name", { data: [{ ...category, name: "  " }] }],
+    ["invalid category name", { data: [{ ...category, name: null }] }],
+    ["oversized category name", { data: [{ ...category, name: "x".repeat(2001) }] }],
+    ["missing products", { data: [{ id: 901, name: "Tickets" }] }],
+    ["paginated nested products", { data: [{ ...category, products: { data: [product] } }] }],
+    ["non-array products", { data: [{ ...category, products: null }] }],
+    ["null product", { data: [{ ...category, products: [null] }] }],
+    ["missing product event", { data: [{ ...category, products: [{ id: 601, title: "Admission" }] }] }],
+    ["foreign product event", { data: [{ ...category, products: [{ ...product, event_id: 502 }] }] }],
+    ["foreign product category", { data: [{ ...category, products: [{ ...product, product_category_id: 902 }] }] }],
+    ["null product category", { data: [{ ...category, products: [{ ...product, product_category_id: null }] }] }],
+    ["invalid product ID", { data: [{ ...category, products: [{ ...product, id: "0601" }] }] }],
+    ["unsafe product ID", { data: [{ ...category, products: [{ ...product, id: 9007199254740992 }] }] }],
+    ["blank product title", { data: [{ ...category, products: [{ ...product, title: " " }] }] }],
+    ["invalid product title", { data: [{ ...category, products: [{ ...product, title: null }] }] }],
+    ["oversized product title", { data: [{ ...category, products: [{ ...product, title: "x".repeat(2001) }] }] }],
+    ["duplicate products within category", { data: [{ ...category, products: [product, { ...product, id: "601" }] }] }],
+    ["duplicate products across categories", { data: [category, { ...category, id: 902, products: [product] }] }],
+  ])("withholds all fallback data on %s", async (_name, body) => {
+    const upstream = transport(page("events/501/check-in-lists", [list]), { data: [question] }, ...failedReads(), body);
+    expect(await createCheckinDiscoveryAdapter(config, upstream.fetcher, readClock()).options("501"))
+      .toEqual({ status: "partial", reason: "contract" });
+    expect(upstream.calls).toHaveLength(6);
+    expect(upstream.calls[5]?.url).toBe(`${base}/events/501/product-categories`);
+  });
+
+  it.each([
+    ["category count", { data: Array.from({ length: 1001 }, (_, i) => ({ id: i + 1, title: "Tickets", products: [] })) }],
+    ["product count in one category", { data: [{ ...category, products: Array.from({ length: 1001 }, (_, i) => ({ ...product, id: i + 1 })) }] }],
+    ["product count across categories", { data: [
+      { ...category, products: Array.from({ length: 600 }, (_, i) => ({ ...product, id: i + 1 })) },
+      { ...category, id: 902, products: Array.from({ length: 401 }, (_, i) => ({ ...product, id: i + 601 })) },
+    ] }],
+  ])("enforces the total fallback %s budget", async (_name, body) => {
+    const upstream = transport(page("events/501/check-in-lists", []), { data: [] }, ...failedReads(), body);
+    expect(await createCheckinDiscoveryAdapter(config, upstream.fetcher, readClock()).options("501"))
+      .toEqual({ status: "partial", reason: "limit" });
+    expect(upstream.calls).toHaveLength(6);
+  });
+
+  it("accepts exactly 1000 categories and 1000 total products without truncating", async () => {
+    const categories = Array.from({ length: 1000 }, (_, i) => ({ id: i + 1, name: "Tickets",
+      products: [{ id: i + 1, event_id: "501", product_category_id: String(i + 1), title: `Ticket ${i + 1}` }] }));
+    const upstream = transport(page("events/501/check-in-lists", []), { data: [] }, ...failedReads(), { data: categories });
+    const result = await createCheckinDiscoveryAdapter(config, upstream.fetcher, readClock()).options("501");
+    expect(result.status).toBe("complete");
+    if (result.status !== "complete") throw new Error("Expected fixture options");
+    expect(result.data.products).toHaveLength(1000);
+    expect(result.data.products[0]).toEqual({ id: "1", title: "Ticket 1" });
+    expect(result.data.products[999]).toEqual({ id: "1000", title: "Ticket 1000" });
+    expect(upstream.calls).toHaveLength(6);
+  });
+
+  it.each(["list", "question"])("retains the %s product-reference crosscheck for fallback catalogues", async (scope) => {
+    const upstream = transport(page("events/501/check-in-lists", scope === "list" ? [list] : []),
+      { data: scope === "question" ? [question] : [] }, ...failedReads(), { data: [] });
+    expect(await createCheckinDiscoveryAdapter(config, upstream.fetcher, readClock()).options("501"))
+      .toEqual({ status: "partial", reason: "contract" });
+    expect(upstream.calls).toHaveLength(6);
+  });
+
+  it("accepts a complete empty fallback catalogue only when no option references products", async () => {
+    const upstream = transport(page("events/501/check-in-lists", []), { data: [] }, ...failedReads(), { data: [] });
+    expect(await createCheckinDiscoveryAdapter(config, upstream.fetcher, readClock()).options("501"))
+      .toEqual({ status: "complete", data: { eventId: "501", lists: [], questions: [], products: [], serverOnly: { listCapabilities: {} } } });
+  });
+
+  it.each([401, 403, 404, 429, 502, 503])("does not fall back from flat HTTP %i", async (status) => {
+    const responses = status === 429 || status >= 500 ? failedReads(status) : [new Response("private", { status })];
+    const upstream = transport(page("events/501/check-in-lists", [list]), { data: [question] }, ...responses, { data: [category] });
+    expect(await createCheckinDiscoveryAdapter(config, upstream.fetcher, readClock()).options("501"))
+      .toEqual({ status: "partial", reason: "http" });
+    expect(upstream.calls.filter((call) => call.url.endsWith("/product-categories"))).toEqual([]);
+    expect(upstream.calls).toHaveLength(2 + responses.length);
+  });
+
+  it.each([
+    ["transport error", () => [new Error("private")], "transport"],
+    ["network retries", () => Array.from({ length: 3 }, () => new TypeError("private")), "transport"],
+    ["HTTP 500 then transport error", () => [new Response("private", { status: 500 }), new Error("private")], "transport"],
+    ["HTTP 500 then malformed JSON", () => [new Response("private", { status: 500 }), new Response("{private")], "contract"],
+    ["malformed JSON", () => [new Response("{private")], "contract"],
+    ["missing pagination", () => [{ data: [product] }], "contract"],
+    ["duplicate flat products", () => [page("events/501/products", [product, product])], "contract"],
+    ["foreign flat product", () => [page("events/501/products", [{ ...product, event_id: 502 }])], "contract"],
+    ["flat row budget", () => [page("events/501/products", [product], 1, 1001)], "limit"],
+  ] as const)("does not rescue flat %s with the category catalogue", async (_name, responses, reason) => {
+    const failures = responses();
+    const upstream = transport(page("events/501/check-in-lists", [list]), { data: [question] }, ...failures, { data: [category] });
+    expect(await createCheckinDiscoveryAdapter(config, upstream.fetcher, readClock()).options("501"))
+      .toEqual({ status: "partial", reason });
+    expect(upstream.calls).toHaveLength(2 + failures.length);
+    expect(upstream.calls.some((call) => call.url.endsWith("/product-categories"))).toBe(false);
+  });
+
+  it("never replaces already accepted flat product pages after a later HTTP 500", async () => {
+    const upstream = transport(page("events/501/check-in-lists", [list]), { data: [question] },
+      page("events/501/products", [product], 1, 2, 1), ...failedReads(), { data: [category] });
+    expect(await createCheckinDiscoveryAdapter(config, upstream.fetcher, readClock()).options("501"))
+      .toEqual({ status: "partial", reason: "http" });
+    expect(upstream.calls.map((call) => call.url)).toEqual([
+      `${base}/events/501/check-in-lists?page=1&per_page=25`, `${base}/events/501/questions`,
+      `${base}/events/501/products?page=1&per_page=25`, `${base}/events/501/products?page=2&per_page=25`,
+      `${base}/events/501/products?page=2&per_page=25`, `${base}/events/501/products?page=2&per_page=25`,
+    ]);
+  });
+
+  it("keeps a valid flat catalogue when the bounded reader recovers from HTTP 500", async () => {
+    const upstream = transport(page("events/501/check-in-lists", [list]), { data: [question] },
+      new Response("private", { status: 500 }), page("events/501/products", [product]), { data: [category] });
+    const result = await createCheckinDiscoveryAdapter(config, upstream.fetcher, readClock()).options("501");
+    expect(result.status).toBe("complete");
+    if (result.status !== "complete") throw new Error("Expected fixture options");
+    expect(result.data.products).toEqual([{ id: "601", title: "Admission" }]);
+    expect(upstream.calls).toHaveLength(4);
+    expect(upstream.calls.some((call) => call.url.endsWith("/product-categories"))).toBe(false);
+  });
+
+  it.each([
+    ["auth failure", () => [new Response("private", { status: 401 })], "http"],
+    ["forbidden", () => [new Response("private", { status: 403 })], "http"],
+    ["rate limited", () => failedReads(429), "http"],
+    ["HTTP 500", () => failedReads(), "http"],
+    ["transport failure", () => [new Error("private")], "transport"],
+    ["malformed JSON", () => [new Response("{private")], "contract"],
+  ] as const)("withholds all options on category %s without another catalogue switch", async (_name, responses, reason) => {
+    const failures = responses();
+    const upstream = transport(page("events/501/check-in-lists", [list]), { data: [question] }, ...failedReads(), ...failures);
+    expect(await createCheckinDiscoveryAdapter(config, upstream.fetcher, readClock()).options("501"))
+      .toEqual({ status: "partial", reason });
+    expect(upstream.calls).toHaveLength(5 + failures.length);
+    expect(upstream.calls.slice(5).every((call) => call.url === `${base}/events/501/product-categories`)).toBe(true);
+  });
+
+  it("uses the bounded reader for fallback bodies too", async () => {
+    for (const response of [
+      new Response("private", { headers: { "content-length": "2097153" } }),
+      Response.json({ data: [{ ...category, private: "x".repeat(2 * 1024 * 1024) }] }),
+    ]) {
+      const upstream = transport(page("events/501/check-in-lists", []), { data: [] }, ...failedReads(), response);
+      expect(await createCheckinDiscoveryAdapter(config, upstream.fetcher, readClock()).options("501"))
+        .toEqual({ status: "partial", reason: "limit" });
+      expect(upstream.calls).toHaveLength(6);
+    }
+  });
+
   it.each([
     {}, { ...config, apiUrl: undefined }, { ...config, apiKey: undefined }, { ...config, accountId: undefined },
     { ...config, accountId: "78" }, { ...config, accountId: "077" }, { ...config, apiKey: "opaque-key-not-proven-by-source" },
