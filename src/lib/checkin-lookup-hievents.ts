@@ -2,7 +2,7 @@
  * Public list resources omit email. Join the complete list to authenticated event
  * attendees transiently, then discard it. No cache, mirror, logger or effects.
  */
-import { checkinDiscoveryConfiguration, checkinServerConfig, createCheckinDiscoveryAdapter, type CheckinDiscoveryConfig } from "~/lib/checkin-hievents";
+import { checkinMetadataPath, checkinMetadataUrl, checkinDiscoveryConfiguration, checkinServerConfig, createCheckinDiscoveryAdapter, type CheckinDiscoveryConfig } from "~/lib/checkin-hievents";
 import { createCheckinEventSource } from "~/lib/checkin-event-source";
 import { createCheckinUpstreamReader, type CheckinReadDependencies } from "~/lib/checkin-upstream-read";
 import { isCheckinArrivalQrIdentity } from "~/lib/checkin-arrival-validation";
@@ -21,8 +21,8 @@ function id(value: unknown): string { requireValue((typeof value === "number" ||
 function navigation(value: unknown, endpoint: string, page: number | null, perPage: number) {
   if (page === null) { requireValue(value === null); return; }
   requireValue(typeof value === "string" && value.length <= 4096 && !/[\s\\]/.test(value));
-  const url = new URL(value, endpoint), expected = new URL(endpoint);
-  requireValue(url.origin === expected.origin && url.pathname === expected.pathname && !url.hash && !url.username && !url.password);
+  const url = new URL(value, endpoint);
+  requireValue(checkinMetadataUrl(url, endpoint));
   requireValue(url.searchParams.getAll("page").length === 1 && url.searchParams.get("page") === String(page));
   for (const [key, value] of url.searchParams) requireValue(key === "page" || (key === "per_page" && ["25", String(perPage)].includes(value)));
   requireValue(url.searchParams.getAll("per_page").length <= 1);
@@ -63,7 +63,7 @@ export function createCheckinLookupAdapter(input?: CheckinDiscoveryConfig, trans
           const meta = record(body.meta), links = record(body.links);
           requireValue(typeof meta.per_page === "number" && Number.isSafeInteger(meta.per_page) && meta.per_page > 0 && meta.per_page <= 25 && (perPage === undefined || perPage === meta.per_page));
           perPage = meta.per_page;
-          requireValue(meta.current_page === current && meta.path === endpoint && body.data.length <= perPage);
+          requireValue(meta.current_page === current && checkinMetadataPath(meta.path, endpoint) && body.data.length <= perPage);
           requireValue(meta.from === (body.data.length ? rows.length + 1 : null) && meta.to === (body.data.length ? rows.length + body.data.length : null));
           let last: number | null = null;
           if (simple) requireValue(!("total" in meta) && !("last_page" in meta));
@@ -72,6 +72,7 @@ export function createCheckinLookupAdapter(input?: CheckinDiscoveryConfig, trans
             total = meta.total; last = Math.max(1, Math.ceil(total / perPage));
             requireValue(last <= 40 && meta.last_page === last && current <= last && body.data.length === Math.min(perPage, total - rows.length));
           }
+          if (meta.current_page_url !== undefined) navigation(meta.current_page_url, endpoint, current, perPage);
           navigation(links.first, endpoint, 1, perPage); navigation(links.last, endpoint, last, perPage);
           navigation(links.prev, endpoint, current > 1 ? current - 1 : null, perPage);
           navigation(links.next, endpoint, simple ? (links.next === null ? null : current + 1) : (current < last! ? current + 1 : null), perPage);

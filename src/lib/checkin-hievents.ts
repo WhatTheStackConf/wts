@@ -195,13 +195,22 @@ function metadataAlias(endpoint: string): string {
   if (url.pathname.startsWith("/api/")) url.pathname = url.pathname.slice(4);
   return url.href;
 }
+/** Server-only metadata checks; never use returned metadata to construct requests. */
+export function checkinMetadataPath(value: unknown, endpoint: string): boolean {
+  return value === endpoint || value === metadataAlias(endpoint);
+}
+export function checkinMetadataUrl(url: URL, endpoint: string): boolean {
+  const target = new URL(endpoint);
+  return url.origin === target.origin
+    && (url.pathname === target.pathname || url.pathname === new URL(metadataAlias(endpoint)).pathname)
+    && !url.username && !url.password && !url.hash;
+}
 function link(value: unknown, endpoint: string, expectedPage: number | null, perPage: number): void {
   if (expectedPage === null) { requireContract(value === null); return; }
   requireContract(typeof value === "string" && value.length <= 4096 && !/[\s\\]/.test(value));
   let url: URL;
   try { url = new URL(value, endpoint); } catch { throw new DiscoveryError("contract"); }
-  const target = new URL(endpoint);
-  requireContract(url.origin === target.origin && (url.pathname === target.pathname || url.pathname === new URL(metadataAlias(endpoint)).pathname) && !url.username && !url.password && !url.hash);
+  requireContract(checkinMetadataUrl(url, endpoint));
   requireContract(url.searchParams.getAll("page").length === 1 && url.searchParams.get("page") === String(expectedPage));
   // Laravel may omit query parameters. Validate links but construct page URLs locally.
   for (const [key, value] of url.searchParams) {
@@ -229,7 +238,8 @@ async function paginated<T extends { id: string }>(scope: ReadScope, endpoint: s
     perPage = size;
     requireContract(current <= last && body.data.length === Math.min(size, total - items.length));
     requireContract(meta.from === (total ? items.length + 1 : null) && meta.to === (total ? items.length + body.data.length : null));
-    requireContract(meta.path === endpoint || meta.path === metadataAlias(endpoint));
+    requireContract(checkinMetadataPath(meta.path, endpoint));
+    if (meta.current_page_url !== undefined) link(meta.current_page_url, endpoint, current, size);
     link(links.first, endpoint, 1, size);
     link(links.last, endpoint, last, size);
     link(links.prev, endpoint, current > 1 ? current - 1 : null, size);

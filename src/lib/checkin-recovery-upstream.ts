@@ -4,7 +4,7 @@
  * Capabilities remain transient. No POST exists here. DELETE is coordinator-only. */
 import { createHash } from "node:crypto";
 import { createCheckinEventSource } from "./checkin-event-source.js";
-import { checkinDiscoveryConfiguration, checkinServerConfig, createCheckinDiscoveryAdapter, type CheckinDiscoveryConfig } from "./checkin-hievents.js";
+import { checkinMetadataPath, checkinMetadataUrl, checkinDiscoveryConfiguration, checkinServerConfig, createCheckinDiscoveryAdapter, type CheckinDiscoveryConfig } from "./checkin-hievents.js";
 import { CheckinReadError, createCheckinUpstreamReader, type CheckinReadDependencies } from "./checkin-upstream-read.js";
 import type { RecoveryRead, RecoverySource, RecoveryTarget } from "./checkin-recovery-contract.js";
 
@@ -44,15 +44,17 @@ export function createCheckinRecoverySource(input?: CheckinDiscoveryConfig, tran
         assert(!("total" in meta) && !("last_page" in meta));
         assert(typeof meta.per_page === "number" && Number.isSafeInteger(meta.per_page) && meta.per_page > 0 && meta.per_page <= 25);
         assert(pageSize === undefined || pageSize === meta.per_page); pageSize = meta.per_page;
-        assert(meta.current_page === page && meta.path === endpoint && body.data.length <= pageSize);
+        assert(meta.current_page === page && checkinMetadataPath(meta.path, endpoint) && body.data.length <= pageSize);
         assert(meta.from === (body.data.length ? total + 1 : null) && meta.to === (body.data.length ? total + body.data.length : null));
-        for (const [key, expected] of [["first", 1], ["last", null], ["prev", page > 1 ? page - 1 : null], ["next", links.next === null ? null : page + 1]] as const) {
-          const value = links[key]; if (expected === null) { assert(value === null); continue; }
-          assert(typeof value === "string" && !/[\\\s]/.test(value));
+        for (const [key, expected] of [["current_page_url", page], ["first", 1], ["last", null], ["prev", page > 1 ? page - 1 : null], ["next", links.next === null ? null : page + 1]] as const) {
+          if (key === "current_page_url" && meta.current_page_url === undefined) continue;
+          const value = key === "current_page_url" ? meta.current_page_url : links[key]; if (expected === null) { assert(value === null); continue; }
+          assert(typeof value === "string" && value.length <= 4096 && !/[\\\s]/.test(value));
           const url = new URL(value, endpoint);
-          assert(url.origin === new URL(endpoint).origin && url.pathname === new URL(endpoint).pathname && !url.hash && !url.username && !url.password);
+          assert(checkinMetadataUrl(url, endpoint));
           assert(url.searchParams.getAll("page").length === 1 && url.searchParams.get("page") === String(expected));
           for (const [k, v] of url.searchParams) assert(k === "page" || k === "per_page" && v === String(pageSize) || k === "query" && v === detail.public_id);
+          assert(url.searchParams.getAll("per_page").length <= 1 && url.searchParams.getAll("query").length <= 1);
         }
         for (const value of body.data) {
           const row = object(value), rowId = id(row.id); assert(!seen.has(rowId)); seen.add(rowId);

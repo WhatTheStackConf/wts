@@ -5,6 +5,25 @@ import type { CheckinEventSnapshot } from "~/lib/checkin-event-contract";
 import { checkinArrivalQrIdentitySchema } from "~/lib/checkin-arrival-validation";
 
 // Synthetic fixtures derived from pinned source; not deployed response captures.
+// Observed paginator shape only; synthetic hosts and identities throughout.
+function stripped(body: unknown) {
+  const copy = JSON.parse(JSON.stringify(body).replaceAll(`${base}/`, `${base.slice(0, -4)}/`));
+  copy.meta.current_page_url = `${copy.meta.path}?page=${copy.meta.current_page}`;
+  return copy;
+}
+function corrupt(body: ReturnType<typeof stripped>, field: string, kind: string) {
+  const owner = field === "path" || field === "current_page_url" ? body.meta : body.links;
+  if (kind === "origin") owner[field] = owner[field].replace(new URL(base).host, "foreign.example.invalid");
+  if (kind === "capability") owner[field] = owner[field].replace(/cil_[^/]+|events\/[0-9]+/, "other-list");
+  if (kind === "query") owner[field] += `${field === "path" ? "?" : "&"}extra=1`;
+  if (kind === "changed query") owner[field] += `${field === "path" ? "?" : "&"}query=A-ABC1235`;
+  if (kind === "duplicate query") owner[field] += `${field === "path" ? "?" : "&"}query=A-ABC1234&query=A-ABC1234`;
+  if (kind === "wrong mount") owner[field] = owner[field].replace(new URL(base).origin, `${new URL(base).origin}/api/api`);
+  if (kind === "duplicate") owner[field] += `${field === "path" ? "?" : "&"}per_page=1&per_page=1`;
+  if (kind === "credentials") owner[field] = owner[field].replace("https://", "https://user:pass@");
+  if (kind === "fragment") owner[field] += "#fragment";
+  if (kind === "count") body.meta.to = 2;
+}
 const base = "https://arrival.example.invalid/api";
 const token = `${Buffer.from('{"alg":"HS256"}').toString("base64url")}.${Buffer.from('{"account_id":77}').toString("base64url")}.c3ludGhldGlj`;
 const config = { apiUrl: base, apiKey: token, accountId: "77" };
@@ -48,6 +67,28 @@ function adapterFor(...bodies: unknown[]) {
 }
 
 describe("read-only arrival Hi.Events adapter", () => {
+  it("accepts observed stripped single and multi-page metadata with synthetic identities", async () => {
+    const observed = { id: row.id, email: row.email, first_name: row.first_name, last_name: row.last_name, public_id: publicId, product_id: row.product_id, product_price_id: 1601, status: "ACTIVE", locale: "en", order_id: row.order_id };
+    for (const multi of [false, true]) {
+      const bodies = multi ? [attendees([{ ...row, id: 902, public_id: "A-ABC1235" }], 1, true, 1), attendees([observed], 2, false, 1)] : [attendees([observed])];
+      const t = adapterFor(...ready(), ...bodies.map(stripped));
+      const result = await t.adapter.resolve(t.selected, publicId);
+      expect(result).toEqual({ state: "eligible", attendee: identity });
+      expect(JSON.stringify(result)).not.toContain(list.short_id);
+      expect(t.calls.at(-1)?.url).toBe(`${base}/${attendeePath}?page=${multi ? 2 : 1}&per_page=25&query=${publicId}`);
+      expect(t.calls.at(-1)?.init?.headers).not.toHaveProperty("Authorization");
+      expect(t.calls.every(c => c.init?.method === "GET")).toBe(true);
+    }
+  });
+  it.each(["origin", "capability", "query", "changed query", "duplicate query", "duplicate", "credentials", "fragment", "count", "wrong mount"])("rejects stripped %s on every metadata surface", async kind => {
+    for (const field of ["path", "current_page_url", "first", "next"]) {
+      const body = stripped(attendees([row], 1, true, 1));
+      corrupt(body, field, kind);
+      const t = adapterFor(...ready(), body);
+      expect(await t.adapter.resolve(t.selected, publicId)).toEqual({ state: "unavailable" });
+      expect(t.calls).toHaveLength(5);
+    }
+  });
   it.each(["A-AbC1234", "A-abc1234"])("rejects mixed/lowercase %s at the shared service identity boundary", (identity) => {
     expect(checkinArrivalQrIdentitySchema.safeParse(identity).success).toBe(false);
     expect(isCheckinArrivalQrIdentity(identity)).toBe(false);
@@ -90,8 +131,8 @@ describe("read-only arrival Hi.Events adapter", () => {
   });
 
   it.each(["duplicate numeric identity", "ambiguous public identity", "later failure"])("does not accept an early exact match with %s", async (kind) => {
-    const second = kind === "later failure" ? new Error("private upstream failure") : attendees([{ ...row, id: kind === "duplicate numeric identity" ? 901 : 902 }], 2, false, 1);
-    const { adapter, selected, calls } = adapterFor(...ready(), attendees([row], 1, true, 1), second);
+    const second = kind === "later failure" ? new Error("private upstream failure") : stripped(attendees([{ ...row, id: kind === "duplicate numeric identity" ? 901 : 902 }], 2, false, 1));
+    const { adapter, selected, calls } = adapterFor(...ready(), stripped(attendees([row], 1, true, 1)), second);
     expect(await adapter.resolve(selected, publicId)).toEqual({ state: "unavailable" });
     expect(calls).toHaveLength(6);
   });

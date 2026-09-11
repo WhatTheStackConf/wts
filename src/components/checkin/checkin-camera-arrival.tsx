@@ -54,7 +54,15 @@ export function CheckinCameraArrival(props: CheckinCameraArrivalProps) {
   const [recoveryQr, setRecoveryQr] = createSignal("");
   const retainedResume = new Map<string, CheckinArrivalResumeInput>();
   let authorityEpoch = 0;
-  createEffect(() => [props.bindingScope, props.verifying] as const, () => { authorityEpoch++; setResume(undefined); setReacquiring(false); });
+  let authorityScope: string | undefined;
+  let authorityVerifying: boolean | undefined;
+  createEffect(() => [props.bindingScope, props.verifying] as const, ([scope, verifying]) => {
+    // Fresh status objects are not authority changes. Preserve recovery controls
+    // on identical polls, but invalidate immediately on either actual fence.
+    if (scope === authorityScope && verifying === authorityVerifying) return;
+    authorityScope = scope; authorityVerifying = verifying;
+    authorityEpoch++; setResume(undefined); setReacquiring(false);
+  });
   const [decision, setDecision] = createSignal<CheckinArrivalDecision>();
   const [lastFeedback, setLastFeedback] = createSignal<{ scope: string; decision?: CheckinArrivalDecision; error: string }>();
   const [pending, setPending] = createSignal(false);

@@ -237,6 +237,97 @@ it("denies direct collections and binding/login substitution, and atomically rol
   } finally { await f.cleanup(); }
 });
 
+it.each([
+  { operation: "machine_admission_claim", run: (c: Coordinator) => c.claimAdmission(), expected: null },
+  { operation: "machine_print_claim", run: (c: Coordinator) => c.claimPrints(), expected: 0 },
+  { operation: "machine_reset_claim", run: (c: Coordinator) => c.claimReset(), expected: null },
+])("uses backend time when a later heartbeat overtakes $operation", async ({ operation, run, expected }) => {
+  const f = await startCheckinPocketBase();
+  const coordinator = new Coordinator(f.pb);
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let entered!: () => void;
+  const captured = new Promise<void>((resolve) => { entered = resolve; });
+  let heldAt = 0;
+  let commandBody: Record<string, unknown> = {};
+  let pending: Promise<unknown> | undefined;
+  try {
+    await coordinator.listen();
+    const before = await f.pb.collection("checkin_coordinator").getOne("wts2026coord000");
+    f.pb.beforeSend = async (url, options) => {
+      const body = typeof options.body === "string" ? JSON.parse(options.body) : options.body;
+      if (body?.operation === operation) {
+        commandBody = body;
+        heldAt = Date.now();
+        entered();
+        await held;
+      }
+      return { url, options };
+    };
+    // Real SDK transport barrier: no fake PB responses or backend clock changes.
+    pending = run(coordinator).then((value) => ({ value }), (error: unknown) => ({ error }));
+    await captured;
+    await expect.poll(() => Date.now(), { timeout: 1000, interval: 1 }).toBeGreaterThan(heldAt);
+    await coordinator.pulse();
+    const after = await f.pb.collection("checkin_coordinator").getOne("wts2026coord000");
+    expect(after.owner).toBe(before.owner);
+    expect(after.generation).toBe(before.generation);
+    expect(Date.parse(after.last_seen_at)).toBeGreaterThan(heldAt);
+    expect(Date.now() - Date.parse(after.last_seen_at)).toBeLessThan(after.heartbeat_timeout_ms);
+    release();
+    expect(await pending).toEqual({ value: expected });
+    expect(commandBody).not.toHaveProperty("nowMs");
+    await expect(coordinator.pulse()).resolves.toEqual({ generation: after.generation });
+  } finally {
+    release();
+    await pending;
+    f.pb.beforeSend = undefined;
+    await coordinator.close();
+    await f.cleanup();
+  }
+});
+
+it("preserves explicit command clocks and rejects commands older than the committed lease", async () => {
+  const f = await startCheckinPocketBase();
+  let now = Date.now() + 60000;
+  const coordinator = new Coordinator(f.pb, { now: () => now });
+  const clocks: { operation: string; nowMs: number }[] = [];
+  f.pb.beforeSend = (url, options) => {
+    const body = typeof options.body === "string" ? JSON.parse(options.body) : options.body;
+    if (body?.operation?.startsWith("machine_")) clocks.push({ operation: body.operation, nowMs: body.nowMs });
+    return { url, options };
+  };
+  try {
+    await coordinator.listen();
+    await expect(coordinator.claimAdmission()).resolves.toBeNull();
+    await expect(coordinator.claimPrints()).resolves.toBe(0);
+    await expect(coordinator.claimReset()).resolves.toBeNull();
+    expect(clocks).toEqual([
+      { operation: "machine_acquire", nowMs: now },
+      { operation: "machine_admission_claim", nowMs: now },
+      { operation: "machine_print_claim", nowMs: now },
+      { operation: "machine_reset_claim", nowMs: now },
+    ]);
+    const lease = await f.pb.collection("checkin_coordinator").getOne("wts2026coord000");
+    expect(Date.parse(lease.last_seen_at)).toBe(now);
+    now--;
+    await expect(coordinator.claimAdmission()).rejects.toMatchObject({ status: 503 });
+    await expect(coordinator.claimPrints()).rejects.toMatchObject({ status: 503 });
+    await expect(coordinator.claimReset()).rejects.toMatchObject({ status: 403 });
+    await expect(coordinator.pulse()).rejects.toMatchObject({ status: 503 });
+    now += 2;
+    await expect(coordinator.pulse()).resolves.toEqual({ generation: lease.generation });
+    const renewed = await f.pb.collection("checkin_coordinator").getOne("wts2026coord000");
+    expect(Date.parse(renewed.last_seen_at)).toBe(now);
+    await coordinator.close();
+    expect(clocks.at(-1)).toEqual({ operation: "machine_release", nowMs: now });
+  } finally {
+    f.pb.beforeSend = undefined;
+    await coordinator.close();
+    await f.cleanup();
+  }
+});
+
 let fixture: Awaited<ReturnType<typeof startCheckinPocketBase>>;
 beforeAll(async () => { fixture = await startCheckinPocketBase(); });
 afterAll(async () => { await fixture?.cleanup(); });

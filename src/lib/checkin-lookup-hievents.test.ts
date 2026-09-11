@@ -3,6 +3,25 @@ import { createCheckinLookupAdapter } from "~/lib/checkin-lookup-hievents";
 import type { CheckinEventSnapshot } from "~/lib/checkin-event-contract";
 
 // Synthetic source-pinned responses, never deployed proof.
+// Observed paginator shape only; synthetic hosts and identities throughout.
+function stripped(body: unknown) {
+  const copy = JSON.parse(JSON.stringify(body).replaceAll(`${base}/`, `${base.slice(0, -4)}/`));
+  copy.meta.current_page_url = `${copy.meta.path}?page=${copy.meta.current_page}`;
+  return copy;
+}
+function corrupt(body: ReturnType<typeof stripped>, field: string, kind: string) {
+  const owner = field === "path" || field === "current_page_url" ? body.meta : body.links;
+  if (kind === "origin") owner[field] = owner[field].replace(new URL(base).host, "foreign.example.invalid");
+  if (kind === "capability") owner[field] = owner[field].replace(/cil_[^/]+|events\/[0-9]+/, "other-list");
+  if (kind === "query") owner[field] += `${field === "path" ? "?" : "&"}extra=1`;
+  if (kind === "changed query") owner[field] += `${field === "path" ? "?" : "&"}query=A-ABC1235`;
+  if (kind === "duplicate query") owner[field] += `${field === "path" ? "?" : "&"}query=A-ABC1234&query=A-ABC1234`;
+  if (kind === "wrong mount") owner[field] = owner[field].replace(new URL(base).origin, `${new URL(base).origin}/api/api`);
+  if (kind === "duplicate") owner[field] += `${field === "path" ? "?" : "&"}per_page=1&per_page=1`;
+  if (kind === "credentials") owner[field] = owner[field].replace("https://", "https://user:pass@");
+  if (kind === "fragment") owner[field] += "#fragment";
+  if (kind === "count") body.meta.to = 2;
+}
 const base = "https://lookup.example.invalid/api";
 const apiKey = `${Buffer.from('{"alg":"HS256"}').toString("base64url")}.${Buffer.from('{"account_id":77}').toString("base64url")}.c3ludGhldGlj`;
 const config = { apiUrl: base, apiKey, accountId: "77" };
@@ -17,12 +36,42 @@ function page(path: string, data: unknown[], current = 1, total = data.length, p
 function setup(...bodies: unknown[]) {
   const calls: string[] = [];
   let time = 0;
-  const transport: typeof fetch = async (url, init) => { calls.push(String(url)); expect(init?.method).toBe("GET"); const body = bodies.shift(); if (body instanceof Error) throw body; if (!body) throw new Error("Unexpected request"); return body instanceof Response ? body : Response.json(body); };
+  const transport: typeof fetch = async (url, init) => { calls.push(String(url)); expect(init?.method).toBe("GET"); expect(init?.body).toBeUndefined(); if (String(url).includes("/public/")) expect(init?.headers).not.toHaveProperty("Authorization"); else expect(init?.headers).toMatchObject({ Authorization: `Bearer ${apiKey}` }); const body = bodies.shift(); if (body instanceof Error) throw body; if (!body) throw new Error("Unexpected request"); return body instanceof Response ? body : Response.json(body); };
   const adapter = createCheckinLookupAdapter(config, transport, { now: () => time, random: () => 0, sleep: async (ms) => { time += ms; } });
   const snapshot: CheckinEventSnapshot = { sourceKey: adapter.sourceKey, upstreamEventId: "101", upstreamListId: "201", affiliation: null, actor: { userId: "actor0000000001", role: "admin" }, context: { protocolVersion: 1, edition: "WTS2026", eventId: "event0000000001", eventGeneration: 1, bindingId: "binding00000001", bindingVersion: 1, selectionVersion: 1, stationId: "wts2026station1", stationGeneration: 1, systemGeneration: 1 } };
   return { adapter, snapshot, calls };
 }
 const options = () => [page("events/101/check-in-lists", [list]), { data: [] }, page("events/101/products", [product])];
+it("accepts observed single-page membership without event_id or check_in", async () => {
+  const member = { id: row.id, email: row.email, first_name: row.first_name, last_name: row.last_name, public_id: row.public_id, product_id: row.product_id, product_price_id: 1401, status: "ACTIVE", locale: "en", order_id: row.order_id };
+  const t = setup(...options(), stripped(page(attendeePath, [member], 1, 1, 25, true)), { data: row });
+  expect(await t.adapter.identity(t.snapshot, "501")).toMatchObject({ state: "complete", attendees: [{ attendeeId: "501" }] });
+});
+it("rejects duplicate IDs and public identities across stripped pages", async () => {
+  for (const duplicate of [{ ...row, public_id: "A-ABC1235" }, { ...row, id: 502 }]) {
+    const t = setup(...options(), stripped(page(attendeePath, [row], 1, 2, 1, true)), stripped(page(attendeePath, [duplicate], 2, 2, 1, true)));
+    expect(await t.adapter.search(t.snapshot, row.email)).toEqual({ state: "partial" });
+    expect(t.calls).toHaveLength(5);
+  }
+});
+it("accepts stripped public and authenticated multi-page metadata without following URLs", async () => {
+  const other = { ...row, id: 502, public_id: "A-ABC1235", email: "other@example.test" };
+  const t = setup(...options(), ...[page(attendeePath, [row], 1, 2, 1, true), page(attendeePath, [other], 2, 2, 1, true), page("events/101/attendees", [other], 1, 2, 1), page("events/101/attendees", [row], 2, 2, 1)].map(stripped));
+  const result = await t.adapter.search(t.snapshot, row.email);
+  expect(result).toMatchObject({ state: "complete", attendees: [{ attendeeId: "501" }] });
+  expect(JSON.stringify(result)).not.toContain(list.short_id);
+  expect(t.calls.slice(3)).toEqual([`${base}/${attendeePath}?page=1&per_page=25`, `${base}/${attendeePath}?page=2&per_page=25`, `${base}/events/101/attendees?page=1&per_page=25`, `${base}/events/101/attendees?page=2&per_page=25`]);
+});
+it.each(["origin", "capability", "query", "changed query", "duplicate query", "duplicate", "credentials", "fragment", "count", "wrong mount"])("rejects stripped %s in both paginator kinds", async kind => {
+  for (const simple of [true, false]) for (const field of ["path", "current_page_url", "first", "next"]) {
+    const body = stripped(page(simple ? attendeePath : "events/101/attendees", [row], 1, 2, 1, simple));
+    corrupt(body, field, kind);
+    const t = setup(...options(), ...(simple ? [] : [stripped(page(attendeePath, [row], 1, 1, 25, true))]), body);
+    expect(await t.adapter.search(t.snapshot, "Ана")).toEqual({ state: simple ? "unavailable" : "partial" });
+    expect(t.calls).toHaveLength(simple ? 4 : 5);
+    expect(t.calls.every(url => url.startsWith(`${base}/`) && !url.includes("query="))).toBe(true);
+  }
+});
 it("searches email privately after complete list membership and authenticated event pagination", async () => {
   const other = { ...row, id: 502, public_id: "A-ABC1235", email: "other@example.test" };
   const t = setup(...options(), page(attendeePath, [row], 1, 2, 1, true), page(attendeePath, [other], 2, 2, 1, true), page("events/101/attendees", [other], 1, 2, 1), page("events/101/attendees", [row], 2, 2, 1));

@@ -59,17 +59,22 @@ function validate(operation: string, payload: unknown): asserts operation is Ope
 /** Independently supervised, outbound-agent-only boundary. Never sends device I/O. */
 export class Coordinator {
   private readonly owner = randomBytes(32).toString("hex");
-  private readonly now: () => number;
+  private readonly now: Options["now"];
   private readonly config: Required<Omit<Options, "now">>;
   private server?: Server;
   private active = false;
   constructor(private readonly pb: PocketBase, options: Options = {}) {
-    this.now = options.now ?? Date.now;
+    this.now = options.now;
     this.config = { heartbeatIntervalMs: options.heartbeatIntervalMs ?? 5000, heartbeatTimeoutMs: options.heartbeatTimeoutMs ?? 15000, authorizationTtlMs: options.authorizationTtlMs ?? 10000 };
+  }
+  private clockOverride(): { nowMs?: number } {
+    // Production RPCs use PB's transaction clock: a later pulse may commit
+    // before an earlier request arrives. Only explicit test clocks travel.
+    return this.now ? { nowMs: this.now() } : {};
   }
   private async command<T>(operation: string, data: object = {}): Promise<T> {
     try {
-      return await this.pb.send<T>("/api/wts/checkin-agents", { method: "POST", body: { ...data, operation, owner: this.owner, nowMs: this.now() }, requestKey: null, signal: AbortSignal.timeout(5000) });
+      return await this.pb.send<T>("/api/wts/checkin-agents", { method: "POST", body: { ...data, operation, owner: this.owner, ...this.clockOverride() }, requestKey: null, signal: AbortSignal.timeout(5000) });
     } catch (error) {
       const status = (error as { status?: number }).status;
       throw new Rejected(status && [400, 403, 409].includes(status) ? status : 503);
@@ -77,7 +82,7 @@ export class Coordinator {
   }
   private async admissionCommand<T>(operation: string, data: object = {}): Promise<T> {
     try {
-      return await this.pb.send<T>("/api/wts/checkin-arrivals", { method: "POST", body: { ...data, operation, owner: this.owner, nowMs: this.now() }, requestKey: null, signal: AbortSignal.timeout(5000) });
+      return await this.pb.send<T>("/api/wts/checkin-arrivals", { method: "POST", body: { ...data, operation, owner: this.owner, ...this.clockOverride() }, requestKey: null, signal: AbortSignal.timeout(5000) });
     } catch (error) {
       const status = (error as { status?: number }).status;
       throw new Rejected(status && [400, 403, 409].includes(status) ? status : 503);
@@ -133,7 +138,7 @@ export class Coordinator {
   private async resetCommand<T>(operation: string, data: object = {}): Promise<T> {
     if (!this.active) throw new Rejected(503);
     try {
-      return await this.pb.send<T>("/api/wts/checkin-recovery", { method: "POST", body: { ...data, operation, owner: this.owner, nowMs: this.now() }, requestKey: null, signal: AbortSignal.timeout(5000) });
+      return await this.pb.send<T>("/api/wts/checkin-recovery", { method: "POST", body: { ...data, operation, owner: this.owner, ...this.clockOverride() }, requestKey: null, signal: AbortSignal.timeout(5000) });
     } catch (error) {
       const status = (error as { status?: number }).status;
       throw new Rejected(status && [400, 403, 409].includes(status) ? status : 503);
@@ -154,7 +159,9 @@ export class Coordinator {
   private async fenceResetDelete(job: ResetJob): Promise<void> {
     if (!this.active) throw new Rejected(503);
     const result = await this.pb.send<unknown>("/api/wts/checkin-reset-fence", {
-      method: "POST", body: { operation: "machine_reset_fence", owner: this.owner, nowMs: this.now(), job },
+      // This endpoint requires nowMs in its exact shape but already ignores it
+      // for authority, using the backend clock unconditionally.
+      method: "POST", body: { operation: "machine_reset_fence", owner: this.owner, nowMs: this.now?.() ?? Date.now(), job },
       requestKey: null, signal: AbortSignal.timeout(5000),
     });
     if (!shape(result, ["resetId", "authorized"]) || result.resetId !== job.resetId || result.authorized !== true) throw new Rejected(503);

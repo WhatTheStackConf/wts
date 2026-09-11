@@ -6,7 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import { createCheckinEventSource } from "~/lib/checkin-event-source";
-import { checkinDiscoveryConfiguration, checkinServerConfig, createCheckinDiscoveryAdapter, type CheckinDiscoveryConfig, type EventOptions } from "~/lib/checkin-hievents";
+import { checkinMetadataPath, checkinMetadataUrl, checkinDiscoveryConfiguration, checkinServerConfig, createCheckinDiscoveryAdapter, type CheckinDiscoveryConfig, type EventOptions } from "~/lib/checkin-hievents";
 import { createCheckinUpstreamReader, type CheckinReadDependencies } from "~/lib/checkin-upstream-read";
 import { isCheckinArrivalQrIdentity, type CheckinArrivalSource, type ArrivalResolution, type ArrivalAdmission, type ArrivalAttendee } from "~/lib/checkin-arrival-source";
 import type { CheckinEventSnapshot } from "~/lib/checkin-event-contract";
@@ -33,8 +33,7 @@ function navigation(value: unknown, endpoint: string, page: number | null, perPa
   if (page === null) { requireContract(value === null); return; }
   requireContract(typeof value === "string" && value.length <= 4096 && !/[\s\\]/.test(value));
   const url = new URL(value, endpoint);
-  const expected = new URL(endpoint);
-  requireContract(url.origin === expected.origin && url.pathname === expected.pathname && !url.hash && !url.username && !url.password);
+  requireContract(checkinMetadataUrl(url, endpoint));
   requireContract(url.searchParams.getAll("page").length === 1 && url.searchParams.get("page") === String(page));
   for (const [key, value] of url.searchParams) {
     requireContract(key === "page" || (key === "per_page" && (value === "25" || value === String(perPage))) || (key === "query" && value === query));
@@ -109,8 +108,9 @@ export function createCheckinArrivalAdapter(input?: CheckinDiscoveryConfig, tran
           requireContract(typeof meta.per_page === "number" && Number.isSafeInteger(meta.per_page) && meta.per_page > 0 && meta.per_page <= 25);
           requireContract(perPage === undefined || perPage === meta.per_page);
           perPage = meta.per_page;
-          requireContract(meta.current_page === current && meta.path === endpoint && body.data.length <= perPage);
+          requireContract(meta.current_page === current && checkinMetadataPath(meta.path, endpoint) && body.data.length <= perPage);
           requireContract(meta.from === (body.data.length ? rows.length + 1 : null) && meta.to === (body.data.length ? rows.length + body.data.length : null));
+          if (meta.current_page_url !== undefined) navigation(meta.current_page_url, endpoint, current, perPage, qrIdentity);
           navigation(links.first, endpoint, 1, perPage, qrIdentity);
           navigation(links.last, endpoint, null, perPage, qrIdentity);
           navigation(links.prev, endpoint, current > 1 ? current - 1 : null, perPage, qrIdentity);

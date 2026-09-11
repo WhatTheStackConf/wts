@@ -78,7 +78,10 @@ export default function CheckinScannerPage() {
     }
     const tick = () => { if (!document.hidden) { void refreshStatus(); if (!machine.loading) void machineActions.refetch().catch(() => undefined); } };
     const timer = window.setInterval(tick, 5000);
-    const focus = () => { tick(); if (!eventBusy()) void eventActions.refetch().catch(() => undefined); };
+    // Held work uses its frozen context, not a newly fetched catalogue. Keep
+    // station/permission checks running; source-fence changes still refetch and
+    // redact. Defer optional focus refresh until no arrival/lookup is held.
+    const focus = () => { tick(); if (!eventBusy() && !cameraBusy() && !lookupBusy()) void eventActions.refetch().catch(() => undefined); };
     window.addEventListener("focus", focus);
     return () => { window.clearInterval(timer); window.removeEventListener("focus", focus); };
   });
