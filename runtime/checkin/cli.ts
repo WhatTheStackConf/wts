@@ -12,16 +12,25 @@ import { AgentRuntime, HttpAgentTransport, reportJournalFailure } from "./agent.
 import { NiimbotSerialPrinter, SimulatedNiimbotPrinter } from "./printer.js";
 import { AgentError, journalFailureState, safeUrl, validIdentity } from "./protocol.js";
 function text(value: unknown): string { if (typeof value !== "string" || !value) throw new AgentError("invalid_config"); return value; }
+function validAgentConfigKeys(config: Record<string, unknown>) {
+  if (Object.keys(config).some(k => !["identity", "journalPath", "coordinatorUrl", "agentCredentialFile", "once", "pollIntervalMs", "printerMode", "printerAddress", "printerDebug"].includes(k))) throw new AgentError("invalid_config");
+}
 function bounded(value: unknown, fallback: number, min: number, max: number) {
   if (value === undefined) return fallback;
   if (!Number.isInteger(value) || Number(value) < min || Number(value) > max) throw new AgentError("invalid_config");
   return Number(value);
 }
-/** Supervised entrypoint: paths only in argv, no dotenv or browser/public settings. */
+/** Supervised entrypoint: private config paths; only adoption adds a public profile ID. */
 export async function main(argv = process.argv.slice(2)): Promise<void> {
-  if (argv.length !== 2 || !["coordinator", "maintenance", "agent", "init-agent"].includes(argv[0])) throw new AgentError("invalid_config");
+  if (argv[0] === "adopt-profile" ? argv.length !== 3 : argv.length !== 2 || !["coordinator", "maintenance", "agent", "init-agent"].includes(argv[0])) throw new AgentError("invalid_config");
   const [mode, path] = argv; const config = configFile(path);
   if (mode === "init-agent") { AgentJournal.provision(text(config.journalPath), validIdentity(config.identity)); console.log("journal_initialized"); return; }
+  if (mode === "adopt-profile") {
+    validAgentConfigKeys(config);
+    // Metadata only: no credentials, transport, lifecycle, printer or signal loop.
+    console.log(JSON.stringify(AgentJournal.adoptProfile(text(config.journalPath), validIdentity(config.identity), argv[2])));
+    return;
+  }
   let stopped = false;
   const shutdown = new AbortController();
   let wake: (() => void) | undefined;
@@ -66,7 +75,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       return;
     }
     // Never load PocketBase credentials on a Pi. Unknown config keys fail closed.
-    if (Object.keys(config).some(k => !["identity", "journalPath", "coordinatorUrl", "agentCredentialFile", "once", "pollIntervalMs", "printerMode", "printerAddress", "printerDebug"].includes(k))) throw new AgentError("invalid_config");
+    validAgentConfigKeys(config);
     const identity = validIdentity(config.identity);
     const transport = new HttpAgentTransport(text(config.coordinatorUrl), privateFile(config.agentCredentialFile).trim());
     const lifecycle = new AgentLifecycle(text(config.journalPath), identity, transport);

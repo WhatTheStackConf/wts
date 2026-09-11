@@ -18,7 +18,7 @@ The smoke compiles the actual entrypoint, starts an isolated PocketBase with unc
 
 Package the compiled runtime into a new, empty release directory with `node scripts/package-checkin-runtime.mjs /path/to/new-release`. The manifest records every shipped file checksum and explicitly excludes native dependencies, credentials, normal PocketBase data and test modules. On a compatible target/staging machine, run `pnpm install --prod --frozen-lockfile`, then `node scripts/verify-checkin-runtime.mjs` from that release. The latter checks manifest integrity, native imports, a synthetic raster and a disposable journal reopen without contacting the network or opening a printer. This is not a signed-origin guarantee or device/production approval. Never copy x86 node_modules onto an ARM station.
 
-All JSON configuration and credential files must be regular private files (0600 or 0400), readable by the respective service user. CLI arguments contain **only a subcommand and configuration path**. Do not put tokens/passwords in argv, `PUBLIC_*`, `VITE_*`, browser storage or logs. No `.env` is loaded. Do not copy the coordinator credential file to a Pi.
+All JSON configuration and credential files must be regular private files (0600 or 0400), readable by the respective service user. CLI arguments contain **only a subcommand and configuration path**, except `adopt-profile`, which also takes the non-secret new profile record ID. Do not put tokens/passwords in argv, `PUBLIC_*`, `VITE_*`, browser storage or logs. No `.env` is loaded. Do not copy the coordinator credential file to a Pi.
 
 Coordinator `/etc/wts-checkin/coordinator.json`:
 
@@ -62,7 +62,7 @@ Agent `/etc/wts-checkin/agent.json` (replace identity/profile references with th
 }
 ```
 
-An empty profile is unconfigured and cannot authorize. Never edit an initialized journal's identity: the assignment is immutable and a changed identity fails closed. The credential source `/etc/wts-checkin/agent-token` contains only the issued `wts_agent_` bearer. `once: true` is available for a one-heartbeat disposable diagnostic, not continuous service operation.
+An empty profile is unconfigured and cannot authorize. Never manually edit an initialized journal's identity: ordinary startup still rejects every changed identity. The only profile-only exception is the explicit, empty-first-use adoption procedure below. The credential source `/etc/wts-checkin/agent-token` contains only the issued `wts_agent_` bearer. `once: true` performs one full agent tick, including work polling and possible printing; it is not a heartbeat-only or inherently non-actuating diagnostic. Use it for readiness checks only while new work is fenced and the relevant ledger/journal are verified empty.
 
 `printerMode: "serial"` is required for physical output and must be paired with the exact stable `/dev/serial/by-id/...` path. `printerMode: "simulated"` is test-only. A queued work item with no printer mode fails closed as `printer_unconfigured`; it is never reported as printed.
 
@@ -80,6 +80,27 @@ flock --nonblock --no-fork /var/lib/wts-checkin-agent/owner.lock \
 ```
 
 Use the separate templates in `deployment/systemd/`. They are examples to install and validate on the target host, not an asserted deployment. Verify the pinned Node executable path before installation; the templates use `/usr/bin/node`, which is not present on every host. A Node executable under `/home` is hidden by `ProtectHome=yes`; substituting it in temporary copies for local `systemd-analyze verify` proves syntax only, not a runnable service. The agent uses OS `flock --nonblock --no-fork` for lifetime ownership. The one fixed lock covers the assigned journal/device; never run an alternative config under another lock against the same device. `PrivateDevices=no` is required for serial access. Replace `<serial>` in `DeviceAllow` with the station's exact by-id serial, matching `printerAddress`: systemd does not expand device-path globs. Keep `DevicePolicy=closed` and separately grant the service user UNIX device permissions through an approved narrowly scoped udev rule or device-group assignment. Connect the device before service start; a changed kernel device number after hotplug requires paused/reconciled work and an explicit service restart. Service hardening separates users, credentials, writable journal state and read-only application code. No unit was installed or started and no systemd command was run against production.
+
+## Explicit empty-journal profile adoption (before first use only)
+
+This offline metadata operation changes **only `identity.profileId`**, preserving the station, agent, printer and journal identities, original journal file/inode/path, history and monotonic sequence. It validates the old identity, SQLite integrity and snapshot digest, then updates the profile and durable transition receipt in one FULL-synchronous transaction. It does not initialize/replace a journal, reset a sequence, clear quarantine or lifecycle/owner guards, change profile-version counters, read a bearer, contact the coordinator or construct/open a printer. A successful receipt is **not** a healthy heartbeat or approval to print.
+
+Operator preconditions and ordering are mandatory; the offline command cannot prove central emptiness or profile approval:
+
+1. Stop the agent runtime and exclude every manual owner using the **same existing owner lock**. Keep admissions/printing excluded for the whole transition. Prove the original assigned local journal has **zero attempts of any state**, including reported/cancelled history; independently prove central workflow, print-attempt, authorization and print/output counts are zero and reconcile watermarks/restore evidence. Never use this for pending work, a previously printed/used journal, a restored replacement, quarantine recovery or retirement. Do not delete history to make it eligible.
+2. Complete deployment, any audited restore reconciliation and station enabling **before** cloning/approving a profile. `set_station_enabled` clears `profile_config_version` and would invalidate a freshly approved profile. Do not reset/bypass that guard.
+3. Retain genuine applicable owner acceptance of the unchanged source configuration; central approval alone is not physical attestation. Through the audited administrative API, clone that unchanged accepted label configuration to a **new** profile record, approve it at the current station version, then issue/rotate the credential with the same station/agent/printer/journal identities and the new profile ID. `admin_issue` preserves the profile configuration version and the journal watermark; it is not a quarantine-clear operation. Preserve the old private agent configuration for adoption/replay. Securely stage the new credential without putting it in argv or logs; do not start the old-config agent with it.
+4. As the agent service user, against the **original journal path**, adopt using the **old identity/configuration** and the new 15-character lowercase alphanumeric profile record ID:
+
+   ```sh
+   flock --nonblock --no-fork /var/lib/wts-checkin-agent/owner.lock \
+     node /opt/wts/.output/checkin-runtime/runtime/checkin/cli.js \
+     adopt-profile /etc/wts-checkin/agent.json "$NEW_PROFILE_ID"
+   ```
+
+   API equivalent: `AgentJournal.adoptProfile(journalPath, oldIdentity, newProfileId)`. The private config may be the existing full agent config or contain only `identity` and `journalPath`; credential/device fields are not loaded. Use the same absolute journal path, not a copy or alternative identity. Missing/corrupt/wrong-identity/nonempty journals fail closed (CLI exit 78). No file is created on a missing path.
+5. Retain the JSON receipt (`category: "journal_profile_adopted"`, `previousProfileId`, `profileId`, `journalSequence`, `journalDigest`, `replayed`). First adoption advances the existing sequence once. Exact replay with the **old config**, same target and same path verifies the stored transition and does not advance or rewrite the journal; a journal merely provisioned under the new identity is not replay evidence. Replay also rejects any subsequent attempt/history. If the receipt was lost, inspect/replay rather than reinitialize or roll back.
+6. Only after local adoption succeeds, stage and validate the private agent configuration with its new `identity.profileId` and rotated credential reference, then atomically rename the staged config over the active config on the same filesystem. Keep runtime and manual owners excluded throughout; stage the credential with the existing private-file convention before activating its reference. Do not change the other identities, journal path, owner lock or guard files. Start under the same owner lock, verify the real heartbeat reports the new profile and advanced sequence/digest, and verify central compatibility, approval, journal and readiness before any separately authorized pilot. If approval is invalidated by another station change, stop and investigate; never fake healthy or bypass profile matching. Renew any expired pilot authorization window independently.
 
 ## Recovery and retry contract
 

@@ -1,8 +1,9 @@
 import { afterEach, expect, it } from "vite-plus/test";
-import { mkdtempSync, rmSync, copyFileSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, copyFileSync, writeFileSync, readFileSync, mkdirSync, lstatSync, symlinkSync, linkSync, chmodSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
 import { startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
@@ -75,7 +76,7 @@ it("adds profile snapshots after journaled delivery without rewriting legacy wor
 it("runs the compiled CLIs against disposable PocketBase and quarantines a missing journal", async () => {
   // The canonical test command compiles before workers start. Rechecking must
   // not rewrite modules while sibling CLI integration tests execute them.
-  const build = spawnSync("pnpm", ["exec", "tsc", "--project", "tsconfig.checkin-runtime.json", "--noEmit"], { encoding: "utf8" });
+  const build = spawnSync(fileURLToPath(new URL("../../node_modules/.bin/tsc", import.meta.url)), ["--project", "tsconfig.checkin-runtime.json", "--noEmit"], { encoding: "utf8" });
   expect(build.status, build.stdout + build.stderr).toBe(0);
   const fixture = await startCheckinPocketBase();
   let child: ReturnType<typeof spawn> | undefined;
@@ -197,6 +198,148 @@ it("requires explicit provisioning and preserves heartbeat history across a real
   const reopened = new AgentJournal(file, identity);
   expect(reopened.snapshot()).toEqual(second); reopened.close();
   expect(() => new AgentJournal(file, { ...identity, printerIdentity: "other" })).toThrow("journal_restored");
+});
+
+it("explicitly adopts only the profile of an empty journal in place with a durable monotonic receipt", () => {
+  const file = path(); AgentJournal.provision(file, identity);
+  const beforeOwner = new AgentJournal(file, identity);
+  const before = beforeOwner.heartbeat(); beforeOwner.close();
+  const inode = lstatSync(file).ino;
+  const nextIdentity = { ...identity, profileId: "newprofile00000" };
+  expect(() => new AgentJournal(file, nextIdentity)).toThrow("journal_restored");
+  const receipt = AgentJournal.adoptProfile(file, identity, nextIdentity.profileId);
+  expect(receipt).toMatchObject({ category: "journal_profile_adopted", previousProfileId: identity.profileId, profileId: nextIdentity.profileId, journalSequence: before.journalSequence + 1, replayed: false });
+  expect(receipt.journalDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(receipt.journalDigest).not.toBe(before.journalDigest);
+  expect(lstatSync(file).ino).toBe(inode);
+  expect(() => new AgentJournal(file, identity)).toThrow("journal_restored");
+  const reopened = new AgentJournal(file, nextIdentity);
+  expect(reopened.snapshot()).toMatchObject({ journalSequence: receipt.journalSequence, journalDigest: receipt.journalDigest });
+  expect(reopened.pending()).toEqual([]); reopened.close();
+});
+
+it("replays only the same recorded empty-journal profile adoption and fences stale writers", () => {
+  const file = path(); AgentJournal.provision(file, identity);
+  const stale = new AgentJournal(file, identity);
+  try {
+    const first = AgentJournal.adoptProfile(file, identity, "newprofile00000");
+    const bytes = readFileSync(file);
+    expect(AgentJournal.adoptProfile(file, identity, "newprofile00000")).toEqual({ ...first, replayed: true });
+    expect(readFileSync(file)).toEqual(bytes);
+    expect(() => stale.heartbeat()).toThrow("journal_corrupt");
+    expect(() => stale.put({ attemptId: "stale", profileId: identity.profileId, payloadHash: "a".repeat(64), state: "received" })).toThrow("journal_corrupt");
+    expect(readFileSync(file)).toEqual(bytes);
+    expect(() => AgentJournal.adoptProfile(file, { ...identity, profileId: "wrongprofile000" }, "newprofile00000")).toThrow("journal_restored");
+    expect(() => AgentJournal.adoptProfile(file, identity, "nextprofile0000")).toThrow("journal_restored");
+    const copy = path(); copyFileSync(file, copy);
+    expect(() => AgentJournal.adoptProfile(copy, identity, "newprofile00000")).toThrow("journal_restored");
+    const reopened = new AgentJournal(file, { ...identity, profileId: "newprofile00000" });
+    const advanced = reopened.heartbeat(); reopened.close();
+    expect(AgentJournal.adoptProfile(file, identity, "newprofile00000")).toMatchObject({ journalSequence: advanced.journalSequence, journalDigest: advanced.journalDigest, replayed: true });
+  } finally { stale.close(); }
+});
+
+it.each(["stationId", "agentIdentity", "printerIdentity", "journalIdentity", "profileId"] as const)("rejects profile adoption with the wrong old %s", key => {
+  const file = path(); AgentJournal.provision(file, identity); const bytes = readFileSync(file);
+  expect(() => AgentJournal.adoptProfile(file, { ...identity, [key]: "wrong-identity" }, "newprofile00000")).toThrow("journal_restored");
+  expect(readFileSync(file)).toEqual(bytes);
+});
+
+it.each(["", "INVALID000000000", "short", "newprofile00000/", " newprofile00000", "newprofile00000\n", "a".repeat(80), identity.profileId])("rejects invalid or unchanged adoption target %j", profileId => {
+  const file = path(); AgentJournal.provision(file, identity); const bytes = readFileSync(file);
+  expect(() => AgentJournal.adoptProfile(file, identity, profileId)).toThrow("invalid_profile");
+  expect(readFileSync(file)).toEqual(bytes);
+});
+
+it("never provisions a missing adoption path or treats a matching new assignment as replay without evidence", () => {
+  const file = path();
+  expect(() => AgentJournal.adoptProfile(file, identity, "newprofile00000")).toThrow("journal_lost");
+  expect(() => lstatSync(file)).toThrow();
+  expect(() => AgentJournal.adoptProfile(file + "/wrong", identity, "newprofile00000")).toThrow("journal_lost");
+  AgentJournal.provision(file, { ...identity, profileId: "newprofile00000" });
+  expect(() => AgentJournal.adoptProfile(file, identity, "newprofile00000")).toThrow("journal_restored");
+});
+
+it("rejects adoption through linked paths and further adoption of a moved journal", () => {
+  const file = path(); AgentJournal.provision(file, identity); const bytes = readFileSync(file);
+  const alias = file + ".alias"; symlinkSync(file, alias);
+  expect(() => AgentJournal.adoptProfile(alias, identity, "newprofile00000")).toThrow("journal_corrupt");
+  rmSync(alias); linkSync(file, alias);
+  expect(() => AgentJournal.adoptProfile(alias, identity, "newprofile00000")).toThrow("journal_corrupt");
+  expect(readFileSync(file)).toEqual(bytes); rmSync(alias);
+  AgentJournal.adoptProfile(file, identity, "newprofile00000");
+  const copy = path(); copyFileSync(file, copy);
+  expect(() => AgentJournal.adoptProfile(copy, { ...identity, profileId: "newprofile00000" }, "nextprofile0000")).toThrow("journal_restored");
+});
+
+it.each(["received", "authorized", "possibly_starting", "started", "possibly_printing", "reported", "cancelled"] as const)("rejects adoption with any journal attempt, including %s history", state => {
+  const file = path(); AgentJournal.provision(file, identity);
+  const journal = new AgentJournal(file, identity);
+  journal.put({ attemptId: "existing", profileId: identity.profileId, payloadHash: "b".repeat(64), state, ...(state === "reported" ? { outcome: "protocol_complete" as const } : {}), ...(state === "cancelled" ? { cancellation: { cancellationId: "cancel000000000", disposition: "neutralized" as const, acknowledged: true } } : {}) });
+  const before = journal.snapshot(); journal.close(); const bytes = readFileSync(file);
+  expect(() => AgentJournal.adoptProfile(file, identity, "newprofile00000")).toThrow("journal_not_empty");
+  expect(readFileSync(file)).toEqual(bytes);
+  const reopened = new AgentJournal(file, identity); expect(reopened.snapshot()).toEqual(before); reopened.close();
+});
+
+it("refuses replay once work has ever been received under the adopted profile", () => {
+  const file = path(); AgentJournal.provision(file, identity);
+  AgentJournal.adoptProfile(file, identity, "newprofile00000");
+  const journal = new AgentJournal(file, { ...identity, profileId: "newprofile00000" });
+  journal.put({ attemptId: "finished", profileId: "newprofile00000", payloadHash: "c".repeat(64), state: "reported", outcome: "protocol_complete" }); journal.close();
+  const bytes = readFileSync(file);
+  expect(() => AgentJournal.adoptProfile(file, identity, "newprofile00000")).toThrow("journal_not_empty");
+  expect(readFileSync(file)).toEqual(bytes);
+});
+
+it.each(["sqlite", "digest", "attempts", "overflow", "adoption"])("fails profile adoption closed on corrupt %s without repair", corruption => {
+  const file = path(); AgentJournal.provision(file, identity);
+  if (corruption === "sqlite") writeFileSync(file, "not sqlite");
+  else {
+    const db = new DatabaseSync(file);
+    try {
+      const row = db.prepare("SELECT data FROM journal WHERE id=1").get()!;
+      const state = JSON.parse(String(row.data));
+      if (corruption === "attempts") state.attempts = {};
+      if (corruption === "overflow") state.sequence = Number.MAX_SAFE_INTEGER;
+      if (corruption === "adoption") state.profileAdoption = { previousProfileId: identity.profileId, profileId: "otherprofile000" };
+      const data = JSON.stringify(state);
+      db.prepare("UPDATE journal SET data=?, digest=? WHERE id=1").run(data, corruption === "digest" ? "bad" : createHash("sha256").update(data).digest("hex"));
+    } finally { db.close(); }
+  }
+  const bytes = readFileSync(file);
+  expect(() => AgentJournal.adoptProfile(file, identity, "newprofile00000")).toThrow("journal_corrupt");
+  expect(readFileSync(file)).toEqual(bytes);
+});
+
+it("runs the actual profile-adoption CLI offline using old private config without credentials or printer access", () => {
+  const file = path(); AgentJournal.provision(file, identity);
+  const configPath = file + ".json";
+  // Deliberately unusable transport/credential/device settings: metadata needs none of them.
+  const config = { identity, journalPath: file, coordinatorUrl: "not a URL", agentCredentialFile: file + ".absent-token", printerMode: "serial", printerAddress: "not a device" };
+  writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
+  const guards = ["owner.lock", "lifecycle-fence.json"].map(name => {
+    const guard = join(dirname(file), name); writeFileSync(guard, "unchanged guard", { mode: 0o600 });
+    return { path: guard, inode: lstatSync(guard).ino };
+  });
+  const run = (args: string[]) => spawnSync(process.execPath, [".output/checkin-runtime/runtime/checkin/cli.js", ...args], { encoding: "utf8", timeout: 10000 });
+  const first = run(["adopt-profile", configPath, "newprofile00000"]);
+  expect(first.status, first.stderr).toBe(0);
+  const receipt = JSON.parse(first.stdout);
+  expect(receipt).toEqual({ category: "journal_profile_adopted", previousProfileId: identity.profileId, profileId: "newprofile00000", journalSequence: 2, journalDigest: expect.stringMatching(/^[a-f0-9]{64}$/), replayed: false });
+  const second = run(["adopt-profile", configPath, "newprofile00000"]);
+  expect(second.status, second.stderr).toBe(0);
+  expect(JSON.parse(second.stdout)).toEqual({ ...receipt, replayed: true });
+  expect(JSON.parse(readFileSync(configPath, "utf8"))).toEqual(config);
+  for (const guard of guards) { expect(readFileSync(guard.path, "utf8")).toBe("unchanged guard"); expect(lstatSync(guard.path).ino).toBe(guard.inode); }
+  for (const args of [["adopt-profile", configPath], ["adopt-profile", configPath, "newprofile00000", "extra"], ["agent", configPath, "newprofile00000"], ["adopt-profile", configPath, "invalid"]]) {
+    const result = run(args); expect(result.status).toBe(78); expect(result.stdout).toBe("");
+  }
+  writeFileSync(configPath, JSON.stringify({ ...config, unknownKey: true }));
+  expect(run(["adopt-profile", configPath, "newprofile00000"]).status).toBe(78);
+  writeFileSync(configPath, JSON.stringify(config)); chmodSync(configPath, 0o644);
+  expect(run(["adopt-profile", configPath, "newprofile00000"]).status).toBe(78);
+  const reopened = new AgentJournal(file, { ...identity, profileId: "newprofile00000" }); expect(reopened.snapshot().journalSequence).toBe(2); reopened.close();
 });
 
 it("receipts immutable label payloads before acknowledgement and serializes the complete simulated print task", async () => {

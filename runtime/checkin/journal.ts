@@ -1,10 +1,15 @@
 import { DatabaseSync } from "node:sqlite";
-import { closeSync, openSync, fsyncSync, lstatSync } from "node:fs";
+import { closeSync, openSync, fsyncSync, lstatSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { AgentError, validIdentity, validPrintPayload, validWork, type AgentIdentity, type JournalAttempt } from "./protocol.js";
 
-interface State { generation: 1; identity: AgentIdentity; sequence: number; attempts: JournalAttempt[] }
+interface ProfileAdoption { previousProfileId: string; profileId: string; path: string; sequence: number; previousDigest: string }
+interface State { generation: 1; identity: AgentIdentity; sequence: number; attempts: JournalAttempt[]; profileAdoption?: ProfileAdoption }
+export interface ProfileAdoptionReceipt {
+  category: "journal_profile_adopted"; previousProfileId: string; profileId: string;
+  journalSequence: number; journalDigest: string; replayed: boolean;
+}
 function digest(data: string) { return createHash("sha256").update(data).digest("hex"); }
 function identityKey(identity: AgentIdentity) { return JSON.stringify(Object.entries(identity).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)); }
 
@@ -30,6 +35,52 @@ export class AgentJournal {
     } finally { db.close(); }
     const dir = openSync(dirname(resolve(path)), "r"); try { fsyncSync(dir); } finally { closeSync(dir); }
   }
+  /** Offline, first-use metadata transition; never an identity-check bypass on startup. */
+  static adoptProfile(path: string, previousIdentity: AgentIdentity, newProfileId: string): ProfileAdoptionReceipt {
+    validIdentity(previousIdentity);
+    if (typeof newProfileId !== "string" || !/^[a-z0-9]{15}$/.test(newProfileId) || newProfileId === previousIdentity.profileId) throw new AgentError("invalid_profile");
+    const nextIdentity = { ...previousIdentity, profileId: newProfileId };
+    let journal: AgentJournal;
+    try { journal = new AgentJournal(path, previousIdentity); }
+    catch (error) {
+      if (!(error instanceof AgentError) || error.category !== "journal_restored") throw error;
+      // Only the explicit command can check the new identity for a lost-receipt replay.
+      journal = new AgentJournal(path, nextIdentity);
+    }
+    try {
+      journal.checkFile();
+      if (lstatSync(journal.path).nlink !== 1 || realpathSync(journal.path) !== journal.path) throw new AgentError("journal_corrupt");
+      if (journal.state.profileAdoption && journal.state.profileAdoption.path !== journal.path) throw new AgentError("journal_restored");
+      journal.db.exec("BEGIN IMMEDIATE");
+      const currentData = JSON.stringify(journal.state);
+      const previousDigest = digest(currentData);
+      const row = journal.db.prepare("SELECT data, digest FROM journal WHERE id=1").get();
+      if (!row || row.data !== currentData || row.digest !== previousDigest) throw new AgentError("journal_corrupt");
+      // pending() intentionally includes settled history. No attempt is eligible.
+      if (journal.state.attempts.length !== 0) throw new AgentError("journal_not_empty");
+      const replayed = identityKey(journal.state.identity) === identityKey(nextIdentity);
+      if (replayed) {
+        const adoption = journal.state.profileAdoption;
+        if (!adoption || adoption.previousProfileId !== previousIdentity.profileId || adoption.profileId !== newProfileId || adoption.path !== journal.path) throw new AgentError("journal_restored");
+      } else {
+        const next = structuredClone(journal.state);
+        next.sequence++;
+        if (!Number.isSafeInteger(next.sequence)) throw new AgentError("journal_corrupt");
+        next.identity = nextIdentity;
+        next.profileAdoption = { previousProfileId: previousIdentity.profileId, profileId: newProfileId, path: journal.path, sequence: next.sequence, previousDigest };
+        const data = JSON.stringify(next);
+        const result = journal.db.prepare("UPDATE journal SET data=?, digest=? WHERE id=1 AND digest=?").run(data, digest(data), previousDigest);
+        if (result.changes !== 1) throw new AgentError("journal_corrupt");
+        journal.state = next;
+      }
+      journal.checkFile();
+      journal.db.exec("COMMIT");
+      return { category: "journal_profile_adopted", previousProfileId: previousIdentity.profileId, profileId: newProfileId, journalSequence: journal.state.sequence, journalDigest: digest(JSON.stringify(journal.state)), replayed };
+    } catch (error) {
+      try { journal.db.exec("ROLLBACK"); } catch { /* fail closed */ }
+      throw error instanceof AgentError ? error : new AgentError("journal_corrupt");
+    } finally { journal.close(); }
+  }
   constructor(path: string, identity: AgentIdentity) {
     validIdentity(identity); this.path = resolve(path);
     let stat;
@@ -46,6 +97,11 @@ export class AgentJournal {
       const state = JSON.parse(row.data) as State;
       if (state.generation !== 1 || !Number.isSafeInteger(state.sequence) || state.sequence < 1 || !Array.isArray(state.attempts)) throw new Error();
       validIdentity(state.identity);
+      if (state.profileAdoption !== undefined) {
+        const a = state.profileAdoption;
+        if (!a || Object.keys(a).length !== 5 || !["previousProfileId", "profileId", "path", "sequence", "previousDigest"].every(key => Object.hasOwn(a, key)) || typeof a.profileId !== "string" || a.profileId.length !== 15 || !/^[a-z0-9]{15}$/.test(a.profileId) || a.profileId !== state.identity.profileId || a.previousProfileId === a.profileId || typeof a.path !== "string" || resolve(a.path) !== a.path || !Number.isSafeInteger(a.sequence) || a.sequence < 2 || a.sequence > state.sequence || typeof a.previousDigest !== "string" || !/^[a-f0-9]{64}$/.test(a.previousDigest)) throw new Error();
+        validIdentity({ ...state.identity, profileId: a.previousProfileId });
+      }
       for (const attempt of state.attempts) {
         validWork({ attemptId: attempt.attemptId, profileId: attempt.profileId, payloadHash: attempt.payloadHash, ...(attempt.payload ? { payload: attempt.payload } : {}) });
         if (!["received", "authorized", "possibly_starting", "started", "possibly_printing", "reported", "cancelled"].includes(attempt.state)) throw new Error();
