@@ -1,0 +1,56 @@
+.checkin-camera-compact {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  overflow-anchor: none;
+}
+.checkin-camera-stage { display: grid; flex: 1 1 0%; min-height: 0; min-width: 0; position: relative; }
+.checkin-camera-stage > * { grid-area: 1 / 1; min-height: 0; min-width: 0; }
+.checkin-camera-stage > [hidden] { display: none; }
+.checkin-scanner-slot { display: flex; flex-direction: column; }
+.checkin-scanner-compact { display: flex; flex: 1 1 0%; flex-direction: column; position: relative; min-height: 0; gap: .75rem; }
+.checkin-scanner-preview { position: relative; flex: 1 1 0%; min-height: 0; overflow: hidden; background: var(--color-base-300); border-radius: .75rem; display: grid; place-items: center; }
+.checkin-scanner-preview video { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+.checkin-scanner-placeholder { padding: 1rem; text-align: center; }
+.checkin-scanner-target { width: min(65%, 15rem); aspect-ratio: 1; border: 2px solid var(--color-accent); border-radius: .75rem; z-index: 1; pointer-events: none; }
+.checkin-scanner-controls { display: flex; justify-content: center; gap: .5rem; }
+.checkin-scanner-controls .btn { min-height: 3rem; height: auto; white-space: normal; padding-block: .75rem; }
+.checkin-scanner-controls .btn-primary { width: 100%; }
+.checkin-scanner-status { margin: 0; text-align: center; font-size: .875rem; min-height: 1.25rem; }
+.checkin-compact-held { display: flex; flex-direction: column; gap: .75rem; overflow: auto; overscroll-behavior: contain; border-radius: .75rem; background: var(--color-base-200); padding: 1rem; }
+.checkin-compact-held:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.checkin-compact-result { margin-block: auto; text-align: center; min-width: 0; }
+.checkin-result-mark { display: inline-grid; place-items: center; width: 3rem; height: 3rem; border-radius: 50%; color: var(--color-accent); border: 2px solid currentColor; font-size: 2rem; font-weight: bold; }
+.checkin-compact-result[data-tone="success"] .checkin-result-mark { color: var(--color-success); }
+.checkin-compact-result[data-tone="error"] .checkin-result-mark { color: var(--color-error); }
+.checkin-result-title { font-size: 1.25rem; line-height: 1.25; font-weight: 700; margin-block: .75rem; overflow-wrap: anywhere; }
+.checkin-result-person { margin-block: 1rem; }
+.checkin-result-name { font-size: 1.75rem; font-weight: 700; line-height: 1.15; }
+.checkin-result-affiliation { font-size: 1rem; line-height: 1.3; margin-top: .5rem; }
+.checkin-result-name, .checkin-result-affiliation { overflow-wrap: anywhere; }
+.checkin-result-detail { font-size: .875rem; line-height: 1.4; overflow-wrap: anywhere; }
+.checkin-compact-actions { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
+.checkin-compact-actions .btn { min-height: 3rem; height: auto; white-space: normal; overflow-wrap: anywhere; padding: .65rem; }
+.checkin-compact-secondary { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; }
+.checkin-compact-secondary > * { flex: 1 1 auto; }
+.checkin-compact-help { font-size: .875rem; }
+.checkin-compact-help summary { min-height: 44px; display: flex; align-items: center; justify-content: center; text-decoration: underline; cursor: pointer; }
+.checkin-compact-help .btn { width: 100%; margin-block: .25rem; }
+.checkin-compact-help p { margin-block: .5rem; }
+.checkin-camera-readiness { min-height: 2.5rem; flex: 0 0 2.5rem; padding: .5rem 0; text-align: center; font-size: .875rem; }
+.checkin-capture-flash { pointer-events: none; position: absolute; inset: 0; z-index: 2; border: 3px solid var(--color-accent); border-radius: .75rem; animation: checkin-capture .3s ease-out both; }
+@keyframes checkin-capture { from { background: color-mix(in oklch, var(--color-accent) 22%, transparent); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .checkin-capture-flash { animation: none; } }
+/* Zoom/very short viewport: scroll the task panel, not hidden actions. */
+@media (max-height: 32rem), (max-width: 19rem) {
+  .checkin-result-name { font-size: 1.25rem; }
+  .checkin-result-person { margin-block: .5rem; }
+  .checkin-result-name, .checkin-result-affiliation { display: block; overflow: visible; }
+  .checkin-compact-held { padding: .75rem; }
+  .checkin-scanner-compact { overflow: auto; }
+  .checkin-scanner-preview { flex-basis: 8rem; flex-shrink: 0; }
+}

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { createCheckinDiscoveryAdapter, type CheckinDiscoveryConfig } from "~/lib/checkin-hievents";
-import type { CheckinEventSource } from "~/lib/checkin-event-service";
+import { createCheckinDiscoveryAdapter, type CheckinDiscoveryConfig } from "./checkin-hievents.js";
+import type { CheckinEventSource } from "./checkin-event-contract.js";
 
 function safeTitle(value: string, fallback: string): string {
   const hasControl = Array.from(value).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);

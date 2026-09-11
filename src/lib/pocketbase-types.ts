@@ -1,7 +1,10 @@
 import { RecordModel } from "pocketbase";
-import type { LabelProfileConfig } from "~/lib/checkin-label-render-contract";
+import type { LabelProfile, LabelProfileConfig } from "~/lib/checkin-label-render-contract";
 import type { CheckinEventContext } from "~/lib/checkin-event-contract";
 import type { CheckinArrivalDecision } from "~/lib/checkin-arrival-contract";
+import type { MonitoringConfig } from "~/lib/checkin-monitoring-contract";
+import type { RecoveryCommand, RecoveryWorkflow } from "~/lib/checkin-recovery-contract";
+import type { ResetJob } from "../../runtime/checkin/protocol";
 
 // User collection type
 export interface UserRecord extends RecordModel {
@@ -784,6 +787,7 @@ export interface CheckinCoordinatorRecord extends RecordModel {
 export interface CheckinAgentAttemptRecord extends RecordModel {
   station: string; agent_id: string; profile_id: string; payload_hash: string;
   station_generation: number; system_generation: number; coordinator_generation: number;
+  print_attempt_id: string; purpose: "generic" | "initial" | "replacement"; payload: Record<string, unknown> | null;
 }
 export interface CheckinAgentAuthorizationRecord extends RecordModel {
   attempt_id: string; agent_id: string; authorization_hash: string; expires_at: string;
@@ -803,6 +807,7 @@ export interface CheckinArrivalWorkflowRecord extends RecordModel {
   source_key: string;
   profile_id: string;
   profile_config: LabelProfileConfig;
+  profile_snapshot: LabelProfile;
   affiliation_mapping: { questionId: string; productIds: string[] } | null;
   name: string;
   affiliation: string;
@@ -812,6 +817,19 @@ export interface CheckinArrivalWorkflowRecord extends RecordModel {
   print_intent_id: string;
   admission_completed_at: string;
   admission_completed_day: string;
+  created: string;
+}
+export interface CheckinLookupCommandRecord extends RecordModel {
+  operation_id: string;
+  payload_hash: string;
+  attendee_id: string;
+  qr_hash: string;
+  source_key: string;
+  affiliation_choice: "fetch" | "blank";
+  prior_operation_id: string;
+  station_id: string;
+  context: import("./checkin-event-contract").CheckinEventContext;
+  snapshot: import("./checkin-event-contract").CheckinEventSnapshot;
   created: string;
 }
 export interface CheckinArrivalCommandRecord extends RecordModel {
@@ -847,6 +865,8 @@ export interface CheckinArrivalAttemptRecord extends RecordModel {
   system_generation: number;
   coordinator_generation: number;
   state: CheckinArrivalAttemptState;
+  claim_owner_hash: string;
+  outcome_digest: string;
   send_boundary_at: string;
   completed_at: string;
   result_fingerprint: string;
@@ -860,16 +880,163 @@ export interface CheckinPrintAttemptRecord extends RecordModel {
   station_id: string;
   purpose: "initial" | "replacement";
   state: CheckinPrintAttemptState;
+  fulfillment_completed_at: string;
   profile_id: string;
   profile_config: LabelProfileConfig;
+  profile_snapshot: LabelProfile;
   name: string;
   affiliation: string;
   payload_hash: string;
   predecessor_attempt_id: string;
   created: string;
 }
+// Persisted monitoring/lifecycle records are server-only. In particular, claim
+// and purge tokens must never be returned in human-facing transport DTOs.
+export interface CheckinMonitoringConfigRecord extends RecordModel {
+  version: number;
+  waiting_ms: number;
+  incident_ms: number;
+  repeat_ms: number;
+  last_tick_ms: number;
+  observation_sequence: number;
+  applied_observation_sequence: number;
+  observation_started_ms: number;
+  observation_fingerprint: string;
+  recipient_user_ids: string[] | null;
+}
+export interface CheckinMonitoringIncidentRecord extends RecordModel {
+  scope_key: string;
+  station_id: string;
+  workflow_id: string;
+  category: "station_unavailable" | "work_stalled" | "admission_uncertain" | "output_uncertain";
+  since_ms: number;
+  opened_ms: number;
+  recovered_ms: number;
+  acknowledged_ms: number;
+  acknowledged_by: string;
+  sequence: number;
+  last_boundary_ms: number;
+  next_delivery_ms: number;
+}
+export interface CheckinMonitoringDeliveryRecord extends RecordModel {
+  incident_id: string;
+  sequence: number;
+  kind: "open" | "repeat" | "recovery";
+  state: "pending" | "possibly_sent" | "sent" | "failed" | "unknown" | "cancelled";
+  created_ms: number;
+  boundary_ms: number;
+  completed_ms: number;
+  claim_token: string;
+  send_started: boolean;
+  recipient_user_ids: string[] | null;
+}
+export interface CheckinMonitoringCommandRecord extends RecordModel {
+  operation_id: string;
+  actor_user_id: string;
+  fingerprint: string;
+  result: MonitoringConfig | null;
+}
+export interface CheckinMonitoringAuditRecord extends RecordModel {
+  incident_id: string;
+  delivery_id: string;
+  actor_user_id: string;
+  at_ms: number;
+  category: "configured" | "opened" | "recovered" | "acknowledged" | "delivery_boundary" | "delivery_sent" | "delivery_failed" | "delivery_unknown";
+}
+export interface CheckinLifecycleRecord extends RecordModel {
+  edition: "WTS2026";
+  closed_at: string;
+  purge_deadline: string;
+  central_deleted_at: string;
+  central_compacted_at: string;
+  workflow_total: number;
+  print_total: number;
+  boot_seen: boolean;
+  restore_required: boolean;
+  restore_generation: number;
+  reconciled_at: string;
+  reconciliation_digest: string;
+  approved_at: string;
+}
+export interface CheckinLifecycleDeviceRecord extends RecordModel {
+  station_id: string;
+  journal_identity: string;
+  purge_token: string;
+  completed_at: string;
+  method: string;
+  last_seen_at: string;
+}
+export interface CheckinLifecycleAuditRecord extends RecordModel {
+  operation: string;
+  actor_user_id: string;
+  operation_id: string;
+  at: string;
+  generation: number;
+}
+
+/** Private recovery records. Machine evidence and human observations are distinct. */
+export interface CheckinRecoveryWorkflowRecord extends RecordModel {
+  workflow_id: string; version: number; name: string; affiliation: string;
+  latest_print_id: string; decision: string; fulfillment: string; completed_day: string;
+  updated_at: string; parked: boolean;
+}
+export interface CheckinRecoveryStoredReceipt {
+  operationId: string; workflowId: string; commandId: string; commandVersion: number;
+  operation: RecoveryCommand["operation"];
+  commandOutcome: { decision: string; fulfillment: string; printId: string };
+}
+export interface CheckinRecoveryCommandRecord extends RecordModel {
+  operation_id: string; actor_id: string; workflow_id: string; payload_hash: string;
+  operation: RecoveryCommand["operation"];
+  result: CheckinRecoveryStoredReceipt | { operationId: string; workflow: RecoveryWorkflow } | null;
+}
+export interface CheckinRecoveryAuditRecord extends RecordModel {
+  command_id: string; workflow_id: string; station_id: string; actor_id: string;
+  actor_role: string; actor_name: string; operation: string; reason: string; note: string;
+  before: { version: number; decision: string; fulfillment: string } | null;
+  after: { version: number; decision: string; fulfillment: string } | null;
+}
+export interface CheckinRecoveryReadRecord extends RecordModel {
+  workflow_id: string; actor_id: string; state: "absent" | "existing" | "malformed" | "unavailable";
+  checkin_id: string; fingerprint: string;
+}
+export interface CheckinRecoveryObservationRecord extends RecordModel {
+  workflow_id: string; print_id: string; agent_attempt_id: string; command_id: string;
+  outcome: "printed" | "not_printed";
+}
+export interface CheckinRecoveryCancellationRecord extends RecordModel {
+  workflow_id: string; print_id: string; agent_attempt_id: string; station_id: string;
+  state: "pending" | "acknowledged"; acknowledged_at: string;
+}
+export interface CheckinRecoveryIsolationRecord extends RecordModel {
+  station_id: string; workflow_id: string; command_id: string; released_at: string;
+}
+export interface CheckinRecoveryResetRecord extends RecordModel {
+  workflow_id: string; command_id: string; read_id: string; checkin_id: string; fingerprint: string;
+  state: "queued" | "possibly_sent" | "deleted" | "uncertain" | "identity_changed";
+  send_boundary_at: string; completed_at: string; coordinator_generation: number;
+  claim_system_generation: number; send_claim_target: ResetJob | null; delete_fence_at: string;
+}
+
 export interface CheckinCollectionRecords {
+  checkin_recovery_workflows: CheckinRecoveryWorkflowRecord;
+  checkin_recovery_commands: CheckinRecoveryCommandRecord;
+  checkin_recovery_audit: CheckinRecoveryAuditRecord;
+  checkin_recovery_reads: CheckinRecoveryReadRecord;
+  checkin_recovery_observations: CheckinRecoveryObservationRecord;
+  checkin_recovery_cancellations: CheckinRecoveryCancellationRecord;
+  checkin_recovery_isolations: CheckinRecoveryIsolationRecord;
+  checkin_recovery_resets: CheckinRecoveryResetRecord;
+  checkin_monitoring_config: CheckinMonitoringConfigRecord;
+  checkin_monitoring_incidents: CheckinMonitoringIncidentRecord;
+  checkin_monitoring_deliveries: CheckinMonitoringDeliveryRecord;
+  checkin_monitoring_commands: CheckinMonitoringCommandRecord;
+  checkin_monitoring_audit: CheckinMonitoringAuditRecord;
+  checkin_lifecycle: CheckinLifecycleRecord;
+  checkin_lifecycle_devices: CheckinLifecycleDeviceRecord;
+  checkin_lifecycle_audit: CheckinLifecycleAuditRecord;
   checkin_arrival_workflows: CheckinArrivalWorkflowRecord;
+  checkin_lookup_commands: CheckinLookupCommandRecord;
   checkin_arrival_commands: CheckinArrivalCommandRecord;
   checkin_arrival_attempts: CheckinArrivalAttemptRecord;
   checkin_print_attempts: CheckinPrintAttemptRecord;
@@ -888,6 +1055,23 @@ export interface CheckinCollectionRecords {
 
 // Union type for all possible collections
 export type CollectionRecord =
+  | CheckinRecoveryWorkflowRecord
+  | CheckinRecoveryCommandRecord
+  | CheckinRecoveryObservationRecord
+  | CheckinRecoveryAuditRecord
+  | CheckinRecoveryResetRecord
+  | CheckinRecoveryCancellationRecord
+  | CheckinRecoveryIsolationRecord
+  | CheckinRecoveryReadRecord
+  | CheckinLookupCommandRecord
+  | CheckinMonitoringConfigRecord
+  | CheckinMonitoringIncidentRecord
+  | CheckinMonitoringDeliveryRecord
+  | CheckinMonitoringCommandRecord
+  | CheckinMonitoringAuditRecord
+  | CheckinLifecycleRecord
+  | CheckinLifecycleDeviceRecord
+  | CheckinLifecycleAuditRecord
   | CheckinArrivalWorkflowRecord
   | CheckinArrivalCommandRecord
   | CheckinArrivalAttemptRecord

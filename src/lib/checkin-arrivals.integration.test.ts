@@ -6,6 +6,9 @@ import { CheckinAgentService } from "~/lib/checkin-agent-service";
 import { CheckinLabelProfileService } from "~/lib/checkin-label-profile-service";
 import { SYNTHETIC_LABEL_CONFIG } from "~/lib/checkin-label-render-contract";
 import { Coordinator } from "../../runtime/checkin/coordinator";
+import { AgentJournal } from "../../runtime/checkin/journal";
+import { AgentRuntime, HttpAgentTransport } from "../../runtime/checkin/agent";
+import { SimulatedNiimbotPrinter } from "../../runtime/checkin/printer";
 import type { CheckinStationId } from "~/lib/checkin-contract";
 import type { CheckinArrivalSource } from "~/lib/checkin-arrival-source";
 import type { CheckinEventContext } from "~/lib/checkin-event-contract";
@@ -454,7 +457,7 @@ it("releases a claim when pre-send reads are unavailable and permits a later ret
     expect(attemptsAfterRelease).toHaveLength(1);
     expect(attemptsAfterRelease[0]).toMatchObject({ state: "pre_send_failed", pre_send_failures: 1, next_retry_at: expect.any(String) });
     expect(await runtime.coordinator.processAdmissions({ attendee: async () => { throw new Error("backoff must hold"); }, admit: async () => { throw new Error("must not send"); } })).toBe(0);
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, Date.parse(attemptsAfterRelease[0].next_retry_at) - Date.now()) + 30));
     let posts = 0;
     expect(await runtime.coordinator.processAdmissions({
       attendee: async (job) => ({ upstreamAttendeeId: job.upstreamAttendeeId, publicId: qrIdentity, productId: "401", alreadyCheckedIn: false }),
@@ -482,7 +485,7 @@ it("claims one reservation before the upstream POST and atomically creates exact
     const attempts = await t.pb.collection("checkin_arrival_attempts").getFullList();
     expect(attempts).toHaveLength(1); expect(attempts[0]).toMatchObject({ state: "accepted", result_fingerprint: "d".repeat(64) });
     const prints = await t.pb.collection("checkin_print_attempts").getFullList();
-    expect(prints).toHaveLength(1); expect(prints[0]).toMatchObject({ workflow_id: workflow.id, purpose: "initial", state: "queued", name: "Тест Attendee", affiliation: "Test organisation" });
+    expect(prints).toHaveLength(1); expect(prints[0]).toMatchObject({ workflow_id: workflow.id, purpose: "initial", state: "queued", name: "Тест Attendee", affiliation: "Test organisation", profile_snapshot: { approval: "approved" } });
     const commandRow = await t.pb.collection("checkin_arrival_commands").getFirstListItem(`operation_id = '${command.operationId}'`);
     expect(commandRow.result).toMatchObject({ state: "accepted", printIntentId: prints[0].id });
     expect(await runtime.coordinator.processAdmissions({ attendee: async () => null, admit: async () => { posts++; return { state: "uncertain" }; } })).toBe(0);
@@ -507,4 +510,31 @@ it("keeps a lost admission outcome uncertain and never automatically repeats its
     expect(await runtime.coordinator.processAdmissions({ attendee: async () => null, admit: async () => { posts++; return { state: "newly_checked_in", fingerprint: "e".repeat(64) }; } })).toBe(0);
     expect(posts).toBe(1);
   } finally { await runtime.coordinator.close(); await t.cleanup(); }
+});
+
+it("delivers one accepted initial label through the authenticated journaled agent", { timeout: 60_000 }, async () => {
+  const t = await setup(); const runtime = await ready(t); const coordinatorUrl = await runtime.coordinator.listen();
+  const identity = { stationId: "wts2026station1" as const, agentIdentity: "test-pi", printerIdentity: "test-printer", journalIdentity: "test-journal", profileId: runtime.saved.profile.id };
+  const journalPath = join(t.root, "agent-journal.sqlite");
+  AgentJournal.provision(journalPath, identity);
+  const journal = new AgentJournal(journalPath, identity);
+  try {
+    const agent = new AgentRuntime(identity, journal, new HttpAgentTransport(coordinatorUrl, runtime.issued.credential!));
+    expect((await agent.heartbeat()).station.readyForAuthorization).toBe(true);
+    const command = { ...t.command(), context: await context(t) };
+    expect(await t.service.preflight(t.token, command)).toMatchObject({ state: "reserved" });
+    expect(await runtime.coordinator.processAdmissions({
+      attendee: async (job) => ({ upstreamAttendeeId: job.upstreamAttendeeId, publicId: qrIdentity, productId: "401", alreadyCheckedIn: false }),
+      admit: async () => ({ state: "newly_checked_in", fingerprint: "a".repeat(64) }),
+    })).toBe(1);
+    expect(await runtime.coordinator.claimPrints()).toBe(1);
+    const work = await agent.work();
+    expect(work.attempts).toHaveLength(1);
+    expect(work.attempts[0].payload).toMatchObject({ purpose: "initial", text: { name: "Тест Attendee", affiliation: "Test organisation" } });
+    const printer = new SimulatedNiimbotPrinter(identity.printerIdentity);
+    await expect(agent.process(work.attempts[0], printer)).resolves.toBe("protocol_complete");
+    expect(printer.printed).toHaveLength(1);
+    expect(await t.pb.collection("checkin_print_attempts").getFullList()).toMatchObject([{ state: "completed", purpose: "initial" }]);
+    expect(await t.pb.collection("checkin_agent_authorizations").getFullList()).toMatchObject([{ outcome: "protocol_complete" }]);
+  } finally { journal.close(); await runtime.coordinator.close(); await t.cleanup(); }
 });

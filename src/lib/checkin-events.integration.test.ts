@@ -53,7 +53,12 @@ describe("authenticated admission event configuration", () => {
       expect(changed.context?.selectionVersion).toBe(2);
       await expect(phone.select(tokens[0], { ...initial.fence, eventId: second.id, eventGeneration: 1 })).rejects.toMatchObject({ code: "conflict" });
       await test.restart();
-      expect((await phone.catalogue(tokens[0])).context).toEqual(changed.context);
+      // A restarted/restored ledger preserves selections but withholds fresh
+      // intake authority until lifecycle reconciliation and explicit restore.
+      const afterRestart = await phone.catalogue(tokens[0]);
+      expect(afterRestart.context).toBeNull();
+      expect(afterRestart.selected).toMatchObject({ id: first.id, availability: "disabled" });
+      expect((await phone.catalogue(tokens[1])).selected?.id).toBe(second.id);
       await test.pb.collection("users").update(operator.record.id, { role: "reviewer" });
       await expect(phone.catalogue(tokens[0])).rejects.toMatchObject({ code: "forbidden" });
       await expect(phone.select(tokens[0], { ...changed.fence, eventId: second.id, eventGeneration: 1 })).rejects.toMatchObject({ code: "forbidden" });

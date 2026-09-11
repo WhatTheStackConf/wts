@@ -1,0 +1,35 @@
+[Unit]
+Description=WTS central monitoring and retention maintenance (independent of producer)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=wts-checkin-maintenance
+Group=wts-checkin-maintenance
+WorkingDirectory=/opt/wts
+LoadCredential=pocketbase:/etc/wts-checkin/pocketbase-credential.json
+ExecStart=/usr/bin/node /opt/wts/.output/checkin-runtime/runtime/checkin/cli.js maintenance /etc/wts-checkin/maintenance.json
+Restart=on-failure
+RestartPreventExitStatus=78
+RestartSec=30
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+DevicePolicy=closed
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

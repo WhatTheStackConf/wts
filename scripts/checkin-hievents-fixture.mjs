@@ -30,9 +30,20 @@ const attendees = [
   { id: 905, public_id: "A-TEST005", first_name: "Synthetic", last_name: "Delayed affiliation", status: "ACTIVE" },
   { id: 906, public_id: "A-TEST006", first_name: "Synthetic", last_name: "Response loss", status: "ACTIVE" },
   { id: 907, public_id: "A-TEST007", first_name: "Synthetic", last_name: "Already checked in", status: "ACTIVE" },
+  // Separate fresh lookup cases from previous specs' durable duplicate ledger.
+  { id: 911, public_id: "A-LOOK001", first_name: "Ана", last_name: "Lookup only", status: "ACTIVE" },
+  { id: 915, public_id: "A-LOOK005", first_name: "Synthetic", last_name: "Lookup affiliation", status: "ACTIVE" },
+  { id: 921, public_id: "A-CAM0001", first_name: "Ана", last_name: "O’Neill", status: "ACTIVE" },
+  { id: 922, public_id: "A-CAM0002", first_name: "Synthetic", last_name: "Camera missing affiliation", status: "ACTIVE" },
+  { id: 925, public_id: "A-CAM0005", first_name: "Synthetic", last_name: "Camera delayed affiliation", status: "ACTIVE" },
+  { id: 926, public_id: "A-CAM0006", first_name: "Synthetic", last_name: "Camera response loss", status: "ACTIVE" },
+  { id: 931, public_id: "A-UXS0001", first_name: "Јана", last_name: "Scanner UX", status: "ACTIVE" },
+  { id: 941, public_id: "A-TOOLS01", first_name: "Јана", last_name: "Tools dashboard", status: "ACTIVE" },
 ].map((row) => ({ ...row, product_id: 601, product_price_id: 611, order_id: 1001, locale: "en" }));
 function page(path, rows, current) {
-  const perPage = 2;
+  // Keep discovery at two rows for its partial-page test. The separate attendee
+  // namespaces must still fit the production lookup's bounded page budget.
+  const perPage = path.endsWith("/attendees") ? 5 : 2;
   const last = Math.max(1, Math.ceil(rows.length / perPage));
   const data = rows.slice((current - 1) * perPage, current * perPage);
   const url = (page) => `${origin}${path}?page=${page}&per_page=${perPage}`;
@@ -66,17 +77,22 @@ const server = createServer({ key: readFileSync(`${root}/upstream-key.pem`), cer
     arrivalReads++;
     if (mode === "arrival_unavailable") return send(503, { error: "Synthetic arrival outage" });
     const query = url.searchParams.get("query");
-    const rows = attendees.filter((row) => row.public_id === query).map((row) => row.id === 907 ? { ...row, check_in: { id: 1101, short_id: "synthetic-checkin-capability", check_in_list_id: 701, attendee_id: row.id, order_id: row.order_id, checked_in_at: "2026-09-09T08:00:00Z" } } : row);
+    const rows = attendees.filter((row) => query === null || row.public_id === query).map((row) => row.id === 907 ? { ...row, check_in: { id: 1101, short_id: "synthetic-checkin-capability", check_in_list_id: 701, attendee_id: row.id, order_id: row.order_id, checked_in_at: "2026-09-09T08:00:00Z" } } : row);
     const path = `${origin}${url.pathname}`;
     // Pinned Hi.Events list attendees use Laravel simplePaginate, not totals.
     return send(200, { data: rows, links: { first: `${path}?page=1`, last: null, prev: null, next: null }, meta: { path, current_page: 1, per_page: 25, from: rows.length ? 1 : null, to: rows.length || null } });
   }
-  const detail = /^\/api\/events\/(501|502)\/attendees\/(90[1-7])$/.exec(url.pathname);
+  const attendeeList = /^\/api\/events\/(501|502)\/attendees$/.exec(url.pathname);
+  if (attendeeList) {
+    if (url.searchParams.has("query")) return send(400, { error: "Private queries must never reach upstream URLs" });
+    return send(200, page(url.pathname, attendees.map(row => ({ ...row, event_id: Number(attendeeList[1]), email: "private-arrival@example.test" })), current));
+  }
+  const detail = /^\/api\/events\/(501|502)\/attendees\/(90[1-7]|911|915|921|922|925|926|931|941)$/.exec(url.pathname);
   if (detail) {
     affiliationReads++;
     if (mode === "affiliation_failure") return send(503, { error: "Synthetic answer fetch failure, never missing data" });
     const attendee = attendees.find((row) => row.id === Number(detail[2]));
-    return send(200, { data: { ...attendee, event_id: Number(detail[1]), email: "private-arrival@example.test", question_answers: attendee.id === 902 ? [] : [{ question_id: 801, answer: "Synthetic organisation", text_answer: "Synthetic organisation" }] } });
+    return send(200, { data: { ...attendee, event_id: Number(detail[1]), email: "private-arrival@example.test", question_answers: [902, 922].includes(attendee.id) ? [] : [{ question_id: 801, answer: "Synthetic organisation", text_answer: "Synthetic organisation" }] } });
   }
   if (url.pathname === "/api/events") {
     const result = page(url.pathname, events, current);

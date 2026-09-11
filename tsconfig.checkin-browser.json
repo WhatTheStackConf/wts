@@ -1,4 +1,4 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["playwright.config.ts", "tests/checkin*.ts"]
+  "include": ["playwright.config.ts", "playwright.lifecycle.config.ts", "tests/checkin*.ts", "tests/checkin*.tsx", "tests/fixtures/checkin*.tsx"]
 }

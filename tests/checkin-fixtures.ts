@@ -83,6 +83,26 @@ export async function login(page: Page, account: Account) {
   expect(authCookie?.httpOnly, "Login must establish the real server session").toBe(true);
 }
 
+/** Navigate the mounted Tools surface without discarding held commands. */
+export async function toolsView(page: Page, name: "Recent work" | "Arrivals" | "Phone" | "Diagnostics") {
+  const button = page.getByRole("navigation", { name: "Tools views", exact: true }).getByRole("button", { name, exact: true });
+  await button.click();
+  await expect(button).toHaveAttribute("aria-pressed", "true");
+}
+
+/** Open only the requested native disclosure through its visible summary. */
+export async function openToolsDisclosure(page: Page, name: string) {
+  const summary = page.locator("summary").filter({ hasText: new RegExp(`^${name}$`) });
+  await expect(summary).toBeVisible();
+  if (!(await summary.locator("..").evaluate(element => element.hasAttribute("open")))) await summary.click();
+}
+
+export async function phoneProvisioning(page: Page) {
+  await toolsView(page, "Phone");
+  await openToolsDisclosure(page, "Enter station code instead");
+  await expect(page.getByLabel("Station provisioning code", { exact: true })).toBeVisible();
+}
+
 export async function status(page: Page) {
   const response = await page.evaluate(async () => {
     const result = await fetch("/api/checkin", {

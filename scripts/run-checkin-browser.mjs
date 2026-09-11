@@ -117,6 +117,7 @@ try {
     "1776000002_add_cfp_submissions_status.js", "1777000000_harden_auth_and_reviewer_rules.js",
     "1777000001_fix_users_role_update_rule.js", "1781000000_fix_registration_role_escalation.js",
     "1783000000_create_mcp_tokens.js", "1787000004_create_admin_actions.js", "1787000007_harden_reviewer_ownership.js",
+    "1790000008_add_journaled_print_delivery.js",
     ...(await readdir(join(repo, "pocketbase/pb_migrations"))).filter((name) => /checkin.*\.js$/.test(name)),
   ];
   if (!migrations.some((name) => name.includes("checkin"))) throw new Error("Required checkin migration is missing");

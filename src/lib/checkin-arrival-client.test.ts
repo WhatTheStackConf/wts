@@ -1,10 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { CheckinArrivalRequestError, checkinArrivalHistory, preflightCheckinArrival } from "~/lib/checkin-arrival-client";
+import { CheckinArrivalRequestError, checkinArrivalStatus, checkinArrivalHistory, preflightCheckinArrival } from "~/lib/checkin-arrival-client";
 import type { CheckinArrivalInput } from "~/lib/checkin-arrival-contract";
 
 const input = (): CheckinArrivalInput => ({ operationId: "11111111-1111-4111-8111-111111111111", qrIdentity: "EXACT_QR_1", affiliationChoice: "fetch", context: { protocolVersion: 1, edition: "WTS2026", eventId: "aaaaaaaaaaaaaaa", eventGeneration: 1, bindingId: "bbbbbbbbbbbbbbb", bindingVersion: 1, selectionVersion: 1, stationId: "wts2026station1", stationGeneration: 1, systemGeneration: 1 } });
 afterEach(() => vi.unstubAllGlobals());
 describe("arrival browser transport", () => {
+  it("status sends only its UUID and validates the returned identity without treating absence as no-send",async()=>{
+    const body={operationId:input().operationId,result:null,operationsEnabled:false};
+    const fetcher=vi.fn().mockResolvedValueOnce(Response.json(body)).mockResolvedValueOnce(Response.json({...body,operationId:crypto.randomUUID()}));
+    vi.stubGlobal("fetch",fetcher);
+    expect(await checkinArrivalStatus(body.operationId)).toEqual(body);
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({operation:"status",operationId:body.operationId});
+    await expect(checkinArrivalStatus(body.operationId)).rejects.toMatchObject({ambiguous:true});
+  });
+  it.each([401,403])("classifies status denial %s without parsing messages",async status=>{
+    vi.stubGlobal("fetch",vi.fn().mockResolvedValue(new Response("private",{status})));
+    await expect(checkinArrivalStatus(input().operationId)).rejects.toMatchObject({status,denied:true});
+  });
   it("accepts a resolved exception projection without treating its immutable failure as current work", async () => {
     const item = { id: "ccccccccccccccc", operationId: input().operationId, stationId: "wts2026station1", eventId: "aaaaaaaaaaaaaaa", createdAt: "2026-09-19T11:00:00Z", completedAt: "2026-09-19T12:00:00Z", resolvedByOperationId: "22222222-2222-4222-8222-222222222222", result: { state: "needs_affiliation_choice" } };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ items: [item], nextCursor: null, day: "2026-09-19", operationsEnabled: false })));

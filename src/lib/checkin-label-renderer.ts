@@ -7,12 +7,12 @@ import {
   LABEL_FONT_VERSION, LABEL_RENDERER_VERSION, LABEL_ROW_FONT_LIMITS,
   LABEL_TEXT_MAX_LENGTH, LabelRenderError,
   type LabelProfileConfig, type LabelRenderInput, type LabelRasterResult, type LabelRasterRow,
-} from "~/lib/checkin-label-render-contract";
-import { NOTO_SANS_BOLD_BASE64, NOTO_SANS_REGULAR_BASE64 } from "~/lib/checkin-label-render-font-data";
-import { labelAssetReferenceSchema as reference, labelProfileConfigSchema as configSchema } from "~/lib/checkin-label-validation";
+} from "./checkin-label-render-contract.js";
+import { NOTO_SANS_BOLD_BASE64, NOTO_SANS_REGULAR_BASE64 } from "./checkin-label-render-font-data.js";
+import { labelAssetReferenceSchema as reference, labelProfileConfigSchema as configSchema } from "./checkin-label-validation.js";
 
-export { LABEL_FONT_VERSION, LABEL_RENDERER_VERSION, SYNTHETIC_LABEL_CONFIG, LabelRenderError } from "~/lib/checkin-label-render-contract";
-export type { LabelProfileConfig, LabelProfile, LabelRenderInput, LabelRasterResult } from "~/lib/checkin-label-render-contract";
+export { LABEL_FONT_VERSION, LABEL_RENDERER_VERSION, SYNTHETIC_LABEL_CONFIG, LabelRenderError } from "./checkin-label-render-contract.js";
+export type { LabelProfileConfig, LabelProfile, LabelRenderInput, LabelRasterResult } from "./checkin-label-render-contract.js";
 
 
 function freeze<T>(value: T): T {
@@ -151,7 +151,7 @@ function paths(row: FittedRow, box: { x: number; y: number; width: number; heigh
   const y = box.y + (box.height - height) / 2 + run.bbox.maxY * scale;
   let penX = 0;
   let penY = 0;
-  return run.glyphs.map((glyph, index) => {
+  return run.glyphs.map((glyph: GlyphRun["glyphs"][number], index: number) => {
     const position = run.positions[index];
     const path = glyph.path.toSVG();
     const result = `<path d="${path}" transform="translate(${x + (penX + position.xOffset) * scale} ${y - (penY + position.yOffset) * scale}) scale(${scale} ${-scale})"/>`;

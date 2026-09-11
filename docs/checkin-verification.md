@@ -1,5 +1,7 @@
 # Check-in automated verification
 
+**Current implementation, final verification and remaining production gates:** [checkin-operations-and-acceptance.md](checkin-operations-and-acceptance.md). The sections below retain chronological evidence from earlier slices; their “not implemented” or disabled-operation descriptions do not supersede the current operating guide.
+
 This is software verification for issues #45 and #46, not event-use or physical-device approval. Admission, printing, email delivery, production upstream credentials and camera outcomes are not simulated as ready. Discovery/configuration contracts and the required outstanding deployed proof are documented in [checkin-hievents-contract.md](checkin-hievents-contract.md).
 
 ## Run locally

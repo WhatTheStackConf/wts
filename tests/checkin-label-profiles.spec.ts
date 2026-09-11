@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import type PocketBase from "pocketbase";
-import { test, expect, login } from "./checkin-fixtures";
+import { test, expect, login, status } from "./checkin-fixtures";
 import type { CheckinAdminDTO, CheckinStationDTO } from "~/lib/checkin-contract";
 import type { CheckinLabelCatalogue, LabelProfileMutation } from "~/lib/checkin-label-client";
 import type { CheckinLabelProfileResult } from "~/lib/checkin-label-profile-contract";
@@ -261,9 +261,10 @@ test("test-only measured profile: actual admin approval, immutable edit, and pri
   expect(mismatched.profiles.find((profile) => profile.stationId === station.id)).toEqual(edited.result.profile);
   expect(mismatched.stations.find((entry) => entry.id === station.id)?.printerRef).toBe("test-only-label-printer-replacement");
   await noHorizontalOverflow(page);
-  await page.goto("/checkin");
-  await expect(page.getByRole("button", { name: "Scan attendee", exact: true })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Print Name Label", exact: true })).toBeDisabled();
+  await page.goto("/checkin-tools");
+  expect((await status(page)).operationsEnabled).toBe(false);
+  await expect(page.getByRole("button", { name: "Arrivals", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Validate arrival", exact: true })).not.toBeVisible();
   expect(errors).toEqual([]);
 });
 

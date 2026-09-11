@@ -1,4 +1,7 @@
 import { For, Show, createSignal, onSettled } from "solid-js";
+import { CheckinCameraScanner } from "~/components/checkin/checkin-camera-scanner";
+import { provisioningCameraCode } from "~/lib/checkin-camera";
+import { CheckinOperatorRecovery } from "~/components/checkin/CheckinRecovery";
 import { CheckinLayout } from "~/components/checkin/CheckinLayout";
 import { CheckinEventSelector } from "~/components/checkin/CheckinEventSelector";
 import { BoundAgentReadiness } from "~/components/checkin/AgentReadiness";
@@ -16,7 +19,7 @@ const readinessMessages: Record<string, string> = {
   agent_readiness_separate: "Agent connection, compatibility and physical profile approval require separate checks.",
   event_configuration_missing: "Event admission lists are not configured.",
   notifications_unconfigured: "Admin notification delivery is not configured.",
-  admission_and_printing_not_implemented: "Admission and printing are not implemented in this release.",
+  admission_and_printing_not_implemented: "Browser provisioning alone does not authorize admission or printing.",
 };
 
 export function StationReadiness(props: { station: CheckinStationDTO }) {
@@ -68,9 +71,12 @@ export default function CheckinStationPage() {
 
   async function review(event: SubmitEvent) {
     event.preventDefault();
+    await reviewCode();
+  }
+  async function reviewCode(value = code()) {
     if (pending()) return;
     setPending(true); setError(""); setMessage(""); setPreview(undefined);
-    try { setPreview(await previewCheckinStation(code())); }
+    try { setPreview(await previewCheckinStation(value)); }
     catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to review this station."); }
     finally { setPending(false); }
   }
@@ -81,7 +87,7 @@ export default function CheckinStationPage() {
     try {
       await bindCheckinStation(code(), current.confirmation);
       setPreview(undefined); setCode("");
-      setMessage("Station binding confirmed. Admission and printing remain disabled.");
+      setMessage("Station binding confirmed. Supervised admission and printing require current station readiness.");
       await actions.refetch();
     } catch (failure) {
       setPreview(undefined);
@@ -91,7 +97,7 @@ export default function CheckinStationPage() {
   return (
     <CheckinLayout title="Your Check-in Station">
       <Show when={guard.authorized()}>
-        <div class="alert alert-warning" role="note">Provisioning, event selection and arrival preflight only. Attendee admission, camera scanning, lookup and Name Label printing are not enabled in this release.</div>
+        <div class="alert alert-warning" role="note">Camera arrival, provisioning and event selection are available for controlled verification. Not ready for event use: the default admission/printing guard remains disabled.</div>
         <div aria-live="polite" class="space-y-2">
           <Show when={message()}><p class="alert alert-success">{message()}</p></Show>
           <Show when={error()}><p role="alert" class="alert alert-error">{error()}</p></Show>
@@ -118,10 +124,17 @@ export default function CheckinStationPage() {
             </div>
           </section>
         )}</Show>
+        <CheckinOperatorRecovery scopeKey={guard.authorized() && guard.user()?.id && !status.error && status()?.bindingState === "bound" && status()?.binding ? `${guard.user()!.id}:${guard.user()!.role}:${status()!.binding!.id}:${status()!.binding!.version}` : undefined} />
         <CheckinEventSelector status={status()} verifying={status.loading || !!status.error} />
         <section class="rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-4">
           <h2 class="text-xl font-bold">Provision this phone</h2>
           <p>Use your phone's camera to open a station QR after logging in, or paste its opaque code below. Reviewing a QR does not change your binding. Confirming another station replaces this browser's binding, never transfers work.</p>
+          <CheckinCameraScanner purpose="station" enabled={guard.authorized() && !pending()} held={!!preview() || !!error()} scope={guard.authorized() ? "authorized-provisioning" : undefined} onDecode={(value) => {
+            const provision = provisioningCameraCode(value, window.location.origin);
+            if (!provision) { setError("Not a station provisioning QR for this site. Attendee QRs cannot bind a phone."); return; }
+            setCode(provision); void reviewCode(provision);
+          }} />
+          <Show when={error()}><button type="button" class="btn min-h-12" onClick={() => setError("")}>Dismiss provisioning error</button></Show>
           <form method="post" action="/api/checkin" onSubmit={(event) => void review(event)} class="space-y-3">
             <label for="station-code" class="block font-medium">Station provisioning code</label>
             <input id="station-code" name="code" class="input input-bordered min-h-12 w-full font-mono text-base" value={code()} onInput={(event) => { setCode(event.currentTarget.value); setPreview(undefined); }} required pattern="[a-f0-9]{64}" maxlength={64} autocomplete="off" spellcheck={false} aria-describedby="code-help" />

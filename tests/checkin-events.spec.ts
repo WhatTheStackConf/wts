@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, login } from "./checkin-fixtures";
+import { test, expect, login, status, phoneProvisioning, toolsView } from "./checkin-fixtures";
 import type { CheckinAdminDTO } from "~/lib/checkin-contract";
 import type { CheckinConfigureEventResult, CheckinEventCatalogue } from "~/lib/checkin-event-contract";
 
@@ -34,17 +34,20 @@ async function configure(page: Page, eventId: string, options: { enabled?: boole
   return result.json() as Promise<CheckinConfigureEventResult>;
 }
 async function bind(page: Page, code: string) {
-  await page.goto("/checkin");
+  await page.goto("/checkin-tools");
+  await phoneProvisioning(page);
   await page.getByLabel("Station provisioning code").fill(code);
   await page.getByRole("button", { name: "Review station", exact: true }).click();
   await page.getByRole("button", { name: "Confirm station binding", exact: true }).click();
-  await expect(page.getByText("Binding: bound", { exact: true })).toBeVisible();
+  await expect.poll(async () => (await status(page)).bindingState).toBe("bound");
 }
 async function select(page: Page, id: string, title: string) {
+  await toolsView(page, "Phone");
   await page.getByLabel("Event for this phone", { exact: true }).selectOption(id);
   await page.getByRole("button", { name: "Select event for this phone", exact: true }).click();
   await expect(page.getByText(`Current event: ${title}`, { exact: true })).toBeVisible();
-  await expect(page.getByText("Event context verified for this phone. Admission and printing remain disabled.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Event selection saved for this phone only. Other phones and existing work are unchanged.", { exact: true })).toBeVisible();
+  expect((await command<CheckinEventCatalogue>(page, "/api/checkin-events", { operation: "catalogue" })).context).toMatchObject({ eventId: id });
 }
 
 test("synthetic upstream: real admin mapping and independent phone event selection", async ({ page, state, db, actorPage }, info) => {
@@ -97,11 +100,11 @@ test("synthetic upstream: real admin mapping and independent phone event selecti
   await expect(other.getByText("No event selected", { exact: true })).toBeVisible();
   await select(other, second.configuration.id, "Synthetic workshop");
   await phone.reload();
+  await toolsView(phone, "Phone");
   await expect(phone.getByText("Current event: Synthetic conference", { exact: true })).toBeVisible();
   expect(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await phone.getByRole("region", { name: "This phone's event", exact: true }).screenshot({ path: info.outputPath("events-operator-mobile.png") });
-  await expect(phone.getByRole("button", { name: "Scan attendee", exact: true })).toBeDisabled();
-  await expect(phone.getByRole("button", { name: "Print Name Label", exact: true })).toBeDisabled();
+  expect((await status(phone)).operationsEnabled).toBe(false);
   const wire = await command<CheckinEventCatalogue>(phone, "/api/checkin-events", { operation: "catalogue" });
   expect(JSON.stringify(wire)).not.toMatch(/short_id|listCapabilities|synthetic-list-capability|affiliation|sourceKey|upstreamEventId/);
   await configure(page, "501", { enabled: false });

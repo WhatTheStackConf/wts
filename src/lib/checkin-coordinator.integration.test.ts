@@ -59,7 +59,7 @@ it("enforces exact heartbeat and authorization thresholds and scopes secrets, wi
     await f.agents.revoke({ operationId: crypto.randomUUID(), stationId, expectedStationVersion: 4, agentId: issued.station.agentId!, reason: "security", note: "Test" });
     await expect(c.machine(credential, "work", { stationId })).rejects.toThrow();
     await c.close(); f.advance(172800000); await f.restart();
-    const resumed = new Coordinator(f.pb, { now: f.clock }); await resumed.listen();
+    const resumed = new Coordinator(f.pb, { now: f.clock }); await resumed.listenReportingOnly();
     const outcome = { stationId, attemptId: next.attemptId, authorizationHash: nextP.authorizationHash, outcome: "output_uncertain" };
     try {
       expect(await resumed.machine(credential, "outcome", outcome)).toMatchObject({ outcome: "output_uncertain" });
@@ -153,10 +153,14 @@ it("keeps label catalogue approval and save fences compatible after issuance", a
       return e.next();
     }, "checkin_stations");`);
     await f.restart();
-    const next = await f.profiles.configure({ operationId: crypto.randomUUID(), stationId: f.stationId, expectedVersion: 1, expectedStationVersion: 4, reason: "configuration", note: "Test", config: f.config });
-    await f.profiles.approve({ operationId: crypto.randomUUID(), profileId: next.profile.id, expectedVersion: 2, expectedStationVersion: 4, reason: "configuration", note: "Test-only attestation", physicalConfirmation: true });
+    await expect(f.profiles.configure({ operationId: crypto.randomUUID(), stationId: f.stationId, expectedVersion: 1, expectedStationVersion: 4, reason: "configuration", note: "Stale pre-restart fence", config: f.config })).rejects.toMatchObject({ code: "conflict" });
+    const restoredCatalogue = await f.profiles.list();
+    const currentVersion = restoredCatalogue.stations.find(station => station.id === f.stationId)!.version;
+    expect(currentVersion).toBeGreaterThan(4);
+    const next = await f.profiles.configure({ operationId: crypto.randomUUID(), stationId: f.stationId, expectedVersion: 1, expectedStationVersion: currentVersion, reason: "configuration", note: "Test", config: f.config });
+    await f.profiles.approve({ operationId: crypto.randomUUID(), profileId: next.profile.id, expectedVersion: 2, expectedStationVersion: currentVersion, reason: "configuration", note: "Test-only attestation", physicalConfirmation: true });
     expect((await f.profiles.get(next.profile.id)).approval).toBe("approved");
-    expect((await f.coordinator.machine(f.issued.credential!, "status", { stationId: f.stationId })).station).toMatchObject({ profile: "mismatch", readyForAuthorization: false });
+    expect((await f.agents.adminList()).stations.find(station => station.stationId === f.stationId)).toMatchObject({ profile: "mismatch", readyForAuthorization: false });
   } finally { await f.cleanup(); }
 });
 

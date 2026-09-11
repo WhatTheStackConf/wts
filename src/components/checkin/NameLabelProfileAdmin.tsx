@@ -45,7 +45,7 @@ export function NameLabelProfileAdmin(props: Props) {
     try {
       const result = await mutateLabelProfile(mutation);
       setFrozen(undefined); setIntent(undefined); setSelected(undefined);
-      setMessage(result.replayed ? "This profile action was already saved; no change was repeated." : "Profile action saved. Admission and printing remain disabled.");
+      setMessage(result.replayed ? "This profile action was already saved; no change was repeated." : "Profile action saved. Supervised admission and printing require current station readiness.");
       await props.refresh();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Profile action could not be confirmed.");

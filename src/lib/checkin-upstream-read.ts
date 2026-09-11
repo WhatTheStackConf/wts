@@ -5,7 +5,16 @@
  * without an external gate. No effect/POST API is exposed by this module.
  */
 export class CheckinReadError extends Error {
-  constructor(readonly reason: "transport" | "http" | "contract" | "limit") { super(reason); }
+  readonly status?: number;
+  readonly retryAfterMs: number;
+  readonly retryBlocked: boolean;
+  constructor(readonly reason: "transport" | "http" | "contract" | "limit", metadata: { status?: number; retryAfterMs?: number } = {}) {
+    super(reason);
+    this.status = Number.isInteger(metadata.status) && metadata.status! >= 100 && metadata.status! <= 599 ? metadata.status : undefined;
+    const delay = metadata.retryAfterMs ?? 0;
+    this.retryBlocked = !Number.isFinite(delay) || delay > 86400000;
+    this.retryAfterMs = this.retryBlocked ? 86400000 : Math.max(0, Math.ceil(delay));
+  }
 }
 export interface CheckinReadDependencies {
   now?: () => number;
@@ -37,45 +46,47 @@ export function createCheckinUpstreamReader(config: { base: string; key: string 
   return async function read(path: string, authenticated = true): Promise<Record<string, unknown>> {
     // Bound both occupancy and time spent waiting; retries share this allowance.
     if (budget.busy && budget.waiters >= 32) throw new CheckinReadError("http");
+    let status: number | undefined;
+    const failure = (reason: "transport" | "http" | "contract" | "limit") => new CheckinReadError(reason, { status, retryAfterMs: Math.max(0, budget.blockedUntil - now(), budget.remaining <= RESERVE ? budget.resetAt - now() : 0) });
     let claimed = false;
     let waited = 0;
     const started = now();
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => { controller.abort(); reject(new CheckinReadError("transport")); }, DEADLINE);
+      timer = setTimeout(() => { controller.abort(); reject(failure("transport")); }, DEADLINE);
     });
     async function consume(): Promise<Record<string, unknown>> {
       budget.waiters++;
       try {
         while (budget.busy) {
-          if (controller.signal.aborted) throw new CheckinReadError("transport");
-          if (waited >= MAX_WAIT || now() - started >= MAX_WAIT) throw new CheckinReadError("http");
+          if (controller.signal.aborted) throw failure("transport");
+          if (waited >= MAX_WAIT || now() - started >= MAX_WAIT) throw failure("http");
           await sleep(25);
           waited += 25;
         }
-        if (controller.signal.aborted) throw new CheckinReadError("transport");
+        if (controller.signal.aborted) throw failure("transport");
         // No await between observing the free slot and reserving it.
         budget.busy = true;
         claimed = true;
       } finally { budget.waiters--; }
       for (let attempt = 0; attempt < 3; attempt++) {
-        if (controller.signal.aborted) throw new CheckinReadError("transport");
+        if (controller.signal.aborted) throw failure("transport");
         if (now() >= budget.resetAt) { budget.remaining = budget.limit; budget.resetAt = now() + 60_000; }
         // Real timers can wake before the wall-clock deadline. Recheck and wait
         // only the remainder, within the same total allowance; never send early.
         while (true) {
           const wait = Math.max(0, budget.blockedUntil - now(), budget.remaining <= RESERVE ? budget.resetAt - now() : 0);
           if (wait <= 0) break;
-          if (waited + wait > MAX_WAIT || now() - started + wait >= DEADLINE) throw new CheckinReadError("http");
+          if (waited + wait > MAX_WAIT || now() - started + wait >= DEADLINE) throw failure("http");
           waited += wait;
           await sleep(wait);
-          if (controller.signal.aborted) throw new CheckinReadError("transport");
+          if (controller.signal.aborted) throw failure("transport");
         }
-        if (controller.signal.aborted) throw new CheckinReadError("transport");
-        if (now() < budget.blockedUntil || (budget.remaining <= RESERVE && now() < budget.resetAt)) throw new CheckinReadError("http");
+        if (controller.signal.aborted) throw failure("transport");
+        if (now() < budget.blockedUntil || (budget.remaining <= RESERVE && now() < budget.resetAt)) throw failure("http");
         if (now() >= budget.resetAt) { budget.remaining = budget.limit; budget.resetAt = now() + 60_000; }
-        if (budget.remaining <= RESERVE) throw new CheckinReadError("http");
+        if (budget.remaining <= RESERVE) throw failure("http");
         budget.remaining--;
         let response: Response;
         try {
@@ -86,12 +97,13 @@ export function createCheckinUpstreamReader(config: { base: string; key: string 
         } catch (error) {
           // Native fetch network failures are TypeError; configuration/fixture
           // programmer errors are not automatically retried. Timeout owns deadline.
-          if (!(error instanceof TypeError) || controller.signal.aborted) throw new CheckinReadError("transport");
+          if (!(error instanceof TypeError) || controller.signal.aborted) throw failure("transport");
           budget.blockedUntil = Math.max(budget.blockedUntil, now() + backoff(attempt));
-          if (attempt === 2) throw new CheckinReadError("transport");
+          if (attempt === 2) throw failure("transport");
           continue;
         }
-        if (controller.signal.aborted) { void response.body?.cancel().catch(() => undefined); throw new CheckinReadError("transport"); }
+        if (controller.signal.aborted) { void response.body?.cancel().catch(() => undefined); throw failure("transport"); }
+        status = response.status;
         const remaining = numericHeader(response.headers, "X-RateLimit-Remaining");
         const reset = numericHeader(response.headers, "X-RateLimit-Reset");
         const limit = numericHeader(response.headers, "X-RateLimit-Limit");
@@ -111,7 +123,7 @@ export function createCheckinUpstreamReader(config: { base: string; key: string 
         if (retryAfter !== null) {
           const until = /^\d+$/.test(retryAfter) ? now() + Number(retryAfter) * 1000 : Date.parse(retryAfter);
           // Malformed delay cannot authorize hot retries.
-          budget.blockedUntil = Math.max(budget.blockedUntil, Number.isFinite(until) ? until : now() + 60_000);
+          budget.blockedUntil = Math.max(budget.blockedUntil, Number.isNaN(until) ? now() + 60_000 : until);
         }
         if (response.status !== 200 || response.redirected) {
           void response.body?.cancel().catch(() => undefined);
@@ -119,11 +131,11 @@ export function createCheckinUpstreamReader(config: { base: string; key: string 
             budget.blockedUntil = Math.max(budget.blockedUntil, now() + backoff(attempt));
             if (attempt < 2) continue;
           }
-          throw new CheckinReadError("http");
+          throw failure("http");
         }
-        if (Number(response.headers.get("content-length")) > LIMIT) { void response.body?.cancel().catch(() => undefined); throw new CheckinReadError("limit"); }
+        if (Number(response.headers.get("content-length")) > LIMIT) { void response.body?.cancel().catch(() => undefined); throw failure("limit"); }
         const reader = response.body?.getReader();
-        if (!reader) throw new CheckinReadError("contract");
+        if (!reader) throw failure("contract");
         // AbortController alone does not cancel a custom/fixture response body.
         // Explicit cancellation also releases pending reads and buffered chunks.
         const cancelBody = () => { void reader.cancel().catch(() => undefined); };
@@ -133,10 +145,10 @@ export function createCheckinUpstreamReader(config: { base: string; key: string 
         try {
           while (true) {
             const chunk = await reader.read();
-            if (controller.signal.aborted) throw new CheckinReadError("transport");
+            if (controller.signal.aborted) throw failure("transport");
             if (chunk.done) break;
             size += chunk.value.byteLength;
-            if (size > LIMIT) { void reader.cancel().catch(() => undefined); throw new CheckinReadError("limit"); }
+            if (size > LIMIT) { void reader.cancel().catch(() => undefined); throw failure("limit"); }
             chunks.push(chunk.value);
           }
         } finally {
@@ -147,9 +159,9 @@ export function createCheckinUpstreamReader(config: { base: string; key: string 
           const body: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
           if (body === null || typeof body !== "object" || Array.isArray(body)) throw new Error();
           return body as Record<string, unknown>;
-        } catch { throw new CheckinReadError("contract"); }
+        } catch { throw failure("contract"); }
       }
-      throw new CheckinReadError("http");
+      throw failure("http");
     }
     function backoff(attempt: number) { return 200 * 2 ** attempt + Math.floor(Math.max(0, Math.min(1, random())) * 100); }
     try { return await Promise.race([consume(), timeout]); }

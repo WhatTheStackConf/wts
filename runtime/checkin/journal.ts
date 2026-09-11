@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { closeSync, openSync, fsyncSync, lstatSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { AgentError, validIdentity, validWork, type AgentIdentity, type JournalAttempt } from "./protocol.js";
+import { AgentError, validIdentity, validPrintPayload, validWork, type AgentIdentity, type JournalAttempt } from "./protocol.js";
 
 interface State { generation: 1; identity: AgentIdentity; sequence: number; attempts: JournalAttempt[] }
 function digest(data: string) { return createHash("sha256").update(data).digest("hex"); }
@@ -47,8 +47,10 @@ export class AgentJournal {
       if (state.generation !== 1 || !Number.isSafeInteger(state.sequence) || state.sequence < 1 || !Array.isArray(state.attempts)) throw new Error();
       validIdentity(state.identity);
       for (const attempt of state.attempts) {
-        validWork({ attemptId: attempt.attemptId, profileId: attempt.profileId, payloadHash: attempt.payloadHash });
-        if (!["received", "authorized", "possibly_starting", "started", "reported"].includes(attempt.state)) throw new Error();
+        validWork({ attemptId: attempt.attemptId, profileId: attempt.profileId, payloadHash: attempt.payloadHash, ...(attempt.payload ? { payload: attempt.payload } : {}) });
+        if (!["received", "authorized", "possibly_starting", "started", "possibly_printing", "reported", "cancelled"].includes(attempt.state)) throw new Error();
+        if (attempt.payload) validPrintPayload(attempt.payload);
+        this.validateCancellation(attempt);
       }
       if (identityKey(state.identity) !== identityKey(identity)) throw new AgentError("journal_restored");
       this.state = state;
@@ -78,17 +80,27 @@ export class AgentJournal {
   heartbeat() { this.save(structuredClone(this.state)); return this.snapshot(); }
   get(attemptId: string): JournalAttempt | undefined { this.checkFile(); return structuredClone(this.state.attempts.find(a => a.attemptId === attemptId)); }
   pending(): JournalAttempt[] { this.checkFile(); return structuredClone(this.state.attempts); }
+  private validateCancellation(attempt: JournalAttempt) {
+    const c = attempt.cancellation;
+    if (c && (!Object.keys(c).every(key => ["cancellationId", "disposition", "acknowledged", "startState"].includes(key)) || !/^[a-z0-9]{15}$/.test(c.cancellationId) || typeof c.acknowledged !== "boolean" || !["neutralized", "settled"].includes(c.disposition) || (c.startState !== undefined && (c.startState !== "not_started" || c.disposition !== "neutralized")) || (c.disposition === "neutralized" ? attempt.state !== "cancelled" : attempt.state !== "reported"))) throw new AgentError("attempt_conflict");
+    if (attempt.state === "cancelled" && !c) throw new AgentError("attempt_conflict");
+  }
   put(attempt: JournalAttempt): void {
+    validWork({ attemptId: attempt.attemptId, profileId: attempt.profileId, payloadHash: attempt.payloadHash, ...(attempt.payload ? { payload: attempt.payload } : {}) });
+    this.validateCancellation(attempt);
     const next = structuredClone(this.state);
     const index = next.attempts.findIndex(a => a.attemptId === attempt.attemptId);
     if (index >= 0) {
       const old = next.attempts[index];
       const transitions: Record<JournalAttempt["state"], JournalAttempt["state"][]> = {
-        received: ["received", "authorized"], authorized: ["authorized", "possibly_starting"],
-        possibly_starting: ["possibly_starting", "started", "reported"], started: ["started", "reported"], reported: ["reported"],
+        received: ["received", "authorized", "cancelled"], authorized: ["authorized", "possibly_starting", "cancelled"], cancelled: ["cancelled"],
+        possibly_starting: ["possibly_starting", "started", "reported"], started: ["started", "possibly_printing", "reported"], possibly_printing: ["possibly_printing", "reported"], reported: ["reported"],
       };
-      if (!transitions[old.state].includes(attempt.state)) throw new AgentError("attempt_conflict");
-      if (old.profileId !== attempt.profileId || old.payloadHash !== attempt.payloadHash || (old.authorizationHash && old.authorizationHash !== attempt.authorizationHash) || (old.outcome && old.outcome !== attempt.outcome)) throw new AgentError("attempt_conflict");
+      const provedUnstarted = old.state === "possibly_starting" && attempt.state === "cancelled" && attempt.cancellation?.startState === "not_started";
+      if (!provedUnstarted && !transitions[old.state].includes(attempt.state)) throw new AgentError("attempt_conflict");
+      if (old.profileId !== attempt.profileId || old.payloadHash !== attempt.payloadHash || JSON.stringify(old.payload) !== JSON.stringify(attempt.payload) || (old.authorizationHash && old.authorizationHash !== attempt.authorizationHash) || (old.outcome && old.outcome !== attempt.outcome)) throw new AgentError("attempt_conflict");
+      if (old.authorization && JSON.stringify(old.authorization) !== JSON.stringify(attempt.authorization)) throw new AgentError("attempt_conflict");
+      if (old.cancellation && (!attempt.cancellation || old.cancellation.cancellationId !== attempt.cancellation.cancellationId || old.cancellation.disposition !== attempt.cancellation.disposition || old.cancellation.startState !== attempt.cancellation.startState || (old.cancellation.acknowledged && !attempt.cancellation.acknowledged))) throw new AgentError("attempt_conflict");
       next.attempts[index] = structuredClone(attempt);
     } else next.attempts.push(structuredClone(attempt));
     this.save(next);

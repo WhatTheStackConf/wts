@@ -1,4 +1,11 @@
-import type { CheckinActor, CheckinReasonCode, CheckinStationId } from "~/lib/checkin-contract";
+import type { CheckinActor, CheckinReasonCode, CheckinStationId } from "./checkin-contract.js";
+
+/** Injected read-only transport boundary. Never accepts browser credentials. */
+export interface CheckinEventSource {
+  sourceKey: string;
+  discover(): Promise<{ state: "complete" | "partial" | "unavailable"; events: { id: string; title: string }[] }>;
+  options(eventId: string): Promise<CheckinEventOptions>;
+}
 
 /** Browser-safe event configuration protocol. No list capability or credential. */
 export interface CheckinAffiliationMapping { questionId: string; productIds: string[] }

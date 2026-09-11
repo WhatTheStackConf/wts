@@ -1,7 +1,7 @@
 /** Server-only admission discovery. No imports from the ticket/gamification adapter.
  * Source contract and deployment prerequisites: docs/checkin-hievents-contract.md.
  */
-import { CheckinReadError, createCheckinUpstreamReader, type CheckinReadDependencies } from "~/lib/checkin-upstream-read";
+import { CheckinReadError, createCheckinUpstreamReader, type CheckinReadDependencies } from "./checkin-upstream-read.js";
 
 export type DiscoveryFailureReason = "configuration" | "invalid_event_id" | "transport" | "http" | "contract" | "limit";
 export type DiscoveryResult<T> =

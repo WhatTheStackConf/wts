@@ -1,13 +1,20 @@
 import { createHash, randomBytes } from "node:crypto";
+import { CheckinReadError } from "../../src/lib/checkin-upstream-read.js";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import type PocketBase from "pocketbase";
+import { validResetJob, type ResetJob, type ResetOutcome, type ResetTransport, type Cancellation } from "./protocol.js";
 import type { AgentReadinessDTO, Work as Attempt, Authorization, AdmissionJob, AdmissionOutcome, AdmissionProcessor } from "./protocol.js";
 
 interface Options { now?: () => number; heartbeatIntervalMs?: number; heartbeatTimeoutMs?: number; authorizationTtlMs?: number }
 interface Replies {
+  policy: Record<string, unknown>;
+  purge_complete: Record<string, unknown>;
   heartbeat: { station: AgentReadinessDTO };
   status: { station: AgentReadinessDTO };
   work: { attempts: Attempt[] };
+  cancellations: { cancellations: Cancellation[] };
+  neutralized: { cancellationId: string; acknowledged: true };
+  ack: { attemptId: string; acknowledged: true };
   authorize: Authorization;
   start: { attemptId: string; started: true; reportUntil: string };
   outcome: { attemptId: string; outcome: "protocol_complete" | "output_uncertain" };
@@ -17,8 +24,12 @@ class Rejected extends Error {
   constructor(readonly status: number) { super("Agent request rejected."); }
 }
 const fields: Record<Operation, string[]> = {
+  policy: ["stationId", "journalIdentity"],
+  purge_complete: ["stationId", "journalIdentity", "purgeToken", "method"],
   heartbeat: ["stationId", "agentIdentity", "printerIdentity", "journalIdentity", "profileId", "protocolGeneration", "schemaGeneration", "journalSequence", "journalDigest", "journalState"],
-  status: ["stationId"], work: ["stationId"],
+  status: ["stationId"], work: ["stationId"], cancellations: ["stationId"],
+  neutralized: ["stationId", "attemptId", "payloadHash", "cancellationId", "disposition"],
+  ack: ["stationId", "attemptId", "payloadHash"],
   authorize: ["stationId", "attemptId", "payloadHash", "authorizationHash"],
   start: ["stationId", "attemptId", "payloadHash", "authorizationHash"],
   outcome: ["stationId", "attemptId", "authorizationHash", "outcome"],
@@ -28,15 +39,19 @@ function shape(value: unknown, keys: string[]): value is Record<string, unknown>
 }
 function matches(value: unknown, regex: RegExp) { return typeof value === "string" && regex.test(value); }
 function validate(operation: string, payload: unknown): asserts operation is Operation {
-  if (!Object.hasOwn(fields, operation) || !shape(payload, fields[operation as Operation])) throw new Rejected(400);
+  const baseKeys = Object.hasOwn(fields, operation) ? fields[operation as Operation] : [];
+  const keys = operation === "work" && payload && typeof payload === "object" && Object.hasOwn(payload, "purpose") ? ["stationId", "purpose"] : baseKeys;
+  if (!Object.hasOwn(fields, operation) || !shape(payload, keys)) throw new Rejected(400);
+  if (operation === "work" && Object.hasOwn(payload, "purpose") && !["initial", "label"].includes(String(payload.purpose))) throw new Rejected(400);
   if (!matches(payload.stationId, /^wts2026station[123]$/)) throw new Rejected(400);
   for (const [key, value] of Object.entries(payload)) {
     if (["payloadHash", "authorizationHash", "journalDigest"].includes(key) && !matches(value, /^[a-f0-9]{64}$/)) throw new Rejected(400);
     if (["agentIdentity", "printerIdentity", "journalIdentity"].includes(key) && !matches(value, /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/)) throw new Rejected(400);
-    if (key === "attemptId" && !matches(value, /^[a-z0-9]{15}$/)) throw new Rejected(400);
+    if (["attemptId", "cancellationId"].includes(key) && !matches(value, /^[a-z0-9]{15}$/)) throw new Rejected(400);
     if (key === "profileId" && !matches(value, /^(?:[a-z0-9]{15})?$/)) throw new Rejected(400);
     if (["protocolGeneration", "schemaGeneration", "journalSequence"].includes(key) && (!Number.isSafeInteger(value) || (value as number) < 1)) throw new Rejected(400);
   }
+  if (operation === "neutralized" && !["neutralized", "settled"].includes(String(payload.disposition))) throw new Rejected(400);
   if (operation === "heartbeat" && !["healthy", "lost", "corrupt", "restored"].includes(String(payload.journalState))) throw new Rejected(400);
   if (operation === "outcome" && !["protocol_complete", "output_uncertain"].includes(String(payload.outcome))) throw new Rejected(400);
 }
@@ -72,6 +87,24 @@ export class Coordinator {
     if (this.server || this.active) throw new Rejected(409);
     await this.command("machine_acquire", { config: this.config });
     this.active = true;
+    return this.listenGateway(host, port);
+  }
+  async lifecycleMode(): Promise<"open" | "closed" | "restore_required"> {
+    const result = await this.command<{ mode: string }>("machine_coordinator_status");
+    if (!["open", "closed", "restore_required"].includes(result.mode)) throw new Rejected(503);
+    return result.mode as "open" | "closed" | "restore_required";
+  }
+  /** One-way in this process: reopening requires explicit operator restart. */
+  async enterReportingOnly(): Promise<void> {
+    if (await this.lifecycleMode() === "open") throw new Rejected(409);
+    this.active = false;
+  }
+  async listenReportingOnly(host = "127.0.0.1", port = 0): Promise<string> {
+    if (this.server || this.active) throw new Rejected(409);
+    await this.enterReportingOnly();
+    return this.listenGateway(host, port);
+  }
+  private async listenGateway(host: string, port: number): Promise<string> {
     const server = createServer({ maxHeaderSize: 8192, requestTimeout: 10000, headersTimeout: 10000 }, (req, res) => { void this.handle(req, res); });
     server.maxRequestsPerSocket = 100;
     server.timeout = 10000;
@@ -97,6 +130,61 @@ export class Coordinator {
     if (!this.active || !matches(agentId, /^[a-z0-9]{15}$/) || !matches(payloadHash, /^[a-f0-9]{64}$/)) throw new Rejected(400);
     return this.command("machine_prepare", { agentId, payloadHash });
   }
+  private async resetCommand<T>(operation: string, data: object = {}): Promise<T> {
+    if (!this.active) throw new Rejected(503);
+    try {
+      return await this.pb.send<T>("/api/wts/checkin-recovery", { method: "POST", body: { ...data, operation, owner: this.owner, nowMs: this.now() }, requestKey: null, signal: AbortSignal.timeout(5000) });
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      throw new Rejected(status && [400, 403, 409].includes(status) ? status : 503);
+    }
+  }
+  /** Privileged producer only: the committed claim is the durable possibly-sent fence. */
+  async claimReset(): Promise<ResetJob | null> {
+    const result = await this.resetCommand<unknown>("machine_reset_claim");
+    if (!shape(result, ["job"])) throw new Rejected(503);
+    return result.job === null ? null : validResetJob(result.job);
+  }
+  async recordResetResult(resetId: string, outcome: ResetOutcome): Promise<{ resetId: string; state: ResetOutcome }> {
+    if (!matches(resetId, /^[a-z0-9]{15}$/) || !["deleted", "uncertain", "identity_changed"].includes(outcome)) throw new Rejected(400);
+    const result = await this.resetCommand<unknown>("machine_reset_result", { resetId, outcome });
+    if (!shape(result, ["resetId", "state"]) || result.resetId !== resetId || result.state !== outcome) throw new Rejected(503);
+    return { resetId, state: outcome };
+  }
+  private async fenceResetDelete(job: ResetJob): Promise<void> {
+    if (!this.active) throw new Rejected(503);
+    const result = await this.pb.send<unknown>("/api/wts/checkin-reset-fence", {
+      method: "POST", body: { operation: "machine_reset_fence", owner: this.owner, nowMs: this.now(), job },
+      requestKey: null, signal: AbortSignal.timeout(5000),
+    });
+    if (!shape(result, ["resetId", "authorized"]) || result.resetId !== job.resetId || result.authorized !== true) throw new Rejected(503);
+  }
+  /** Claim is nonreplayable; fresh inspection must precede the one-time send grant. */
+  async processResets(transport: ResetTransport, limit = 10): Promise<number> {
+    // Reject the legacy one-argument contract rather than silently allowing unfenced DELETE.
+    if (typeof transport?.reset !== "function" || transport.reset.length < 2) throw new Rejected(400);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Rejected(400);
+    let processed = 0;
+    while (processed < limit) {
+      const job = await this.claimReset();
+      if (!job) break;
+      let outcome: ResetOutcome = "uncertain";
+      let attempted = false, granted = false, finished = false;
+      try {
+        const value = await transport.reset(structuredClone(job), async () => {
+          if (attempted || finished) throw new Rejected(409);
+          attempted = true; // Even a lost grant response consumes this callback.
+          await this.fenceResetDelete(job);
+          granted = true;
+        });
+        if (value === "uncertain" || value === "identity_changed" && !attempted || value === "deleted" && granted) outcome = value;
+      } catch { /* A timeout/crash/lost fence or DELETE response never permits a retry. */ }
+      finally { finished = true; }
+      await this.recordResetResult(job.resetId, outcome);
+      processed++;
+    }
+    return processed;
+  }
   /** Claim one reserved arrival and persist its possibly-sent boundary. */
   async claimAdmission(): Promise<AdmissionJob | null> {
     if (!this.active) throw new Rejected(503);
@@ -111,8 +199,15 @@ export class Coordinator {
   private async fenceAdmissionSend(job: AdmissionJob): Promise<void> {
     await this.admissionCommand("machine_admission_fence", { attemptId: job.attemptId, coordinatorGeneration: job.coordinatorGeneration });
   }
-  private async releaseAdmission(job: AdmissionJob): Promise<void> {
-    await this.admissionCommand("machine_admission_release", { attemptId: job.attemptId });
+  private async releaseAdmission(job: AdmissionJob, error?: unknown): Promise<void> {
+    await this.admissionCommand("machine_admission_release", { attemptId: job.attemptId, retryAfterMs: error instanceof CheckinReadError ? error.retryAfterMs : 0, retryBlocked: error instanceof CheckinReadError && error.retryBlocked });
+  }
+  /** Stage queued initial labels as agent-owned work; the agent performs USB I/O. */
+  async claimPrints(limit = 10): Promise<number> {
+    if (!this.active || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Rejected(400);
+    const result = await this.command<{ claimed: number }>("machine_print_claim", { limit });
+    if (!Number.isSafeInteger(result.claimed) || result.claimed < 0 || result.claimed > limit) throw new Rejected(503);
+    return result.claimed;
   }
   private async reconcileAdmissions(): Promise<void> {
     await this.admissionCommand("machine_admission_reconcile");
@@ -140,9 +235,9 @@ export class Coordinator {
             ? { state: "existing_unattributed", fingerprint: createHash("sha256").update(`wts2026:existing:${job.upstreamEventId}:${job.upstreamAttendeeId}:${job.upstreamListId}`).digest("hex") }
             : await processor.admit(job, attendee);
         }
-      } catch {
+      } catch (error) {
         if (sendFenced) outcome = { state: "uncertain" };
-        else try { await this.releaseAdmission(job); } catch { /* A failed release is recovered by the next coordinator generation. */ }
+        else try { await this.releaseAdmission(job, error); } catch { /* A failed release is recovered by the next coordinator generation. */ }
       }
       if (outcome) {
         try { await this.recordAdmissionResult(job.attemptId, outcome); }
@@ -159,8 +254,16 @@ export class Coordinator {
   async machine<K extends Operation>(credential: string, operation: K, payload: unknown): Promise<Replies[K]> {
     if (!matches(credential, /^wts_agent_[a-f0-9]{64}$/)) throw new Rejected(403);
     validate(operation, payload);
-    if (!this.active) throw new Rejected(503);
     const credentialHash = createHash("sha256").update(`wts2026:agent:${credential}`).digest("hex");
+    if (operation === "policy" || operation === "purge_complete") {
+      try {
+        return await this.pb.send<Replies[K]>("/api/wts/checkin-lifecycle-proxy", { method: "POST", body: { operation: `machine_${operation}`, credentialHash, payload }, requestKey: null, signal: AbortSignal.timeout(5000) });
+      } catch (error) {
+        const status = (error as { status?: number }).status;
+        throw new Rejected(status && [400, 403, 409].includes(status) ? status : 503);
+      }
+    }
+    if (!this.active && !["status", "outcome", "cancellations", "neutralized"].includes(operation)) throw new Rejected(503);
     return this.command(`machine_${operation}`, { credentialHash, payload });
   }
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {

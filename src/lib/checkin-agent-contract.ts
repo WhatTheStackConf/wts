@@ -1,4 +1,4 @@
-import type { CheckinActor, CheckinReasonCode, CheckinStationId } from "~/lib/checkin-contract";
+import type { CheckinActor, CheckinReasonCode, CheckinStationId } from "./checkin-contract.js";
 export interface AgentReadinessDTO {
   stationId: CheckinStationId; stationLabel: string; stationVersion: number; agentId: string | null;
   credentialState: "not_issued" | "active" | "expired" | "revoked"; credentialExpiresAt: string | null;

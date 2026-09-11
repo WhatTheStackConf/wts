@@ -5,12 +5,8 @@ import type { CheckinAdminEventCatalogue, CheckinConfigureEvent, CheckinConfigur
 import { CheckinError } from "~/lib/checkin-service";
 import { checkinUpstreamId, configureCheckinEventSchema, checkinEventContextSchema, selectCheckinEventSchema } from "~/lib/checkin-event-validation";
 
-/** Injected read-only transport boundary. Never accepts browser credentials. */
-export interface CheckinEventSource {
-  sourceKey: string;
-  discover(): Promise<{ state: "complete" | "partial" | "unavailable"; events: { id: string; title: string }[] }>;
-  options(eventId: string): Promise<CheckinEventOptions>;
-}
+export type { CheckinEventSource } from "./checkin-event-contract.js";
+import type { CheckinEventSource } from "./checkin-event-contract.js";
 interface Configurations { configurations: CheckinEventConfiguration[]; sourceMismatch: boolean }
 export class CheckinEventService implements CheckinEventServiceContract {
   constructor(private readonly pb: PocketBase, private readonly actor: CheckinActor, private readonly source: CheckinEventSource) {}

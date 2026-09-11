@@ -32,6 +32,9 @@
     "runtime",
     "vite.config.ts",
     "playwright.config.ts",
-    "tests/checkin*.ts"
+    "playwright.lifecycle.config.ts",
+    "tests/checkin*.ts",
+    "tests/checkin*.tsx",
+    "tests/fixtures/checkin*.tsx"
   ]
 }

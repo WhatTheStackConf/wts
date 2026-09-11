@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { CHECKIN_STATION_IDS } from "~/lib/checkin-contract";
-import { LABEL_FONT_VERSION, LABEL_RENDERER_VERSION, LABEL_TEXT_MAX_LENGTH } from "~/lib/checkin-label-render-contract";
+import { CHECKIN_STATION_IDS } from "./checkin-contract.js";
+import { LABEL_FONT_VERSION, LABEL_RENDERER_VERSION, LABEL_TEXT_MAX_LENGTH } from "./checkin-label-render-contract.js";
 
 /** Browser-safe structural schemas shared with the server renderer. Geometric
  * fitting and live approval authority are still enforced on the server. */

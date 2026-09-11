@@ -1,4 +1,4 @@
-import { test, expect, login, status, sessionCookieHeader } from "./checkin-fixtures";
+import { test, expect, login, status, phoneProvisioning, sessionCookieHeader } from "./checkin-fixtures";
 
 test("existing Users controls promote and demote a live operator session", async ({ page, state, db, actorPage }) => {
   const ordinary = await actorPage(state.users.ordinary);
@@ -16,7 +16,8 @@ test("existing Users controls promote and demote a live operator session", async
   await expect(row.getByRole("button", { name: "Check-in Operator", exact: true })).toBeVisible();
   expect((await db.collection("users").getOne(state.users.ordinary.id)).role).toBe("checkin_operator");
   // The existing cookie is revalidated, rather than forging a role in storage.
-  await ordinary.goto("/checkin");
+  await ordinary.goto("/checkin-tools");
+  await phoneProvisioning(ordinary);
   await expect(ordinary.getByLabel("Station provisioning code")).toBeVisible();
   expect((await status(ordinary)).bindingState).toBe("unbound");
   await row.getByRole("button", { name: "Check-in Operator", exact: true }).click();

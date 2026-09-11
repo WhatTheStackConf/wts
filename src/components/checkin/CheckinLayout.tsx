@@ -29,6 +29,7 @@ export function CheckinLayout(props: CheckinLayoutProps) {
         <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
           <a href="/checkin" target="_self" class="font-mono text-lg font-bold">WTS 2026 / CHECK-IN</a>
           <nav aria-label="Check-in navigation" class="flex flex-wrap items-center gap-3">
+            <a href="/checkin" target="_self" class="btn btn-ghost min-h-12">Back to scanner</a>
             <Show when={auth.user?.role === "admin"}>
               <a href="/admin/checkin" target="_self" class="btn btn-outline min-h-12">Station administration</a>
               <a href="/admin/users" target="_self" class="btn btn-ghost min-h-12">User roles</a>

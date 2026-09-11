@@ -1,0 +1,8 @@
+# Observed on wts-station-1.local (2026-09-11). Not installed or production approval.
+# After separately authorized provisioning, install as an agent service drop-in.
+# Preserve the base service's user, ownership lock and device sandbox.
+[Service]
+ExecStart=
+ExecStart=/usr/bin/flock --nonblock --no-fork /var/lib/wts-checkin-agent/owner.lock /usr/local/bin/node /opt/wts/.output/checkin-runtime/runtime/checkin/cli.js agent /etc/wts-checkin/agent.json
+DeviceAllow=
+DeviceAllow=/dev/serial/by-id/usb-NIIMBOT_B1_LABEL_PRINTER_B1-GC0612113-if00 rw

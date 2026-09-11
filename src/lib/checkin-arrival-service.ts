@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
+import type { CheckinArrivalStatus } from "~/lib/checkin-arrival-contract";
 import type PocketBase from "pocketbase";
 import type { CheckinActor } from "~/lib/checkin-contract";
 import type { CheckinEventSnapshot } from "~/lib/checkin-event-contract";
@@ -42,6 +44,10 @@ export class CheckinArrivalService implements CheckinArrivalServiceContract {
       try { affiliation = await this.source.affiliation(start.snapshot, resolution.attendee); } catch { affiliation = { state: "unavailable" }; }
     }
     return this.request("finish", { ...args, readiness: start.readiness, resolution, affiliation });
+  }
+  async status(bindingToken: string | undefined, operationId: string): Promise<CheckinArrivalStatus> {
+    if (!z.uuid().safeParse(operationId).success) throw new CheckinError("invalid_input", 400);
+    return this.request("status", { identityHash: checkinEventBindingHash(bindingToken), operationId });
   }
   async history(bindingToken: string | undefined, query: CheckinArrivalHistoryQuery = {}): Promise<CheckinArrivalHistory> {
     const parsed = checkinArrivalHistoryQuerySchema.safeParse(query);

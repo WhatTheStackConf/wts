@@ -17,6 +17,7 @@ export interface CheckinArrivalWorkflow {
   eventId: string;
   eventTitle: string;
   state: "not_submitted" | "admission_pending" | "accepted" | "existing_unattributed" | "rejected" | "admission_uncertain";
+  printState?: "queued" | "dispatched" | "completed" | "uncertain" | "cancelled" | null;
   name: string;
   affiliation: string;
   profileId: string;
@@ -24,7 +25,7 @@ export interface CheckinArrivalWorkflow {
 }
 export type CheckinArrivalDecision =
   | { state: "reserved" | "existing"; workflow: CheckinArrivalWorkflow }
-  | { state: "accepted"; workflow: CheckinArrivalWorkflow; printIntentId: string }
+  | { state: "accepted"; workflow: CheckinArrivalWorkflow; printIntentId: string | null; /** Required exactly when intent is null; enforced by the public validator. */ printSuppression?: "lifecycle" }
   | { state: "admission_pending" | "admission_uncertain" | "existing_unattributed"; workflow: CheckinArrivalWorkflow }
   | { state: "already_handled" }
   | { state: "rejected"; reason: CheckinArrivalRejection }
@@ -61,7 +62,14 @@ export interface CheckinArrivalHistory {
   operationsEnabled: false;
 }
 
+/** Absence is unknown, never evidence of no send or permission for new intake. */
+export interface CheckinArrivalStatus {
+  operationId: string;
+  result: CheckinArrivalDecision | null;
+  operationsEnabled: false;
+}
 export interface CheckinArrivalServiceContract {
+  status(bindingToken: string | undefined, operationId: string): Promise<CheckinArrivalStatus>;
   preflight(bindingToken: string | undefined, input: CheckinArrivalInput): Promise<CheckinArrivalResult>;
   history(bindingToken: string | undefined, query?: CheckinArrivalHistoryQuery): Promise<CheckinArrivalHistory>;
 }

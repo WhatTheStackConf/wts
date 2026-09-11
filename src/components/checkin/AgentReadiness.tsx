@@ -58,7 +58,7 @@ export function AgentReadiness(props: AgentReadinessProps) {
       <Show when={props.station.credentialExpiresAt}><p class="text-sm">Credential expiry: {props.station.credentialExpiresAt}</p></Show>
       <Show when={props.station.reasons.includes("printer_output_unresolved")}><p role="status" class="alert alert-warning">A previously started task has unresolved printer output. New starts remain blocked; reconnecting or restoring the station does not clear physical uncertainty.</p></Show>
       <Show when={props.station.journal === "quarantined"}><p role="status" class="alert alert-warning">Station quarantined. An admin must investigate identity and journal history before issuing a replacement identity. Reconnection does not clear quarantine.</p></Show>
-      <p class="font-bold text-warning">Admission and printing remain disabled. Connection alone is not printer or media approval.</p>
+      <p class="font-bold text-warning">Supervised admission and printing require current station readiness. Connection alone is not printer or media approval.</p>
     </section>
   );
 }

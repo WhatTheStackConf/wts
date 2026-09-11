@@ -30,12 +30,24 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
       const october = new Date(Date.UTC(year, 9, 31, 1)); october.setUTCDate(31 - october.getUTCDay());
       return new Date(time + (time >= march.getTime() && time < october.getTime() ? 2 : 1) * 3600000).toISOString().slice(0, 10);
     }
-    function workflowDTO(w) { return { id: w.id, stationId: w.getString("station_id"), eventId: w.getString("event_id"), eventTitle: w.getString("event_title"), state: w.getString("state"), name: w.getString("name"), affiliation: w.getString("affiliation"), profileId: w.getString("profile_id"), createdAt: w.getString("created") }; }
+    function latestPrint(w) {
+      const recovery = find(app, "checkin_recovery_workflows", "workflow_id = {:id}", { id: w.id });
+      const latest = recovery && recovery.getString("latest_print_id");
+      return (latest && find(app, "checkin_print_attempts", "id = {:id} && workflow_id = {:workflow} && station_id = {:station}", { id: latest, workflow: w.id, station: w.getString("station_id") }))
+        || find(app, "checkin_print_attempts", "workflow_id = {:workflow} && station_id = {:station}", { workflow: w.id, station: w.getString("station_id") }, "-created,-id");
+    }
+    function workflowDTO(w) { const print = latestPrint(w); return { id: w.id, stationId: w.getString("station_id"), eventId: w.getString("event_id"), eventTitle: w.getString("event_title"), state: w.getString("state"), printState: print ? print.getString("state") : null, name: w.getString("name"), affiliation: w.getString("affiliation"), profileId: w.getString("profile_id"), createdAt: w.getString("created") }; }
     if (machine) {
       const runtime = app.findRecordById("checkin_coordinator", "wts2026coord000");
-      if (!hash(b.owner) || runtime.getString("owner") !== b.owner) fail("forbidden", 403);
-      const seen = Date.parse(runtime.getString("last_seen_at"));
-      if (!Number.isFinite(seen) || now - seen < 0 || now - seen >= runtime.getInt("heartbeat_timeout_ms")) fail("unavailable", 503);
+      const lifecycle = require(__hooks + "/checkin-lifecycle.js");
+      const outcomeOnly = b.operation === "machine_admission_result";
+      function currentOwner() {
+        if (!hash(b.owner) || runtime.getString("owner") !== b.owner) fail("forbidden", 403);
+        const seen = Date.parse(runtime.getString("last_seen_at"));
+        if (!Number.isFinite(seen) || now - seen < 0 || now - seen >= runtime.getInt("heartbeat_timeout_ms")) fail("unavailable", 503);
+      }
+      if (outcomeOnly) lifecycle.assertOutcome(app, now);
+      else { currentOwner(); lifecycle.assertNewWork(app); }
       function currentAgent(stationId) { return find(app, "checkin_agents", "station = {:station}", { station: stationId }, "-revision"); }
       function ready(station, agent) {
         if (!system.getBool("enabled") || !station.getBool("enabled") || !agent || agent.getBool("revoked") || agent.getBool("quarantined")) return false;
@@ -47,7 +59,10 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
         if (!profile || profile.id !== agent.getString("profile_id") || profile.id !== agent.getString("reported_profile") || profile.getInt("station_version") !== (station.getInt("profile_config_version") || station.getInt("version")) || !approval || approval.getInt("station_version") !== (station.getInt("profile_config_version") || station.getInt("version"))) return false;
         const config = json(profile, "config");
         if (!config || config.synthetic || config.printerRef !== station.getString("printer_ref") || config.printerRef !== agent.getString("printer_identity")) return false;
-        return true;
+        if (require(__hooks + "/checkin-recovery.js").isolated(app, station.id)) return false;
+        const unresolved = new DynamicModel({ present: 0 });
+        app.db().newQuery("SELECT EXISTS (SELECT 1 FROM checkin_agent_authorizations a JOIN checkin_agents g ON g.id = a.agent_id WHERE g.station = {:station} AND a.started_at != '' AND a.outcome != 'protocol_complete' AND NOT EXISTS (SELECT 1 FROM checkin_recovery_observations o WHERE o.agent_attempt_id = a.attempt_id)) AS present").bind({ station: station.id }).one(unresolved);
+        return !unresolved.present;
       }
       function admissionAudit(command, workflow, operation, state) {
         const human = find(app, "users", "id = {:id}", { id: command.getString("actor_user_id") });
@@ -62,7 +77,7 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
         const workflow = app.findRecordById("checkin_arrival_workflows", attempt.getString("workflow_id"));
         const command = app.findRecordById("checkin_arrival_commands", attempt.getString("command_id"));
         set(attempt, { state: "uncertain" }); set(workflow, { state: "admission_uncertain" });
-        app.save(attempt);
+        app.save(attempt); app.save(workflow);
         set(command, { result: { state: "admission_uncertain", workflow: workflowDTO(workflow) }, completed_at: "", completed_day: "", workflow_id: workflow.id, admission_attempt_id: attempt.id, history_visible: true });
         app.save(command); admissionAudit(command, workflow, "admission_result", "admission_uncertain");
       }
@@ -73,6 +88,7 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
       if (b.operation === "machine_admission_claim") {
         const candidates = app.findRecordsByFilter("checkin_arrival_workflows", "state = 'not_submitted'", "created,id", 100, 0);
         for (const workflow of candidates) {
+          if (find(app, "checkin_recovery_workflows", "workflow_id = {:id} && (decision = 'denied' || decision = 'cancel_pending' || decision = 'cancelled' || decision = 'reset_pending' || decision = 'reset')", { id: workflow.id })) continue;
           const station = app.findRecordById("checkin_stations", workflow.getString("station_id"));
           const agent = currentAgent(station.id);
           if (!ready(station, agent)) continue;
@@ -81,11 +97,11 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
           const existingAttempt = find(app, "checkin_arrival_attempts", "workflow_id = {:workflow}", { workflow: workflow.id });
           if (existingAttempt) {
             const retryAt = Date.parse(existingAttempt.getString("next_retry_at"));
-            if (existingAttempt.getString("state") === "pre_send_failed" && (existingAttempt.getInt("pre_send_failures") >= 3 || Number.isFinite(retryAt) && now < retryAt)) continue;
+            if (existingAttempt.getString("state") === "pre_send_failed" && (existingAttempt.getInt("pre_send_failures") >= 3 || Number.isFinite(retryAt) && Math.min(now, Date.now()) < retryAt)) continue;
             if (existingAttempt.getString("state") !== "pre_send_failed" && !(existingAttempt.getString("state") === "claimed" && existingAttempt.getInt("coordinator_generation") !== runtime.getInt("generation"))) continue;
           }
           const attempt = existingAttempt || new Record(app.findCollectionByNameOrId("checkin_arrival_attempts"));
-          set(attempt, { workflow_id: workflow.id, command_id: command.id, station_id: station.id, upstream_event_id: workflow.getString("upstream_event_id"), upstream_attendee_id: workflow.getString("upstream_attendee_id"), list_id: workflow.getString("list_id"), source_key: workflow.getString("source_key"), station_generation: station.getInt("generation"), system_generation: system.getInt("generation"), coordinator_generation: runtime.getInt("generation"), state: "claimed", send_boundary_at: "", completed_at: "", result_fingerprint: "", next_retry_at: "" });
+          set(attempt, { workflow_id: workflow.id, command_id: command.id, station_id: station.id, upstream_event_id: workflow.getString("upstream_event_id"), upstream_attendee_id: workflow.getString("upstream_attendee_id"), list_id: workflow.getString("list_id"), source_key: workflow.getString("source_key"), station_generation: station.getInt("generation"), system_generation: system.getInt("generation"), coordinator_generation: runtime.getInt("generation"), claim_owner_hash: $security.sha256(b.owner), outcome_digest: "", state: "claimed", send_boundary_at: "", completed_at: "", result_fingerprint: "", next_retry_at: "" });
           app.save(attempt);
           set(workflow, { admission_attempt_id: attempt.id }); app.save(workflow);
           set(command, { admission_attempt_id: attempt.id }); app.save(command);
@@ -101,9 +117,13 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
         const workflow = app.findRecordById("checkin_arrival_workflows", attempt.getString("workflow_id"));
         const command = app.findRecordById("checkin_arrival_commands", attempt.getString("command_id"));
         if (attempt.getString("state") !== "claimed" || workflow.getString("state") !== "not_submitted" || attempt.getInt("coordinator_generation") !== runtime.getInt("generation")) fail("conflict", 409);
-        const failures = attempt.getInt("pre_send_failures") + 1;
-        const delay = Math.min(60000, 1000 * 2 ** Math.min(failures - 1, 6));
-        set(attempt, { state: "pre_send_failed", completed_at: iso, pre_send_failures: failures, next_retry_at: failures < 3 ? new Date(now + delay).toISOString() : "" }); app.save(attempt);
+        if (b.retryAfterMs !== undefined && (!Number.isSafeInteger(b.retryAfterMs) || b.retryAfterMs < 0 || b.retryAfterMs > 86400000) || b.retryBlocked !== undefined && typeof b.retryBlocked !== "boolean") fail("invalid_input");
+        const failures = b.retryBlocked === true ? 3 : attempt.getInt("pre_send_failures") + 1;
+        // Relative delay is anchored on the PB clock, not the coordinator clock.
+        // Jitter is additive: never cap Retry-After into an early retry.
+        const retryClock = Math.max(now, Date.now());
+        const delay = Math.max(b.retryAfterMs || 0, Math.min(60000, 1000 * 2 ** Math.min(failures - 1, 6))) + Math.floor(Math.random() * 251);
+        set(attempt, { state: "pre_send_failed", completed_at: iso, pre_send_failures: failures, next_retry_at: failures < 3 ? new Date(retryClock + delay).toISOString() : "" }); app.save(attempt);
         admissionAudit(command, workflow, "admission_result", "pre_send_failed");
         result = { released: true }; return;
       }
@@ -115,6 +135,7 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
         if (attempt.getString("state") !== "claimed" || workflow.getString("state") !== "not_submitted" || attempt.getInt("coordinator_generation") !== b.coordinatorGeneration || attempt.getInt("coordinator_generation") !== runtime.getInt("generation") || attempt.getInt("station_generation") !== station.getInt("generation") || attempt.getInt("system_generation") !== system.getInt("generation")) fail("conflict", 409);
         const agent = currentAgent(station.id);
         if (!ready(station, agent)) fail("unavailable", 503);
+        if (find(app, "checkin_recovery_workflows", "workflow_id = {:id} && (decision = 'denied' || decision = 'cancel_pending' || decision = 'cancelled' || decision = 'reset_pending' || decision = 'reset')", { id: workflow.id })) fail("conflict", 409);
         set(attempt, { state: "possibly_sent", send_boundary_at: iso }); app.save(attempt);
         set(workflow, { state: "admission_pending" }); app.save(workflow);
         admissionAudit(app.findRecordById("checkin_arrival_commands", attempt.getString("command_id")), workflow, "admission_claim", "possibly_sent");
@@ -125,25 +146,42 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
         const attempt = app.findRecordById("checkin_arrival_attempts", b.attemptId);
         const workflow = app.findRecordById("checkin_arrival_workflows", attempt.getString("workflow_id"));
         const command = app.findRecordById("checkin_arrival_commands", attempt.getString("command_id"));
+        // A replacement lease cannot invent the original admission's result.
+        if (!hash(b.owner) || attempt.getString("claim_owner_hash") !== $security.sha256(b.owner)) fail("forbidden", 403);
+        if (workflow.getString("admission_attempt_id") !== attempt.id || command.getString("admission_attempt_id") !== attempt.id) fail("conflict", 409);
         const outcome = b.outcome;
-        const claimedRejection = attempt.getString("state") === "claimed" && outcome?.state === "rejected";
-        if ((!claimedRejection && attempt.getString("state") !== "possibly_sent") || workflow.getString("state") !== (claimedRejection ? "not_submitted" : "admission_pending") || workflow.getString("admission_attempt_id") !== attempt.id || attempt.getInt("coordinator_generation") !== runtime.getInt("generation") || attempt.getInt("station_generation") !== app.findRecordById("checkin_stations", attempt.getString("station_id")).getInt("generation") || attempt.getInt("system_generation") !== system.getInt("generation")) fail("conflict", 409);
         if (!outcome || typeof outcome !== "object" || Array.isArray(outcome) || !["newly_checked_in", "existing_unattributed", "rejected", "uncertain"].includes(outcome.state)) fail("invalid_input");
+        const digest = $security.sha256(canonical(outcome));
+        if (attempt.getString("outcome_digest")) {
+          if (attempt.getString("outcome_digest") !== digest) fail("conflict", 409);
+          result = { attemptId: attempt.id, state: json(command, "result").state }; return;
+        }
+        const claimedRejection = attempt.getString("state") === "claimed" && outcome.state === "rejected";
+        if (claimedRejection) {
+          // No send boundary: retain every live authority/generation fence.
+          currentOwner(); lifecycle.assertNewWork(app);
+          if (workflow.getString("state") !== "not_submitted" || attempt.getInt("coordinator_generation") !== runtime.getInt("generation") || attempt.getInt("station_generation") !== app.findRecordById("checkin_stations", attempt.getString("station_id")).getInt("generation") || attempt.getInt("system_generation") !== system.getInt("generation")) fail("conflict", 409);
+        } else if (!attempt.getString("send_boundary_at") || attempt.getString("state") !== "possibly_sent" || workflow.getString("state") !== "admission_pending") fail("conflict", 409);
+        const lifecycleState = lifecycle.state(app);
+        const canPrint = !lifecycleState.getString("closed_at") && !lifecycleState.getBool("restore_required");
+        attempt.set("outcome_digest", digest);
         let decision;
         if (outcome.state === "newly_checked_in" || outcome.state === "existing_unattributed") {
           if (!hash(outcome.fingerprint)) fail("invalid_input");
           const state = outcome.state === "newly_checked_in" ? "accepted" : "existing_unattributed";
           set(attempt, { state: outcome.state === "newly_checked_in" ? "accepted" : "existing_unattributed", completed_at: iso, result_fingerprint: outcome.fingerprint });
           set(workflow, { state, admission_completed_at: iso, admission_completed_day: localDay(now) });
-          if (state === "accepted") {
+          if (state === "accepted" && canPrint) {
             const print = new Record(app.findCollectionByNameOrId("checkin_print_attempts"));
             const profileConfig = json(workflow, "profile_config");
-            const payloadHash = $security.sha256(canonical({ profileId: workflow.getString("profile_id"), profileConfig, name: workflow.getString("name"), affiliation: workflow.getString("affiliation") }));
-            set(print, { workflow_id: workflow.id, station_id: workflow.getString("station_id"), purpose: "initial", state: "queued", profile_id: workflow.getString("profile_id"), profile_config: profileConfig, name: workflow.getString("name"), affiliation: workflow.getString("affiliation"), payload_hash: payloadHash, predecessor_attempt_id: "" });
+            const profileSnapshot = json(workflow, "profile_snapshot");
+            const payload = { purpose: "initial", text: { name: workflow.getString("name"), affiliation: workflow.getString("affiliation") }, profile: profileSnapshot, rendererVersion: profileSnapshot.config.rendererVersion, fontVersion: profileSnapshot.config.fontVersion };
+            const payloadHash = $security.sha256(canonical({ profileId: workflow.getString("profile_id"), payload }));
+            set(print, { workflow_id: workflow.id, station_id: workflow.getString("station_id"), purpose: "initial", state: "queued", profile_id: workflow.getString("profile_id"), profile_config: profileConfig, profile_snapshot: profileSnapshot, name: workflow.getString("name"), affiliation: workflow.getString("affiliation"), payload_hash: payloadHash, predecessor_attempt_id: "" });
             app.save(print);
             set(workflow, { print_intent_id: print.id });
             decision = { state: "accepted", workflow: workflowDTO(workflow), printIntentId: print.id };
-          } else decision = { state, workflow: workflowDTO(workflow) };
+          } else decision = state === "accepted" ? { state, workflow: workflowDTO(workflow), printIntentId: null, printSuppression: "lifecycle" } : { state, workflow: workflowDTO(workflow) };
         } else if (outcome.state === "rejected") {
           if (!["not_in_list", "cancelled", "awaiting_payment", "unknown_eligibility"].includes(outcome.reason)) fail("invalid_input");
           set(attempt, { state: "rejected", completed_at: iso }); set(workflow, { state: "rejected", admission_completed_at: iso, admission_completed_day: localDay(now) });
@@ -153,7 +191,7 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
           decision = { state: "admission_uncertain", workflow: workflowDTO(workflow) };
         }
         app.save(attempt); app.save(workflow);
-        set(command, { result: decision, completed_at: decision.state === "admission_uncertain" || decision.state === "existing_unattributed" ? "" : iso, completed_day: decision.state === "admission_uncertain" || decision.state === "existing_unattributed" ? "" : localDay(now), workflow_id: workflow.id, admission_attempt_id: attempt.id, history_visible: true });
+        set(command, { result: decision, completed_at: decision.state === "accepted" || decision.state === "admission_uncertain" || decision.state === "existing_unattributed" ? "" : iso, completed_day: decision.state === "accepted" || decision.state === "admission_uncertain" || decision.state === "existing_unattributed" ? "" : localDay(now), workflow_id: workflow.id, admission_attempt_id: attempt.id, history_visible: true });
         app.save(command); admissionAudit(command, workflow, "admission_result", decision.state);
         result = { attemptId: attempt.id, state: decision.state }; return;
       }
@@ -173,34 +211,98 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
     }
     function decision(command, all = false) {
       if (!all && command.getString("station_id") !== station.id) return { state: "already_handled" };
-      return json(command, "result") || { state: "dependency_unavailable" };
+      const saved = json(command, "result") || { state: "dependency_unavailable" };
+      if (!saved.workflow || !command.getString("workflow_id")) return saved;
+      const w = app.findRecordById("checkin_arrival_workflows", command.getString("workflow_id"));
+      if (!all && w.getString("station_id") !== station.id) return { state: "already_handled" };
+      // Live projection only: never mutate the original result or label text.
+      const projected = { ...saved, workflow: workflowDTO(w) };
+      if (w.getString("state") === "accepted") {
+        const intent = w.getString("print_intent_id");
+        return intent ? { state: "accepted", workflow: projected.workflow, printIntentId: intent }
+          : { state: "accepted", workflow: projected.workflow, printIntentId: null, printSuppression: "lifecycle" };
+      }
+      if (w.getString("state") === "rejected") {
+        const original = find(app, "checkin_arrival_commands", "operation_id = {:id}", { id: w.getString("operation_id") });
+        const terminal = original && json(original, "result");
+        if (terminal && terminal.state === "rejected") return terminal;
+      }
+      if (["admission_pending", "admission_uncertain", "existing_unattributed"].includes(w.getString("state"))) projected.state = w.getString("state");
+      return projected;
     }
     function envelope(command, replayed) { return Object.assign(decision(command), { operationId: command.getString("operation_id"), replayed, operationsEnabled: false }); }
+    if (b.operation === "status") {
+      if (!uuid(b.operationId)) fail("invalid_input");
+      // Exact indexed lookup, independent of history visibility/day and live
+      // selection generations. Never rebase, save, audit or authorize work.
+      const command = find(app, "checkin_arrival_commands", "operation_id = {:id}", { id: b.operationId });
+      const context = command && json(command, "context");
+      // Read access follows the owning station, like history. Original actor and
+      // binding remain immutable audit/command facts, not a new viewing role.
+      const allowed = command && command.getString("station_id") === station.id
+        && context && context.stationId === station.id;
+      result = { operationId: b.operationId, result: allowed && command.getString("status") === "final" ? decision(command) : null, operationsEnabled: false };
+      return;
+    }
     if (b.operation === "history") {
       const q = b.query;
       if (!q || !["station", "all"].includes(q.scope) || !Number.isInteger(q.limit) || q.limit < 1 || q.limit > 100 || typeof b.day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(b.day)) fail("invalid_input");
       if (q.scope === "all" && actor.getString("role") !== "admin") fail("forbidden", 403);
-      let filter = "history_visible = true && (completed_at = '' || completed_day = {:day})";
-      const params = { day: b.day, station: station ? station.id : "" };
-      if (q.scope === "station") filter += " && station_id = {:station}";
+      const params = { day: b.day, station: station ? station.id : "", limit: 101 };
+      let scope = q.scope === "station" ? " AND c.station_id = {:station}" : "";
       if (q.cursor) {
         if (typeof q.cursor !== "string" || !/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z?\|[a-z0-9]{15}$/.test(q.cursor)) fail("invalid_input");
         const parts = q.cursor.split("|"); params.created = parts[0]; params.id = parts[1];
-        filter += " && (created > {:created} || (created = {:created} && id > {:id}))";
+        scope += " AND (c.created > {:created} OR (c.created = {:created} AND c.id > {:id}))";
       }
+      // Indexed workflow/intent joins filter historical fulfillment in SQLite,
+      // never by loading the entire edition into the JS VM.
+      function midnight(dayMs) {
+        const y = new Date(dayMs).getUTCFullYear(), m = new Date(Date.UTC(y,2,31,1)), o = new Date(Date.UTC(y,9,31,1));
+        m.setUTCDate(31-m.getUTCDay()); o.setUTCDate(31-o.getUTCDay());
+        const probe = dayMs - 3 * 3600000;
+        return new Date(dayMs - (probe >= m.getTime() && probe < o.getTime() ? 2 : 1) * 3600000).toISOString();
+      }
+      params.start = midnight(Date.parse(b.day + "T00:00:00Z"));
+      params.end = midnight(Date.parse(b.day + "T00:00:00Z") + 86400000);
+      const candidates = new DynamicModel({ rows: "" });
+      app.db().newQuery(`WITH projected AS (
+        SELECT c.id, c.created,
+          CASE WHEN r.completed_day != '' AND r.fulfillment IN ('handwritten','printed','cancelled','denied') THEN r.updated_at
+            WHEN p.id IS NOT NULL THEN CASE WHEN p.state IN ('completed','cancelled') THEN p.fulfillment_completed_at ELSE '' END
+            WHEN w.state = 'accepted' THEN ''
+            ELSE c.completed_at END AS completed,
+          CASE WHEN r.completed_day != '' AND r.fulfillment IN ('handwritten','printed','cancelled','denied') THEN r.completed_day ELSE '' END AS recovery_day
+        FROM checkin_arrival_commands c
+        LEFT JOIN checkin_arrival_workflows w ON w.id = c.workflow_id
+        LEFT JOIN checkin_recovery_workflows r ON r.workflow_id = w.id
+        LEFT JOIN checkin_print_attempts p ON p.id = COALESCE(
+          (SELECT rp.id FROM checkin_print_attempts rp WHERE rp.id = r.latest_print_id AND rp.workflow_id = w.id AND rp.station_id = w.station_id),
+          (SELECT lp.id FROM checkin_print_attempts lp WHERE lp.workflow_id = w.id AND lp.station_id = w.station_id ORDER BY lp.created DESC,lp.id DESC LIMIT 1))
+        WHERE c.history_visible = true ${scope}
+      ) SELECT COALESCE(json_group_array(json_object('id',id,'completed',completed,'recoveryDay',recovery_day)), '[]') AS rows
+        FROM (SELECT * FROM projected WHERE completed = '' OR completed IS NULL OR recovery_day = {:day}
+          OR (recovery_day = '' AND julianday(completed) >= julianday({:start}) AND julianday(completed) < julianday({:end}))
+          ORDER BY created,id LIMIT {:limit})`).bind(params).one(candidates);
+      const rows = JSON.parse(candidates.rows);
       // Project resolution from append-only continuation/audit evidence. Never
       // rewrite a failed command, its replay result, or its original ownership.
-      const eligible = []; let offset = 0;
-      while (eligible.length <= q.limit) {
-        const rows = app.findRecordsByFilter("checkin_arrival_commands", filter, "created,id", 100, offset, params);
-        for (const c of rows) {
-          const entry = { id: c.id, operationId: c.getString("operation_id"), stationId: c.getString("station_id"), eventId: c.getString("event_id"), createdAt: c.getString("created"), completedAt: c.getString("completed_at") || null, result: decision(c, q.scope === "all") };
+      const eligible = []; let examined = null; let more = rows.length > 100;
+      for (const row of rows.slice(0, 100)) {
+          const c = app.findRecordById("checkin_arrival_commands", row.id);
+          const completed = row.completed || null;
+          // Europe/Skopje terminal day, not the admission-acceptance day.
+          if (completed && (row.recoveryDay || localDay(Date.parse(completed))) !== b.day) { examined = c; continue; }
+          if (eligible.length === q.limit) { more = true; break; }
+          examined = c;
+          const entry = { id: c.id, operationId: c.getString("operation_id"), stationId: c.getString("station_id"), eventId: c.getString("event_id"), createdAt: c.getString("created"), completedAt: completed, result: decision(c, q.scope === "all") };
           if (["needs_affiliation_choice", "dependency_unavailable"].includes(entry.result.state)) {
             const projection = new DynamicModel({ resolution: "" });
             app.db().newQuery(`WITH RECURSIVE descendants AS (
               SELECT id, operation_id, prior_operation_id, status, result FROM checkin_arrival_commands WHERE prior_operation_id = {:operation}
               UNION
               SELECT c.id, c.operation_id, c.prior_operation_id, c.status, c.result FROM checkin_arrival_commands c JOIN descendants d ON c.prior_operation_id = d.operation_id
+              LIMIT 100
             ) SELECT COALESCE((SELECT json_object('operationId', d.operation_id, 'completedAt', a.created)
               FROM descendants d JOIN checkin_audit_events a ON a.arrival_command_id = d.id AND a.operation = 'arrival_result'
               WHERE d.status = 'final' AND json_extract(d.result, '$.state') IN ('reserved', 'existing', 'already_handled', 'rejected')
@@ -213,14 +315,8 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
             }
           }
           eligible.push(entry);
-          if (eligible.length > q.limit) break;
-        }
-        if (rows.length < 100) break;
-        offset += rows.length;
       }
-      // Filter before limiting: older resolved exceptions must not starve work.
-      const page = eligible.slice(0, q.limit); const last = page[page.length - 1];
-      result = { day: b.day, operationsEnabled: false, nextCursor: eligible.length > q.limit ? last.createdAt + "|" + last.id : null, items: page }; return;
+      result = { day: b.day, operationsEnabled: false, nextCursor: more && examined ? examined.getString("created") + "|" + examined.id : null, items: eligible }; return;
     }
     if (!["begin", "fence", "finish"].includes(b.operation) || !hash(b.sourceKey)) fail("invalid_input");
     const c = b.command;
@@ -273,9 +369,9 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
       const approval = find(app, "checkin_label_approvals", "profile = {:id}", { id: profile.id });
       if (!config || config.synthetic || config.printerRef !== station.getString("printer_ref") || config.printerRef !== agent.getString("printer_identity") || profile.getInt("station_version") !== pv || !approval || approval.getInt("station_version") !== pv) return null;
       const unresolved = new DynamicModel({ present: 0 });
-      app.db().newQuery("SELECT EXISTS (SELECT 1 FROM checkin_agent_authorizations a JOIN checkin_agents g ON g.id = a.agent_id WHERE g.station = {:station} AND a.started_at != '' AND a.outcome != 'protocol_complete') AS present").bind({ station: station.id }).one(unresolved);
-      if (unresolved.present) return null;
-      return { profile, fence: { agentId: agent.id, profileId: profile.id, coordinatorGeneration: runtime.getInt("generation") } };
+      app.db().newQuery("SELECT EXISTS (SELECT 1 FROM checkin_agent_authorizations a JOIN checkin_agents g ON g.id = a.agent_id WHERE g.station = {:station} AND a.started_at != '' AND a.outcome != 'protocol_complete' AND NOT EXISTS (SELECT 1 FROM checkin_recovery_observations o WHERE o.agent_attempt_id = a.attempt_id)) AS present").bind({ station: station.id }).one(unresolved);
+      if (unresolved.present || require(__hooks + "/checkin-recovery.js").isolated(app, station.id)) return null;
+      return { profile, approval: "approved", fence: { agentId: agent.id, profileId: profile.id, coordinatorGeneration: runtime.getInt("generation") } };
     }
     // Reopening immutable work needs authority, not live upstream/printer reads.
     const priorResolved = find(app, "checkin_arrival_commands", "source_key = {:source} && event_id = {:event} && qr_hash = {:qr} && workflow_id != ''", { source: b.sourceKey, event: event.id, qr: c.qrHash });
@@ -312,7 +408,8 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
     const text = c.affiliationChoice === "blank" || affiliation.state === "missing" ? "" : affiliation.text;
     if (!safeText(text, 200, false)) { finish({ state: "needs_affiliation_choice" }); return; }
     const w = new Record(app.findCollectionByNameOrId("checkin_arrival_workflows"));
-    set(w, { edition: "WTS2026", upstream_event_id: event.getString("upstream_event_id"), upstream_attendee_id: attendee.upstreamAttendeeId, station_id: station.id, event_id: event.id, event_title: event.getString("title"), list_id: event.getString("list_id"), context: currentContext, source_key: b.sourceKey, profile_id: ready.profile.id, profile_config: json(ready.profile, "config"), affiliation_mapping: json(event, "affiliation"), name: attendee.name, affiliation: text, state: "not_submitted", operation_id: c.operationId }); app.save(w);
+    const profileSnapshot = { id: ready.profile.id, stationId: station.id, version: ready.profile.getInt("version"), approval: ready.approval, config: json(ready.profile, "config") };
+    set(w, { edition: "WTS2026", upstream_event_id: event.getString("upstream_event_id"), upstream_attendee_id: attendee.upstreamAttendeeId, station_id: station.id, event_id: event.id, event_title: event.getString("title"), list_id: event.getString("list_id"), context: currentContext, source_key: b.sourceKey, profile_id: ready.profile.id, profile_config: json(ready.profile, "config"), profile_snapshot: profileSnapshot, affiliation_mapping: json(event, "affiliation"), name: attendee.name, affiliation: text, state: "not_submitted", operation_id: c.operationId }); app.save(w);
     finish({ state: "reserved", workflow: workflowDTO(w) }, w);
   });
   return e.json(200, result);
@@ -336,7 +433,14 @@ onRecordUpdate((e) => {
   const allowed = (original.getString("state") === "not_submitted" && ["not_submitted", "admission_pending", "rejected"].includes(e.record.getString("state")))
     || (original.getString("state") === "admission_pending" && ["accepted", "existing_unattributed", "rejected", "admission_uncertain"].includes(e.record.getString("state")));
   if (!allowed) throw new ForbiddenError("Reserved workflow snapshots are immutable.");
-  for (const field of ["edition", "upstream_event_id", "upstream_attendee_id", "station_id", "event_id", "event_title", "list_id", "context", "source_key", "profile_id", "profile_config", "affiliation_mapping", "name", "affiliation", "operation_id", "created"]) if (e.record.getString(field) !== original.getString(field)) throw new ForbiddenError("Reserved workflow snapshots are immutable.");
+  for (const field of ["edition", "upstream_event_id", "upstream_attendee_id", "station_id", "event_id", "event_title", "list_id", "context", "source_key", "profile_id", "profile_config", "profile_snapshot", "affiliation_mapping", "name", "affiliation", "operation_id", "created"]) if (e.record.getString(field) !== original.getString(field)) throw new ForbiddenError("Reserved workflow snapshots are immutable.");
   e.next();
 }, "checkin_arrival_workflows");
+// Freeze first terminal print time, including outcome replay. Admission time is
+// not fulfillment time; older records lacking evidence remain conservatively unresolved.
+onRecordUpdate((e) => {
+  if (["completed", "cancelled"].includes(e.record.getString("state")) && e.record.getString("state") !== e.record.original().getString("state") && !e.record.original().getString("fulfillment_completed_at")) e.record.set("fulfillment_completed_at", new Date().toISOString());
+  else e.record.set("fulfillment_completed_at", e.record.original().getString("fulfillment_completed_at"));
+  e.next();
+}, "checkin_print_attempts");
 onRecordDelete(() => { throw new ForbiddenError("Arrival history requires an explicit lifecycle migration."); }, "checkin_arrival_commands", "checkin_arrival_workflows");

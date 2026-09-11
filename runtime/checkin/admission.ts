@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { CheckinReadError, createCheckinUpstreamReader } from "../../src/lib/checkin-upstream-read.js";
 import type { AdmissionAttendee, AdmissionJob, AdmissionOutcome, AdmissionProcessor } from "./protocol.js";
 
 interface AdmissionConfig { apiUrl?: string; apiKey?: string; accountId?: string }
@@ -7,9 +8,6 @@ const MAX_BODY = 2 * 1024 * 1024;
 const MAX_PAGES = 40;
 const MAX_ROWS = 1000;
 type ListCapability = string | { eligibility: "not_in_list" } | null;
-class AdmissionReadError extends Error {
-  constructor(readonly status: number) { super("upstream read failed"); }
-}
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid upstream response");
@@ -53,9 +51,11 @@ export class HttpAdmissionProcessor implements AdmissionProcessor {
   private readonly config: ReturnType<typeof configured>;
   private readonly fetcher: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly read: ReturnType<typeof createCheckinUpstreamReader> | null;
   constructor(input: AdmissionConfig, options: AdmissionTransportOptions = {}) {
     this.config = configured(input);
     this.fetcher = options.fetch ?? fetch;
+    this.read = this.config ? createCheckinUpstreamReader(this.config, this.fetcher) : null;
     this.timeoutMs = options.timeoutMs ?? 10000;
     if (!Number.isInteger(this.timeoutMs) || this.timeoutMs < 1 || this.timeoutMs > 10000) throw new Error("invalid admission timeout");
   }
@@ -90,7 +90,8 @@ export class HttpAdmissionProcessor implements AdmissionProcessor {
       if (typeof capability !== "string") return { upstreamAttendeeId: job.upstreamAttendeeId, publicId: detail.public_id, productId, alreadyCheckedIn: false, eligibility: capability.eligibility };
       return { upstreamAttendeeId: job.upstreamAttendeeId, publicId: detail.public_id, productId, alreadyCheckedIn: false, listCapability: capability, eligibility };
     } catch (error) {
-      if (error instanceof AdmissionReadError && error.status === 404) return { upstreamAttendeeId: job.upstreamAttendeeId, publicId: "A-NOTFOUND", productId: "0", alreadyCheckedIn: false, eligibility: "not_in_list" };
+      if (error instanceof CheckinReadError && error.status === 404) return { upstreamAttendeeId: job.upstreamAttendeeId, publicId: "A-NOTFOUND", productId: "0", alreadyCheckedIn: false, eligibility: "not_in_list" };
+      if (error instanceof CheckinReadError) throw error;
       return null;
     }
   }
@@ -143,9 +144,7 @@ export class HttpAdmissionProcessor implements AdmissionProcessor {
     return found && found.active && !found.expired && found.productIds.includes(productId) ? found.capability : { eligibility: "not_in_list" };
   }
   private async get(path: string): Promise<Record<string, unknown>> {
-    const response = await this.fetcher(`${this.config!.base}/${path}`, { method: "GET", redirect: "error", credentials: "omit", cache: "no-store", headers: { Authorization: `Bearer ${this.config!.key}`, Accept: "application/json" }, signal: AbortSignal.timeout(this.timeoutMs) });
-    if (response.status !== 200) { void response.body?.cancel(); throw new AdmissionReadError(response.status); }
-    return this.json(response);
+    return this.read!(path);
   }
   private async json(response: Response): Promise<Record<string, unknown>> {
     const length = response.headers.get("content-length");

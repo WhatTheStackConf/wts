@@ -73,7 +73,7 @@ export function CheckinEventAdmin() {
     try {
       const result = await configureCheckinEvent(command);
       setFrozen(undefined); setReviewing(false); setDraft(undefined);
-      setMessage(result.replayed ? "This event configuration was already saved; no action was repeated." : "Event configuration saved. Admission and printing remain disabled.");
+      setMessage(result.replayed ? "This event configuration was already saved; no action was repeated." : "Event configuration saved. Supervised admission and printing require current station readiness.");
       await catalogueActions.refetch().catch(() => undefined);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Unable to confirm event configuration.");

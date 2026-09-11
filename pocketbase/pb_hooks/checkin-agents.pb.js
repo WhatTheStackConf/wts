@@ -2,9 +2,11 @@
 // Trusted storage command seam. Machine bearers never enter PocketBase directly.
 routerAdd("POST", "/api/wts/checkin-agents", (e) => {
   const b = e.requestInfo().body;
+  const recovery = require(__hooks + "/checkin-recovery.js");
   function fail(code, status = 400) { throw new ApiError(status, "Agent request rejected.", { code: new ValidationError(code, "Agent request rejected.") }); }
   function find(app, name, filter, params, sort = "") { const rows = app.findRecordsByFilter(name, filter, sort, 1, 0, params || {}); return rows.length ? rows[0] : null; }
   function set(record, values) { for (const key in values) record.set(key, values[key]); }
+  function json(record, field) { return JSON.parse(record.getString(field) || "null"); }
   function hash(v) { return typeof v === "string" && /^[a-f0-9]{64}$/.test(v); }
   function ident(v) { return typeof v === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(v); }
   function canonical(v) { if (v === null || typeof v !== "object") return JSON.stringify(v); return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canonical(v[k])).join(",") + "}"; }
@@ -14,7 +16,7 @@ routerAdd("POST", "/api/wts/checkin-agents", (e) => {
     // Clock injection is confined to the privileged coordinator seam, never HTTP
     // payloads from a machine/browser. Production coordinator uses wall clock.
     const machine = typeof b.operation === "string" && b.operation.startsWith("machine_");
-    const now = machine && Number.isSafeInteger(b.nowMs) ? b.nowMs : Date.now();
+    const now = machine && !["machine_monitoring_readiness", "machine_coordinator_status"].includes(b.operation) && Number.isSafeInteger(b.nowMs) ? b.nowMs : Date.now();
     const iso = new Date(now).toISOString();
     const system = app.findRecordById("checkin_system", "wts2026system00");
     const runtime = app.findRecordById("checkin_coordinator", "wts2026coord000");
@@ -41,8 +43,9 @@ routerAdd("POST", "/api/wts/checkin-agents", (e) => {
       // Physical uncertainty belongs to the fixed station, not its current agent.
       // A replacement credential cannot orphan a previously started operation.
       const unresolvedOutput = new DynamicModel({ present: 0 });
-      app.db().newQuery("SELECT EXISTS (SELECT 1 FROM checkin_agent_authorizations a JOIN checkin_agents g ON g.id = a.agent_id WHERE g.station = {:station} AND a.started_at != '' AND a.outcome != 'protocol_complete') AS present").bind({ station: station.id }).one(unresolvedOutput);
+      app.db().newQuery("SELECT EXISTS (SELECT 1 FROM checkin_agent_authorizations a JOIN checkin_agents g ON g.id = a.agent_id WHERE g.station = {:station} AND a.started_at != '' AND a.outcome != 'protocol_complete' AND NOT EXISTS (SELECT 1 FROM checkin_recovery_observations o WHERE o.agent_attempt_id = a.attempt_id)) AS present").bind({ station: station.id }).one(unresolvedOutput);
       if (unresolvedOutput.present) reasons.push("printer_output_unresolved");
+      if (recovery.isolated(app, station.id)) reasons.push("printer_physically_isolated");
       if (!connected()) reasons.push("coordinator_unavailable");
       if (credentialState !== "active") reasons.push("credential_" + credentialState);
       if (connection !== "connected") reasons.push("agent_" + connection);
@@ -52,6 +55,15 @@ routerAdd("POST", "/api/wts/checkin-agents", (e) => {
       if (!system.getBool("enabled")) reasons.push("system_disabled");
       if (!station.getBool("enabled")) reasons.push("station_disabled");
       return { stationId: station.id, stationLabel: station.getString("label"), stationVersion: station.getInt("version"), agentId: agent ? agent.id : null, credentialState, credentialExpiresAt: agent ? agent.getString("expires_at") : null, connection, compatibility, profile, journal, stopped, coordinator: connected() ? "connected" : "unavailable", readyForAuthorization: reasons.length === 0, operationsEnabled: false, reasons, lastHeartbeatAt: seen || null, heartbeatIntervalMs: runtime.getInt("heartbeat_interval_ms"), heartbeatTimeoutMs: runtime.getInt("heartbeat_timeout_ms"), authorizationTtlMs: runtime.getInt("authorization_ttl_ms") };
+    }
+    // Independent central observer: no actor impersonation or producer lease.
+    // Ignore caller clocks on these read-only projections.
+    if (b.operation === "machine_monitoring_readiness") {
+      result = { stations: app.findRecordsByFilter("checkin_stations", "edition = 'WTS2026'", "id", 3, 0).map((s) => dto(s, latest(s.id))) }; return;
+    }
+    if (b.operation === "machine_coordinator_status") {
+      const lifecycle = require(__hooks + "/checkin-lifecycle.js").state(app);
+      result = { mode: lifecycle.getString("closed_at") ? "closed" : lifecycle.getBool("restore_required") ? "restore_required" : "open" }; return;
     }
     if (!machine) {
       const actor = typeof b.actorUserId === "string" && find(app, "users", "id = {:id}", { id: b.actorUserId });
@@ -114,23 +126,54 @@ routerAdd("POST", "/api/wts/checkin-agents", (e) => {
       set(audit, { actor_user_id: actor.id, actor_name: actor.getString("name").trim() && !/[\x00-\x1f\x7f<>@]|:\/\/|www\.|[a-f0-9]{64}|bearer|password|secret|token\s*[:=]/i.test(actor.getString("name")) ? actor.getString("name").trim().slice(0, 80) : "Authorized User", actor_role: "admin", operation: issuing ? "issue_agent" : "revoke_agent", station_id: station.id, admin_action_id: action.id, reason: c.reason, note: c.note.trim(), outcome: "applied", state: { before, after } }); app.save(audit); return;
     }
     if (b.operation === "machine_acquire") {
+      require(__hooks + "/checkin-lifecycle.js").assertNewWork(app);
       if (!hash(b.owner) || (connected() && runtime.getString("owner") !== b.owner)) fail("conflict", 409);
       const c = b.config;
       if (!c || !Number.isInteger(c.heartbeatIntervalMs) || c.heartbeatIntervalMs < 100 || c.heartbeatIntervalMs > 60000 || !Number.isInteger(c.heartbeatTimeoutMs) || c.heartbeatTimeoutMs <= c.heartbeatIntervalMs || c.heartbeatTimeoutMs > 180000 || !Number.isInteger(c.authorizationTtlMs) || c.authorizationTtlMs < 100 || c.authorizationTtlMs > 10000) fail("invalid_input");
       if (runtime.getString("owner") !== b.owner) runtime.set("generation", runtime.getInt("generation") + 1);
       set(runtime, { owner: b.owner, last_seen_at: iso, heartbeat_interval_ms: c.heartbeatIntervalMs, heartbeat_timeout_ms: c.heartbeatTimeoutMs, authorization_ttl_ms: c.authorizationTtlMs }); app.save(runtime); result = { generation: runtime.getInt("generation") }; return;
     }
-    if (!hash(b.owner) || runtime.getString("owner") !== b.owner || !connected()) fail("unavailable", 503);
+    // Read-only status remains available without a live producer lease.
+    if (b.operation === "machine_status") {
+      const agent = hash(b.credentialHash) && find(app, "checkin_agents", "credential_hash = {:hash}", { hash: b.credentialHash });
+      if (!agent || !b.payload || b.payload.stationId !== agent.getString("station")) fail("forbidden", 403);
+      result = { station: dto(app.findRecordById("checkin_stations", agent.getString("station")), agent) }; return;
+    }
+    // Original credentials may report/neutralize retained work without a live
+    // producer lease. These paths cannot grant a new physical start.
+    const reportingOnly = ["machine_outcome", "machine_cancellations", "machine_neutralized"].includes(b.operation);
+    if (reportingOnly) require(__hooks + "/checkin-lifecycle.js").assertOutcome(app, now);
+    else if (!hash(b.owner) || runtime.getString("owner") !== b.owner || !connected()) fail("unavailable", 503);
     if (b.operation === "machine_pulse") { runtime.set("last_seen_at", iso); app.save(runtime); result = { generation: runtime.getInt("generation") }; return; }
     if (b.operation === "machine_release") { runtime.set("last_seen_at", ""); runtime.set("owner", ""); app.save(runtime); result = { released: true }; return; }
     // The future producer seam is privileged-only and NOT forwarded by the HTTP
     // coordinator. No browser/agent can manufacture an attempt or label payload.
+    if (b.operation === "machine_print_claim") {
+      require(__hooks + "/checkin-lifecycle.js").assertNewWork(app);
+      const limit = Number.isSafeInteger(b.limit) && b.limit >= 1 && b.limit <= 100 ? b.limit : 10;
+      let claimed = 0;
+      recovery.each(app, "checkin_print_attempts", "state = 'queued'", {}, (print) => {
+        if (claimed >= limit) return false;
+        const workflow = app.findRecordById("checkin_arrival_workflows", print.getString("workflow_id"));
+        const station = app.findRecordById("checkin_stations", print.getString("station_id"));
+        const agent = latest(station.id);
+        if (!recovery.permitted(app, workflow) || recovery.blocked(app, print) || !agent || !dto(station, agent).readyForAuthorization) return;
+        const prior = find(app, "checkin_agent_attempts", "print_attempt_id = {:print}", { print: print.id }, "-created");
+        if (prior) return;
+        const profile = json(print, "profile_snapshot");
+        const payload = { purpose: print.getString("purpose"), text: { name: print.getString("name"), affiliation: print.getString("affiliation") }, profile, rendererVersion: profile.config.rendererVersion, fontVersion: profile.config.fontVersion };
+        const attempt = new Record(app.findCollectionByNameOrId("checkin_agent_attempts"));
+        set(attempt, { station: station.id, agent_id: agent.id, profile_id: print.getString("profile_id"), payload_hash: print.getString("payload_hash"), print_attempt_id: print.id, purpose: print.getString("purpose"), payload, station_generation: station.getInt("generation"), system_generation: system.getInt("generation"), coordinator_generation: runtime.getInt("generation") });
+        app.save(attempt); claimed++;
+      });
+      result = { claimed }; return;
+    }
     if (b.operation === "machine_prepare") {
       const a = find(app, "checkin_agents", "id = {:id}", { id: b.agentId });
       if (!a) fail("invalid_input"); const s = app.findRecordById("checkin_stations", a.getString("station"));
       if (!dto(s, a).readyForAuthorization || !hash(b.payloadHash)) fail("conflict", 409);
       const attempt = new Record(app.findCollectionByNameOrId("checkin_agent_attempts"));
-      set(attempt, { station: s.id, agent_id: a.id, profile_id: a.getString("profile_id"), payload_hash: b.payloadHash, station_generation: s.getInt("generation"), system_generation: system.getInt("generation"), coordinator_generation: runtime.getInt("generation") }); app.save(attempt);
+      set(attempt, { station: s.id, agent_id: a.id, profile_id: a.getString("profile_id"), payload_hash: b.payloadHash, print_attempt_id: "", purpose: "generic", payload: null, station_generation: s.getInt("generation"), system_generation: system.getInt("generation"), coordinator_generation: runtime.getInt("generation") }); app.save(attempt);
       result = { attemptId: attempt.id, payloadHash: b.payloadHash, profileId: a.getString("profile_id") }; return;
     }
     const agent = hash(b.credentialHash) && find(app, "checkin_agents", "credential_hash = {:hash}", { hash: b.credentialHash });
@@ -138,12 +181,47 @@ routerAdd("POST", "/api/wts/checkin-agents", (e) => {
     const station = app.findRecordById("checkin_stations", agent.getString("station"));
     const p = b.payload || {};
     if (p.stationId !== station.id) fail("forbidden", 403);
+    // Neutralization is reporting-only authority: survives stops, expiry and revocation.
+    if (b.operation === "machine_cancellations") {
+      const cancellations = [];
+      recovery.each(app, "checkin_recovery_cancellations", "station_id = {:station} && state = 'pending'", { station: station.id }, (row) => {
+        const attempt = find(app, "checkin_agent_attempts", "id = {:id} && agent_id = {:agent}", { id: row.getString("agent_attempt_id"), agent: agent.id });
+        if (attempt) cancellations.push({ cancellationId: row.id, startState: find(app, "checkin_agent_authorizations", "attempt_id = {:id}", { id: attempt.id })?.getString("started_at") ? "started" : "not_started", work: { attemptId: attempt.id, profileId: attempt.getString("profile_id"), payloadHash: attempt.getString("payload_hash"), payload: json(attempt, "payload") } });
+        if (cancellations.length === 10) return false;
+      });
+      result = { cancellations }; return;
+    }
+    if (b.operation === "machine_neutralized") {
+      const row = find(app, "checkin_recovery_cancellations", "id = {:id} && station_id = {:station}", { id: p.cancellationId || "", station: station.id });
+      const attempt = row && find(app, "checkin_agent_attempts", "id = {:id} && agent_id = {:agent}", { id: row.getString("agent_attempt_id"), agent: agent.id });
+      if (!attempt || p.attemptId !== attempt.id || p.payloadHash !== attempt.getString("payload_hash") || !["neutralized", "settled"].includes(p.disposition)) fail("forbidden", 403);
+      const auth = find(app, "checkin_agent_authorizations", "attempt_id = {:id}", { id: attempt.id });
+      if (p.disposition === "neutralized" && auth?.getString("started_at") || p.disposition === "settled" && !auth?.getString("outcome")) fail("conflict", 409);
+      if (row.getString("state") !== "acknowledged") { set(row, { state: "acknowledged", acknowledged_at: iso }); app.save(row); }
+      const workflow = app.findRecordById("checkin_arrival_workflows", row.getString("workflow_id"));
+      const projection = recovery.projection(app, workflow);
+      if (projection && !find(app, "checkin_recovery_cancellations", "workflow_id = {:id} && state != 'acknowledged'", { id: workflow.id })) {
+        // Machine neutralization proves queue safety, never human handwriting.
+        if (projection.getString("decision") === "cancel_pending") { set(projection, { decision: "cancelled", fulfillment: "cancelled", completed_day: recovery.day(now), updated_at: iso, version: projection.getInt("version") + 1 }); app.save(projection); }
+      }
+      result = { cancellationId: row.id, acknowledged: true }; return;
+    }
     if (b.operation === "machine_outcome") {
+      require(__hooks + "/checkin-lifecycle.js").assertOutcome(app, now);
       const auth = find(app, "checkin_agent_authorizations", "attempt_id = {:attempt} && agent_id = {:agent}", { attempt: p.attemptId || "", agent: agent.id });
       if (!auth || !hash(p.authorizationHash) || auth.getString("authorization_hash") !== p.authorizationHash || !auth.getString("started_at")) fail("forbidden", 403);
       if (!["protocol_complete", "output_uncertain"].includes(p.outcome)) fail("invalid_input");
       if (auth.getString("outcome") && auth.getString("outcome") !== p.outcome) fail("conflict", 409);
-      auth.set("outcome", p.outcome); app.save(auth); if (p.outcome === "output_uncertain") { agent.set("quarantined", true); app.save(agent); } result = { attemptId: p.attemptId, outcome: p.outcome }; return;
+      auth.set("outcome", p.outcome); app.save(auth);
+      const printAttempt = find(app, "checkin_agent_attempts", "id = {:id}", { id: p.attemptId });
+      if (printAttempt && printAttempt.getString("print_attempt_id")) {
+        const print = app.findRecordById("checkin_print_attempts", printAttempt.getString("print_attempt_id"));
+        if (!["queued", "dispatched", p.outcome === "protocol_complete" ? "completed" : "uncertain"].includes(print.getString("state"))) fail("conflict", 409);
+        print.set("state", p.outcome === "protocol_complete" ? "completed" : "uncertain"); app.save(print);
+        recovery.projectOutcome(app, print, p.outcome, now);
+      }
+      // Physical uncertainty is blocked by immutable authorization evidence, not identity quarantine.
+      result = { attemptId: p.attemptId, outcome: p.outcome }; return;
     }
     if (agent.getBool("revoked") || now >= Date.parse(agent.getString("expires_at")) || latest(station.id).id !== agent.id) fail("forbidden", 403);
     if (b.operation === "machine_heartbeat") {
@@ -162,15 +240,22 @@ routerAdd("POST", "/api/wts/checkin-agents", (e) => {
       const selected = [];
       // Filter authorized work before applying the public ten-attempt limit.
       // PocketBase's ?!= is ANY-not-equal, not a SQL anti-join.
+      const purposeFilter = p.purpose === "initial" ? " && purpose = 'initial'" : p.purpose === "label" ? " && (purpose = 'initial' || purpose = 'replacement')" : "";
       for (let offset = 0; selected.length < 10; offset += 100) {
-        const page = app.findRecordsByFilter("checkin_agent_attempts", "agent_id = {:agent} && station = {:station} && station_generation = {:sg} && system_generation = {:yg} && coordinator_generation = {:cg}", "created,id", 100, offset, { agent: agent.id, station: station.id, sg: station.getInt("generation"), yg: system.getInt("generation"), cg: runtime.getInt("generation") });
-        for (const a of page) { if (!find(app, "checkin_agent_authorizations", "attempt_id = {:id}", { id: a.id })) selected.push({ attemptId: a.id, profileId: a.getString("profile_id"), payloadHash: a.getString("payload_hash") }); if (selected.length === 10) break; }
+        const page = app.findRecordsByFilter("checkin_agent_attempts", `agent_id = {:agent} && station = {:station}${purposeFilter} && station_generation = {:sg} && system_generation = {:yg} && coordinator_generation = {:cg}`, "created,id", 100, offset, { agent: agent.id, station: station.id, sg: station.getInt("generation"), yg: system.getInt("generation"), cg: runtime.getInt("generation") });
+        for (const a of page) { const print = a.getString("print_attempt_id") ? app.findRecordById("checkin_print_attempts", a.getString("print_attempt_id")) : null; if (print && recovery.blocked(app, print)) continue; if (!find(app, "checkin_agent_authorizations", "attempt_id = {:id}", { id: a.id })) { const work = { attemptId: a.id, profileId: a.getString("profile_id"), payloadHash: a.getString("payload_hash") }; if (["initial", "replacement"].includes(a.getString("purpose"))) work.payload = json(a, "payload"); selected.push(work); } if (selected.length === 10) break; }
         if (page.length < 100) break;
       }
       result = { attempts: selected }; return;
     }
+    if (b.operation === "machine_ack") {
+      const attempt = find(app, "checkin_agent_attempts", "id = {:id} && agent_id = {:agent} && station = {:station}", { id: p.attemptId || "", agent: agent.id, station: station.id });
+      if (!attempt || !["initial", "replacement"].includes(attempt.getString("purpose")) || attempt.getString("payload_hash") !== p.payloadHash || attempt.getInt("station_generation") !== station.getInt("generation") || attempt.getInt("system_generation") !== system.getInt("generation") || attempt.getInt("coordinator_generation") !== runtime.getInt("generation")) fail("conflict", 409);
+      result = { attemptId: attempt.id, acknowledged: true }; return;
+    }
     const attempt = find(app, "checkin_agent_attempts", "id = {:id} && agent_id = {:agent} && station = {:station}", { id: p.attemptId || "", agent: agent.id, station: station.id });
     if (!attempt || attempt.getString("payload_hash") !== p.payloadHash || attempt.getString("profile_id") !== agent.getString("profile_id") || attempt.getInt("station_generation") !== station.getInt("generation") || attempt.getInt("system_generation") !== system.getInt("generation") || attempt.getInt("coordinator_generation") !== runtime.getInt("generation")) fail("conflict", 409);
+    if (attempt.getString("print_attempt_id")) { const print = app.findRecordById("checkin_print_attempts", attempt.getString("print_attempt_id")); const workflow = app.findRecordById("checkin_arrival_workflows", print.getString("workflow_id")); if (recovery.blocked(app, print) || !recovery.permitted(app, workflow)) fail("conflict", 409); }
     let auth = find(app, "checkin_agent_authorizations", "attempt_id = {:id}", { id: attempt.id });
     if (b.operation === "machine_authorize") {
       if (!hash(p.authorizationHash)) fail("invalid_input");
@@ -184,6 +269,12 @@ routerAdd("POST", "/api/wts/checkin-agents", (e) => {
       // cannot grant a second start; subsequent outcome reporting stays allowed.
       // Outcome authority is per-attempt and survives expiry/stops/restarts until lifecycle purge.
       set(auth, { started_at: iso, report_until: "" }); app.save(auth);
+      const printAttempt = find(app, "checkin_agent_attempts", "id = {:id}", { id: attempt.id });
+      if (printAttempt && printAttempt.getString("print_attempt_id")) {
+        const print = app.findRecordById("checkin_print_attempts", printAttempt.getString("print_attempt_id"));
+        if (print.getString("state") !== "queued") fail("conflict", 409);
+        print.set("state", "dispatched"); app.save(print);
+      }
       result = { attemptId: attempt.id, started: true, reportUntil: auth.getString("report_until") }; return;
     }
     fail("invalid_input");

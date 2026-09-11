@@ -57,6 +57,12 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/checkin-tools";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/checkin-tools")>;
+      $$route?: undefined;
+    },
+    {
       path: "/checkin";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/checkin")>;
@@ -231,6 +237,12 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/api/checkin-arrival-resume";
+      page: false;
+      $POST: FileRouteLazyRef<typeof import("./src/routes/api/checkin-arrival-resume")>;
+      $$route?: undefined;
+    },
+    {
       path: "/api/checkin-arrivals";
       page: false;
       $POST: FileRouteLazyRef<typeof import("./src/routes/api/checkin-arrivals")>;
@@ -246,6 +258,30 @@ declare module "virtual:file-routes" {
       path: "/api/checkin-labels";
       page: false;
       $POST: FileRouteLazyRef<typeof import("./src/routes/api/checkin-labels")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/api/checkin-lifecycle";
+      page: false;
+      $POST: FileRouteLazyRef<typeof import("./src/routes/api/checkin-lifecycle")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/api/checkin-lookup";
+      page: false;
+      $POST: FileRouteLazyRef<typeof import("./src/routes/api/checkin-lookup")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/api/checkin-monitoring";
+      page: false;
+      $POST: FileRouteLazyRef<typeof import("./src/routes/api/checkin-monitoring")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/api/checkin-recovery";
+      page: false;
+      $POST: FileRouteLazyRef<typeof import("./src/routes/api/checkin-recovery")>;
       $$route?: undefined;
     },
     {
@@ -748,6 +784,14 @@ declare module "virtual:file-routes" {
       id: "/user/profile";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/user/profile")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/checkin-tools";
+      id: "/checkin-tools";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/checkin-tools")>;
       $$route?: undefined;
       children?: undefined;
     },

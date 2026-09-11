@@ -22,7 +22,7 @@ export async function startCheckinPocketBase() {
     "1776000002_add_cfp_submissions_status.js", "1777000000_harden_auth_and_reviewer_rules.js",
     "1777000001_fix_users_role_update_rule.js", "1781000000_fix_registration_role_escalation.js",
     "1783000000_create_mcp_tokens.js", "1787000004_create_admin_actions.js",
-    "1787000007_harden_reviewer_ownership.js",
+    "1787000007_harden_reviewer_ownership.js", "1790000008_add_journaled_print_delivery.js",
     ...readdirSync(join(source, "pb_migrations")).filter((name) => /checkin.*\.js$/.test(name)),
   ];
   for (const name of migrations) copyFileSync(join(source, "pb_migrations", name), join(migrationsDir, name));
@@ -62,7 +62,9 @@ export async function startCheckinPocketBase() {
     });
     const baseUrl = `http://127.0.0.1:${port}`;
     async function start() {
-      server = spawn(binary, ["serve", `--http=127.0.0.1:${port}`, ...args, "--automigrate=false", "--hooksWatch=false"], { stdio: ["ignore", "pipe", "pipe"] });
+      // Query-bound regressions need deterministic logs regardless of whether
+      // the binary lives in /tmp (implicit dev mode) or a normal checkout.
+      server = spawn(binary, ["serve", `--http=127.0.0.1:${port}`, ...args, "--dev=true", "--automigrate=false", "--hooksWatch=false"], { stdio: ["ignore", "pipe", "pipe"] });
       server.stdout?.on("data", (chunk) => { logs += String(chunk); });
       server.stderr?.on("data", (chunk) => { logs += String(chunk); });
       for (let attempt = 0; attempt < 100; attempt++) {

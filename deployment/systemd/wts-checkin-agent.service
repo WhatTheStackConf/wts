@@ -1,5 +1,5 @@
 [Unit]
-Description=WTS outbound station agent (protocol only)
+Description=WTS outbound station agent (NIIMBOT B1)
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=300
@@ -15,7 +15,7 @@ StateDirectoryMode=0700
 RuntimeDirectory=wts-checkin-agent
 RuntimeDirectoryMode=0700
 LoadCredential=agent-token:/etc/wts-checkin/agent-token
-ExecStart=/usr/bin/flock --nonblock --no-fork /var/lib/wts-checkin-agent/owner.lock /usr/bin/node /opt/wts/.output/checkin-runtime/cli.js agent /etc/wts-checkin/agent.json
+ExecStart=/usr/bin/flock --nonblock --no-fork /var/lib/wts-checkin-agent/owner.lock /usr/bin/node /opt/wts/.output/checkin-runtime/runtime/checkin/cli.js agent /etc/wts-checkin/agent.json
 Restart=on-failure
 RestartPreventExitStatus=78
 RestartSec=30
@@ -25,8 +25,11 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-PrivateDevices=yes
+PrivateDevices=no
 DevicePolicy=closed
+# Replace <serial> with this station's exact by-id serial before installation.
+# DeviceAllow does NOT expand globs in device paths; DAC permissions also apply.
+DeviceAllow=/dev/serial/by-id/usb-NIIMBOT_B1_LABEL_PRINTER_<serial>-if00 rw
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes

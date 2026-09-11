@@ -1,0 +1,162 @@
+import { test, expect, login, toolsView, openToolsDisclosure } from "./checkin-fixtures";
+import { arrivalPrerequisites, bindArrivalPhone } from "./checkin-arrival-fixture";
+import type { RecoveryCommand } from "../src/lib/checkin-recovery-contract";
+import { checkinArrivalResultSchema } from "../src/lib/checkin-arrival-client";
+import { recoveryHistorySchema, recoveryWorkflowSchema } from "../src/lib/checkin-recovery-client-contract";
+import type { Route } from "@playwright/test";
+
+// Real app, real authenticated HTTP and disposable PocketBase. The runner pins
+// all upstream traffic to its loopback fixture and never starts a printer.
+test("mounted recovery redacts denied commands and late PNGs, reverifies, and replays frozen UUID", async ({ page, db, state, actorPage }, info) => {
+  test.setTimeout(180000);
+  await login(page, state.users.admin);
+  const setup = await arrivalPrerequisites(page, db);
+  const phone = await actorPage(state.users.operator);
+  const errors: string[] = [];
+  phone.on("pageerror", error => errors.push(error.message));
+  try {
+    await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[0].id);
+    await phone.getByLabel("Attendee QR identity", { exact: true }).fill("A-TEST001");
+    const preflightResponse = phone.waitForResponse(response => response.url().endsWith("/api/checkin-arrivals") && response.request().postDataJSON()?.operation === "preflight");
+    await phone.getByRole("button", { name: "Validate arrival", exact: true }).click();
+    const received = await preflightResponse;
+    expect(received.status()).toBe(200);
+    const arrival = checkinArrivalResultSchema.parse(await received.json());
+    expect(["reserved", "existing"]).toContain(arrival.state);
+    if (arrival.state !== "reserved" && arrival.state !== "existing") throw new Error("Expected held arrival workflow");
+    const workflowId = arrival.workflow.id;
+    expect(arrival.workflow).toMatchObject({ stationId: setup.stations[0].stationId, eventId: setup.events[0].id });
+    await toolsView(phone, "Recent work");
+    const panel = phone.getByRole("region", { name: "Station label recovery", exact: true });
+    await expect(panel.getByRole("button", { name: "Refresh recovery history", exact: true })).toBeEnabled();
+    const historyResponse = phone.waitForResponse(response => response.url().endsWith("/api/checkin-recovery") && response.request().postDataJSON()?.operation === "history");
+    await panel.getByRole("button", { name: "Refresh recovery history", exact: true }).click();
+    const historyReceived = await historyResponse;
+    expect(historyReceived.status()).toBe(200);
+    const history = recoveryHistorySchema.parse(await historyReceived.json());
+    expect(history.items.filter(item => item.workflowId === workflowId)).toHaveLength(1);
+    const rowIndex = history.items.findIndex(item => item.workflowId === workflowId);
+    const historyRows = panel.locator("ul.recovery-list > li > button");
+    await expect(historyRows).toHaveCount(history.items.length);
+    const selectedResponse = phone.waitForResponse(response => response.url().endsWith("/api/checkin-recovery") && response.request().postDataJSON()?.operation === "get");
+    await historyRows.nth(rowIndex).click();
+    const selected = await selectedResponse;
+    expect(selected.request().postDataJSON()).toEqual({ operation: "get", workflowId });
+    expect(selected.status()).toBe(200);
+    expect(recoveryWorkflowSchema.parse(await selected.json()).workflowId).toBe(workflowId);
+    await openToolsDisclosure(phone, "Edit label text");
+    await expect(panel.getByLabel("Label-only name", { exact: true })).toHaveValue("Ана O’Neill");
+    await phone.setViewportSize({ width: 320, height: 800 });
+    await panel.getByLabel("Label-only name", { exact: true }).fill("Ѓорѓи Ќќ");
+    await panel.getByLabel("Label-only affiliation (blank is allowed)").fill("");
+    await panel.getByRole("button", { name: "Preview exact label PNG", exact: true }).click();
+    await expect(panel.getByRole("img", { name: "Exact server-rendered label preview" })).toBeVisible();
+    expect(await panel.getByRole("img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+    expect(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await panel.getByLabel("Label-only name", { exact: true }).fill("Ѓ".repeat(200));
+    await panel.getByRole("button", { name: "Preview exact label PNG", exact: true }).click();
+    await expect(panel.getByText(/Text was visibly shortened to fit/)).toBeVisible();
+    expect(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await panel.getByLabel("Label-only name", { exact: true }).fill("unsafe@example.test");
+    await panel.getByRole("button", { name: "Preview exact label PNG", exact: true }).click();
+    await expect(panel.getByRole("alert")).toContainText("Preview unavailable");
+    await expect(panel.getByRole("img")).toHaveCount(0);
+    await panel.getByLabel("Label-only name", { exact: true }).fill("Ѓорѓи Ќќ");
+
+    let heldPreview: Route | undefined;
+    let heldEvidence: Route | undefined;
+    const commands: RecoveryCommand[] = [];
+    let denyVerification = true;
+    await phone.route("**/api/checkin-recovery", async route => {
+      const body = route.request().postDataJSON();
+      if (body.operation === "preview") { heldPreview = route; return; }
+      if (body.operation === "get" && commands.length === 0) { heldEvidence = route; return; }
+      if (body.operation === "command") {
+        commands.push(body.command);
+        if (commands.length === 2) return route.fulfill({ status: 403, json: { error: "denied" } });
+        const response = await route.fetch();
+        expect(response.status()).toBe(200);
+        if (commands.length === 1) return route.abort("failed"); // committed, response lost
+        return route.fulfill({ response });
+      }
+      if (body.operation === "get" && commands.length >= 2 && denyVerification) return route.fulfill({ status: 403, json: { error: "denied" } });
+      return route.continue();
+    });
+    await panel.getByRole("button", { name: "Preview exact label PNG", exact: true }).click();
+    await expect.poll(() => !!heldPreview).toBe(true);
+    await panel.getByRole("button", { name: "Refresh selected evidence", exact: true }).click();
+    await expect.poll(() => !!heldEvidence).toBe(true);
+    await panel.getByRole("button", { name: "Save label-only draft", exact: true }).click();
+    const retry = panel.getByRole("button", { name: "Retry exact saved recovery command", exact: true });
+    await expect(retry).toBeEnabled();
+    await retry.click();
+    await expect(panel.getByRole("alert")).toContainText("Recovery access denied");
+    await expect(retry).toBeDisabled();
+    await expect(panel.getByLabel("Saved recovery command ID")).toHaveText(commands[0].operationId);
+    await expect(panel.getByLabel("Label-only name", { exact: true })).toHaveCount(0);
+    await expect(panel).not.toContainText("Ана O’Neill");
+    await expect(panel).not.toContainText("Ѓорѓи Ќќ");
+    await expect(panel.getByRole("button", { name: "Save label-only draft", exact: true })).toHaveCount(0);
+    const previewResponse = await heldPreview!.fetch();
+    expect(previewResponse.status()).toBe(200);
+    await heldPreview!.fulfill({ response: previewResponse });
+    const evidenceResponse = await heldEvidence!.fetch();
+    expect(evidenceResponse.status()).toBe(200);
+    await heldEvidence!.fulfill({ response: evidenceResponse });
+    await expect(panel).not.toContainText("Ѓорѓи Ќќ");
+    await expect(panel).not.toContainText("Ана O’Neill");
+    await expect(panel.getByRole("img")).toHaveCount(0);
+    await panel.getByRole("button", { name: "Reverify recovery access", exact: true }).click();
+    await expect(retry).toBeDisabled();
+    expect(commands).toHaveLength(2);
+    denyVerification = false;
+    await panel.getByRole("button", { name: "Reverify recovery access", exact: true }).click();
+    await expect(retry).toBeEnabled();
+    await expect(panel.getByLabel("Label-only name", { exact: true })).toHaveCount(0);
+    await retry.click();
+    await openToolsDisclosure(phone, "Edit label text");
+    await expect(panel.getByLabel("Label-only name", { exact: true })).toHaveValue("Ѓорѓи Ќќ");
+    expect(commands).toHaveLength(3);
+    expect(commands[1]).toEqual(commands[0]); expect(commands[2]).toEqual(commands[0]);
+    const rows = await db.collection("checkin_recovery_commands").getFullList();
+    expect(rows.filter(row => row.operation_id === commands[0].operationId)).toHaveLength(1);
+    await panel.screenshot({ path: info.outputPath("recovery-cyrillic-reverified-320.png") });
+    await phone.unroute("**/api/checkin-recovery");
+    await openToolsDisclosure(phone, "Handwrite instead");
+    await expect(panel.getByRole("button", { name: "Request safe handwritten fulfillment", exact: true })).toBeDisabled();
+    await panel.getByLabel("I confirm I have physically handwritten the label.", { exact: false }).check();
+    await expect(panel.getByRole("button", { name: "Request safe handwritten fulfillment", exact: true })).toBeEnabled();
+    await panel.getByLabel("I confirm I have physically handwritten the label.", { exact: false }).uncheck();
+    const directDenied: RecoveryCommand[] = [];
+    await phone.route("**/api/checkin-recovery", async route => {
+      if (route.request().postDataJSON().operation !== "command") return route.continue();
+      directDenied.push(route.request().postDataJSON().command);
+      const response = await route.fetch(); expect(response.status()).toBe(200);
+      if (directDenied.length === 1) return route.fulfill({ status: 403, json: { error: "denied after commit" } });
+      return route.fulfill({ response });
+    });
+    await panel.getByRole("button", { name: "Park this work", exact: true }).click();
+    await expect(retry).toBeDisabled();
+    await expect(panel.getByLabel("Saved recovery command ID")).toHaveText(directDenied[0].operationId);
+    await expect(panel.getByLabel("Label-only name", { exact: true })).toHaveCount(0);
+    await panel.getByRole("button", { name: "Reverify recovery access", exact: true }).click();
+    await expect(retry).toBeEnabled(); await retry.click();
+    await expect(panel.getByRole("button", { name: "Resume this work", exact: true })).toBeVisible();
+    expect(directDenied).toHaveLength(2); expect(directDenied[1]).toEqual(directDenied[0]);
+    const parked = await db.collection("checkin_recovery_workflows").getFirstListItem(`workflow_id="${directDenied[0].workflowId}"`);
+    expect(parked.version).toBe(2); expect(parked.parked).toBe(true);
+
+    await page.goto("/admin/checkin");
+    const admin = page.getByRole("region", { name: "Admin recovery", exact: true });
+    await admin.getByRole("button", { name: /Ѓорѓи Ќќ/ }).click();
+    await expect(admin.getByRole("button", { name: "Reconcile original exact list", exact: true })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Reconcile original exact list", exact: true })).toHaveCount(0);
+    await page.route("**/api/checkin-recovery", route => route.fulfill({ status: 401, json: { error: "denied" } }));
+    await admin.getByRole("button", { name: "Continue investigation", exact: true }).click();
+    await expect(admin.getByRole("alert")).toContainText("Recovery access denied");
+    await expect(admin).not.toContainText("Ѓорѓи Ќќ");
+    await expect(admin.getByRole("button", { name: "Request guarded reset", exact: true })).toHaveCount(0);
+    await expect(admin.getByRole("button", { name: "Retry exact saved recovery command", exact: true })).toBeDisabled();
+    expect(errors).toEqual([]);
+  } finally { await setup.cleanup(); }
+});

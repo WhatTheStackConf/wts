@@ -1,5 +1,10 @@
 export function isCheckinPath(pathname: string): boolean {
-  return ["/api/checkin-events", "/api/checkin-labels", "/api/checkin-arrivals"].includes(pathname) || /^\/(?:admin\/|api\/)?checkin(?:\/|$)/.test(pathname);
+  // The router is case-insensitive and accepts a trailing slash. Apply the
+  // privacy boundary to those same routes, not just their canonical spelling.
+  let path = pathname;
+  try { path = decodeURIComponent(path); } catch { /* Invalid route remains unmatched. */ }
+  path = path.toLowerCase().replace(/\/+$/, "");
+  return ["/checkin-tools", "/api/checkin-arrival-resume", "/api/checkin-lookup", "/api/checkin-monitoring", "/api/checkin-lifecycle", "/api/checkin-events", "/api/checkin-labels", "/api/checkin-arrivals"].includes(path) || /^\/(?:admin\/|api\/)?checkin(?:\/|$)/.test(path);
 }
 
 /** A fresh document at the operational boundary has no third-party execution or

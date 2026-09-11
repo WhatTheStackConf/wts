@@ -1,0 +1,47 @@
+.wts-operator-screen {
+  height: 100svh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  max-width: 42rem;
+  margin-inline: auto;
+  padding: env(safe-area-inset-top, 0px) max(12px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(12px, env(safe-area-inset-left, 0px));
+  background: var(--color-base-300);
+  color: var(--color-base-content);
+  overflow: hidden;
+  overscroll-behavior-y: contain;
+}
+.wts-operator-screen [hidden] { display: none !important; }
+.wts-operator-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; }
+.wts-operator-header h1 { font-size: 1rem; font-weight: 700; letter-spacing: -.02em; }
+.wts-operator-header h1 span { margin-left: 8px; font-weight: 400; }
+.wts-operator-header .btn { min-height: 44px; }
+.wts-operator-context { min-width: 0; display: flex; flex-direction: column; justify-content: center; min-height: 3.25rem; line-height: 1.25; padding-block: 4px; gap: 2px; }
+.wts-operator-context strong, .wts-operator-context span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wts-operator-context strong { font-size: 1rem; }
+.wts-operator-context span { font-size: .875rem; color: var(--color-base-content); }
+.wts-operator-status { min-height: 1.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: .8125rem; line-height: 1.4; }
+.wts-operator-status button { text-decoration: underline; font-weight: 700; }
+.wts-operator-main { min-height: 0; min-width: 0; position: relative; }
+.wts-operator-workspace { height: 100%; min-height: 0; }
+.wts-operator-step, .wts-operator-lookup { height: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; padding-block: 12px; }
+.wts-operator-step h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; }
+.wts-operator-step p { margin-bottom: 16px; max-width: 55ch; }
+.wts-operator-step form, .wts-pair-confirm { display: flex; flex-direction: column; gap: 12px; margin-block: 12px; }
+.wts-operator-step label { font-size: 1rem; font-weight: 600; }
+.wts-operator-step .input, .wts-operator-step .select { width: 100%; min-height: 48px; font-size: 1rem; }
+.wts-operator-step summary { padding-block: 12px; cursor: pointer; }
+.wts-operator-step > section[aria-label="Station camera"] { height: min(280px, 45dvh); margin-block: 12px; }
+.wts-operator-lookup > section { border: 0; padding: 8px 0; }
+.wts-operator-footer { min-height: 64px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding-block: 8px; }
+.wts-operator-footer p { font-size: .875rem; color: var(--color-warning); }
+.wts-operator-footer .btn { width: 100%; min-height: 48px; }
+.wts-operator-screen .btn { touch-action: manipulation; }
+.wts-operator-menu { margin: auto; width: min(26rem, calc(100% - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 20px; border: 1px solid var(--color-neutral); border-radius: 12px; background: var(--color-base-200); color: var(--color-base-content); }
+.wts-operator-menu::backdrop { background: oklch(0 0 0 / .72); }
+.wts-operator-menu h2 { font-size: 1.25rem; font-weight: 700; margin-bottom: 8px; }
+.wts-operator-menu .btn { width: 100%; min-height: 48px; margin-top: 8px; }
+@media (max-height: 550px) and (orientation: landscape) {
+  .wts-operator-context { flex-direction: row; justify-content: flex-start; align-items: center; min-height: 2rem; gap: 12px; }
+  .wts-operator-footer { min-height: 48px; }
+}

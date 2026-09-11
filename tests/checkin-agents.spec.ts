@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Page } from "@playwright/test";
-import { test, expect, login, sessionCookieHeader } from "./checkin-fixtures";
+import { test, expect, login, status, phoneProvisioning, toolsView, openToolsDisclosure, sessionCookieHeader } from "./checkin-fixtures";
 import type { CheckinAdminDTO } from "~/lib/checkin-contract";
 import type { CheckinLabelCatalogue } from "~/lib/checkin-label-client";
 import type { CheckinLabelProfileResult } from "~/lib/checkin-label-profile-contract";
@@ -75,9 +75,10 @@ test("station agent controls are separate from browser provisioning and keep eve
   await expect(agents.getByText("Agent credentials are not User logins, Station Client Bindings or provisioning QRs.", { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 320, height: 740 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.goto("/checkin");
-  await expect(page.getByRole("button", { name: "Scan attendee", exact: true })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Print Name Label", exact: true })).toBeDisabled();
+  await page.goto("/checkin-tools");
+  expect((await status(page)).operationsEnabled).toBe(false);
+  await expect(page.getByRole("button", { name: "Arrivals", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Validate arrival", exact: true })).not.toBeVisible();
 });
 
 test("actual agent issuance and revocation remain audited, secret-free in reads, and operator-isolated", async ({ page, state, db, actorPage }, info) => {
@@ -127,11 +128,14 @@ test("actual agent issuance and revocation remain audited, secret-free in reads,
   const qr = await command<{ provisionCode: string }>(page, "/api/checkin", { operation: "admin_control", command: {
     operation: "rotate_provision_code", operationId: crypto.randomUUID(), expectedVersion: target.version, stationId: target.id, reason: "configuration", note: "Synthetic browser binding only",
   } });
-  await operator.goto("/checkin");
+  await operator.goto("/checkin-tools");
+  await phoneProvisioning(operator);
   await operator.getByLabel("Station provisioning code", { exact: true }).fill(qr.provisionCode);
   await operator.getByRole("button", { name: "Review station", exact: true }).click();
   await operator.getByRole("button", { name: "Confirm station binding", exact: true }).click();
-  const readiness = operator.getByRole("region", { name: "Your station agent", exact: true });
+  await toolsView(operator, "Diagnostics");
+  await openToolsDisclosure(operator, "Agent details");
+  const readiness = operator.getByRole("region", { name: "Diagnostics", exact: true });
   await expect(readiness.getByRole("heading", { name: /^Agent readiness/ })).toBeVisible();
   const own = await command<{ station: AgentControlResult["station"] }>(operator, endpoint, { operation: "status" });
   expect(own.station.stationId).toBe(fixture.stationId);
@@ -149,9 +153,9 @@ test("actual agent issuance and revocation remain audited, secret-free in reads,
   const revoked = await confirmAgent(page, "admin_revoke");
   expect(revoked.result.station).toMatchObject({ agentId: issued.result.station.agentId, credentialState: "revoked", readyForAuthorization: false });
   expect(revoked.result).not.toHaveProperty("credential");
-  await readiness.getByRole("button", { name: "Refresh agent readiness", exact: true }).click();
+  await readiness.getByRole("button", { name: "Refresh readiness", exact: true }).click();
   await expect(readiness.locator("dd").filter({ hasText: /^revoked$/ })).toBeVisible();
-  await expect(operator.getByRole("button", { name: "Scan attendee", exact: true })).toBeDisabled();
+  expect((await status(operator)).operationsEnabled).toBe(false);
   const revocationAudit = await db.collection("checkin_audit_events").getFullList({ filter: db.filter("admin_action_id = {:id}", { id: revoked.result.actionId }) });
   expect(revocationAudit).toHaveLength(1);
   expect(revocationAudit[0].reason).toBe("security");

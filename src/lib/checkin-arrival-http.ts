@@ -7,6 +7,7 @@ import { isSameOriginMutation } from "~/lib/session-policy";
 import { checkinArrivalInputSchema, checkinArrivalHistoryQuerySchema } from "~/lib/checkin-arrival-validation";
 
 const schema = z.discriminatedUnion("operation", [
+  z.strictObject({ operation: z.literal("status"), operationId: z.uuid() }),
   z.strictObject({ operation: z.literal("preflight"), command: checkinArrivalInputSchema }),
   z.strictObject({ operation: z.literal("history"), query: checkinArrivalHistoryQuerySchema.optional() }),
 ]);
@@ -50,11 +51,12 @@ export async function handleCheckinArrivalRequest(request: Request, deps: Checki
   if (cookies.length > 1 || (token !== undefined && !/^[a-f0-9]{64}$/.test(token))) return response({ error: "Invalid station client identity." }, 403);
   try {
     const service = await deps.service(actor);
+    if (command.operation === "status") return response(await service.status(token, command.operationId));
     if (command.operation === "preflight") return response(await service.preflight(token, command.command));
     return response(await service.history(token, command.query));
   } catch (error) {
     // Reconstruct even known errors: do not trust a mutable Error.message.
     if (error instanceof CheckinError) return response({ code: error.code, error: new CheckinError(error.code, error.status).message }, error.status);
-    return response({ error: "Arrival service unavailable. Retry the same preflight; no admission or printing was attempted." }, 503);
+    return response({ error: "Arrival service unavailable. The outcome remains unknown; do not start a new intake for this attendee." }, 503);
   }
 }

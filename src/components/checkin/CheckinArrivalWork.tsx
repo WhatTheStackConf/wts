@@ -6,8 +6,10 @@ import { ArrivalDecision } from "~/components/checkin/CheckinArrivalPreflight";
 interface CheckinArrivalWorkProps {
   /** Bound client identity/version, not the phone's mutable event selection. */
   stationKey?: string;
+  onResume?: (operationId: string) => void;
   allStations?: boolean;
   unavailable?: boolean;
+  compact?: boolean;
 }
 export function CheckinArrivalWork(props: CheckinArrivalWorkProps) {
   const key = () => props.allStations ? "all" : props.stationKey;
@@ -31,9 +33,9 @@ export function CheckinArrivalWork(props: CheckinArrivalWorkProps) {
     if (pages().length) setPages([]);
     else void actions.refetch().catch(() => undefined);
   }
-  return <section aria-label={props.allStations ? "All-station arrival work" : "Station arrival work"} class="rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-4 break-words">
+  return <section aria-label={props.allStations ? "All-station arrival work" : "Station arrival work"} class={props.compact ? "wts-tools-arrival-work" : "rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-4 break-words"}>
     <h2 class="text-xl font-bold">{props.allStations ? "All-station arrival work" : "Station arrival work"}</h2>
-    <p>All unresolved work, including earlier days, and current-day completed history. Work stays at its originating station and event; changing this phone's event never retargets it.</p>
+    <Show when={props.compact} fallback={<p>All unresolved work, including earlier days, and current-day completed history. Work stays at its originating station and event; changing this phone's event never retargets it.</p>}><p>Unresolved arrivals and today's completed work. Resume to review; nothing is retried automatically.</p></Show>
     <button type="button" class="btn btn-outline min-h-12" disabled={!key() || data.loading} onClick={refresh}>Refresh arrival work</button>
     <div aria-live="polite" class="space-y-3">
       <Show when={!key()}><p>Verify this phone's station binding to read its arrival work.</p></Show>
@@ -50,6 +52,10 @@ export function CheckinArrivalWork(props: CheckinArrivalWorkProps) {
             <p>A later continuation completed this preflight. The earlier failed-read result is retained for audit, not waiting for another choice.</p>
             <p class="text-sm break-all">Continuation {operationId()}</p>
           </>}</Show>
+          <Show when={!props.allStations && props.onResume && !item.resolvedByOperationId}>
+            <button type="button" class="btn btn-outline min-h-12" disabled={props.unavailable || data.loading || !!data.error || !key()} onClick={() => { if (!props.unavailable && !data.loading && !data.error && key()) props.onResume?.(item.operationId); }}>Resume held arrival</button>
+            <p class="text-sm">Resume only holds this operation on the owning station's phone and checks recovery permissions. It does not retry, admit or print.</p>
+          </Show>
         </li>}</For></ul>
       </>}</Show>
     </div>

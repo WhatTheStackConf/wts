@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, login, sessionCookieHeader, type CheckinFixtureState } from "./checkin-fixtures";
+import { test, expect, login, status, phoneProvisioning, toolsView, sessionCookieHeader, type CheckinFixtureState } from "./checkin-fixtures";
 import { arrivalCommand, arrivalPrerequisites, bindArrivalPhone } from "./checkin-arrival-fixture";
 import type { CheckinArrivalInput, CheckinArrivalResult, CheckinArrivalHistory } from "~/lib/checkin-arrival-contract";
 
@@ -26,9 +26,13 @@ async function submit(page: Page, identity: string) {
   return response.json() as Promise<CheckinArrivalResult>;
 }
 async function changeEvent(page: Page, eventId: string) {
+  await toolsView(page, "Phone");
   await page.getByLabel("Event for this phone", { exact: true }).selectOption(eventId);
+  const changed = page.waitForResponse(response => response.url().endsWith("/api/checkin-events") && response.request().postDataJSON()?.operation === "select");
   await page.getByRole("button", { name: "Select event for this phone", exact: true }).click();
-  await expect(page.getByText("Event context verified for this phone. Admission and printing remain disabled.", { exact: true })).toBeVisible();
+  expect((await changed).status()).toBe(200);
+  await expect.poll(async () => (await arrivalCommand<{ selected: { id: string } | null }>(page, "/api/checkin-events", { operation: "catalogue" })).selected?.id).toBe(eventId);
+  await toolsView(page, "Arrivals");
 }
 
 // Only the upstream/physical evidence is synthetic. Auth, forms, application,
@@ -76,6 +80,7 @@ test("arrival preflight reserves exact list members, isolates stations and prese
     const secondEvent = await submit(phone, "A-TEST001");
     expect(secondEvent).toMatchObject({ state: "reserved", workflow: { eventId: setup.events[1].id } });
     await phone.reload();
+    await toolsView(phone, "Arrivals");
     await expect(queue(phone)).toBeVisible();
     await queue(phone).getByRole("button", { name: "Refresh arrival work", exact: true }).click();
     await expect(queue(phone)).toContainText("Synthetic conference");
@@ -85,8 +90,7 @@ test("arrival preflight reserves exact list members, isolates stations and prese
     const all = await arrivalCommand<CheckinArrivalHistory>(page, endpoint, { operation: "history", query: { scope: "all" } });
     expect(all.items.some((item) => item.stationId === setup.stations[1].stationId)).toBe(true);
     for (const wire of [first, history, all]) expect(JSON.stringify(wire)).not.toMatch(/A-TEST|private-arrival@|synthetic-list-capability|synthetic-checkin-capability|upstreamAttendeeId|sourceKey|qrIdentity/);
-    await expect(phone.getByRole("button", { name: "Scan attendee", exact: true })).toBeDisabled();
-    await expect(phone.getByRole("button", { name: "Print Name Label", exact: true })).toBeDisabled();
+    expect((await status(phone)).operationsEnabled).toBe(false);
     expect(await db.collection("checkin_agent_attempts").getList(1, 1)).toMatchObject({ totalItems: 0 });
     expect(errors).toEqual([]);
   } finally { await setup.cleanup(); }
@@ -114,9 +118,40 @@ test("arrival answer outages require explicit retry or blank and delayed continu
     expect(blankCandidate.state).toBe("needs_affiliation_choice");
     const blank = phone.waitForResponse((response) => response.url().endsWith(endpoint) && response.request().postDataJSON()?.operation === "preflight");
     await preflight(phone).getByRole("button", { name: "Continue with blank affiliation", exact: true }).click();
-    expect(await (await blank).json()).toMatchObject({ state: "reserved", workflow: { eventId: setup.events[1].id, affiliation: "" } });
+    const blankResponse = await blank;
+    expect(blankResponse.status()).toBe(200);
+    const blankResult = await blankResponse.json() as CheckinArrivalResult;
+    expect(blankResult).toMatchObject({ state: "reserved", workflow: { eventId: setup.events[1].id, affiliation: "" } });
+    // Binding verification may fence a committed continuation response. HTTP
+    // completion alone does not unlock Phone; explicitly recover this one frozen
+    // command, checking its entire payload and receipt, before changing events.
+    const reserved = result(phone).getByText("Arrival reserved", { exact: true });
+    const blankRetry = preflight(phone).getByRole("button", { name: "Retry same preflight", exact: true });
+    await expect(reserved.or(blankRetry)).toBeVisible();
+    if (await blankRetry.isVisible()) {
+      const replayResponse = phone.waitForResponse(response => response.url().endsWith(endpoint) && response.request().postDataJSON()?.operation === "preflight");
+      await blankRetry.click();
+      const replay = await replayResponse;
+      expect(replay.request().postDataJSON()).toEqual(blankResponse.request().postDataJSON());
+      expect(replay.status()).toBe(200);
+      expect(await replay.json()).toEqual({ ...blankResult, replayed: true });
+    }
+    await expect(reserved).toBeVisible();
     await changeEvent(phone, setup.events[0].id);
-    expect((await submit(phone, "A-TEST005")).state).toBe("needs_affiliation_choice");
+    const finalChoice = await submit(phone, "A-TEST005");
+    expect(finalChoice.state).toBe("needs_affiliation_choice");
+    // A concurrent binding verification can deliberately discard the response
+    // after it commits. Exercise its exact retry instead of assuming HTTP receipt
+    // means the private UI has accepted the response under current authority.
+    const choices = preflight(phone).getByRole("button", { name: /^(Retry affiliation read|Retry same preflight)$/ });
+    await expect(choices.first()).toBeVisible();
+    const same = preflight(phone).getByRole("button", { name: "Retry same preflight", exact: true });
+    if (await same.isVisible()) {
+      const replay = phone.waitForResponse(response => response.url().endsWith(endpoint) && response.request().postDataJSON()?.operation === "preflight");
+      await same.click();
+      expect(await (await replay).json()).toMatchObject({ operationId: finalChoice.operationId, state: "needs_affiliation_choice", replayed: true });
+    }
+    await expect(preflight(phone).getByRole("button", { name: "Retry affiliation read", exact: true })).toBeEnabled();
     await upstream(state, "complete");
     const retried = phone.waitForResponse((response) => response.url().endsWith(endpoint) && response.request().postDataJSON()?.operation === "preflight");
     await preflight(phone).getByRole("button", { name: "Retry affiliation read", exact: true }).click();
@@ -180,11 +215,13 @@ test("arrival rebinding hides prior and delayed foreign-station results without 
   await login(page, state.users.admin);
   const setup = await arrivalPrerequisites(page, db, ["wts2026station1", "wts2026station2"]);
   const phone = await actorPage(state.users.operator);
-  async function rebind(index: number) {
-    await phone.getByLabel("Station provisioning code", { exact: true }).fill(setup.stations[index].provisionCode);
-    await phone.getByRole("button", { name: "Review station", exact: true }).click();
-    await phone.getByRole("button", { name: "Confirm station binding", exact: true }).click();
-    await expect(preflight(phone).getByText(`Current station: ${setup.stations[index].label}`, { exact: false })).toBeVisible();
+  async function rebind(index: number, target: Page = phone) {
+    await phoneProvisioning(target);
+    await target.getByLabel("Station provisioning code", { exact: true }).fill(setup.stations[index].provisionCode);
+    await target.getByRole("button", { name: "Review station", exact: true }).click();
+    await target.getByRole("button", { name: "Confirm station binding", exact: true }).click();
+    await toolsView(target, "Arrivals");
+    await expect(preflight(target).getByText(`Current station: ${setup.stations[index].label}`, { exact: false })).toBeVisible();
   }
   let release: (() => void) | undefined;
   try {
@@ -192,7 +229,7 @@ test("arrival rebinding hides prior and delayed foreign-station results without 
     expect(["reserved", "existing"]).toContain((await submit(phone, "A-TEST001")).state);
     await expect(result(phone).getByText("Ана O’Neill", { exact: true })).toBeVisible();
     await rebind(1);
-    await expect(result(phone).getByText(/^Already handled at another station\./)).toBeVisible();
+    await expect(result(phone).getByText(/^This frozen preflight belongs to another station binding\./)).toBeVisible();
     await expect(result(phone)).not.toContainText("Ана O’Neill");
     await expect(result(phone)).not.toContainText("Synthetic organisation");
     await rebind(0);
@@ -212,10 +249,18 @@ test("arrival rebinding hides prior and delayed foreign-station results without 
     await preflight(phone).getByLabel("Attendee QR identity", { exact: true }).fill("A-TEST001");
     await preflight(phone).getByRole("button", { name: "Validate arrival", exact: true }).click();
     await fetchedResponse;
-    await rebind(1);
+    await expect(phone.getByRole("button", { name: "Phone", exact: true })).toBeDisabled();
+    // The originating view now prevents leaving a pending arrival. Another tab
+    // can still change the shared binding; its late response must be redacted.
+    const otherTab = await phone.context().newPage();
+    try { await otherTab.goto("/checkin-tools"); await rebind(1, otherTab); }
+    finally { await otherTab.close(); }
+    await phone.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(async () => (await status(phone)).binding.stationId).toBe(setup.stations[1].stationId);
+    await expect(preflight(phone).getByText(`Current station: ${setup.stations[1].label}`, { exact: false })).toBeVisible();
     release!();
     await expect(result(phone).getByText("Validating arrival…", { exact: true })).toHaveCount(0);
-    await expect(result(phone).getByText(/^Already handled at another station\./)).toBeVisible();
+    await expect(result(phone).getByText(/^This frozen preflight belongs to another station binding\./)).toBeVisible();
     await expect(result(phone)).not.toContainText("Ана O’Neill");
     await expect(result(phone)).not.toContainText("Synthetic organisation");
     await expect(preflight(phone).getByLabel("Attendee QR identity", { exact: true })).toHaveAttribute("readonly", "");

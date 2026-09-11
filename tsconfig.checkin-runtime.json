@@ -7,9 +7,9 @@
     "types": ["node"],
     "strict": true,
     "skipLibCheck": true,
-    "rootDir": "runtime/checkin",
+    "rootDir": ".",
     "outDir": ".output/checkin-runtime",
     "noEmitOnError": true
   },
-  "include": ["runtime/checkin/**/*.ts"]
+  "include": ["runtime/checkin/**/*.ts", "src/lib/checkin-label-renderer.ts", "src/lib/checkin-label-render-contract.ts", "src/lib/checkin-label-validation.ts", "src/lib/checkin-contract.ts", "src/lib/checkin-label-render-font-data.ts"]
 }

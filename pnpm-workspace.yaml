@@ -1,8 +1,12 @@
 allowBuilds:
   '@parcel/watcher': true
+  '@serialport/bindings-cpp': true
+  '@stoprocent/bluetooth-hci-socket': false
+  '@stoprocent/noble': false
   esbuild: true
   sharp: true
   sqlite3: true
+  usb: false
 minimumReleaseAgeExclude:
   - baseline-browser-mapping@2.11.20
 onlyBuiltDependencies:

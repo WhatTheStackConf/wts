@@ -1,9 +1,14 @@
 import { For, Show, createSignal } from "solid-js";
+import { CheckinAdminRecovery } from "~/components/checkin/CheckinRecovery";
 import { CheckinLayout } from "~/components/checkin/CheckinLayout";
 import { CheckinEventAdmin } from "~/components/checkin/CheckinEventAdmin";
 import { CheckinLabelAdmin } from "~/components/checkin/CheckinLabelAdmin";
 import { CheckinArrivalWork } from "~/components/checkin/CheckinArrivalWork";
 import { CheckinAgentAdmin } from "~/components/checkin/CheckinAgentAdmin";
+import { CheckinAdminMonitoring } from "~/components/checkin/checkin-monitoring";
+import { CheckinLifecycleAdmin } from "~/components/checkin/CheckinLifecycleAdmin";
+import { createAgentReadinessResource } from "~/components/checkin/AgentReadiness";
+import { agentAdminList } from "~/lib/checkin-agent-client";
 import { StationReadiness } from "~/components/checkin/CheckinStationPage";
 import { useRequireAdmin } from "~/lib/route-guards";
 import { createAsyncResource } from "~/lib/async-resource";
@@ -39,6 +44,16 @@ function StationConfiguration(props: StationConfigurationProps) {
   );
 }
 
+/** Mounted anew for each authorized user/role; no recipient snapshot crosses sessions. */
+function AdminMonitoringSurface() {
+  const { data, refresh } = createAgentReadinessResource(() => true, agentAdminList);
+  return <>
+    <Show when={data.error}><p role="alert">Monitoring station readiness unavailable. Do not rely on previous readiness.</p></Show>
+    <button type="button" class="btn min-h-11" disabled={data.loading} onClick={() => void refresh()}>Refresh monitoring station readiness</button>
+    <CheckinAdminMonitoring readiness={!data.error && !data.loading ? data()?.stations ?? [] : []} />
+  </>;
+}
+
 export default function AdminCheckinPage() {
   const guard = useRequireAdmin();
   const [bindingPage, setBindingPage] = createSignal(1);
@@ -66,7 +81,7 @@ export default function AdminCheckinPage() {
     try {
       const result = await checkinAdminControl({ ...current.command, operationId: current.operationId, reason: selectedReason, note: note() });
       setIssued(result.provisionCode ? result : undefined);
-      setMessage(result.replayed ? "This action was already applied. No action was repeated. If the QR response was lost, issue a new replacement QR." : `${current.title} applied. Admission and printing remain disabled.`);
+      setMessage(result.replayed ? "This action was already applied. No action was repeated. If the QR response was lost, issue a new replacement QR." : `${current.title} applied. Supervised admission and printing require current station readiness.`);
       setIntent(undefined);
       await actions.refetch();
     } catch (failure) {
@@ -80,6 +95,8 @@ export default function AdminCheckinPage() {
         <CheckinEventAdmin />
         <CheckinLabelAdmin />
         <CheckinAgentAdmin />
+        <Show when={guard.authorized() && guard.user()?.id && `${guard.user()!.id}:${guard.user()!.role}`} keyed>{(_scope) => <><AdminMonitoringSurface /><CheckinLifecycleAdmin /></>}</Show>
+        <CheckinAdminRecovery scopeKey={guard.authorized() && guard.user()?.id ? `${guard.user()!.id}:${guard.user()!.role}` : undefined} />
         <CheckinArrivalWork allStations />
         <div aria-live="polite">
           <Show when={error()}><p role="alert" class="alert alert-error">{error()}</p></Show>
