@@ -62,4 +62,13 @@ async function protectCheckin(request: Request, next: (request?: Request) => Pro
   return isCheckinPath(new URL(request.url).pathname) ? protectCheckinResponse(response) : response;
 }
 
-export default [preserveDeclaredStatus, protectSpeakerGuide, protectCheckin, createAPIHandler(routes)];
+async function protectLiveQa(request: Request, next: (request?: Request) => Promise<Response>) {
+  const response = await next();
+  const path = new URL(request.url).pathname;
+  if (path === "/mc" || path === "/mc/" || path === "/api/live-qa" || path === "/api/live-qa/") {
+    privatePageHeaders.forEach((value, name) => response.headers.set(name, value));
+  }
+  return response;
+}
+
+export default [preserveDeclaredStatus, protectSpeakerGuide, protectCheckin, protectLiveQa, createAPIHandler(routes)];

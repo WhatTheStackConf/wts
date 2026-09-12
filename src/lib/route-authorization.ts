@@ -1,4 +1,4 @@
-export type AppRole = "user" | "reviewer" | "checkin_operator" | "admin";
+export type AppRole = "user" | "reviewer" | "checkin_operator" | "mc" | "admin";
 
 export interface AuthorizationState {
   loading: boolean;
@@ -20,6 +20,10 @@ export function checkinOperatorAuthorized(state: AuthorizationState): boolean {
   return !state.loading
     && state.authenticated
     && (state.role === "checkin_operator" || state.role === "admin");
+}
+
+export function mcAuthorized(state: AuthorizationState): boolean {
+  return !state.loading && state.authenticated && (state.role === "mc" || state.role === "admin");
 }
 
 export function authenticated(state: AuthorizationState): boolean {
