@@ -3,11 +3,12 @@ import {
   adminAuthorized,
   authorizedResourceSource,
   checkinOperatorAuthorized,
+  mcAuthorized,
   reviewerAuthorized,
 } from "~/lib/route-authorization";
 
 describe("privileged route authorization", () => {
-  const roles = [undefined, "user", "reviewer", "checkin_operator", "admin"] as const;
+  const roles = [undefined, "user", "reviewer", "checkin_operator", "mc", "admin"] as const;
 
   it("does not authorize or fetch while authentication is loading", () => {
     for (const role of roles) {
@@ -15,6 +16,7 @@ describe("privileged route authorization", () => {
       expect(adminAuthorized(state)).toBe(false);
       expect(reviewerAuthorized(state)).toBe(false);
       expect(checkinOperatorAuthorized(state)).toBe(false);
+      expect(mcAuthorized(state)).toBe(false);
     }
     const fetcher = vi.fn();
     if (authorizedResourceSource(false)) fetcher();
@@ -30,6 +32,17 @@ describe("privileged route authorization", () => {
     const operator = { loading: false, authenticated: true, role: "checkin_operator" } as const;
     expect(adminAuthorized(operator)).toBe(false);
     expect(reviewerAuthorized(operator)).toBe(false);
+  });
+
+  it("authorizes only MCs and admins for Q&A moderation", () => {
+    for (const role of roles) {
+      expect(mcAuthorized({ loading: false, authenticated: false, role })).toBe(false);
+      expect(mcAuthorized({ loading: false, authenticated: true, role })).toBe(role === "mc" || role === "admin");
+    }
+    const mc = { loading: false, authenticated: true, role: "mc" } as const;
+    expect(adminAuthorized(mc)).toBe(false);
+    expect(reviewerAuthorized(mc)).toBe(false);
+    expect(checkinOperatorAuthorized(mc)).toBe(false);
   });
 
   it("authorizes only admins for admin routes", () => {

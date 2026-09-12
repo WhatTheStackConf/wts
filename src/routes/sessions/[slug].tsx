@@ -4,6 +4,7 @@ import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { Layout } from "~/layouts/Layout";
 import { fetchSessionBySlug } from "~/lib/speakers-public";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
+import { LiveQaPanel } from "~/components/LiveQaPanel";
 import { proseArticleClasses } from "~/components/MDXContent";
 import { sanitizeHtml } from "~/lib/sanitize-html";
 import { conferenceWeekDayLabel } from "~/lib/conference-week";
@@ -236,6 +237,7 @@ export default function SessionDetail() {
                     </section>
                   </Show>
                   </article>
+                  <LiveQaPanel slug={s().slug} />
                 </div>
               </div>
             </Layout>

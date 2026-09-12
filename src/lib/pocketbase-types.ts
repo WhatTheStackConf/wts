@@ -16,8 +16,25 @@ export interface UserRecord extends RecordModel {
   avatar: string;
   created: string;
   updated: string;
-  role: "user" | "reviewer" | "checkin_operator" | "admin";
+  role: "user" | "reviewer" | "checkin_operator" | "mc" | "admin";
   verified?: boolean;
+}
+
+/** Locked collections, exposed only through the authenticated live Q&A hook. */
+export interface LiveQaQuestionRecord extends RecordModel {
+  session: string;
+  author: string;
+  body: string;
+  answered: boolean;
+  request_id: string;
+  request_payload: { slug: string; body: string };
+  request_reply: { question: import("~/lib/live-qa-contract").LiveQaQuestion };
+  created: string;
+}
+
+export interface LiveQaControlRecord extends RecordModel {
+  session: string;
+  mode: import("~/lib/live-qa-contract").LiveQaMode;
 }
 
 // CFP Applicant collection type

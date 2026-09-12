@@ -7,7 +7,7 @@ import { adminFetchAllUsers, adminUpdateUser, adminDeleteUser, adminFetchUserSpe
 import { UserRecord } from "~/lib/pocketbase-types";
 import { getGravatarUrl } from "~/lib/gravatar";
 
-const ROLES = ["user", "reviewer", "checkin_operator", "admin"] satisfies UserRecord["role"][];
+const ROLES = ["user", "reviewer", "checkin_operator", "mc", "admin"] satisfies UserRecord["role"][];
 
 function roleLabel(role: string) {
     return role === "checkin_operator" ? "Check-in Operator" : role.toUpperCase();

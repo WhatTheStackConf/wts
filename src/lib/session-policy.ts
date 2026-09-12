@@ -10,7 +10,7 @@ export interface SessionUser {
   email: string;
   name: string;
   avatar: string;
-  role: "user" | "reviewer" | "checkin_operator" | "admin";
+  role: "user" | "reviewer" | "checkin_operator" | "mc" | "admin";
   verified: boolean;
 }
 
@@ -70,7 +70,7 @@ export function hasManagedSessionCookie(cookie: string): boolean {
 
 export function sessionUser(record: Record<string, unknown>): SessionUser {
   const role = record.role;
-  if (role !== "user" && role !== "reviewer" && role !== "checkin_operator" && role !== "admin") {
+  if (role !== "user" && role !== "reviewer" && role !== "checkin_operator" && role !== "mc" && role !== "admin") {
     throw new Error("Unauthorized");
   }
   return {

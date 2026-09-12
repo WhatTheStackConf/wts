@@ -108,8 +108,8 @@ describe("server authentication", () => {
     expect(cookie).toContain("pb_auth_managed=1");
   });
 
-  it("preserves the Check-in Operator role through password login, token login and session refresh", async () => {
-    state.refreshedRecord.role = "checkin_operator";
+  it.each(["checkin_operator", "mc"])("preserves the %s role through password login, token login and session refresh", async (role) => {
+    state.refreshedRecord.role = role;
     const event = requestEvent({ cookie: "pb_auth=current-value" });
     state.getRequestEvent.mockReturnValue(event);
     state.authWithPassword.mockResolvedValue({ token: state.token, record: state.refreshedRecord });
@@ -136,7 +136,7 @@ describe("server authentication", () => {
     expect(event.response.headers.get("set-cookie")).toBeNull();
   });
 
-  it.each(["user", "reviewer", "unknown"])("denies %s check-in authority", async (role) => {
+  it.each(["user", "reviewer", "mc", "unknown"])("denies %s check-in authority", async (role) => {
     state.refreshedRecord.role = role;
     state.getRequestEvent.mockReturnValue(requestEvent({ cookie: "pb_auth=current-value" }));
     await expect(requireCheckinOperatorSession()).rejects.toThrow("Unauthorized");
@@ -154,10 +154,10 @@ describe("server authentication", () => {
     expect(state.authRefresh).toHaveBeenCalledTimes(3);
   });
 
-  it("does not grant operator users reviewer or admin authority", async () => {
-    state.refreshedRecord.role = "checkin_operator";
+  it.each(["checkin_operator", "mc"])("does not grant %s users reviewer or admin authority", async (role) => {
+    state.refreshedRecord.role = role;
     state.getRequestEvent.mockReturnValue(requestEvent({ cookie: "pb_auth=current-value" }));
-    await expect(requireAuth()).resolves.toHaveProperty("role", "checkin_operator");
+    await expect(requireAuth()).resolves.toHaveProperty("role", role);
     await expect(requireReviewerSession()).rejects.toThrow("Unauthorized");
     await expect(requireAdmin()).rejects.toThrow("Unauthorized");
     state.refreshedRecord.role = "admin";
