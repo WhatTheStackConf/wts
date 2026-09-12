@@ -77,6 +77,16 @@ describe("MCP programme data", () => {
     fetchRecordById.mockReset();
   });
 
+  it("exposes explicit MC status without inferring it from session availability", async () => {
+    fetchAllRecords.mockResolvedValue([
+      { id: "host", slug: "host", is_mc: true, cfp_applicant: "PRIVATE" },
+      { id: "speaker", slug: "speaker" },
+    ]);
+    const speakers = await fetchMcpSpeakers();
+    expect(speakers).toMatchObject([{ is_mc: true }, { is_mc: false }]);
+    expect(JSON.stringify(speakers)).not.toContain("PRIVATE");
+  });
+
   it("maps MCP speakers from Speaker-owned fields without CFP Applicant or User fallbacks", async () => {
     fetchAllRecords.mockResolvedValue([
       {

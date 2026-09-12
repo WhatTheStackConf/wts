@@ -8,6 +8,7 @@ function speaker(slug: string, displayName: string, events: string[]): PublicSpe
     displayName,
     photoUrl: null,
     affiliation: "",
+    isMc: false,
     sessionCount: 0,
     appearanceEvents: events.map((name) => ({ name, compactLabel: name })),
   };

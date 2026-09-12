@@ -33,6 +33,7 @@ export type SpeakerProfilePhotoInput =
   | { intent: "replace"; file: SpeakerPhotoPayload };
 
 export type SpeakerProfileUpdateInput = {
+  is_mc?: boolean;
   display_name: string;
   slug: string;
   affiliation?: string;
@@ -52,6 +53,7 @@ type SpeakerPhotoUpload = SpeakerPhotoPayload | SpeakerPhotoBlobPayload;
 
 type NormalizedSpeakerProfile = {
   fields: {
+    is_mc?: boolean;
     display_name: string;
     slug: string;
     affiliation: string;
@@ -139,6 +141,9 @@ export function validateSpeakerSlug(slug: string): string | null {
 export function normalizeSpeakerProfileUpdateInput(
   input: SpeakerProfileUpdateInput,
 ): { success: true; data: NormalizedSpeakerProfile } | { success: false; error: string } {
+  if (input.is_mc !== undefined && typeof input.is_mc !== "boolean") {
+    return { success: false, error: "MC designation must be a boolean." };
+  }
   const displayName = input.display_name?.trim() || "";
   if (!displayName) return { success: false, error: "Display name is required." };
 
@@ -159,6 +164,7 @@ export function normalizeSpeakerProfileUpdateInput(
     success: true,
     data: {
       fields: {
+        ...(input.is_mc !== undefined ? { is_mc: input.is_mc } : {}),
         display_name: displayName,
         slug,
         affiliation: input.affiliation?.trim() || "",
@@ -203,6 +209,7 @@ export function speakerSnapshot(record: SpeakerRecord) {
     display_name: record.display_name || "",
     origin: record.origin,
     published: record.published,
+    is_mc: record.is_mc === true,
     user: record.user || "",
     cfp_applicant: record.cfp_applicant || "",
     photo: record.photo || "",

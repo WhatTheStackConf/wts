@@ -35,7 +35,7 @@ function records() {
     expand: { speakers: [ada, hidden] }, review_notes: "PRIVATE_REVIEW", key_takeaways: "PRIVATE_TAKEAWAYS",
   };
   return {
-    speakers: [{ ...ada, id: "zoe-id", slug: "zoe", display_name: "Zoe" }, hidden, ada],
+    speakers: [{ ...ada, id: "zoe-id", slug: "zoe", display_name: "Zoe", is_mc: true }, hidden, ada],
     sessions: [session, { ...session, id: "draft-session", slug: "draft-session", title: "PRIVATE_SESSION", published: false }],
     conference_days: [{ id: "day", key: "main", local_date: "2026-09-19", title: "Main day", published: true }],
     appearance_events: [{ id: "event", name: "WhatTheStack 2026", compact_label: "WTS", published: true }],
@@ -136,6 +136,15 @@ describe("public JSON interface", () => {
     expect(next).not.toHaveBeenCalled();
     expect(await (await publicApiPathGuard(new Request(`${root}speakers/ada`), next)).text()).toBe("downstream");
     expect(await (await publicApiPathGuard(new Request("https://wts.sh/api/other/%ZZ"), next)).text()).toBe("downstream");
+  });
+
+  it("exposes MC-only profiles in lists and detail without creating sessions or leaking private data", async () => {
+    const api = createPublicApi({ loadProgramme: loadPublicConferenceGuideProgramme });
+    const list = await (await api({ request: new Request(`${root}speakers`) })).json();
+    expect(list.data).toMatchObject([{ slug: "ada", isMc: false, sessionCount: 1 }, { slug: "zoe", isMc: true, sessionCount: 0 }]);
+    const detail = await (await api({ request: new Request(`${root}speakers/zoe`) })).json();
+    expect(detail.data).toMatchObject({ slug: "zoe", isMc: true, sessions: [], affiliation: "Engines", bio: "Public biography" });
+    expect(JSON.stringify(detail)).not.toContain("PRIVATE_");
   });
 
   it("serves session lists, both detail resources and the agenda, never draft relations", async () => {

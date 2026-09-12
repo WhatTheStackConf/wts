@@ -555,6 +555,7 @@ export const adminPromoteSubmissionToDraftSession = async (submissionId: string)
 };
 
 export type InviteSpeakerInput = {
+  is_mc?: boolean;
   slug: string;
   display_name: string;
   affiliation: string;
@@ -569,6 +570,9 @@ export const adminCreateInviteSpeaker = async (input: InviteSpeakerInput) => {
     await requireAdmin();
     const adminService = getAdminPB();
 
+    if (input.is_mc !== undefined && typeof input.is_mc !== "boolean") {
+      return { success: false, error: "MC designation must be a boolean." };
+    }
     const displayName = input.display_name?.trim();
     if (!displayName) {
       return { success: false, error: "Display name is required." };
@@ -594,6 +598,7 @@ export const adminCreateInviteSpeaker = async (input: InviteSpeakerInput) => {
       slug,
       published: false,
       origin: "invite",
+      is_mc: input.is_mc ?? false,
       display_name: displayName,
       affiliation: input.affiliation?.trim() || "",
       bio: input.bio?.trim() || "",

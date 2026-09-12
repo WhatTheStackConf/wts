@@ -30,7 +30,7 @@ export default function SpeakerDetail() {
         {(s) => (
           <Layout
             title={`${s().displayName} — WhatTheStack 2026`}
-            description={s().affiliation || "Speaker at WhatTheStack 2026"}
+            description={s().affiliation || (s().isMc ? "MC at WhatTheStack 2026" : "Speaker at WhatTheStack 2026")}
           >
             <div class="w-full h-full px-4 relative pt-4 md:pt-12 pb-20">
               <div class="max-w-4xl mx-auto relative z-20">
@@ -52,6 +52,9 @@ export default function SpeakerDetail() {
                         <h1 class="font-star text-3xl md:text-4xl lg:text-5xl font-bold text-secondary-400 leading-tight text-balance">
                           {s().displayName}
                         </h1>
+                        <Show when={s().isMc}>
+                          <p class="speaker-session-chip mt-4" title="Master of ceremonies">MC</p>
+                        </Show>
                         <AppearanceRibbons events={s().appearanceEvents} variant="profile" />
                         <div class="mt-5 flex flex-col sm:flex-row sm:items-center gap-3 justify-center sm:justify-start">
                           <SocialLinks handles={s().socialHandles} />
@@ -64,6 +67,7 @@ export default function SpeakerDetail() {
                     <div class={proseArticleClasses} innerHTML={sanitizeHtml(s().bio)} />
                   </Show>
 
+                  <Show when={!s().isMc || s().sessions.length > 0}>
                   <section
                     class={
                       s().bio
@@ -105,6 +109,7 @@ export default function SpeakerDetail() {
                       </ul>
                     </Show>
                   </section>
+                  </Show>
                 </div>
               </div>
             </div>

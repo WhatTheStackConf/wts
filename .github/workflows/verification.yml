@@ -36,6 +36,8 @@ jobs:
         run: pnpm pocketbase:download-test
       - run: pnpm generate:icons && pnpm exec velite
       - run: pnpm ${{ matrix.gate }}
+      - if: matrix.gate == 'test'
+        run: pnpm test:mcs
 
   checkin-browser:
     name: Disposable Check-in browser

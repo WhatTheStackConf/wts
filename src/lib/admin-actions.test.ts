@@ -29,6 +29,7 @@ import {
   normalizeSpeakerSocialHandles,
   speakerFileToPhotoPayload,
   speakerSlugExistsForOther,
+  speakerSnapshot,
 } from "~/lib/admin-speaker-profile";
 import {
   addPromotedSessionSummaries,
@@ -36,6 +37,32 @@ import {
   buildSessionUpdateBody,
   promoteSubmissionToDraftSession,
 } from "~/lib/admin-session-promotion";
+
+describe("MC profile editing", () => {
+  it("preserves an omitted designation and accepts explicit true and false", () => {
+    const input = { display_name: "Host", slug: "host" };
+    const omitted = normalizeSpeakerProfileUpdateInput(input);
+    expect(omitted.success).toBe(true);
+    if (omitted.success) expect(omitted.data.fields).not.toHaveProperty("is_mc");
+    for (const is_mc of [true, false]) {
+      const result = normalizeSpeakerProfileUpdateInput({ ...input, is_mc });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(buildSpeakerProfileUpdateBody(result.data.fields, { intent: "keep" })).toHaveProperty("is_mc", is_mc);
+      }
+    }
+  });
+
+  it.each(["true", "false", 1, 0, null, [], {}].map((value) => [value]))("rejects non-boolean designation %j", (is_mc) => {
+    expect(normalizeSpeakerProfileUpdateInput({ display_name: "Host", slug: "host", is_mc } as never))
+      .toEqual({ success: false, error: "MC designation must be a boolean." });
+  });
+
+  it("includes MC status in the safe admin snapshot", () => {
+    expect(speakerSnapshot(speaker({ is_mc: true }) as never).is_mc).toBe(true);
+    expect(speakerSnapshot(speaker() as never).is_mc).toBe(false);
+  });
+});
 
 const timestamp = "2026-01-01 00:00:00.000Z";
 const originalFetch = globalThis.fetch;

@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "event_id": "wts2026appevent",
+  "source_edition": 2025,
+  "source_checked": "2026-09-12",
+  "profiles": [
+    {
+      "source_url": "https://2025.wts.sh/speakers/69jvp9e0d227484",
+      "photo_source_url": "https://pocketbase.wts.sh/api/files/pbc_1636713223/69jvp9e0d227484/photo_2025_07_15_20_46_36_yvoi6murub.jpg",
+      "photo_asset": "mc-2026-assets/tony-edwards.jpg",
+      "photo_sha256": "cd70a2f3a32c7928fc978293912201b10a38634610291580b16ae0f5a6b18eb8",
+      "record": {
+        "id": "mc26733e68f146b",
+        "slug": "tony-edwards",
+        "published": false,
+        "origin": "invite",
+        "is_mc": true,
+        "display_name": "Tony Edwards",
+        "user": "",
+        "cfp_applicant": "",
+        "affiliation": "Mobile Developer @ Sapphire Holidays",
+        "bio": "<p>Tony Edwards is a mobile app developer at Sapphire Holidays. He creates engaging mobile and desktop apps using a mix of .NET and JavaScript tooling, teaches the next generation of developers at Plymouth University, and co-organises the UK outing of the MAUI Day conference.  \n  \nWith a background in community events management, a multi award winning career in the education sector, and a long history of making a fool of himself, Tony&#x27;s sessions are sure to engage the audience and spark conversation with attendees. They&#x27;ll certainly remember them!</p>",
+        "social_handles": [
+          "https://x.com/tonyedwardspz",
+          "https://bsky.app/profile/tonyedwardspz.bsky.social",
+          "https://www.linkedin.com/in/tonyedwardspz/",
+          "https://tonyedwardspz.co.uk/"
+        ],
+        "appearance_events": [
+          "wts2026appevent"
+        ],
+        "promo": null
+      }
+    },
+    {
+      "source_url": "https://2025.wts.sh/speakers/055lvd0tg7ufo94",
+      "photo_source_url": "https://pocketbase.wts.sh/api/files/pbc_1636713223/055lvd0tg7ufo94/1716278629224_p4br8igebx.jpeg",
+      "photo_asset": "mc-2026-assets/stojan-ezhov.jpg",
+      "photo_sha256": "2f3459acd959225d2a49f039a3681f6edf8f98f93e73653da71a3acbf90a73bb",
+      "record": {
+        "id": "mc26b5bbd9ac0ee",
+        "slug": "stojan-ezhov",
+        "published": false,
+        "origin": "invite",
+        "is_mc": true,
+        "display_name": "Stojan Ezhov",
+        "user": "",
+        "cfp_applicant": "",
+        "affiliation": "Senior Marketing Automation @ Valtech",
+        "bio": "<p>Stojan Ezhov is a Marketing Automation Consultant currently working at Valtech. Since 2017, he’s involved in the building of the local IT community in Skopje and Macedonia through organizing meet-ups, panel discussions and conferences – bringing together local IT professionals, enthusiasts, and companies. He also serves as a Vice-President of DeveD, an organization dedicated to building and developing IT communities.</p>",
+        "social_handles": [
+          "https://www.linkedin.com/in/stojan-ezhov/"
+        ],
+        "appearance_events": [
+          "wts2026appevent"
+        ],
+        "promo": null
+      }
+    },
+    {
+      "source_url": "https://2025.wts.sh/speakers/6l91j3025q0791c",
+      "photo_source_url": "https://pocketbase.wts.sh/api/files/pbc_1636713223/6l91j3025q0791c/photo_2025_07_15_20_57_53_kd4s0iawpd.jpg",
+      "photo_asset": "mc-2026-assets/nikola-dinevski.jpg",
+      "photo_sha256": "177cd043e473d3decb1ebdcf135b7ea9dabaee19ab903396eb73b8307d76e111",
+      "record": {
+        "id": "mc26e1b274db66c",
+        "slug": "nikola-dinevski",
+        "published": false,
+        "origin": "invite",
+        "is_mc": true,
+        "display_name": "Nikola Dinevski",
+        "user": "",
+        "cfp_applicant": "",
+        "affiliation": "Full Stack Engineer @ CodeChem",
+        "bio": "<p>Aspiring and ambitious software engineer with a passion for problem-solving and quick learning. An adventurer at heart, I thrive in team settings, bringing a happy spirit, positive attitude, and a wealth of experience. With a lifelong journey around computers, I&#x27;ve explored and mastered numerous areas of computer science.</p><p>Currently working as a Full-Stack Software Engineer with expertise in AWS (Certified Cloud Practicioner), Node.js with Typescript and React. My work extends to DevOps, server configurations and CI/CD pipelines.</p><p>Skilled in Python for package development. Django for full-stack web applications, I am well-versed in building robust and scalable solutions. I&#x27;ve ventured into game development with Unity, worked with Android and iOS applications, crafted Photoshop extensions with UXP. Have participated in multiple Capture the Flag cyber security competitions.</p><p>Beyond web development, I&#x27;ve dabbled in machine learning projects, TensorFlow Object Detection and AI integrations in projects. My technological adeptness spans mainstream tools and advanced computer skills, constantly fueled by a motivation to learn new technologies and frameworks.</p>",
+        "social_handles": [
+          "https://ndinevski.com/"
+        ],
+        "appearance_events": [
+          "wts2026appevent"
+        ],
+        "promo": null
+      }
+    },
+    {
+      "source_url": "https://2025.wts.sh/speakers/h3ct1k02a8497ms",
+      "photo_source_url": "https://pocketbase.wts.sh/api/files/pbc_1636713223/h3ct1k02a8497ms/viber_image_2025_08_14_13_47_44_802_7cq88ohdxj.jpg",
+      "photo_asset": "mc-2026-assets/dimitar-grozdanov.jpg",
+      "photo_sha256": "13b3b60762f6a4e4ac469b57604d0d9dfceca6f47a4a76db5d9f0398366c954e",
+      "record": {
+        "id": "mc26498cab8ddef",
+        "slug": "dimitar-grozdanov",
+        "published": false,
+        "origin": "invite",
+        "is_mc": true,
+        "display_name": "Dimitar Grozdanov",
+        "user": "",
+        "cfp_applicant": "",
+        "affiliation": "Just another techie person | Microsoft 365 MVP | Independent Trainer & Consultant",
+        "bio": "<p>With 25+ years of experience “in the field”, currently works as freelance Consultant and Trainer, who specializes in helping organizations navigate the their Digital Transformation journeys. With expertise in analysis, architecture, and design of IT systems, services, and critical security and compliance consulting on ISO 27001 processes and procedures. As a Microsoft Certified Trainer, delivers official and custom trainings, on various topics related to Microsoft Azure and Microsoft 365. He gained experience working with local and international partners, as well as customers, across various industries, including Finance, Telecommunications, Utilities, and Public Sector across Europe. He takes active role in the local IT Pro and Developer community as speaker, organizer and mentor. When it&#x27;s time to wind down, takes early morning bike rides, and is passionate about craft beer tasting, BBQ and hanging out with family and friends.</p>",
+        "social_handles": [
+          "https://ituziast.com/",
+          "https://x.com/grozdanovd",
+          "https://bsky.app/profile/grozdanovd.bsky.social"
+        ],
+        "appearance_events": [
+          "wts2026appevent"
+        ],
+        "promo": null
+      }
+    }
+  ]
+}

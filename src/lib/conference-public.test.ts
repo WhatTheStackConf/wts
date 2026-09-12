@@ -19,6 +19,37 @@ import {
   pocketBaseThumbnailUrl,
 } from "~/lib/pocketbase-thumbnail";
 
+describe("MC public profiles", () => {
+  it("projects explicit MC status independently of sessions and hides private fields", async () => {
+    fetchAllRecords.mockReset();
+    fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
+      speakers: [{ id: "host", slug: "host", display_name: "Host", published: true, is_mc: true, affiliation: "Independent", bio: "Public bio", user: "private-user", cfp_applicant: "private-applicant" }],
+      sessions: [],
+    }[collection] || []));
+    expect(await loadPublicSpeakers()).toEqual([{
+      slug: "host", displayName: "Host", photoUrl: null, affiliation: "Independent",
+      isMc: true, sessionCount: 0, appearanceEvents: [],
+    }]);
+    expect(await loadPublicSpeakerBySlug("host")).toEqual({
+      slug: "host", displayName: "Host", photoUrl: null, affiliation: "Independent",
+      isMc: true, sessionCount: 0, appearanceEvents: [], bio: "Public bio", socialHandles: [], sessions: [],
+    });
+    expect((await loadPublicSpeakerTeaser()).preview[0].isMc).toBe(true);
+  });
+
+  it("allows MCs with sessions and defaults missing MC status to false", async () => {
+    fetchAllRecords.mockReset();
+    fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
+      speakers: [{ id: "host", slug: "host", published: true, is_mc: true }, { id: "speaker", slug: "speaker", published: true }],
+      sessions: [{ id: "talk", slug: "talk", title: "Actual talk", published: true, speakers: ["host"] }],
+    }[collection] || []));
+    expect(await loadPublicSpeakers()).toMatchObject([
+      { slug: "host", isMc: true, sessionCount: 1 },
+      { slug: "speaker", isMc: false, sessionCount: 0 },
+    ]);
+  });
+});
+
 describe("PocketBase image thumbnails", () => {
   it("builds responsive optimized image URLs for raster images", () => {
     const url = "https://pb.example/api/files/speakers/speaker-1/photo.png";

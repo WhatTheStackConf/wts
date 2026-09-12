@@ -123,6 +123,20 @@ function announcedPublishedData(): ConferenceGuidePublishedData {
   return data;
 }
 
+describe("Conference Guide MC personas", () => {
+  it("includes MC status on public speaker resources without inventing sessions", async () => {
+    const data = publishedData();
+    data.speakers[0].isMc = true;
+    data.speakers[0].sessions = [];
+    data.speakers[0].sessionCount = 0;
+    const guide = createConferenceGuide({ loadPublishedData: async () => data });
+    const speaker = await guide.getSpeaker("ada-example");
+    expect(speaker).toMatchObject({ is_mc: true, sessions: [], affiliation: "Example Labs" });
+    expect(JSON.stringify(speaker)).not.toContain("private-");
+    expect((await guide.getSession("safe-systems"))?.speakers[0].is_mc).toBe(false);
+  });
+});
+
 describe("announced weekday Conference Guide", () => {
   it("keeps announced ranges separate from plannable slots and prefers a later published slot", async () => {
     const data = announcedPublishedData();

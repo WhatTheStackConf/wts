@@ -9,15 +9,15 @@ export default function Speakers() {
 
   return (
     <Layout
-      title="Speakers — WhatTheStack 2026"
-      description="Meet the speakers at WhatTheStack 2026"
-      ogSubtitle="Conference speakers"
+      title="Speakers & MCs — WhatTheStack 2026"
+      description="Meet the speakers and MCs at WhatTheStack 2026"
+      ogSubtitle="Conference speakers & MCs"
     >
       <div class="w-full px-4 sm:px-6 relative pt-6 md:pt-24 pb-24">
         <div class="max-w-6xl mx-auto relative z-20">
           <header class="mb-12 md:mb-16 md:pl-2 fade-in">
             <h1 class="speaker-heading text-[clamp(2.5rem,8vw,4.5rem)] uppercase leading-none">
-              Speakers
+              Speakers &amp; MCs
             </h1>
             <p class="mt-5 max-w-xl text-lg text-secondary-200/90 leading-relaxed fade-in-delay-1">
               The people doing the talking in Skopje this September.

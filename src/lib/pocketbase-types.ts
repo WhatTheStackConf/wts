@@ -50,6 +50,8 @@ export interface CfpSubmissionRecord extends RecordModel {
 
 // Speaker collection type (public conference persona)
 export interface SpeakerRecord extends RecordModel {
+  /** Public MC designation, independent of any Session participation. */
+  is_mc?: boolean;
   id: string;
   slug: string;
   published: boolean;
