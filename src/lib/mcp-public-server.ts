@@ -409,7 +409,7 @@ export function buildPublicMcpServer(guide: ConferenceGuideService) {
     {
       ...resourceMetadata,
       title: "Published Speaker by slug",
-      description: "One Published Speaker and their Published Sessions.",
+      description: "One Published Speaker or MC, their explicit is_mc designation and any Published Sessions. MCs need not have sessions.",
     },
     (uri, variables) => readGuideResource(uri, async () => {
       const slug = slugVariable(variables.slug);

@@ -37,6 +37,7 @@ export interface PublicSpeakerSummary {
   displayName: string;
   photoUrl: string | null;
   affiliation: string;
+  isMc: boolean;
   sessionCount: number;
   appearanceEvents: PublicAppearanceEvent[];
 }
@@ -231,6 +232,7 @@ function mapSpeakerSummary(
     displayName: row.display_name || row.slug || "Speaker",
     photoUrl: row.photo ? getPbFileUrl(row, row.photo) : null,
     affiliation: row.affiliation || "",
+    isMc: row.is_mc === true,
     sessionCount: 0,
     appearanceEvents,
   };

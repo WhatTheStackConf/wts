@@ -322,6 +322,7 @@ function mapSession(session: PublicSessionDetail, agenda: PublicAgenda, origin: 
         slug: speaker.slug,
         display_name: normalizeGuideText(speaker.displayName),
         affiliation: optionalGuideText(speaker.affiliation),
+        is_mc: speaker.isMc === true,
         resource_uri: slugUri("speakers", speaker.slug),
         canonical_url: publicProfileUrl(origin, "speakers", speaker.slug),
       })),
@@ -333,6 +334,7 @@ function mapSpeaker(speaker: PublicSpeakerDetail, origin: string) {
     slug: speaker.slug,
     display_name: normalizeGuideText(speaker.displayName),
     affiliation: optionalGuideText(speaker.affiliation),
+    is_mc: speaker.isMc === true,
     bio: normalizeGuideText(speaker.bio),
     canonical_url: publicProfileUrl(origin, "speakers", speaker.slug),
     sessions: [...speaker.sessions]
@@ -714,6 +716,7 @@ function planningSession(candidate: PlanningCandidate) {
       slug: speaker.slug,
       display_name: boundedPublicLabel(speaker.display_name),
       affiliation: speaker.affiliation ? boundedPublicLabel(speaker.affiliation) : undefined,
+      is_mc: speaker.is_mc,
       resource_uri: speaker.resource_uri,
       canonical_url: speaker.canonical_url,
     })),
@@ -897,6 +900,7 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
             speakers: snapshot.programme.speakers.map((speaker) => ({
               slug: speaker.slug,
               display_name: speaker.display_name,
+              is_mc: speaker.is_mc,
               resource_uri: slugUri("speakers", speaker.slug),
               canonical_url: speaker.canonical_url,
             })),

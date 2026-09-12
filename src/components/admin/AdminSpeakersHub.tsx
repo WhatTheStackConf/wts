@@ -104,6 +104,7 @@ export default function AdminSpeakersHub() {
   const [pendingError, setPendingError] = createSignal<string | null>(null);
   const [pendingWarning, setPendingWarning] = createSignal<string | null>(null);
 
+  const [editIsMc, setEditIsMc] = createSignal(false);
   const [editName, setEditName] = createSignal("");
   const [editSlug, setEditSlug] = createSignal("");
   const [editAffiliation, setEditAffiliation] = createSignal("");
@@ -209,6 +210,7 @@ export default function AdminSpeakersHub() {
   const clearEditForm = () => {
     setEditingSpeaker(null);
     setEditName("");
+    setEditIsMc(false);
     setEditSlug("");
     setEditAffiliation("");
     setEditBio("");
@@ -223,6 +225,7 @@ export default function AdminSpeakersHub() {
   const startEdit = (row: SpeakerRow) => {
     setShowInviteForm(false);
     setEditingSpeaker(row);
+    setEditIsMc(row.is_mc === true);
     setEditName(row.display_name || speakerLabel(row));
     setEditSlug(row.slug || "");
     setEditAffiliation(row.affiliation || "");
@@ -304,6 +307,7 @@ export default function AdminSpeakersHub() {
     }
   };
 
+  const [inviteIsMc, setInviteIsMc] = createSignal(false);
   const [inviteName, setInviteName] = createSignal("");
   const [inviteSlug, setInviteSlug] = createSignal("");
   const [inviteAffiliation, setInviteAffiliation] = createSignal("");
@@ -336,6 +340,7 @@ export default function AdminSpeakersHub() {
       const res = await adminCreateInviteSpeaker({
         slug: inviteSlug() || slugify(displayName),
         display_name: displayName,
+        is_mc: inviteIsMc(),
         affiliation: inviteAffiliation(),
         bio: inviteBio(),
         social_handles: handles,
@@ -346,6 +351,7 @@ export default function AdminSpeakersHub() {
         return;
       }
       setInviteName("");
+      setInviteIsMc(false);
       setInviteSlug("");
       setInviteAffiliation("");
       setInviteBio("");
@@ -427,6 +433,7 @@ export default function AdminSpeakersHub() {
       const res = await adminUpdateSpeakerProfile(row.id, {
         display_name: editName(),
         slug: editSlug(),
+        is_mc: editIsMc(),
         affiliation: editAffiliation(),
         bio: editBio(),
         social_handles: handles,
@@ -850,6 +857,11 @@ export default function AdminSpeakersHub() {
                         />
                       </AdminFormField>
 
+                      <label class="flex items-center gap-3 min-h-12 lg:col-span-12" for="edit-speaker-is-mc">
+                        <input id="edit-speaker-is-mc" name="is_mc" type="checkbox" class="checkbox checkbox-primary"
+                          checked={editIsMc()} onChange={(event) => setEditIsMc(event.currentTarget.checked)} />
+                        <span>MC (master of ceremonies) — can also have sessions</span>
+                      </label>
                       <AdminFormField id="edit-speaker-affiliation" label="Affiliation" class="lg:col-span-12">
                         <input
                           id="edit-speaker-affiliation"
@@ -1051,6 +1063,11 @@ export default function AdminSpeakersHub() {
                     />
                   </AdminFormField>
 
+                  <label class="flex items-center gap-3 min-h-12 lg:col-span-12" for="invite-speaker-is-mc">
+                    <input id="invite-speaker-is-mc" name="is_mc" type="checkbox" class="checkbox checkbox-primary"
+                      checked={inviteIsMc()} onChange={(event) => setInviteIsMc(event.currentTarget.checked)} />
+                    <span>MC (master of ceremonies) — can also have sessions</span>
+                  </label>
                   <AdminFormField id="invite-speaker-affiliation" label="Affiliation" class="lg:col-span-12">
                     <input
                       id="invite-speaker-affiliation"

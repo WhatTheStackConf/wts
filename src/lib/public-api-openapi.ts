@@ -12,10 +12,11 @@ const object = (properties: Record<string, Schema>, required: string[]): OpenAPI
 const sessionCard = { slug: ref("Slug"), title: text(), format: text("Public session format, for example talk or workshop.") };
 const speakerSummary = {
   slug: ref("Slug"), displayName: text(), photoUrl: { type: ["string", "null"], format: "uri" } satisfies Schema,
+  isMc: { type: "boolean", description: "MC designation; independent of Session participation." } satisfies Schema,
   affiliation: text(), sessionCount: { type: "integer", minimum: 0 } satisfies Schema,
   appearanceEvents: array(ref("AppearanceEvent")),
 };
-const speakerRequired = ["slug", "displayName", "photoUrl", "affiliation", "sessionCount", "appearanceEvents"];
+const speakerRequired = ["slug", "displayName", "photoUrl", "affiliation", "isMc", "sessionCount", "appearanceEvents"];
 const programmeDetails = {
   summary: text(), access: text(), cta: ref("CallToAction"), unassignedSpeakers: array(ref("AgendaSpeaker")),
 };
@@ -94,7 +95,7 @@ for (const [name, data] of Object.entries({
 // Synthetic, internally consistent examples. No live data is copied into the spec.
 const exampleSpeaker: PublicSpeakerDetail = {
   slug: "ada-example", displayName: "Ada Example", affiliation: "Example Labs", photoUrl: null,
-  sessionCount: 1, appearanceEvents: [{ name: "WhatTheStack 2026", compactLabel: "WTS 2026" }],
+  isMc: false, sessionCount: 1, appearanceEvents: [{ name: "WhatTheStack 2026", compactLabel: "WTS 2026" }],
   bio: "<p>A synthetic speaker biography.</p>", socialHandles: ["https://example.com/ada"],
   sessions: [{ slug: "building-reliable-apps", title: "Building Reliable Apps", format: "talk" }],
 };

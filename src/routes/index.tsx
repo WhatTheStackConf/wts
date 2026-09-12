@@ -36,7 +36,7 @@ export default function Home() {
             <section class="px-3 md:px-0 pt-16 md:pt-20 pb-12 md:pb-16 fade-in-delay-2">
               <header class="mb-10 md:mb-12 fade-in">
                 <h2 class="font-star text-3xl md:text-4xl uppercase tracking-widest text-primary-500 mb-4">
-                  Speakers
+                  Speakers &amp; MCs
                 </h2>
                 <p class="max-w-md text-dark-50 text-lg font-light leading-relaxed">
                   Some of the people doing the talking at WTS 2026.
@@ -65,8 +65,8 @@ export default function Home() {
                 >
                   {`>`}{" "}
                   {(speakers()?.total ?? 0) > TEASER_SPEAKER_LIMIT
-                    ? "View all speakers"
-                    : "View the full speaker lineup"}
+                    ? "View all speakers and MCs"
+                    : "View the full speaker and MC lineup"}
                 </a>
               </div>
             </section>
