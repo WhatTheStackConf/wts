@@ -2,6 +2,8 @@ import { test, expect, login } from "./checkin-fixtures";
 
 for (const role of ["admin", "operator"] as const) {
   test(`${role}: mobile no-station roster search, refresh, failure and auth-loss redaction`, async ({ page, state, db }) => {
+    const originalRole = (await db.collection("users").getOne(state.users[role].id)).role;
+    try {
     await page.setViewportSize({ width: 390, height: 844 });
     await login(page, state.users[role]);
     const documentResponse = await page.goto("/registrations");
@@ -41,12 +43,16 @@ for (const role of ["admin", "operator"] as const) {
     await expect(page.getByRole("alert")).toContainText("Access denied");
     await expect(search).toHaveValue("");
     await expect(page.getByRole("cell")).toHaveCount(0);
-    await db.collection("users").update(state.users[role].id, { role: role === "admin" ? "admin" : "checkin_operator" });
-    expect((await db.collection("users").getOne(state.users[role].id)).role).toBe(role === "admin" ? "admin" : "checkin_operator");
+    } finally {
+      await db.collection("users").update(state.users[role].id, { role: originalRole });
+      expect((await db.collection("users").getOne(state.users[role].id)).role).toBe(originalRole);
+    }
   });
 }
 
 test("anonymous, ordinary and reviewer cannot access registration page or API", async ({ page, state, db }) => {
+  const originalRole = (await db.collection("users").getOne(state.users.ordinary.id)).role;
+  try {
   await page.goto("/registrations");
   await expect(page).toHaveURL(/\/login/);
   expect(await page.evaluate(async () => (await fetch("/api/registrations", { method: "POST" })).status)).toBe(403);
@@ -60,5 +66,9 @@ test("anonymous, ordinary and reviewer cannot access registration page or API", 
     await expect(page.locator('a[href="/registrations"]')).toHaveCount(0);
     expect(await page.evaluate(async () => (await fetch("/api/registrations", { method: "POST" })).status)).toBe(403);
     await expect(page.getByText("roster0@example.invalid")).toHaveCount(0);
+  }
+  } finally {
+    await db.collection("users").update(state.users.ordinary.id, { role: originalRole });
+    expect((await db.collection("users").getOne(state.users.ordinary.id)).role).toBe(originalRole);
   }
 });
