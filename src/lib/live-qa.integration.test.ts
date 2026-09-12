@@ -229,7 +229,7 @@ describe('live Q&A real PocketBase API', () => {
     expect(view.accepting).toBe(false);
   });
 
-  it('uses canonical future/ended times, supports all override modes and keeps ended queues readable', async () => {
+  it('uses canonical future times and supports every override mode', async () => {
     const attendee = await fixture.user();
     const mc = await fixture.user('mc');
     const future = await fixture.session({ startAt: new Date(Date.now() + 3_600_000).toISOString() });
@@ -243,6 +243,10 @@ describe('live Q&A real PocketBase API', () => {
       expect(await read()).toMatchObject({ mode, accepting: mode === 'open' });
     }
     await send(attendee.client, ask);
+  });
+
+  it('keeps ended queues readable in an independent Conference Day fixture', async () => {
+    const mc = await fixture.user('mc');
     const ended = await fixture.session({ startAt: new Date(Date.now() - 3_600_000).toISOString(), endAt: new Date(Date.now() - 1).toISOString() });
     const endedAuthor = await fixture.user();
     const readEnded = () => send<LiveQaSession>(endedAuthor.client, { operation: 'session', slug: ended.slug, page: 1 });
@@ -252,6 +256,24 @@ describe('live Q&A real PocketBase API', () => {
     const result = await send<{ question: LiveQaQuestion }>(endedAuthor.client, { operation: 'ask', slug: ended.slug, body: 'Overrunning talk', requestId: crypto.randomUUID() });
     await send(mc.client, { operation: 'mode', slug: ended.slug, mode: 'auto' });
     expect(await readEnded()).toMatchObject({ accepting: false, questions: [result.question] });
+  });
+
+  it.each([
+    { startAt: '2026-09-19T22:30:00.000Z', endAt: '2026-09-19T23:30:00.000Z', day: '2026-09-20' },
+    { startAt: '2026-09-19T20:30:00.000Z', endAt: '2026-09-19T21:29:59.999Z', day: '2026-09-19' },
+    { startAt: '2026-09-19T23:30:00.000Z', endAt: '2026-09-20T00:30:00.000Z', day: '2026-09-20' },
+    { startAt: '2026-09-19T21:30:00.000Z', endAt: '2026-09-19T22:29:59.999Z', day: '2026-09-19' },
+  ])('keeps a midnight-adjacent fixture on its real Skopje day: $startAt', async ({ startAt, endAt, day }) => {
+    const talk = await fixture.session({ startAt, endAt });
+    const view = await new PocketBase(fixture.baseUrl).send<LiveQaProgramme>('/api/wts/live-qa/programme', { method: 'GET' });
+    expect(view.day?.localDate).toBe(day);
+    expect(view.stages[0].sessions[0]).toMatchObject({ slug: talk.slug, startAt, endAt });
+  });
+
+  it('still rejects moving a Slot start across its Conference Day boundary', async () => {
+    const talk = await fixture.session({ startAt: '2026-09-19T22:30:00.000Z', endAt: '2026-09-19T23:30:00.000Z' });
+    await expect(fixture.pb.collection('agenda_slots').update(talk.slot.id, { start_at: '2026-09-19T20:30:00.000Z' })).rejects.toMatchObject({ status: 400 });
+    expect((await fixture.pb.collection('agenda_slots').getOne(talk.slot.id)).start_at).toBe('2026-09-19 22:30:00.000Z');
   });
 
   it('honors publication gates and the unmodified coordinated publication validation hooks', async () => {

@@ -11,6 +11,9 @@ import PocketBase from 'pocketbase';
 /** Synthetic loopback-only DB. Relevant real migrations/hooks are copied unchanged.
  * Never reads .env or existing pb_data; excludes mail, cron and outbound hooks. */
 export async function startLiveQaPocketBase() {
+  // All default slots in this disposable programme share an anchor, even if
+  // setup or a restart crosses local midnight while the test is running.
+  const fixtureInstant = new Date().toISOString();
   const root = mkdtempSync(join(tmpdir(), 'wts-live-qa-test-'));
   const migrationsDir = join(root, 'pb_migrations');
   const hooksDir = join(root, 'pb_hooks');
@@ -134,10 +137,10 @@ export async function startLiveQaPocketBase() {
       } = {}) {
         const slug = options.slug ?? `session-${crypto.randomUUID()}`;
         const localDateOf = (value: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Skopje', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value));
-        const now = new Date().toISOString();
-        const minuteAgo = new Date(Date.now() - 60_000).toISOString();
-        // At local midnight, keep default live slots on today's announced date.
-        const startAt = options.startAt ?? (localDateOf(minuteAgo) === localDateOf(now) ? minuteAgo : now);
+        const now = fixtureInstant;
+        const minuteAgo = new Date(Date.parse(now) - 60_000).toISOString();
+        // Leave one millisecond for the ordered-earlier-slot fixture at midnight.
+        const startAt = options.startAt ?? (localDateOf(minuteAgo) === localDateOf(now) ? minuteAgo : new Date(Date.parse(now) + 1).toISOString());
         const endAt = options.endAt ?? new Date(new Date(startAt).getTime() + 3_600_000).toISOString();
         const localDate = localDateOf(startAt);
         const dayKey = options.dayKey ?? (options.mainDay === false ? slug : 'main-day');

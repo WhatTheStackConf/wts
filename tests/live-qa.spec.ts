@@ -109,7 +109,8 @@ test("attendee asks privately; MC reads and marks answered after the session end
     expect(forbidden.cache).toBe("private, no-store");
     const pb = await rootClient();
     // Change real canonical timing instead of mocking browser time or acceptance.
-    await pb.collection("agenda_slots").update(state.slotId, { start_at: new Date(Date.now() - 3_600_000).toISOString(), end_at: new Date(Date.now() - 1000).toISOString() });
+    // Keep the fixture's valid start/day binding, including just after midnight.
+    await pb.collection("agenda_slots").update(state.slotId, { end_at: new Date(Date.now() - 1000).toISOString() });
     await expect(attendee.page.getByText("Questions are closed", { exact: true })).toBeVisible();
     await attendee.page.getByLabel("Your question", { exact: true }).fill("A late draft");
     await expect(attendee.page.getByRole("button", { name: "Send question", exact: true })).toBeDisabled();
