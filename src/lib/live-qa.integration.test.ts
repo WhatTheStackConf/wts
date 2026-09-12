@@ -1,15 +1,167 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test';
+import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 import PocketBase from 'pocketbase';
 import { handleLiveQaRequest } from './live-qa-http';
-import type { LiveQaQuestion, LiveQaRequest, LiveQaSession } from './live-qa-contract';
+import type { LiveQaCatalogue, LiveQaProgramme, LiveQaQuestion, LiveQaRequest, LiveQaSession } from './live-qa-contract';
 import { startLiveQaPocketBase } from './live-qa-pocketbase-test-helper';
 
 const send = <T>(client: PocketBase, body: LiveQaRequest) => client.send<T>('/api/wts/live-qa', { method: 'POST', body });
 
 describe('live Q&A real PocketBase API', () => {
   let fixture: Awaited<ReturnType<typeof startLiveQaPocketBase>>;
-  beforeAll(async () => { fixture = await startLiveQaPocketBase(); }, 30_000);
-  afterAll(async () => { await fixture?.cleanup(); });
+  beforeEach(async () => { fixture = await startLiveQaPocketBase(); }, 30_000);
+  afterEach(async () => { await fixture?.cleanup(); });
+
+  it('excludes a currently live weekday even when an MC tries to open its queue', async () => {
+    const attendee = await fixture.user();
+    const mc = await fixture.user('mc');
+    const weekday = await fixture.session({ mainDay: false });
+    await expect(send(attendee.client, { operation: 'session', slug: weekday.slug, page: 1 })).rejects.toMatchObject({ status: 404 });
+    await expect(send(attendee.client, { operation: 'ask', slug: weekday.slug, body: 'Not main day', requestId: crypto.randomUUID() })).rejects.toMatchObject({ status: 404 });
+    await expect(send(mc.client, { operation: 'mode', slug: weekday.slug, mode: 'open' })).rejects.toMatchObject({ status: 404 });
+    expect((await fixture.pb.collection('live_qa_controls').getList(1, 1, { filter: fixture.pb.filter('session = {:session}', { session: weekday.session.id }) })).totalItems).toBe(0);
+  });
+
+  it('publishes a no-store stage programme with canonical labels, empty stages, ordered slots and no private data', async () => {
+    const empty = await fetch(`${fixture.baseUrl}/api/wts/live-qa/programme`);
+    expect(empty.status).toBe(200);
+    expect(await empty.json()).toMatchObject({ day: null, stages: [] });
+    const alice = await fixture.user('user', 'Private Author Sentinel');
+    const mc = await fixture.user('mc');
+    const talk = await fixture.session({ stageKey: 'stage-3', stageName: 'Stage 2', locationLabel: 'FINKI Amphitheatre', displayOrder: 2 });
+    const earlier = await fixture.session({ trackId: talk.track!.id, startAt: new Date(new Date(talk.startAt).getTime() - 1).toISOString(), endAt: talk.startAt });
+    // Insert stages deliberately out of their public display order.
+    for (const [key, name, order] of [['stage-5', 'Stage 5', 5], ['stage-2', 'Stage 3', 3], ['stage-1', 'Stage 1', 1], ['stage-4', 'Stage 4', 4]] as const) {
+      await fixture.pb.collection('agenda_tracks').create({ programme: talk.programme.id, key, name, display_order: order, location_label: `Hall ${order}` });
+    }
+    await send(alice.client, { operation: 'ask', slug: talk.slug, body: 'Private question sentinel', requestId: crypto.randomUUID() });
+    const read = async () => {
+      const response = await fetch(`${fixture.baseUrl}/api/wts/live-qa/programme`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      return await response.json() as LiveQaProgramme;
+    };
+    const view = await read();
+    expect(view.day).toEqual({ key: 'main-day', localDate: talk.day.local_date, title: 'Synthetic Day' });
+    expect(Math.abs(Date.now() - Date.parse(view.serverNow))).toBeLessThan(5000);
+    expect(view.stages.map(stage => stage.name)).toEqual(['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5']);
+    expect(view.stages[1]).toEqual({ key: 'stage-3', name: 'Stage 2', locationLabel: 'FINKI Amphitheatre', sessions: [
+      { slug: earlier.slug, title: earlier.session.title, startAt: earlier.startAt, endAt: earlier.endAt, accepting: false, mode: 'auto' },
+      { slug: talk.slug, title: talk.session.title, startAt: talk.startAt, endAt: talk.endAt, accepting: true, mode: 'auto' },
+    ] });
+    expect(view.stages[4].sessions).toEqual([]);
+    expect(Object.keys(view).sort()).toEqual(['day', 'serverNow', 'stages']);
+    expect(Object.keys(view.stages[1]).sort()).toEqual(['key', 'locationLabel', 'name', 'sessions']);
+    expect(Object.keys(view.stages[1].sessions[0]).sort()).toEqual(['accepting', 'endAt', 'mode', 'slug', 'startAt', 'title']);
+    for (const sentinel of [alice.record.id, alice.record.email, 'Private Author Sentinel', 'Private question sentinel', talk.session.id, talk.slot.id, talk.programme.id]) expect(JSON.stringify(view)).not.toContain(sentinel);
+    await send(mc.client, { operation: 'mode', slug: talk.slug, mode: 'closed' });
+    expect((await read()).stages[1].sessions[1]).toMatchObject({ mode: 'closed', accepting: false });
+    await send(mc.client, { operation: 'mode', slug: earlier.slug, mode: 'open' });
+    expect((await read()).stages[1].sessions[0]).toMatchObject({ mode: 'open', accepting: true });
+  });
+
+  it('uses identical event/day/stage eligibility for public programme, catalogue, reads and all mutations', async () => {
+    const alice = await fixture.user();
+    const mc = await fixture.user('mc');
+    const main = await fixture.session();
+    const weekday = await fixture.session({ mainDay: false });
+    const otherEvent = await fixture.pb.collection('appearance_events').create({ name: 'Other public event', published: true });
+    const sameDayOtherEvent = await fixture.session({ eventId: otherEvent.id });
+    const missingTrack = await fixture.session();
+    const wrongProgrammeTrack = await fixture.session();
+    const nonSession = await fixture.session();
+    const unpublishedSession = await fixture.session();
+    const unpublishedSlot = await fixture.session({ published: false });
+    await fixture.pb.collection('sessions').update(unpublishedSlot.session.id, { published: true });
+    await fixture.patchStoredRecords([
+      { collection: 'agenda_slots', id: missingTrack.slot.id, fields: { track: '' } },
+      { collection: 'agenda_slots', id: wrongProgrammeTrack.slot.id, fields: { track: weekday.track!.id } },
+      { collection: 'agenda_slots', id: nonSession.slot.id, fields: { kind: 'break' } },
+      { collection: 'sessions', id: unpublishedSession.session.id, fields: { published: false } },
+    ]);
+    for (const excluded of [weekday, sameDayOtherEvent, missingTrack, wrongProgrammeTrack, nonSession, unpublishedSession, unpublishedSlot]) {
+      // Existing override data is not authority to expand the main-day scope.
+      await fixture.pb.collection('live_qa_controls').create({ session: excluded.session.id, mode: 'open' });
+      const historical = await fixture.pb.collection('live_qa_questions').create({ session: excluded.session.id, author: alice.record.id, body: 'Retained historical question', answered: false, request_id: crypto.randomUUID(), request_payload: { fixture: true }, request_reply: { fixture: true } });
+      for (const client of [alice.client, mc.client]) await expect(send(client, { operation: 'session', slug: excluded.slug, page: 1 })).rejects.toMatchObject({ status: 404 });
+      await expect(send(alice.client, { operation: 'ask', slug: excluded.slug, body: 'Denied', requestId: crypto.randomUUID() })).rejects.toMatchObject({ status: 404 });
+      for (const mode of ['open', 'closed', 'auto'] as const) await expect(send(mc.client, { operation: 'mode', slug: excluded.slug, mode })).rejects.toMatchObject({ status: 404 });
+      await expect(send(mc.client, { operation: 'answer', slug: excluded.slug, questionId: historical.id, answered: true })).rejects.toMatchObject({ status: 404 });
+      expect((await fixture.pb.collection('live_qa_questions').getOne(historical.id)).answered).toBe(false);
+    }
+    const view = await new PocketBase(fixture.baseUrl).send<LiveQaProgramme>('/api/wts/live-qa/programme', { method: 'GET' });
+    expect(view.stages.flatMap(stage => stage.sessions.map(session => session.slug))).toEqual([main.slug]);
+    expect(view.stages.some(stage => stage.key === weekday.track!.key || stage.key === sameDayOtherEvent.track!.key)).toBe(false);
+    const catalogue = await send<LiveQaCatalogue>(mc.client, { operation: 'catalogue', page: 1, search: '' });
+    expect(catalogue).toEqual({ items: [{ slug: main.slug, title: main.session.title }], page: 1, totalPages: 1 });
+    expect((await fixture.pb.collection('live_qa_questions').getList(1, 1)).totalItems).toBe(7);
+    expect((await fixture.pb.collection('live_qa_controls').getList(1, 1)).totalItems).toBe(7);
+  });
+
+  it.each(['conference_days', 'appearance_events'] as const)('hides an unpublished %s even with legacy published slots and open overrides', async collection => {
+    const mc = await fixture.user('mc');
+    const talk = await fixture.session();
+    await send(mc.client, { operation: 'mode', slug: talk.slug, mode: 'open' });
+    await fixture.patchStoredRecords([{ collection, id: collection === 'conference_days' ? talk.day.id : talk.appearanceEvent.id, fields: { published: false } }]);
+    const response = await fetch(`${fixture.baseUrl}/api/wts/live-qa/programme`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ day: null, stages: [] });
+    expect(await send(mc.client, { operation: 'catalogue', page: 1, search: '' })).toEqual({ items: [], page: 1, totalPages: 0 });
+    await expect(send(mc.client, { operation: 'session', slug: talk.slug, page: 1 })).rejects.toMatchObject({ status: 404 });
+    await expect(send(mc.client, { operation: 'mode', slug: talk.slug, mode: 'open' })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('preserves exact committed author UUID recovery after a talk moves off main day without permitting new writes', async () => {
+    const alice = await fixture.user();
+    const bob = await fixture.user();
+    const mc = await fixture.user('mc');
+    const talk = await fixture.session();
+    const weekday = await fixture.session({ mainDay: false });
+    const request = { operation: 'ask' as const, slug: talk.slug, body: '  Original frozen payload  ', requestId: crypto.randomUUID() };
+    const created = await send<{ question: LiveQaQuestion }>(alice.client, request);
+    await talk.publish(false);
+    const destination = await fixture.pb.collection('agenda_tracks').create({ programme: weekday.programme.id, key: 'moved-track', name: 'Weekday' });
+    await fixture.pb.collection('agenda_slots').update(talk.slot.id, { programme: weekday.programme.id, track: destination.id });
+    await talk.publish(true);
+    await fixture.restart();
+    expect(await send(alice.client, request)).toEqual(created);
+    await expect(send(alice.client, { ...request, body: request.body.trim() })).rejects.toMatchObject({ status: 409 });
+    await expect(alice.client.send('/api/wts/live-qa', { method: 'POST', body: { ...request, author: alice.record.id } })).rejects.toMatchObject({ status: 400 });
+    await expect(send(alice.client, { ...request, requestId: crypto.randomUUID() })).rejects.toMatchObject({ status: 404 });
+    await expect(send(bob.client, request)).rejects.toMatchObject({ status: 404 });
+    await expect(send(mc.client, { operation: 'answer', slug: talk.slug, questionId: created.question.id, answered: true })).rejects.toMatchObject({ status: 404 });
+    const history = await fixture.pb.collection('live_qa_questions').getList(1, 50);
+    expect(history.totalItems).toBe(1);
+    expect(history.items[0]).toMatchObject({ id: created.question.id, answered: false, request_payload: { slug: talk.slug, body: request.body } });
+  });
+
+  it('uses the announced canonical date, not the current date or a hardcoded conference date', async () => {
+    const talk = await fixture.session({ startAt: '2031-08-16T09:00:00.000Z', endAt: '2031-08-16T10:00:00.000Z' });
+    const response = await fetch(`${fixture.baseUrl}/api/wts/live-qa/programme`);
+    const view = await response.json() as LiveQaProgramme;
+    expect(view.day).toEqual({ key: 'main-day', localDate: '2031-08-16', title: 'Synthetic Day' });
+    expect(view.stages[0].sessions[0]).toMatchObject({ slug: talk.slug, startAt: talk.startAt, accepting: false });
+  });
+
+  it('fails explicitly rather than silently truncating an oversized public programme or MC catalogue', async () => {
+    const mc = await fixture.user('mc');
+    const first = await fixture.session({ startAt: '2031-08-16T09:00:00.000Z', endAt: '2031-08-16T09:00:01.000Z' });
+    const base = Date.parse(first.startAt);
+    for (let index = 1; index <= 1000; index++) {
+      await fixture.session({ trackId: first.track!.id, startAt: new Date(base + index * 1000).toISOString(), endAt: new Date(base + (index + 1) * 1000).toISOString() });
+    }
+    expect((await fixture.pb.collection('agenda_slots').getList(1, 1)).totalItems).toBe(1001);
+    const response = await fetch(`${fixture.baseUrl}/api/wts/live-qa/programme`);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    await expect(send(mc.client, { operation: 'catalogue', page: 1, search: '' })).rejects.toMatchObject({ status: 503 });
+  }, 120_000);
+
+  it('fails explicitly instead of dropping empty stages past the public read limit', async () => {
+    const first = await fixture.session();
+    for (let index = 1; index <= 1000; index++) await fixture.pb.collection('agenda_tracks').create({ programme: first.programme.id, key: `overflow-${index}`, name: `Empty ${index}`, display_order: index });
+    expect((await fixture.pb.collection('agenda_tracks').getList(1, 1)).totalItems).toBe(1001);
+    expect((await fetch(`${fixture.baseUrl}/api/wts/live-qa/programme`)).status).toBe(503);
+  }, 30_000);
 
   it('accepts a trimmed private question during its canonical published Agenda Slot', async () => {
     const { client } = await fixture.user();
@@ -108,11 +260,10 @@ describe('live Q&A real PocketBase API', () => {
     const draft = await fixture.session({ published: false });
     await expect(send(attendee.client, { operation: 'session', slug: draft.slug, page: 1 })).rejects.toMatchObject({ status: 404 });
     await expect(send(mc.client, { operation: 'mode', slug: draft.slug, mode: 'open' })).rejects.toMatchObject({ status: 404 });
-    // A published Session without a published Slot is never automatically accepting.
+    // A published Session without a published Slot has no Q&A scope, even for an MC.
     await fixture.pb.collection('sessions').update(draft.session.id, { published: true, starts_at: new Date(Date.now() - 60_000).toISOString() });
-    expect(await send(attendee.client, { operation: 'session', slug: draft.slug, page: 1 })).toMatchObject({ accepting: false, startAt: null, endAt: null });
-    await send(mc.client, { operation: 'mode', slug: draft.slug, mode: 'open' });
-    expect(await send(attendee.client, { operation: 'session', slug: draft.slug, page: 1 })).toMatchObject({ accepting: false });
+    await expect(send(attendee.client, { operation: 'session', slug: draft.slug, page: 1 })).rejects.toMatchObject({ status: 404 });
+    await expect(send(mc.client, { operation: 'mode', slug: draft.slug, mode: 'open' })).rejects.toMatchObject({ status: 404 });
     await fixture.pb.collection('conference_days').update(draft.day.id, { published: false });
     await expect(draft.publish(true)).rejects.toMatchObject({ status: 400 });
     await fixture.pb.collection('conference_days').update(draft.day.id, { published: true });
@@ -131,8 +282,10 @@ describe('live Q&A real PocketBase API', () => {
   it('provides bounded searchable MC catalogue pages without draft sessions or private fields', async () => {
     const mc = await fixture.user('mc');
     const prefix = `catalogue-${crypto.randomUUID()}`;
-    for (let i = 0; i < 52; i++) await fixture.pb.collection('sessions').create({ slug: `${prefix}-${String(i).padStart(2, '0')}`, title: `Catalogue ${String(i).padStart(2, '0')}`, abstract: 'Synthetic', published: true });
+    for (let i = 0; i < 52; i++) await fixture.session({ slug: `${prefix}-${String(i).padStart(2, '0')}`, title: `Catalogue ${String(i).padStart(2, '0')}` });
     await fixture.pb.collection('sessions').create({ slug: `${prefix}-draft`, title: 'Draft sentinel', abstract: 'Private sentinel', published: false });
+    await fixture.pb.collection('sessions').create({ slug: `${prefix}-unscheduled`, title: 'Unscheduled sentinel', abstract: 'Private sentinel', published: true });
+    await fixture.session({ slug: `${prefix}-weekday`, mainDay: false });
     const first = await send<{ items: { slug: string; title: string }[]; page: number; totalPages: number }>(mc.client, { operation: 'catalogue', search: prefix, page: 1 });
     const second = await send<typeof first>(mc.client, { operation: 'catalogue', search: prefix, page: 2 });
     expect(first.items).toHaveLength(50);
@@ -147,7 +300,7 @@ describe('live Q&A real PocketBase API', () => {
     expect((await send<typeof first>(mc.client, { operation: 'catalogue', search: '%', page: 1 })).items).toEqual([]);
     expect((await send<typeof first>(mc.client, { operation: 'catalogue', search: prefix, page: 3 })).items).toEqual([]);
     const literal = { slug: `literal-${prefix}`, title: '100% tested_under pressure' };
-    await fixture.pb.collection('sessions').create({ ...literal, abstract: 'Synthetic', published: true });
+    await fixture.session(literal);
     for (const search of ['%', '_', '100%', 'tested_under']) {
       const result = await send<typeof first>(mc.client, { operation: 'catalogue', search, page: 1 });
       expect(result.items).toEqual([literal]);

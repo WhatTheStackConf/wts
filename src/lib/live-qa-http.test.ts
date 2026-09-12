@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { handleLiveQaRequest } from "~/lib/live-qa-http";
+import { handleLiveQaProgramme, handleLiveQaRequest } from "~/lib/live-qa-http";
+import { startLiveQaPocketBase } from "~/lib/live-qa-pocketbase-test-helper";
 
 const origin = "https://wts.example.test";
 function request(body = "{}", headers: Record<string, string> = {}) {
@@ -7,6 +8,21 @@ function request(body = "{}", headers: Record<string, string> = {}) {
 }
 
 describe("live Q&A HTTP boundary", () => {
+  it("serves the public stage programme without accepting cookie authority", { timeout: 30_000 }, async () => {
+    const fixture = await startLiveQaPocketBase();
+    try {
+      const talk = await fixture.session();
+      const result = await handleLiveQaProgramme(new Request(`${origin}/api/live-qa`, { headers: { cookie: "pb_auth=untrusted" } }), fixture.baseUrl);
+      expect(result.status).toBe(200);
+      expect(result.headers.get("cache-control")).toBe("private, no-store");
+      const data = await result.json();
+      expect(data.day.key).toBe("main-day");
+      expect(data.stages.flatMap((stage: { sessions: { slug: string }[] }) => stage.sessions).some((session: { slug: string }) => session.slug === talk.slug)).toBe(true);
+      expect(JSON.stringify(data)).not.toContain("questions");
+      expect(JSON.stringify(data)).not.toContain("author");
+    } finally { await fixture.cleanup(); }
+  });
+
   it("denies cross-origin commands before contacting PocketBase and never caches private responses", async () => {
     const result = await handleLiveQaRequest(request("{}", { origin: "https://foreign.example" }));
     expect(result.status).toBe(403);

@@ -1,5 +1,6 @@
 import PocketBase from "pocketbase";
 import { isSameOriginMutation, sessionUser } from "~/lib/session-policy";
+import { parseLiveQaProgramme } from "~/lib/live-qa-programme";
 
 function response(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: {
@@ -8,6 +9,18 @@ function response(body: unknown, status = 200): Response {
     "Referrer-Policy": "no-referrer",
     "X-Robots-Tag": "noindex, nofollow",
   } });
+}
+
+/** Public stage directory: no cookies, user tokens or private questions are forwarded. */
+export async function handleLiveQaProgramme(request: Request, baseUrl = process.env.POCKETBASE_URL || "http://localhost:8090"): Promise<Response> {
+  if (request.method !== "GET") return response({ error: "Use GET for the stage programme." }, 405);
+  try {
+    const pb = new PocketBase(baseUrl);
+    const result: unknown = await pb.send("/api/wts/live-qa/programme", { method: "GET", signal: AbortSignal.timeout(10_000) });
+    return response(parseLiveQaProgramme(result));
+  } catch {
+    return response({ error: "The main-day stage programme is unavailable. Please try again." }, 503);
+  }
 }
 
 /** Same-origin cookie adapter; all business authority stays in the PB hook.

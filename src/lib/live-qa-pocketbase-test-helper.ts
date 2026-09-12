@@ -89,6 +89,34 @@ export async function startLiveQaPocketBase() {
       pb, baseUrl, root, password, superuserEmail, migrations, hooks, hookHashes, version,
       logs: () => logs,
       restart: async () => { await stop(); await start(); },
+      /** Seed legacy/inconsistent publication graphs while stopped; runtime hooks stay unchanged.
+       * Only the disposable dataDir is ever opened, never a developer/production database. */
+      async patchStoredRecords(patches: { collection: 'conference_days' | 'appearance_events' | 'agenda_slots' | 'agenda_tracks' | 'sessions'; id: string; fields: Record<string, string | number | boolean> }[]) {
+        for (const patch of patches) {
+          if (!['conference_days', 'appearance_events', 'agenda_slots', 'agenda_tracks', 'sessions'].includes(patch.collection) || !Object.keys(patch.fields).every(key => /^[a-z_]+$/.test(key))) throw new Error('Invalid fixture patch');
+        }
+        await stop();
+        try {
+          const result = spawnSync('python3', ['-c', [
+            'import json, sqlite3, sys',
+            'db = sqlite3.connect(sys.argv[1])',
+            'for patch in json.loads(sys.argv[2]):',
+            '    fields = patch["fields"]',
+            '    assignments = ", ".join(chr(34) + key + chr(34) + " = ?" for key in fields)',
+            '    cursor = db.execute("UPDATE " + patch["collection"] + " SET " + assignments + " WHERE id = ?", [*fields.values(), patch["id"]])',
+            '    assert cursor.rowcount == 1, "Missing fixture target"',
+            'db.commit()',
+            'db.close()',
+          ].join('\n'), join(dataDir, 'data.db'), JSON.stringify(patches)], { encoding: 'utf8' });
+          if (result.status !== 0) throw new Error(`Fixture patch failed: ${result.error?.message || ''} ${result.stderr}`);
+        } finally { await start(); }
+        for (const patch of patches) {
+          const record = await pb.collection(patch.collection).getOne(patch.id);
+          for (const [key, value] of Object.entries(patch.fields)) {
+            if (record[key] !== value) throw new Error(`Fixture patch did not persist ${patch.collection}.${key}`);
+          }
+        }
+      },
       cleanup: async () => { await stop(); rmSync(root, { recursive: true, force: true }); },
       async user(role = 'user', name = 'Test Human') {
         const email = `${crypto.randomUUID()}@example.test`;
@@ -98,23 +126,41 @@ export async function startLiveQaPocketBase() {
         await client.collection('users').authWithPassword(email, password);
         return { record, client };
       },
-      async session(options: { slug?: string; startAt?: string; endAt?: string; published?: boolean } = {}) {
+      async session(options: {
+        slug?: string; title?: string; startAt?: string; endAt?: string; published?: boolean;
+        mainDay?: boolean; dayKey?: string; eventId?: string;
+        stageKey?: string; stageName?: string; locationLabel?: string; displayOrder?: number;
+        programmeId?: string; trackId?: string;
+      } = {}) {
         const slug = options.slug ?? `session-${crypto.randomUUID()}`;
-        const startAt = options.startAt ?? new Date(Date.now() - 60_000).toISOString();
+        const localDateOf = (value: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Skopje', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value));
+        const now = new Date().toISOString();
+        const minuteAgo = new Date(Date.now() - 60_000).toISOString();
+        // At local midnight, keep default live slots on today's announced date.
+        const startAt = options.startAt ?? (localDateOf(minuteAgo) === localDateOf(now) ? minuteAgo : now);
         const endAt = options.endAt ?? new Date(new Date(startAt).getTime() + 3_600_000).toISOString();
-        const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Skopje', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(startAt));
-        const day = await pb.collection('conference_days').create({ key: slug, local_date: localDate, title: 'Synthetic Day', published: true });
-        const appearanceEvent = await pb.collection('appearance_events').create({ name: 'Synthetic Gathering', published: true });
-        const programme = await pb.collection('event_programmes').create({ day: day.id, appearance_event: appearanceEvent.id });
-        const session = await pb.collection('sessions').create({ slug, title: `Session ${slug}`, abstract: '<p>Synthetic abstract</p>', published: false });
-        const slot = await pb.collection('agenda_slots').create({ programme: programme.id, session: session.id, kind: 'session', start_at: startAt, end_at: endAt, published: false });
+        const localDate = localDateOf(startAt);
+        const dayKey = options.dayKey ?? (options.mainDay === false ? slug : 'main-day');
+        const eventId = options.eventId ?? 'wts2026appevent';
+        const appearanceEvent = await pb.collection('appearance_events').getOne(eventId);
+        const days = await pb.collection('conference_days').getList(1, 1, { filter: pb.filter('key = {:key}', { key: dayKey }) });
+        let day = days.items[0] ?? await pb.collection('conference_days').create({ key: dayKey, local_date: localDate, title: 'Synthetic Day', published: true });
+        const programmes = await pb.collection('event_programmes').getList(1, 1, { filter: pb.filter('day = {:day} && appearance_event = {:event}', { day: day.id, event: eventId }) });
+        const programme = options.programmeId ? await pb.collection('event_programmes').getOne(options.programmeId) : programmes.items[0] ?? await pb.collection('event_programmes').create({ day: day.id, appearance_event: eventId });
+        day = await pb.collection('conference_days').getOne(programme.day);
+        const track = options.trackId === '' ? null : options.trackId ? await pb.collection('agenda_tracks').getOne(options.trackId) : await pb.collection('agenda_tracks').create({
+          programme: programme.id, key: options.stageKey ?? slug, name: options.stageName ?? 'Synthetic Stage',
+          location_label: options.locationLabel ?? 'Synthetic Hall', display_order: options.displayOrder ?? 0,
+        });
+        const session = await pb.collection('sessions').create({ slug, title: options.title ?? `Session ${slug}`, abstract: '<p>Synthetic abstract</p>', published: false });
+        const slot = await pb.collection('agenda_slots').create({ programme: programme.id, track: track?.id ?? '', session: session.id, kind: 'session', start_at: startAt, end_at: endAt, published: false });
         const publish = async (published: boolean) => {
           await pb.send(`/api/wts/programme/agenda-slots/${slot.id}/publication`, { method: 'POST', body: { published } });
           Object.assign(session, await pb.collection('sessions').getOne(session.id));
           Object.assign(slot, await pb.collection('agenda_slots').getOne(slot.id));
         };
         if (options.published !== false) await publish(true);
-        return { session, slot, programme, day, appearanceEvent, slug, startAt, endAt, publish };
+        return { session, slot, programme, day, appearanceEvent, track, slug, startAt, endAt, publish };
       },
     };
   } catch (error) {
