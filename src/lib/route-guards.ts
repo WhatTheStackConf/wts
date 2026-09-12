@@ -92,7 +92,7 @@ export function useRequireReviewer() {
 }
 
 /** UI gate for /checkin; every operation also refreshes server-side authority. */
-export function useRequireCheckinOperator() {
+export function useRequireCheckinOperator(returnPath: "/checkin" | "/registrations" = "/checkin") {
     const auth = useAuth();
     const navigate = useNavigate();
     const authorized = createMemo(() => checkinOperatorAuthorized({
@@ -112,7 +112,7 @@ export function useRequireCheckinOperator() {
         if (!authenticated) {
             try {
                 // Provisioning QR material must never persist across login.
-                window.localStorage.setItem("redirect_url", "/checkin");
+                window.localStorage.setItem("redirect_url", returnPath);
             } catch {
                 // Login still works when browser storage is unavailable.
             }

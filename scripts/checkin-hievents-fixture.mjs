@@ -82,6 +82,11 @@ const server = createServer({ key: readFileSync(`${root}/upstream-key.pem`), cer
     // Pinned Hi.Events list attendees use Laravel simplePaginate, not totals.
     return send(200, { data: rows, links: { first: `${path}?page=1`, last: null, prev: null, next: null }, meta: { path, current_page: 1, per_page: 25, from: rows.length ? 1 : null, to: rows.length || null } });
   }
+  if (url.pathname === "/api/events/5/attendees") {
+    if (url.searchParams.get("sort_by") !== "id" || url.searchParams.get("sort_direction") !== "asc" || url.searchParams.has("query")) return send(400, {});
+    const rows = [15, 15, 16, 17, 999, 15].map((product_id, index) => ({ id: 95000 + index, event_id: 5, product_id, first_name: "Synthetic", last_name: `Roster ${index}`, email: `roster${index}@example.invalid`, status: "ACTIVE", short_id: "never-expose" }));
+    return send(200, page(url.pathname, rows, current));
+  }
   const attendeeList = /^\/api\/events\/(501|502)\/attendees$/.exec(url.pathname);
   if (attendeeList) {
     if (url.searchParams.has("query")) return send(400, { error: "Private queries must never reach upstream URLs" });

@@ -136,6 +136,7 @@ export const Navbar = () => {
               )}
 
               <Show when={canCheckin()}>
+                <li><a href="/registrations" target="_self" class="text-secondary-500 hover:text-secondary-400">Registrations</a></li>
                 <li>
                   <a href="/checkin" target="_self" class="text-secondary-500 hover:text-secondary-400">
                     Check-in
@@ -331,6 +332,7 @@ export const Navbar = () => {
             )}
 
             <Show when={canCheckin()}>
+              <li><a href="/registrations" target="_self" onClick={closeDrawer} class="text-secondary-500 hover:bg-secondary-500/10">Registrations</a></li>
               <li>
                 <a href="/checkin" target="_self" onClick={closeDrawer} class="text-secondary-500 hover:bg-secondary-500/10">
                   Check-in

@@ -218,7 +218,7 @@ function link(value: unknown, endpoint: string, expectedPage: number | null, per
   }
   requireContract(url.searchParams.getAll("per_page").length <= 1);
 }
-async function paginated<T extends { id: string }>(scope: ReadScope, endpoint: string, path: string, parse: (value: unknown) => T): Promise<T[]> {
+export async function paginated<T extends { id: string }>(scope: ReadScope, endpoint: string, path: string, parse: (value: unknown) => T): Promise<T[]> {
   const items: T[] = [];
   const ids = new Set<string>();
   let total: number | undefined;
