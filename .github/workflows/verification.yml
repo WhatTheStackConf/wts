@@ -35,7 +35,12 @@ jobs:
       - if: matrix.gate == 'test'
         run: pnpm pocketbase:download-test
       - run: pnpm generate:icons && pnpm exec velite
-      - run: pnpm ${{ matrix.gate }}
+      - if: matrix.gate != 'test'
+        run: pnpm ${{ matrix.gate }}
+      # Each integration worker starts real PocketBase processes. Serialize file
+      # workers on hosted runners instead of racing their five-second budgets.
+      - if: matrix.gate == 'test'
+        run: pnpm test --no-file-parallelism
       - if: matrix.gate == 'test'
         run: pnpm test:mcs
 

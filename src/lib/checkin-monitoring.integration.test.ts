@@ -120,9 +120,7 @@ it("paginates active workflows and prints without false recovery, and returns a 
       }
     } finally { db.close(); }
   } finally { await f.cleanup(); }
-  // Includes fixture migrations, hundreds of persisted rows and three complete
-  // observation passes; allow hosted CI I/O without weakening query assertions.
-}, 15_000);
+});
 
 /** A loopback-only SMTP sink, not an alternate worker transport. */
 async function smtpSink() {
