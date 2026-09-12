@@ -139,6 +139,46 @@ describe("audited versioned Name Label profiles at real PocketBase", () => {
       expect(await test.pb.collection("checkin_label_approvals").getFullList()).toEqual(storedEvidence);
     } finally { await test.cleanup(); }
   });
+  it("preserves approved calibration across audited pause/resume while fencing stale commands and leaving history untouched", { timeout: 60_000 }, async () => {
+    const test = await setup();
+    try {
+      const { saved, approval } = await physical(test);
+      const approved = await test.service.approve(approval);
+      const collections = (await test.pb.collections.getFullList()).filter((collection) => collection.name.startsWith("checkin_") && collection.name !== "checkin_stations" && collection.name !== "checkin_audit_events");
+      const history = () => Promise.all(collections.map((collection) => test.pb.collection(collection.name).getFullList({ sort: "id" })));
+      const beforeHistory = await history();
+      const before = await ledger(test);
+      const toggle = (expectedVersion: number, enabled: boolean) => ({ operation: "set_station_enabled" as const, operationId: crypto.randomUUID(), expectedVersion, stationId: "wts2026station1" as const, enabled, reason: "maintenance" as const });
+      // First toggle freezes the effective version (zero means current version);
+      // subsequent toggles must preserve it rather than the authorization version.
+      for (const [expectedVersion, enabled] of [[2, true], [3, false], [4, true]] as const) {
+        const command = toggle(expectedVersion, enabled);
+        const result = await test.stations.adminControl(command);
+        expect(result.station).toMatchObject({ enabled, version: expectedVersion + 1, generation: expectedVersion + 1 });
+        expect(await test.service.get(saved.profile.id)).toEqual(approved.profile);
+        expect((await test.service.list()).profiles).toEqual([approved.profile]);
+        const after = await ledger(test);
+        expect((await test.stations.adminControl(command)).replayed).toBe(true);
+        await expect(test.stations.adminControl({ ...command, operationId: crypto.randomUUID() })).rejects.toMatchObject({ code: "conflict" });
+        await expect(test.service.approve({ ...approval, operationId: crypto.randomUUID() })).rejects.toMatchObject({ code: "conflict" });
+        expect(await ledger(test)).toEqual(after);
+      }
+      expect(await history()).toEqual(beforeHistory);
+      await test.restart();
+      expect(await test.service.get(saved.profile.id)).toEqual(approved.profile);
+      const after = await ledger(test);
+      expect(after[0]).toEqual(before[0]); expect(after[1]).toEqual(before[1]);
+      expect(after[2]).toHaveLength(before[2].length + 3);
+      expect(after[3]).toHaveLength(before[3].length + 3);
+      const audits = after[3].filter((entry) => entry.operation === "set_station_enabled");
+      expect(audits).toHaveLength(3);
+      for (const audit of audits) {
+        expect(audit).toMatchObject({ actor_user_id: test.admin.actor.userId, actor_role: "admin", reason: "maintenance", outcome: "applied" });
+        expect(after[2].find((action) => action.id === audit.admin_action_id)).toMatchObject({ operation_kind: "checkin.set_station_enabled", status: "applied" });
+        expect(Object.keys(audit.state.before).sort()).toEqual(["enabled", "generation", "id", "label", "location", "printerRef", "provisionCodeIssued", "version"]);
+      }
+    } finally { await test.cleanup(); }
+  });
   it("keeps direct collections private and denies even superuser history writes", { timeout: 60_000 }, async () => {
     const test = await setup();
     try {
@@ -241,12 +281,41 @@ describe("audited versioned Name Label profiles at real PocketBase", () => {
         expect((await test.service.list()).profiles[0].approval).toBe("unapproved");
         await expect(test.service.approve({ ...approval, operationId: crypto.randomUUID(), expectedStationVersion: expectedVersion + 1 })).rejects.toMatchObject({ code: "conflict" });
       }
+      // Restoring an old printer reference cannot revive invalidated evidence,
+      // including when the zero/fallback config version is frozen by a toggle.
+      const invalidated = await ledger(test);
+      for (const [expectedVersion, enabled] of [[4, true], [5, false], [6, true]] as const) {
+        await test.stations.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), expectedVersion, stationId: "wts2026station1", enabled, reason: "maintenance" });
+        expect((await test.service.get(saved.profile.id)).approval).toBe("unapproved");
+        expect((await test.service.list()).profiles[0].approval).toBe("unapproved");
+        await expect(test.service.approve({ ...approval, operationId: crypto.randomUUID(), expectedStationVersion: expectedVersion + 1 })).rejects.toMatchObject({ code: "conflict" });
+      }
+      expect((await ledger(test)).slice(0, 2)).toEqual(invalidated.slice(0, 2));
       // Transport replay remains immutable historical evidence, not authorization.
       expect((await test.service.approve(approval)).profile.approval).toBe("approved");
       expect((await test.service.get(saved.profile.id)).approval).toBe("unapproved");
       await test.restart();
       expect((await test.service.get(saved.profile.id)).approval).toBe("unapproved");
       expect((await ledger(test))[1]).toEqual(before[1]);
+    } finally { await test.cleanup(); }
+  });
+  it.each(["configure_station", "rotate_provision_code"] as const)("does not revive approval after %s invalidation and pause/resume", { timeout: 60_000 }, async (operation) => {
+    const test = await setup();
+    try {
+      const { saved, approval } = await physical(test);
+      await test.service.approve(approval);
+      const before = (await ledger(test)).slice(0, 2);
+      const common = { operationId: crypto.randomUUID(), expectedVersion: 2, stationId: "wts2026station1" as const, reason: "configuration" as const };
+      await test.stations.adminControl(operation === "configure_station"
+        ? { ...common, operation, label: "Changed label", location: "Test room", printerRef: "test-printer-1" }
+        : { ...common, operation });
+      expect((await test.service.get(saved.profile.id)).approval).toBe("unapproved");
+      for (const [expectedVersion, enabled] of [[3, false], [4, true]] as const) {
+        await test.stations.adminControl({ ...common, operationId: crypto.randomUUID(), operation: "set_station_enabled", expectedVersion, enabled });
+        expect((await test.service.get(saved.profile.id)).approval).toBe("unapproved");
+        await expect(test.service.approve({ ...approval, operationId: crypto.randomUUID(), expectedStationVersion: expectedVersion + 1 })).rejects.toMatchObject({ code: "conflict" });
+      }
+      expect((await ledger(test)).slice(0, 2)).toEqual(before);
     } finally { await test.cleanup(); }
   });
   it("accepts explicit valid synthetic geometry without inferring historical media calibration", { timeout: 60_000 }, async () => {

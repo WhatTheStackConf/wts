@@ -150,6 +150,9 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
       if (!target) fail("invalid_input");
       if (target.getInt("version") !== command.expectedVersion) fail("conflict", 409);
       const before = snapshot(target, kind);
+      // Pause/resume fences authorization, not calibration. Capture before the
+      // version bump; configuration/provision changes still invalidate approval.
+      const profileConfigVersion = op === "set_station_enabled" ? target.getInt("profile_config_version") || target.getInt("version") : 0;
       if (op === "set_system_enabled" || op === "set_station_enabled") target.set("enabled", command.enabled);
       if (op === "configure_station") { target.set("label", command.label); target.set("location", command.location); target.set("printer_ref", command.printerRef); }
       if (op === "rotate_provision_code") {
@@ -159,7 +162,7 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
       if (op === "revoke_binding") target.set("revoked", true);
       target.set("version", target.getInt("version") + 1);
       if (kind !== "checkin_bindings") target.set("generation", target.getInt("generation") + 1);
-      if (kind === "checkin_stations") target.set("profile_config_version", 0);
+      if (kind === "checkin_stations") target.set("profile_config_version", profileConfigVersion);
       const after = snapshot(target, kind);
       const action = new Record(app.findCollectionByNameOrId("admin_actions"));
       const values = { actor_user: actor.id, mcp_token: "", source: "admin_ui", operation_kind: "checkin." + op, target_collection: kind, target_id: target.id, operation_id: command.operationId, input_fingerprint: fingerprint, idempotency_key: key, status: "pending", before_summary: before, after_summary: after, attempt_count: 1, attempt_token: $security.randomString(32), lease_expires_at: "", completed_at: now.toISOString() };
