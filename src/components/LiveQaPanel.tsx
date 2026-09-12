@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, onCleanup, onSettled, Show } from "solid-js";
 import { useAuth } from "~/lib/auth-context";
-import { LiveQaClientError, liveQaRequest } from "~/lib/live-qa-client";
+import { LiveQaClientError, liveQaRequest, loadLiveQaProgramme } from "~/lib/live-qa-client";
+import { createAsyncResource as createResource } from "~/lib/async-resource";
 import type { LiveQaMode, LiveQaQuestion, LiveQaRequest, LiveQaSession } from "~/lib/live-qa-contract";
 
 interface LiveQaPanelProps { slug: string }
@@ -35,8 +36,26 @@ function loginRedirect() {
   }
 }
 
-/** The key owns every private signal, including drafts and in-flight commands. */
 export function LiveQaPanel(props: LiveQaPanelProps) {
+  const auth = useAuth();
+  const directory = () => auth.user?.role === "mc" || auth.user?.role === "admin" ? "/mc" : "/qa";
+  const [programme, controls] = createResource(() => props.slug, () => loadLiveQaProgramme());
+  const stage = createMemo(() => programme()?.stages.find(stage => stage.sessions.some(session => session.slug === props.slug)));
+  return <>
+    <Show when={programme.error}>
+      <p class="mt-6 text-sm text-primary-200" role="alert">Q&A availability could not be loaded. <button type="button" class="btn btn-sm btn-outline" onClick={() => void controls.refetch().catch(() => undefined)}>Retry Q&A availability</button></p>
+    </Show>
+    <Show when={!programme.loading && !programme.error && stage()}>
+      {(currentStage) => <>
+        <a class="mt-6 inline-flex min-h-11 items-center underline underline-offset-4 text-secondary-300" href={`${directory()}?stage=${encodeURIComponent(currentStage().key)}`}>Main-day Q&A · {currentStage().name} · Choose another talk</a>
+        <EligibleLiveQaPanel slug={props.slug} />
+      </>}
+    </Show>
+  </>;
+}
+
+/** The key owns every private signal, including drafts and in-flight commands. */
+function EligibleLiveQaPanel(props: LiveQaPanelProps) {
   const auth = useAuth();
   const scope = createMemo(() => !auth.isLoading() && auth.isAuthenticated() && auth.user
     ? JSON.stringify([auth.user.id, auth.user.role, props.slug]) : undefined);

@@ -4,7 +4,7 @@ import PocketBase from "pocketbase";
 
 const state = JSON.parse(readFileSync(process.env.WTS_LIVE_QA_BROWSER_STATE!, "utf8")) as {
   disposable: boolean; baseURL: string; pbUrl: string; superuserEmail: string; password: string;
-  slug: string; slotId: string; sessionId: string;
+  slug: string; slotId: string; sessionId: string; weekdaySlug: string;
   users: Record<string, { id: string; email: string; password: string }>;
 };
 if (!state.disposable || new URL(state.pbUrl).hostname !== "127.0.0.1") throw new Error("Synthetic Q&A fixture required");
@@ -37,6 +37,57 @@ async function api(page: Page, body: unknown, actor = "mc") {
     return { status: response.status, cache: response.headers.get("cache-control"), data: await response.json() };
   }, { body, actorId: state.users[actor].id });
 }
+
+test("public Q&A is stage-first, keeps stage links on reload, and excludes weekday talks", async ({ page }) => {
+  await page.route("https://**/*", route => route.abort());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/qa");
+  await expect(page.getByRole("button", { name: "Stage 1", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Session main-stage-one", { exact: true })).toBeVisible();
+  await expect(page.getByText(`Session ${state.slug}`, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(`Session ${state.weekdaySlug}`, { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Stage 2", exact: true }).click();
+  await expect(page).toHaveURL(/\/qa\?stage=stage-3$/);
+  await expect(page.getByText(`Session ${state.slug}`, { exact: true })).toBeVisible();
+  await expect(page.getByText("Engineering Hall", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Stage 2", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText(`Session ${state.slug}`, { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/live-qa/stage-picker-mobile.png", fullPage: true });
+  await page.route("**/api/live-qa", route => route.request().method() === "GET"
+    ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Synthetic programme outage" }) }) : route.continue());
+  await page.getByRole("button", { name: "Refresh sessions", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Question availability is unverified");
+  await expect(page.getByText("Question availability unverified", { exact: true })).toBeVisible();
+  await page.unroute("**/api/live-qa");
+  let release = () => {};
+  let observed = () => {};
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const requestObserved = new Promise<void>(resolve => { observed = resolve; });
+  await page.route("**/api/live-qa", async route => {
+    if (route.request().method() === "GET") { observed(); await pending; }
+    await route.continue();
+  });
+  try {
+    await page.getByRole("button", { name: "Refresh sessions", exact: true }).click();
+    await requestObserved;
+    await expect(page.getByRole("alert")).toContainText("Question availability is unverified");
+    await expect(page.getByText("Question availability unverified", { exact: true })).toBeVisible();
+  } finally { release(); }
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByText("Scheduled now · Questions open", { exact: true })).toBeVisible();
+  await page.unroute("**/api/live-qa");
+  await page.getByRole("button", { name: "Stage 5", exact: true }).click();
+  await expect(page.getByText(`Session ${state.slug}`, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Stage 5", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const programme = page.waitForResponse(response => response.url().endsWith("/api/live-qa") && response.request().method() === "GET");
+  await page.goto(`/sessions/${state.weekdaySlug}`);
+  await programme;
+  await expect(page.getByRole("heading", { name: `Session ${state.weekdaySlug}`, exact: true })).toBeVisible();
+  await expect(page.locator("#live-qa")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Log in to ask a question" })).toHaveCount(0);
+});
 
 test("attendee asks privately; MC reads and marks answered after the session ends", async ({ browser }) => {
   const attendee = await actorPage(browser, "user", true);
@@ -72,9 +123,9 @@ test("attendee asks privately; MC reads and marks answered after the session end
     await mc.page.getByRole("button", { name: "Use agenda timing", exact: true }).click();
     await expect(mc.page.getByText("Using agenda timing", { exact: true })).toBeVisible();
     await mc.page.goto("/mc");
+    await mc.page.getByRole("button", { name: "Stage 2", exact: true }).click();
     await expect(mc.page.getByRole("link", { name: new RegExp(`Session ${state.slug}`) })).toBeVisible();
-    await mc.page.getByLabel("Search published sessions").fill(state.slug);
-    await mc.page.getByRole("button", { name: "Search sessions", exact: true }).click();
+    await mc.page.getByLabel("Search sessions in this stage").fill(state.slug);
     await expect(mc.page.getByRole("link", { name: new RegExp(`Session ${state.slug}`) })).toBeVisible();
     expect(await attendee.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
@@ -93,7 +144,7 @@ test("lost submission response retries the same question once even after closure
     let committed = false;
     await attendee.page.route("**/api/live-qa", async route => {
       const body = route.request().postDataJSON();
-      if (body.operation !== "ask") return route.continue();
+      if (body?.operation !== "ask") return route.continue();
       attempts.push(body);
       if (!committed) {
         const response = await route.fetch();
@@ -134,7 +185,7 @@ test("a stale tab cannot submit its private draft under a newly logged-in accoun
     await attendee.page.getByLabel("Your question", { exact: true }).fill(draft);
     // Keep the old tab's last verified view mounted while another tab logs in.
     await attendee.page.route("**/api/live-qa", async route => {
-      if (route.request().postDataJSON().operation === "session") await holdReads;
+      if (route.request().postDataJSON()?.operation === "session") await holdReads;
       await route.continue();
     });
     const switched = await attendee.context.newPage();
@@ -143,7 +194,7 @@ test("a stale tab cannot submit its private draft under a newly logged-in accoun
     await switched.getByLabel("Password", { exact: true }).fill(state.users.other.password);
     await switched.getByRole("button", { name: "Log In", exact: true }).click();
     await expect(switched).toHaveURL(`${state.baseURL}/`);
-    const rejected = attendee.page.waitForResponse(response => response.url().endsWith("/api/live-qa") && response.request().postDataJSON().operation === "ask");
+    const rejected = attendee.page.waitForResponse(response => response.url().endsWith("/api/live-qa") && response.request().postDataJSON()?.operation === "ask");
     await attendee.page.getByRole("button", { name: "Send question", exact: true }).click();
     expect((await rejected).status()).toBe(403);
     await expect(attendee.page.getByLabel("Your question", { exact: true })).toHaveCount(0);
@@ -165,7 +216,7 @@ test("revoked MC loses private queue and failed reads preserve attendee draft", 
     await expect(mc.page.getByText("How do you keep concurrent updates consistent?", { exact: true })).toHaveCount(0);
     await expect(mc.page.getByRole("button", { name: "Open questions", exact: true })).toHaveCount(0);
     await attendee.page.getByLabel("Your question", { exact: true }).fill("Do not lose this draft during a failed refresh.");
-    await attendee.page.route("**/api/live-qa", route => route.request().postDataJSON().operation === "session" ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Synthetic outage" }) }) : route.continue());
+    await attendee.page.route("**/api/live-qa", route => route.request().postDataJSON()?.operation === "session" ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Synthetic outage" }) }) : route.continue());
     await attendee.page.getByRole("button", { name: "Refresh questions", exact: true }).click();
     await expect(attendee.page.getByRole("alert")).toContainText("Couldn't refresh questions");
     await expect(attendee.page.getByLabel("Your question", { exact: true })).toHaveValue("Do not lose this draft during a failed refresh.");

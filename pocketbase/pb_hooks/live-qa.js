@@ -37,19 +37,56 @@ function validate(body) {
   if (body.operation === 'mode' && !['auto', 'open', 'closed'].includes(body.mode)) fail(400, 'Invalid mode.');
   if (body.operation === 'answer' && (typeof body.answered !== 'boolean' || typeof body.questionId !== 'string' || !/^[a-z0-9]{15}$/.test(body.questionId))) fail(400, 'Invalid answer state or Question.');
 }
-function context(app, slug, now) {
-  const sessions = rows(app, 'sessions', 'slug = {:slug} && published = true', '', 1, 0, { slug });
-  if (!sessions.length) fail(404, 'Session not found.');
-  const session = sessions[0];
-  const controls = rows(app, 'live_qa_controls', 'session = {:id}', '', 1, 0, { id: session.id });
-  const mode = controls.length ? controls[0].getString('mode') : 'auto';
-  // Event Programme inherits publication from its Day and Appearance Event.
-  const slots = rows(app, 'agenda_slots', 'session = {:id} && kind = "session" && published = true && programme.day.published = true && programme.appearance_event.published = true', '', 1, 0, { id: session.id });
-  const startAt = slots.length ? instant(slots[0].getString('start_at')) : null;
-  const endAt = slots.length ? instant(slots[0].getString('end_at')) : null;
-  const scheduled = !!startAt && !!endAt && startAt <= now && now < endAt;
-  return { session, controls, mode, startAt, endAt, accepting: slots.length > 0 && (mode === 'open' || mode === 'auto' && scheduled) };
+// A stored MC override only changes timing, never this publication/stage scope.
+const eligibleSlotFilter = 'kind = "session" && published = true && session.published = true && programme.day.key = "main-day" && programme.day.published = true && programme.appearance_event = "wts2026appevent" && programme.appearance_event.published = true && track != "" && track.programme = programme';
+const mainProgrammeFilter = 'day.key = "main-day" && day.published = true && appearance_event = "wts2026appevent" && appearance_event.published = true';
+const MAX_PROGRAMME_ROWS = 1000;
+function boundedRows(app, collection, filter, sort, maximum, params) {
+  const result = rows(app, collection, filter, sort, maximum + 1, 0, params);
+  if (result.length > maximum) fail(503, 'Live Q&A programme exceeds the safe read limit.');
+  return result;
 }
+function timing(app, slot, now) {
+  const controls = rows(app, 'live_qa_controls', 'session = {:id}', '', 1, 0, { id: slot.getString('session') });
+  const mode = controls.length ? controls[0].getString('mode') : 'auto';
+  const startAt = instant(slot.getString('start_at'));
+  const endAt = instant(slot.getString('end_at'));
+  if (!startAt || !endAt || startAt >= endAt) fail(503, 'Invalid live Q&A programme timing.');
+  const scheduled = startAt <= now && now < endAt;
+  return { controls, mode, startAt, endAt, accepting: mode === 'open' || mode === 'auto' && scheduled };
+}
+function context(app, slug, now) {
+  // session is unique on agenda_slots; the same scope governs reads and every mutation.
+  const slots = rows(app, 'agenda_slots', eligibleSlotFilter + ' && session.slug = {:slug}', '', 1, 0, { slug });
+  if (!slots.length) fail(404, 'Main-day Session not found.');
+  return { session: app.findRecordById('sessions', slots[0].getString('session')), ...timing(app, slots[0], now) };
+}
+exports.programme = (app) => {
+  let reply;
+  app.runInTransaction(tx => {
+    const now = new Date().toISOString();
+    const programmes = boundedRows(tx, 'event_programmes', mainProgrammeFilter, '', 1);
+    reply = { day: null, serverNow: now, stages: [] };
+    if (!programmes.length) return;
+    const programme = programmes[0];
+    const day = tx.findRecordById('conference_days', programme.getString('day'));
+    reply.day = { key: day.getString('key'), localDate: day.getString('local_date'), title: day.getString('title') };
+    const tracks = boundedRows(tx, 'agenda_tracks', 'programme = {:id}', 'display_order,id', MAX_PROGRAMME_ROWS, { id: programme.id });
+    const slots = boundedRows(tx, 'agenda_slots', eligibleSlotFilter + ' && programme = {:id}', 'start_at,id', MAX_PROGRAMME_ROWS, { id: programme.id });
+    const stagesById = {};
+    reply.stages = tracks.map(track => {
+      const stage = { key: track.getString('key'), name: track.getString('name'), locationLabel: track.getString('location_label'), sessions: [] };
+      stagesById[track.id] = stage;
+      return stage;
+    });
+    for (const slot of slots) {
+      const session = tx.findRecordById('sessions', slot.getString('session'));
+      const state = timing(tx, slot, now);
+      stagesById[slot.getString('track')].sessions.push({ slug: session.getString('slug'), title: session.getString('title'), startAt: state.startAt, endAt: state.endAt, accepting: state.accepting, mode: state.mode });
+    }
+  });
+  return reply;
+};
 exports.handle = (app, auth, body) => {
   validate(body);
   let reply;
@@ -62,7 +99,14 @@ exports.handle = (app, auth, body) => {
     if (body.operation === 'catalogue') {
       // Literal substring search: wildcard characters never broaden the query.
       const search = body.search.trim().replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-      const filter = $dbx.exp("published = true AND (title LIKE {:pattern} ESCAPE '\\' OR slug LIKE {:pattern} ESCAPE '\\')", { pattern: '%' + search + '%' });
+      const slots = boundedRows(tx, 'agenda_slots', eligibleSlotFilter, 'start_at,id', MAX_PROGRAMME_ROWS);
+      const params = { pattern: '%' + search + '%' };
+      const scope = slots.map((slot, index) => {
+        const key = 'session' + index;
+        params[key] = slot.getString('session');
+        return '{:' + key + '}';
+      });
+      const filter = $dbx.exp("published = true AND id IN (" + (scope.length ? scope.join(',') : "''") + ") AND (title LIKE {:pattern} ESCAPE '\\' OR slug LIKE {:pattern} ESCAPE '\\')", params);
       const total = tx.countRecords('sessions', filter);
       // Use the same SQL expression for rows and count: PB's ~ operator has
       // different empty-string and wildcard escaping semantics.

@@ -129,6 +129,12 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/qa";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/qa")>;
+      $$route?: undefined;
+    },
+    {
       path: "/register";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/register")>;
@@ -312,7 +318,9 @@ declare module "virtual:file-routes" {
     {
       path: "/api/live-qa";
       page: false;
+      $GET: FileRouteLazyRef<typeof import("./src/routes/api/live-qa")>;
       $POST: FileRouteLazyRef<typeof import("./src/routes/api/live-qa")>;
+      $HEAD: FileRouteLazyRef<typeof import("./src/routes/api/live-qa")>;
       $$route?: undefined;
     },
     {
@@ -560,6 +568,14 @@ declare module "virtual:file-routes" {
       id: "/mc";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/mc")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/qa";
+      id: "/qa";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/qa")>;
       $$route?: undefined;
       children?: undefined;
     },

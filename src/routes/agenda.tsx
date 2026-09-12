@@ -24,6 +24,7 @@ export default function Agenda() {
             <p class="mt-4 font-mono text-sm leading-relaxed text-secondary-200/85">
               All times are local to {conferenceLocation} ({SCHEDULE_TIME_ZONE}), in 24-hour format.
             </p>
+            <a href="/qa" class="btn btn-primary mt-5 min-h-12">Main-day live Q&A · Choose your stage</a>
           </header>
 
           <Show

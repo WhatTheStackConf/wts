@@ -70,7 +70,10 @@ try {
   }
   const other = await fixture.user("user", "Browser other attendee");
   users.other = { id: other.record.id, email: other.record.email, password: fixture.password };
-  const talk = await fixture.session({ slug: "live-qa-browser-talk" });
+  const talk = await fixture.session({ slug: "live-qa-browser-talk", stageKey: "stage-3", stageName: "Stage 2", displayOrder: 2, locationLabel: "Engineering Hall" });
+  await fixture.session({ slug: "main-stage-one", stageKey: "stage-2", stageName: "Stage 1", displayOrder: 1, locationLabel: "Web Hall" });
+  await fixture.pb.collection("agenda_tracks").create({ programme: talk.programme.id, key: "stage-5", name: "Stage 5", display_order: 5 });
+  const weekday = await fixture.session({ slug: "weekday-qa-excluded", mainDay: false });
   // Public page dependencies absent from the narrow backend fixture are created
   // via their real migrations, never through a mocked public response.
   await run("pnpm", ["build"]);
@@ -83,7 +86,7 @@ try {
   }
   if (!ready) throw new Error("Built Q&A server did not become ready");
   const statePath = join(root, "fixture.json");
-  await writeFile(statePath, JSON.stringify({ disposable: true, baseURL, pbUrl: fixture.baseUrl, superuserEmail: fixture.superuserEmail, password: fixture.password, users, slug: talk.slug, slotId: talk.slot.id, sessionId: talk.session.id }), { mode: 0o600 });
+  await writeFile(statePath, JSON.stringify({ disposable: true, baseURL, pbUrl: fixture.baseUrl, superuserEmail: fixture.superuserEmail, password: fixture.password, users, slug: talk.slug, slotId: talk.slot.id, sessionId: talk.session.id, weekdaySlug: weekday.slug }), { mode: 0o600 });
   if (process.argv.includes("--inspect")) {
     console.log(`Disposable Q&A inspection ready: ${baseURL}\nFixture: ${statePath}\nStop runner ${process.pid} with SIGTERM to remove the disposable services and data.`);
     await new Promise(() => {});
