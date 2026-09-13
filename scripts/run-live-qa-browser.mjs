@@ -64,7 +64,7 @@ try {
     VITE_TURNSTILE_SITE_KEY: "", VITE_LISTMONK_LIST_ID: "",
   });
   const users = {};
-  for (const role of ["user", "mc", "admin"]) {
+  for (const role of ["user", "reviewer", "checkin_operator", "mc", "admin"]) {
     const user = await fixture.user(role, `Browser ${role}`);
     users[role] = { id: user.record.id, email: user.record.email, password: fixture.password };
   }

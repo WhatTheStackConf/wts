@@ -1,5 +1,7 @@
 # Registration browser checkpoint — 2026-09-12
 
+Historical checkpoint for the original free-programme slice. Current scope, including paid DevFest and Workshop Thursday tickets, is documented in [registrations.md](registrations.md).
+
 Isolated worktree: `/home/darko/.local/state/wts/coordinator-rosters-release`, base `d114927eef3a28ffe18ebfde9bc6952adf1cc13f`. No commit, deployment, production configuration, station or schema changes. Main working tree untouched.
 
 ## Implemented

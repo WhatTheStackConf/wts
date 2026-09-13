@@ -38,6 +38,62 @@ async function api(page: Page, body: unknown, actor = "mc") {
   }, { body, actorId: state.users[actor].id });
 }
 
+test("Live Q&A navigation is absent when logged out", async ({ page }) => {
+  await page.route("https://**/*", route => route.abort());
+  await page.goto("/qa");
+  await expect(page.locator(".navbar-end").getByRole("link", { name: "Log in", exact: true })).toBeVisible();
+  await expect(page.locator('.drawer a[href="/qa"]')).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "open sidebar", exact: true }).click();
+  await expect(page.locator('#mobile-navigation a[href="/qa"]')).toHaveCount(0);
+});
+
+for (const role of ["user", "reviewer", "checkin_operator", "mc", "admin"]) {
+  test(`Live Q&A is a top-level authenticated link for ${role}`, async ({ browser }) => {
+    const actor = await actorPage(browser, role);
+    try {
+      const desktopLink = actor.page.locator('.navbar-center > ul > li > a[href="/qa"]');
+      await expect(desktopLink).toBeVisible();
+      await expect(desktopLink).toHaveText("Live Q&A");
+      await expect(desktopLink).toHaveClass(/text-secondary-500/);
+      await expect(actor.page.locator('#nav-conference a[href="/qa"]')).toHaveCount(0);
+      await desktopLink.click();
+      await expect(actor.page).toHaveURL(`${state.baseURL}/qa`);
+      await expect(actor.page.getByRole("heading", { name: "Choose your stage", exact: true })).toBeVisible();
+      if (role === "user") {
+        let release = () => {};
+        let observed = () => {};
+        const pending = new Promise<void>(resolve => { release = resolve; });
+        const requested = new Promise<void>(resolve => { observed = resolve; });
+        await actor.page.route("**/_server", async route => { observed(); await pending; await route.continue(); });
+        try {
+          await actor.page.reload({ waitUntil: "domcontentloaded" });
+          await requested;
+          await expect(desktopLink).toHaveCount(0);
+        } finally { release(); }
+        await expect(desktopLink).toBeVisible();
+        await actor.page.unroute("**/_server");
+      }
+      if (role === "user") await actor.page.screenshot({ path: "test-results/live-qa/authenticated-nav-desktop.png", fullPage: true });
+      await actor.page.setViewportSize({ width: 390, height: 844 });
+      await actor.page.getByRole("button", { name: "open sidebar", exact: true }).click();
+      const drawer = actor.page.locator("#mobile-navigation");
+      const mobileLink = drawer.locator(':scope > ul > li > a[href="/qa"]');
+      await expect(mobileLink).toBeVisible();
+      await expect(mobileLink).toHaveText("Live Q&A");
+      await expect(mobileLink).toHaveClass(/text-secondary-500/);
+      await expect(drawer.locator('details a[href="/qa"]')).toHaveCount(0);
+      if (role === "user") await actor.page.screenshot({ path: "test-results/live-qa/authenticated-nav-mobile.png" });
+      await mobileLink.click();
+      await expect(drawer).toHaveCount(0);
+      await actor.page.getByRole("button", { name: "open sidebar", exact: true }).click();
+      await drawer.getByRole("button", { name: "Logout", exact: true }).click();
+      await expect(actor.page).toHaveURL(`${state.baseURL}/`);
+      await expect(actor.page.locator('.drawer a[href="/qa"]')).toHaveCount(0);
+    } finally { await actor.context.close(); }
+  });
+}
+
 test("public Q&A is stage-first, keeps stage links on reload, and excludes weekday talks", async ({ page }) => {
   await page.route("https://**/*", route => route.abort());
   await page.setViewportSize({ width: 390, height: 844 });

@@ -47,7 +47,7 @@ export default function RegistrationsPage() {
   const guard = useRequireCheckinOperator("/registrations");
   return <div class="min-h-screen bg-base-300 text-base-content"><Title>Registrations | WTS 2026</Title><Meta name="robots" content="noindex,nofollow" /><Meta name="referrer" content="no-referrer" />
     <main class="mx-auto max-w-6xl space-y-5 px-4 py-6"><header class="flex flex-wrap items-center justify-between gap-3"><h1 class="text-3xl font-bold">Pre-conference registrations</h1><a href="/checkin" target="_self" class="btn btn-ghost">Scanner</a></header>
-    <p class="text-sm opacity-80">Read-only from HiEvents. Use HiEvents for check-in. Arrival status is not inferred. Only the three configured WTS free-ticket programmes are listed.</p>
+    <p class="text-sm opacity-80">Read-only from HiEvents. Use HiEvents for check-in. Arrival status is not inferred. Configured free and paid WTS pre-conference programmes are listed; registrations made through other platforms are not included.</p>
     <Show when={guard.authorized()} fallback={<p role="status">Checking operator access…</p>}><For each={guard.user() ? [`${guard.user()!.id}:${guard.user()!.role}`] : []}>{() => <Roster />}</For></Show>
     </main></div>;
 }

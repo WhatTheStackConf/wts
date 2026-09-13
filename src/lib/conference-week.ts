@@ -37,6 +37,8 @@ export interface ConferenceWeekTrack {
   access?: string;
   /** Independent free reservations in the WTS 2026 Hi.Events catalogue. */
   freeTicketProductId?: number;
+  /** WTS event-5 roster mapping for programmes not covered by a free ticket. */
+  registrationProductId?: number;
   /** Days needing their own entry get an action instead of a note. */
   cta?: { label: string; href: string };
   /** An unannounced day, rendered as a teaser rather than a bookable track. */
@@ -87,6 +89,7 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
   },
   {
     name: "DevFest",
+    registrationProductId: 9,
     locationLabel: conferenceWeekVenues.finki,
     date: "2026-09-16",
     startTime: "17:00",
@@ -114,6 +117,7 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
   },
   {
     name: "Workshop Thursday",
+    registrationProductId: 14,
     locationLabel: conferenceWeekVenues.base42,
     date: "2026-09-17",
     summary:

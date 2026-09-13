@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { conferenceWeekTracks } from "./conference-week";
-export const registrationProgrammes = conferenceWeekTracks.filter(track => track.freeTicketProductId !== undefined).map(track => ({ id: String(track.freeTicketProductId), name: track.name }));
+// Roster scope includes explicitly mapped paid tickets, without changing the
+// free-reservation classification used by checkout and conference eligibility.
+export const registrationProgrammes = conferenceWeekTracks.flatMap(track => {
+  const productId = track.registrationProductId ?? track.freeTicketProductId;
+  return productId === undefined ? [] : [{ id: String(productId), name: track.name }];
+});
 export const registrationSchema = z.strictObject({
   id: z.string().regex(/^[1-9][0-9]*$/), programmeId: z.string(),
   name: z.string().max(1001), email: z.string().max(500),

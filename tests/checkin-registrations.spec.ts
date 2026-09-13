@@ -10,6 +10,8 @@ for (const role of ["admin", "operator"] as const) {
     expect(documentResponse?.headers()["cache-control"]).toBe("private, no-store");
     await expect(page.getByRole("cell", { name: "roster0@example.invalid", exact: true })).toBeVisible();
     await expect(page.getByRole("status")).toContainText("3 shown / 3 registrations");
+    const programme = page.getByRole("combobox", { name: "Programme", exact: true });
+    await expect(programme.locator("option")).toHaveText(["InfoSec Monday", "Workshop Tuesday: iOS + AI", "DevFest", "Workshop Thursday", "Angular Day"]);
     expect((await page.context().cookies()).some(cookie => /station|binding/i.test(cookie.name))).toBe(false);
     const search = page.getByRole("searchbox");
     await search.fill("roster5@example.invalid");
@@ -18,6 +20,19 @@ for (const role of ["admin", "operator"] as const) {
     await page.getByRole("combobox", { name: "Programme", exact: true }).selectOption("16");
     await expect(search).toHaveValue("");
     await expect(page.getByRole("cell", { name: "roster2@example.invalid", exact: true })).toBeVisible();
+    await programme.selectOption("9");
+    await expect(page.getByRole("cell", { name: "roster6@example.invalid", exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "roster2@example.invalid", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("status")).toContainText("1 shown / 1 registrations");
+    await search.fill("roster6@example.invalid");
+    await programme.selectOption("14");
+    await expect(search).toHaveValue("");
+    await expect(page.getByRole("cell", { name: "roster7@example.invalid", exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "CANCELLED", exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "roster6@example.invalid", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("cell", { name: "roster8@example.invalid", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("cell", { name: "roster9@example.invalid", exact: true })).toHaveCount(0);
+    await page.screenshot({ path: `test-results/registrations-${role}-paid-mobile.png`, fullPage: true });
     await page.getByRole("combobox", { name: "Programme", exact: true }).selectOption("17");
     await expect(page.getByRole("cell", { name: "roster3@example.invalid", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -31,7 +46,8 @@ for (const role of ["admin", "operator"] as const) {
     const response = await refreshed;
     expect(response.headers()["cache-control"]).toBe("private, no-store");
     const body = await response.json();
-    expect(body.registrations).toHaveLength(5);
+    expect(body.registrations).toHaveLength(7);
+    expect(body.registrations.map((row: { programmeId: string }) => row.programmeId)).toEqual(["15", "15", "16", "17", "15", "9", "14"]);
     expect(JSON.stringify(body)).not.toContain("never-expose");
     await expect(page.getByRole("cell", { name: "roster3@example.invalid", exact: true })).toBeVisible();
     await search.fill("roster3@example.invalid");
