@@ -5,7 +5,7 @@ import { clientOnly } from "@solidjs/web";
 import { Icon } from "~/components/Icon";
 import { useAuth } from "~/lib/auth-context";
 import { fetchCfpConfig } from "~/lib/cfp-utils";
-import { checkinOperatorAuthorized, mcAuthorized } from "~/lib/route-authorization";
+import { authenticated, checkinOperatorAuthorized, mcAuthorized } from "~/lib/route-authorization";
 
 const LoginMenu = clientOnly(() => import("./LoginMenu"));
 
@@ -15,6 +15,9 @@ export const Navbar = () => {
   const [isDrawerOpen, setIsDrawerOpen] = createSignal(false);
   const [cfpConfig] = createResource(fetchCfpConfig);
   let animationTimer: number | undefined;
+  const showLiveQa = () => mounted() && authenticated({
+    loading: auth.isLoading(), authenticated: auth.isAuthenticated(),
+  });
   const canModerate = () => mounted() && mcAuthorized({
     loading: auth.isLoading(), authenticated: auth.isAuthenticated(), role: auth.user?.role,
   });
@@ -141,6 +144,9 @@ export const Navbar = () => {
               <Show when={canModerate()}>
                 <li><a href="/mc" class="text-secondary-500 hover:text-secondary-400">MC Q&A</a></li>
               </Show>
+              <Show when={showLiveQa()}>
+                <li><a href="/qa" class="text-secondary-500 hover:text-secondary-400">Live Q&A</a></li>
+              </Show>
               <Show when={canCheckin()}>
                 <li><a href="/registrations" target="_self" class="text-secondary-500 hover:text-secondary-400">Registrations</a></li>
                 <li>
@@ -176,7 +182,6 @@ export const Navbar = () => {
                   <li>
                     <a href="/agenda">{`>`} Agenda</a>
                   </li>
-                  <li><a href="/qa">{`>`} Live Q&A · Main day</a></li>
                   <li>
                     <a href="/sessions">{`>`} Sessions</a>
                   </li>
@@ -341,6 +346,9 @@ export const Navbar = () => {
             <Show when={canModerate()}>
               <li><a href="/mc" onClick={closeDrawer} class="text-secondary-500 hover:bg-secondary-500/10">MC Q&A</a></li>
             </Show>
+            <Show when={showLiveQa()}>
+              <li><a href="/qa" onClick={closeDrawer} class="text-secondary-500 hover:bg-secondary-500/10">Live Q&A</a></li>
+            </Show>
             <Show when={canCheckin()}>
               <li><a href="/registrations" target="_self" onClick={closeDrawer} class="text-secondary-500 hover:bg-secondary-500/10">Registrations</a></li>
               <li>
@@ -367,7 +375,6 @@ export const Navbar = () => {
                   <li>
                     <a href="/agenda" onClick={closeDrawer}>Agenda</a>
                   </li>
-                  <li><a href="/qa" onClick={closeDrawer}>Live Q&A · Main day</a></li>
                   <li>
                     <a href="/sessions" onClick={closeDrawer}>Sessions</a>
                   </li>

@@ -84,7 +84,7 @@ const server = createServer({ key: readFileSync(`${root}/upstream-key.pem`), cer
   }
   if (url.pathname === "/api/events/5/attendees") {
     if (url.searchParams.get("sort_by") !== "id" || url.searchParams.get("sort_direction") !== "asc" || url.searchParams.has("query")) return send(400, {});
-    const rows = [15, 15, 16, 17, 999, 15].map((product_id, index) => ({ id: 95000 + index, event_id: 5, product_id, first_name: "Synthetic", last_name: `Roster ${index}`, email: `roster${index}@example.invalid`, status: "ACTIVE", short_id: "never-expose" }));
+    const rows = [15, 15, 16, 17, 999, 15, 9, 14, 2, 4].map((product_id, index) => ({ id: 95000 + index, event_id: 5, product_id, first_name: "Synthetic", last_name: `Roster ${index}`, email: `roster${index}@example.invalid`, status: product_id === 14 ? "CANCELLED" : "ACTIVE", short_id: "never-expose" }));
     return send(200, page(url.pathname, rows, current));
   }
   const attendeeList = /^\/api\/events\/(501|502)\/attendees$/.exec(url.pathname);

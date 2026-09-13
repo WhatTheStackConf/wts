@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { readFileSync } from "node:fs";
 import { handleRegistrations } from "./registrations-http";
 import { readRegistrations } from "./registrations-source";
+import { registrationProgrammes } from "./registrations-contract";
+import { conferenceWeekTracks } from "./conference-week";
 import { isCheckinPath } from "./checkin-privacy";
 const request = () => new Request("https://wts.test/api/registrations", { method: "POST", headers: { origin: "https://wts.test" } });
 const empty = { refreshedAt: "2026-09-12T10:00:00.000Z", registrations: [] };
@@ -15,7 +17,28 @@ function page(current: number, product = 15) {
  return { data: [{ id: 90000 + current, event_id: 5, product_id: product, first_name: "Synthetic", last_name: "Person", email: "fixture@example.invalid", status: "ACTIVE", short_id: "never-expose", check_ins: [{ short_id: "never-expose" }] }], meta: { current_page: current, last_page: 2, total: 2, per_page: 1, from: current, to: current, path: endpoint }, links: { first: link(1), last: link(2), prev: current === 1 ? null : link(1), next: current === 2 ? null : link(2) } };
 }
 describe("private registrations", () => {
- it.each(["user", "reviewer"])("denies %s without reading upstream", async role => {
+ it("lists free and paid WTS pre-conference programmes in weekday order", () => {
+  expect(registrationProgrammes).toEqual([
+   { id: "15", name: "InfoSec Monday" },
+   { id: "16", name: "Workshop Tuesday: iOS + AI" },
+   { id: "9", name: "DevFest" },
+   { id: "14", name: "Workshop Thursday" },
+   { id: "17", name: "Angular Day" },
+  ]);
+  expect(conferenceWeekTracks.flatMap(track => track.freeTicketProductId === undefined ? [] : [track.freeTicketProductId])).toEqual([15, 16, 17]);
+ });
+ it("includes both paid products across pages without exposing payment or check-in data", async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(Response.json(page(1, 9))).mockResolvedValueOnce(Response.json(page(2, 14)));
+  const result = await readRegistrations(config, fetcher);
+  expect(result.registrations.map(row => row.programmeId)).toEqual(["9", "14"]);
+  expect(fetcher.mock.calls.every(call => call[1].method === "GET")).toBe(true);
+  expect(JSON.stringify(result)).not.toMatch(/short_id|check_ins|never-expose/);
+ });
+ it.each([2, 3, 4, 13, 999])("still excludes unrelated product %s", async product => {
+  const result = await readRegistrations(config, vi.fn().mockResolvedValueOnce(Response.json(page(1, product))).mockResolvedValueOnce(Response.json(page(2, 14))));
+  expect(result.registrations.map(row => row.programmeId)).toEqual(["14"]);
+ });
+ it.each(["user", "reviewer", "mc"])("denies %s without reading upstream", async role => {
   const read = vi.fn(); const result = await handleRegistrations(request(), { authenticate: async () => ({ id: "fixture", role }), read });
   expect(result.status).toBe(403); expect(read).not.toHaveBeenCalled();
  });

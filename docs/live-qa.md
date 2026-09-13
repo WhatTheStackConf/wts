@@ -2,8 +2,9 @@
 
 ## Attendee and MC workflow
 
-- Open `/qa` (also linked from the agenda and Conference navigation), choose your stage, then choose a main-day talk. The **Live Q&A** section is on `/sessions/{slug}#live-qa`; weekday session pages do not show it. The stage directory is public, but questions are not.
+- Open `/qa` (also linked from the agenda), choose your stage, then choose a main-day talk. The **Live Q&A** section is on `/sessions/{slug}#live-qa`; weekday session pages do not show it. The stage directory is public, but questions are not.
 - Stage buttons use the agenda's displayed names and ordering, not inferred stage numbers. The selected stage persists in `?stage=<canonical-key>` links and on reload. Talks are in running order with Skopje times, scheduled-now/open/finished status, and stage location when announced. Empty stages remain visible with an explanation.
+- **Live Q&A** is a top-level yellow navigation link for every logged-in role on desktop and mobile. It is hidden while login state is loading and for logged-out visitors, and no longer appears inside the Conference dropdown. This is navigation visibility only: direct stage-directory access and the agenda CTA remain public; question permissions are unchanged.
 - Any logged-in WTS user can submit. WTS's existing login policy requires a verified email; no ticket/check-in requirement is added.
 - Questions are private to their author and all MCs/admins. Other attendees cannot read them. Author names, emails and account identifiers are not shown to MCs.
 - Q&A is restricted on the backend to published Session Slots with a valid Stage in the `wts2026appevent` / `main-day` programme. Its announced date comes from the canonical Conference Day. Weekday events, another day under the same event, another event under the main-day key, unscheduled talks and programme-wide/non-session items are excluded. No MC override can expand this scope.
