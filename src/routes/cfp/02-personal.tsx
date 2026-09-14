@@ -107,32 +107,18 @@ const Personal = () => {
 
   return (
     <CfpStepLayout
-      title="Call for Papers - Step 2"
+      title="Personal details"
       description="Submit your talk proposal"
       step={2}
     >
       <div class="mb-10 space-y-8">
-        <h2 class="text-2xl font-bold font-star text-white mb-6 flex items-center gap-3">
-          <span class="text-primary">//</span> PERSONAL INFO
-        </h2>
-
-        <div class="mb-6 mx-auto w-full md:w-2/3">
-          <div class="p-4 rounded-xl border border-primary/20 bg-primary/5 flex gap-4 items-start">
-            <Icon
-              icon="material-symbols:info-outline"
-              class="text-primary text-xl shrink-0 mt-1"
-            />
-            <p class="text-sm font-mono text-secondary-300">
-              Protip: you only have to fill out this step once - any
-              subsequent talk submission will reuse this data. Editing info in
-              the step will update your profile for all your submissions.
-            </p>
-          </div>
-        </div>
+        <p class="text-sm text-secondary-300">
+          These details are reused for every proposal. Changes update your profile across all submissions.
+        </p>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div class="form-control w-full">
-            <label class="label font-mono text-xs uppercase text-primary">
+            <label class="label text-sm font-medium text-primary">
               Email
             </label>
             <input
@@ -146,7 +132,7 @@ const Personal = () => {
             </label>
           </div>
           <div class="form-control w-full">
-            <label class="label font-mono text-xs uppercase text-primary">
+            <label class="label text-sm font-medium text-primary">
               Full Name *
             </label>
             <input
@@ -170,7 +156,7 @@ const Personal = () => {
         </div>
 
         <div class="form-control w-full">
-          <label class="label font-mono text-xs uppercase text-primary">
+          <label class="label text-sm font-medium text-primary">
             Affiliation and Title
           </label>
           <input
@@ -187,7 +173,7 @@ const Personal = () => {
         </div>
 
         <div class="form-control w-full">
-          <label class="label font-mono text-xs uppercase text-primary">
+          <label class="label text-sm font-medium text-primary">
             Short Bio *
           </label>
           <textarea
@@ -208,7 +194,7 @@ const Personal = () => {
         </div>
 
         <div class="form-control w-full">
-          <label class="label font-mono text-xs uppercase text-primary">
+          <label class="label text-sm font-medium text-primary">
             Social Media & Personal Links
           </label>
           <div class="bg-base-300/30 rounded-xl border border-white/10 p-2">
@@ -223,7 +209,7 @@ const Personal = () => {
         </div>
 
         <div class="form-control w-full">
-          <label class="label font-mono text-xs uppercase text-primary">
+          <label class="label text-sm font-medium text-primary">
             Preferred Contact Method
           </label>
           <input
@@ -239,16 +225,16 @@ const Personal = () => {
 
       <div class="flex justify-between mt-12 border-t border-white/10 pt-8">
         <button
-          class="btn btn-outline btn-lg px-8 font-mono hover:bg-white/10"
+          class="btn btn-outline hover:bg-white/10"
           onClick={() => navigate("/cfp/01-intro")}
         >
-          BACK
+          Back
         </button>
         <button
-          class="btn btn-primary btn-lg shadow-[0_0_20px_rgba(var(--color-primary-500),0.3)] px-10 font-mono"
+          class="btn btn-primary gap-2"
           onClick={handleNext}
         >
-          NEXT <Icon icon="material-symbols:arrow-forward" />
+          Next <Icon icon="material-symbols:arrow-forward" />
         </button>
       </div>
     </CfpStepLayout>

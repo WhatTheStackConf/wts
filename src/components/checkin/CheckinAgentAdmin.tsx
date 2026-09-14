@@ -83,8 +83,8 @@ export function CheckinAgentAdmin() {
   return (
     <section aria-label="Station agents" class="min-w-0 rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-5">
       <h2 class="text-2xl font-bold">Station agents</h2>
-      <p>Agent credentials are not User logins, Station Client Bindings or provisioning QRs.</p>
-      <p>Each fixed station has one outbound agent. Issuance pins its expected identities and profile; a connection never records physical approval. Stops preserve existing work and cannot instantly cancel USB activity.</p>
+      <p>One outbound agent per station. Its credential is separate from human logins, phone bindings and station QRs.</p>
+      <p>Issuing a credential pins identities and profile, not physical approval. Stops preserve work and cannot instantly cancel USB activity.</p>
       <Show when={data.error}><p role="alert" class="alert alert-error">Agent readiness unavailable. Refresh before new actions. <Show when={failures() >= 3} fallback="Status retries are bounded.">Automatic status retries stopped.</Show></p></Show>
       <Show when={profiles.error}><p role="alert">Profile list unavailable. Refresh before issuing an agent.</p></Show>
       <Show when={error()}><p role="alert" class="alert alert-error">{error()}</p></Show>
@@ -96,7 +96,7 @@ export function CheckinAgentAdmin() {
         </div>
       )}</Show>
       <Show when={data.loading}><p role="status">Verifying agent readiness…</p></Show>
-      <label for="agent-station" class="block font-medium">Station for agent administration</label>
+      <label for="agent-station" class="block font-medium">Station</label>
       <select id="agent-station" name="stationId" class="select select-bordered min-h-12 w-full min-w-0 text-base" value={selected()?.stationId ?? ""} disabled={!available() || locked()} onChange={(event) => choose(event.currentTarget.value)}>
         <option value="">Choose a station</option>
         <For each={data()?.stations ?? []}>{(station) => <option value={station.stationId}>{station.stationLabel}</option>}</For>
@@ -122,7 +122,7 @@ export function CheckinAgentAdmin() {
                 <For each={profiles()?.profiles.filter((profile) => profile.stationId === station.stationId) ?? []}>{(profile) => <option value={profile.id}>v{profile.version} · {profile.approval} · {profile.id}</option>}</For>
               </select>
               <p class="text-sm">No profile? Configure one in Name Label profiles first. Unapproved or incompatible profiles cannot authorize starts.</p>
-              <label for="agent-lifetime" class="block font-medium">Credential lifetime in hours (required)</label>
+              <label for="agent-lifetime" class="block font-medium">Credential lifetime (hours, required)</label>
               <input id="agent-lifetime" name="credentialLifetimeHours" type="number" min={1} max={720} step={1} value={24} class="input input-bordered min-h-12 w-full text-base" required />
               <button type="submit" class="btn btn-warning min-h-12">Review agent issuance</button>
             </fieldset>
@@ -136,12 +136,12 @@ export function CheckinAgentAdmin() {
         <form method="post" action="/api/checkin-agents" aria-label="Confirm agent action" class="min-w-0 rounded-lg border-2 border-warning p-4 space-y-4" onSubmit={(event) => void confirm(event)}>
           <h3 class="text-lg font-bold"><Show when={action().operation === "admin_issue"} fallback="Revoke machine credential">Issue replacement machine credential</Show></h3>
           <p>Station: {action().station.stationLabel}. This action changes future authority only. Human logins, browser bindings and unresolved work are preserved.</p>
-          <label for="agent-reason" class="block font-medium">Agent action reason (required)</label>
+          <label for="agent-reason" class="block font-medium">Reason (required)</label>
           <select id="agent-reason" name="reason" ref={(element) => { reasonInput = element; }} class="select select-bordered min-h-12 w-full text-base" required value={reason()} disabled={pending() || !!frozen()} onChange={(event) => setReason(event.currentTarget.value as CheckinReasonCode | "")}>
             <option value="">Choose a reason</option>
             <For each={CHECKIN_REASON_CODES}>{(value) => <option value={value}>{value.replaceAll("_", " ")}</option>}</For>
           </select>
-          <label for="agent-note" class="block font-medium">Agent action note</label>
+          <label for="agent-note" class="block font-medium">Note (optional)</label>
           <textarea id="agent-note" name="note" class="textarea textarea-bordered w-full text-base" maxlength={240} value={note()} disabled={pending() || !!frozen()} onInput={(event) => setNote(event.currentTarget.value)} aria-describedby="agent-note-help" />
           <p id="agent-note-help" class="text-sm">Bounded operational context only. No attendee data, email, QR codes, credentials, URLs or raw diagnostics.</p>
           <Show when={frozen()}><p role="status" class="alert alert-warning">Submitted action frozen, including identities, profile, versions, reason and note. Retry this exact action to resolve an unknown outcome.</p></Show>

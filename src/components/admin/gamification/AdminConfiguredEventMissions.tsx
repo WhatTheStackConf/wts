@@ -126,7 +126,7 @@ export default function AdminConfiguredEventMissions(props: AdminConfiguredEvent
     <div class="space-y-8">
       <Show when={message()}>{(notice) => <div class={`alert ${notice().kind === "error" ? "alert-error" : "alert-success"}`} role="status">{notice().text}</div>}</Show>
       <form class={adminFormPanelClass} onSubmit={save}>
-        <AdminFormSection title="Configured event reference" description="This private organizer inventory is independent of Agenda Slots, timeline entries, and Hi.Events. Its key and operating context become immutable when saved.">
+        <AdminFormSection title="Event Mission" description="Separate from Agenda and Hi.Events. The event key and operating details cannot change after saving.">
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <AdminFormField id="event-mission-key" label="Immutable event key" required><input id="event-mission-key" name="eventKey" class={adminInputClass("font-mono")} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required value={eventKey()} onInput={(event) => setEventKey(event.currentTarget.value)} /></AdminFormField>
             <AdminFormField id="event-mission-title" label="Event title" required><input id="event-mission-title" name="title" class={adminInputClass()} required value={title()} onInput={(event) => setTitle(event.currentTarget.value)} /></AdminFormField>
@@ -165,7 +165,7 @@ export default function AdminConfiguredEventMissions(props: AdminConfiguredEvent
             <AdminFormField id="event-mission-reason" label="Configuration reason"><input id="event-mission-reason" name="reason" class={adminInputClass()} value={reason()} onInput={(event) => setReason(event.currentTarget.value)} /></AdminFormField>
           </div>
         </AdminFormSection>
-        <div class="mt-5 flex items-center justify-between gap-3"><p class="text-xs font-mono text-base-content/60">Per-User claim limit: 1 per Activity, including replacement codes.</p><div class="flex gap-2"><button type="button" class="btn btn-ghost font-mono" onClick={reset}>Clear</button><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Save event Mission drafts</button></div></div>
+        <div class="mt-5 flex flex-wrap items-center justify-between gap-3"><p class="text-xs font-mono text-base-content/60">Per-User claim limit: 1 per Activity, including replacement codes.</p><div class="flex gap-2"><button type="button" class="btn btn-ghost font-mono" onClick={reset}>Clear</button><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Save drafts</button></div></div>
       </form>
 
       <AdminDataPanel>

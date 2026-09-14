@@ -101,7 +101,7 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
   return (
     <>
     <section hidden={props.compact && props.view !== "phone"} aria-label="This phone's event" class={props.compact ? "wts-tools-event" : "min-w-0 border-t border-base-content/20 pt-4 space-y-4 break-words"}>
-      <h2 class="text-xl font-bold">Current event for this phone</h2>
+      <h2 class="text-xl font-bold">This phone's event</h2>
       <Show when={!props.compact}><p class="font-bold">Station: {props.status?.station?.label || "Unavailable"}</p></Show>
       <div aria-live="polite" class="space-y-2">
         <Show when={catalogue.loading || props.verifying}><p role="status">Refreshing this phone's event context…</p></Show>
@@ -127,7 +127,7 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
           <form method="post" action="/api/checkin-events" class="min-w-0 space-y-3" onSubmit={(event) => void select(event)}>
             <label for="phone-checkin-event" class="block font-medium">Event for this phone</label>
             <select id="phone-checkin-event" class="select select-bordered min-h-12 w-full min-w-0 max-w-full text-base" required disabled={!verified() || props.disabled} value={choice()} onChange={(event) => { setChoice(event.currentTarget.value); setMessage(""); }} aria-describedby="phone-event-help">
-              <option value="">Choose an event explicitly</option>
+              <option value="">Choose an event</option>
               <For each={data().events}>{(entry) => <option value={entry.id} disabled={entry.availability !== "available"}>{entry.title}<Show when={!props.compact}> · ID {entry.id}</Show><Show when={!props.compact || entry.availability !== "available"}> · {availabilityMessages[entry.availability]}</Show></option>}</For>
             </select>
             <p id="phone-event-help" class="text-sm">Only this phone changes. Existing work keeps its original event.</p>

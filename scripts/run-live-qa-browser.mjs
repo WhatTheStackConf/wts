@@ -10,6 +10,7 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = await mkdtemp(join(tmpdir(), "wts-live-qa-browser-"));
 const appDir = join(root, "app");
 const children = new Set();
+const workspace = process.argv.includes("--workspace");
 let fixture;
 let cleanupPromise;
 async function clean() {
@@ -39,7 +40,7 @@ async function run(command, args, options) {
   if (code !== 0) throw new Error(`${command} exited ${code}`);
 }
 try {
-  fixture = await startLiveQaPocketBase();
+  fixture = await startLiveQaPocketBase({ workspace });
   await mkdir(appDir);
   for (const name of ["src", "public", "content", "scripts", "runtime"]) {
     await cp(join(repo, name), join(appDir, name), { recursive: true, filter: path => !path.split(/[\\/]/).some(part => part.startsWith(".env")) });
@@ -61,6 +62,7 @@ try {
     POCKETBASE_SUPERUSER_EMAIL: fixture.superuserEmail, POCKETBASE_SUPERUSER_PASSWORD: fixture.password,
     PUBLIC_SITE_URL: baseURL, SITE_URL: baseURL, VITE_SITE_URL: baseURL,
     HIEVENTS_API_URL: `${fixture.baseUrl}/unused-synthetic`, HIEVENTS_API_KEY: "", HIEVENTS_EMAIL: "", HIEVENTS_PASSWORD: "",
+    GAMIFICATION_CODE_PEPPER: workspace ? `disposable-workspace-${crypto.randomUUID()}` : "",
     VITE_TURNSTILE_SITE_KEY: "", VITE_LISTMONK_LIST_ID: "",
   });
   const users = {};
@@ -74,6 +76,13 @@ try {
   await fixture.session({ slug: "main-stage-one", stageKey: "stage-2", stageName: "Stage 1", displayOrder: 1, locationLabel: "Web Hall" });
   await fixture.pb.collection("agenda_tracks").create({ programme: talk.programme.id, key: "stage-5", name: "Stage 5", display_order: 5 });
   const weekday = await fixture.session({ slug: "weekday-qa-excluded", mainDay: false });
+  if (workspace) {
+    const config = await fixture.pb.collection("conference_config").getFirstListItem("");
+    await fixture.pb.collection("conference_config").update(config.id, {
+      cfp_open: true,
+      cfp_deadline: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+  }
   // Public page dependencies absent from the narrow backend fixture are created
   // via their real migrations, never through a mocked public response.
   await run("pnpm", ["build"]);
@@ -91,7 +100,7 @@ try {
     console.log(`Disposable Q&A inspection ready: ${baseURL}\nFixture: ${statePath}\nStop runner ${process.pid} with SIGTERM to remove the disposable services and data.`);
     await new Promise(() => {});
   }
-  await run("pnpm", ["exec", "playwright", "test", "--config=playwright.live-qa.config.ts", ...process.argv.slice(2)], { cwd: repo, env: { ...env, WTS_LIVE_QA_BROWSER_STATE: statePath } });
+  await run("pnpm", ["exec", "playwright", "test", `--config=${workspace ? "playwright.workspace.config.ts" : "playwright.live-qa.config.ts"}`, ...process.argv.slice(2).filter(argument => argument !== "--workspace")], { cwd: repo, env: { ...env, WTS_LIVE_QA_BROWSER_STATE: statePath } });
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;

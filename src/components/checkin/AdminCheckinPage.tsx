@@ -124,7 +124,7 @@ export default function AdminCheckinPage() {
         )}</Show>
         <Show when={issued()}>{(qr) => (
           <section class="rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-3" aria-label="Issued provisioning QR">
-            <h2 class="text-xl font-bold">Replacement Station Provisioning QR</h2>
+            <h2 class="text-xl font-bold">Replacement station QR</h2>
             <p>Save this QR now. Its code is shown only in this response and is never recovered from storage. The previous QR is invalid; existing bindings remain unchanged.</p>
             <Show when={qr().qrDataUrl}><img src={qr().qrDataUrl} width="320" height="320" class="h-auto max-w-full" alt="Reusable Station Provisioning QR" /></Show>
             <label for="issued-code" class="block font-medium">Issued provisioning code</label>
@@ -159,7 +159,7 @@ export default function AdminCheckinPage() {
               )}</For>
             </div>
             <section class="space-y-3" aria-label="Client bindings">
-              <h2 class="text-xl font-bold">Client bindings</h2>
+              <h2 class="text-xl font-bold">Phone bindings</h2>
               <p>Active means authenticated contact in the last 5 minutes, not a live connection. No hard phone limit.</p>
               <ul class="space-y-3"><For each={current().bindings.items}>{(binding) => (
                 <li class="rounded-lg border border-base-content/20 p-4 space-y-2">

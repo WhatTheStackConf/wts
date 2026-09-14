@@ -93,7 +93,7 @@ export default function AdminEasterEggMissions(props: AdminEasterEggMissionsProp
     <div class="space-y-8">
       <Show when={message()}>{(notice) => <div class={`alert ${notice().kind === "error" ? "alert-error" : "alert-success"}`} role="status">{notice().text}</div>}</Show>
       <form class={adminFormPanelClass} onSubmit={save}>
-        <AdminFormSection title="Hidden Easter Egg Mission" description="Creates one hidden Badge, one hidden Mission, and one static discovery Activity. Public surfaces receive no locked teaser, deployment note, code, or discovery location.">
+        <AdminFormSection title="Hidden Easter Egg Mission" description="Creates a hidden badge, mission, and discovery activity. No public teaser, deployment note, code, or location is shown.">
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <AdminFormField id="easter-egg-key" label="Immutable egg key" hint="Use a neutral organizer key, not a location, answer, or code." required><input id="easter-egg-key" name="eggKey" class={adminInputClass("font-mono")} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required value={eggKey()} onInput={(event) => setEggKey(event.currentTarget.value)} /></AdminFormField>
             <AdminFormField id="easter-egg-mission-title" label="Post-unlock Mission title" required><input id="easter-egg-mission-title" name="missionTitle" class={adminInputClass()} required value={missionTitle()} onInput={(event) => setMissionTitle(event.currentTarget.value)} /></AdminFormField>
@@ -105,7 +105,7 @@ export default function AdminEasterEggMissions(props: AdminEasterEggMissionsProp
           </div>
         </AdminFormSection>
 
-        <AdminFormSection title="Spoiler-safe Badge presentation" description="Shown to the owning User only after unlock. Existing global and per-Badge public visibility controls still apply." class="mt-6">
+        <AdminFormSection title="Badge after discovery" description="Shown to its owner after unlock. Global and per-badge public visibility settings still apply." class="mt-6">
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <AdminFormField id="easter-egg-badge-name" label="Badge name" required><input id="easter-egg-badge-name" name="badgeName" class={adminInputClass()} required value={badgeName()} onInput={(event) => setBadgeName(event.currentTarget.value)} /></AdminFormField>
             <AdminFormField id="easter-egg-badge-icon" label="Badge icon"><input id="easter-egg-badge-icon" name="badgeIcon" class={adminInputClass("font-mono")} value={badgeIcon()} onInput={(event) => setBadgeIcon(event.currentTarget.value)} /></AdminFormField>
@@ -114,7 +114,7 @@ export default function AdminEasterEggMissions(props: AdminEasterEggMissionsProp
           </div>
         </AdminFormSection>
 
-        <AdminFormSection title="Safe static discovery" description="Only a WTS-controlled static QR, redemption fragment link, or manually entered Mission code is evidence. This does not configure puzzle answers, scanners, telemetry, or external validation." class="mt-6">
+        <AdminFormSection title="Discovery evidence" description="Only a WTS-controlled static QR, redemption fragment link, or manually entered code qualifies. Puzzle answers and external validation do not." class="mt-6">
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <fieldset class="md:col-span-2 xl:col-span-3"><legend class="mb-2 text-sm font-bold text-white">Discovery surface</legend><div class="flex flex-wrap gap-4"><For each={[{ value: "wts_qr" as const, label: "WTS static QR" }, { value: "wts_link" as const, label: "WTS fragment link" }, { value: "wts_manual_code" as const, label: "Manually entered code" }]}>{(option) => <label class="flex min-h-12 items-center gap-2 text-sm font-mono"><input name="evidenceChannel" type="radio" class="radio radio-sm" value={option.value} checked={evidenceChannel() === option.value} onChange={() => setEvidenceChannel(option.value)} /> {option.label}</label>}</For></div></fieldset>
             <AdminFormField id="easter-egg-deployment-note" label="Private safe-surface deployment note" hint="Admin-only operational note. Describe why the surface is WTS-controlled and safe; do not include the code." required class="md:col-span-2 xl:col-span-3"><textarea id="easter-egg-deployment-note" name="deploymentNote" maxlength="500" class={adminTextareaClass("min-h-20")} required value={deploymentNote()} onInput={(event) => setDeploymentNote(event.currentTarget.value)} /></AdminFormField>
@@ -128,7 +128,7 @@ export default function AdminEasterEggMissions(props: AdminEasterEggMissionsProp
             <AdminFormField id="easter-egg-reason" label="Configuration reason"><input id="easter-egg-reason" name="reason" class={adminInputClass()} value={reason()} onInput={(event) => setReason(event.currentTarget.value)} /></AdminFormField>
           </div>
         </AdminFormSection>
-        <div class="mt-5 flex items-center justify-between gap-3"><p class="text-xs font-mono text-base-content/60">Per-User claim limit: 1 across original and replacement codes.</p><div class="flex gap-2"><button type="button" class="btn btn-ghost font-mono" onClick={reset}>Clear</button><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Save Easter Egg drafts</button></div></div>
+        <div class="mt-5 flex flex-wrap items-center justify-between gap-3"><p class="text-xs font-mono text-base-content/60">Per-User claim limit: 1 across original and replacement codes.</p><div class="flex gap-2"><button type="button" class="btn btn-ghost font-mono" onClick={reset}>Clear</button><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Save drafts</button></div></div>
       </form>
 
       <AdminDataPanel>

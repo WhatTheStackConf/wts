@@ -40,7 +40,7 @@ const RedeemMissionPage = () => {
     if (isRedeeming()) return;
     const trimmedCode = rawCode.trim();
     if (!trimmedCode) {
-      setRequestError("Enter a Mission code to continue.");
+      setRequestError("Enter a mission code.");
       return;
     }
     if (!auth.isAuthenticated()) {
@@ -63,7 +63,7 @@ const RedeemMissionPage = () => {
       // Retain the secret only in this tab so a temporary outage cannot lose a valid scan.
       savePendingMissionCode(window.sessionStorage, trimmedCode);
       setPendingVersion((value) => value + 1);
-      setRequestError("We could not reach Mission redemption. Check your connection and try again.");
+      setRequestError("Could not redeem your code. Check your connection and try again.");
     } finally {
       setIsRedeeming(false);
     }
@@ -145,20 +145,19 @@ const RedeemMissionPage = () => {
   );
 
   return (
-    <Layout title="Redeem Mission // WhatTheStack" description="Redeem a WhatTheStack Mission code.">
+    <Layout title="Redeem code // WhatTheStack" description="Redeem a WhatTheStack mission code.">
       <div class="min-h-screen px-4 pb-20 pt-24">
         <section class="mx-auto max-w-xl rounded-2xl border border-primary-500/25 bg-base-200/80 p-6 shadow-xl backdrop-blur-sm md:p-8" aria-labelledby="mission-redeem-heading">
-          <p class="font-mono text-xs uppercase tracking-[0.14em] text-primary-300">Field progress</p>
-          <h1 id="mission-redeem-heading" class="mt-2 text-3xl font-star text-white md:text-4xl">REDEEM MISSION</h1>
+          <h1 id="mission-redeem-heading" class="text-3xl font-star text-white md:text-4xl">Redeem code</h1>
           <p class="mt-3 text-sm leading-relaxed text-secondary-200/85">
-            Scan a WhatTheStack Mission link or enter its code below. Your completion is linked only to your signed-in profile.
+            Mission progress is saved to your signed-in profile.
           </p>
 
           <Show when={!auth.isLoading() && !auth.isAuthenticated()}>
             <div class="mt-6 rounded-xl border border-secondary-400/25 bg-secondary-500/10 p-4" role="status">
-              <p class="text-sm text-secondary-100">Sign in before redeeming. A scanned code stays only in this browser tab while you log in.</p>
+              <p class="text-sm text-secondary-100">Log in to redeem. Your scanned code stays only in this tab while you log in.</p>
               <button type="button" class="btn btn-secondary btn-sm mt-3" onClick={() => redirectToLogin(code() || pendingCode() || "") } disabled={!code() && !pendingCode()}>
-                Sign in to redeem
+                Log in to redeem
               </button>
             </div>
           </Show>
@@ -192,8 +191,8 @@ const RedeemMissionPage = () => {
             </div>
 
             <button type="submit" class="btn btn-primary w-full font-mono" disabled={isRedeeming() || result()?.status === "rate_limited"}>
-              <Show when={!isRedeeming()} fallback={<><span class="loading loading-spinner loading-sm" aria-hidden="true" /> Recording Mission...</>}>
-                Redeem Mission
+              <Show when={!isRedeeming()} fallback={<><span class="loading loading-spinner loading-sm" aria-hidden="true" /> Redeeming…</>}>
+                Redeem code
               </Show>
             </button>
           </form>
@@ -225,7 +224,7 @@ const RedeemMissionPage = () => {
                     <p class="mt-2 text-sm leading-relaxed">{current().message}</p>
                     <Show when={current().mission}>
                       {(mission) => (
-                        <div class="mt-4 rounded-lg bg-base-300/35 p-4">
+                        <div class="mt-4 border-t border-white/10 pt-4">
                           <p class="font-mono text-sm font-bold text-white">{mission().title}</p>
                           <p class="mt-1 text-sm text-secondary-200/85">{mission().summary}</p>
                         </div>
@@ -243,8 +242,8 @@ const RedeemMissionPage = () => {
                         <>
                           <p class="mt-4 font-mono text-xs uppercase tracking-[0.1em] text-primary-200">
                             <Show when={(current().xpAwarded || 0) > 0} fallback={
-                              <Show when={current().status === "already_redeemed"} fallback={<>Evidence recorded with no additional XP under the current scoring limits.</>}>
-                                No additional XP was added for this duplicate redemption.
+                              <Show when={current().status === "already_redeemed"} fallback={<>Progress saved. No extra XP under the current scoring limits.</>}>
+                                Already redeemed. No extra XP added.
                               </Show>
                             }>
                               {current().xpAwarded} XP recorded.
@@ -252,7 +251,7 @@ const RedeemMissionPage = () => {
                           </p>
                           <Show when={profile().repairState === "rebuild_pending"}>
                             <p class="mt-3 rounded-lg border border-warning-400/25 bg-warning-500/10 p-3 text-xs text-warning-100">
-                              Your evidence is safe, but displayed totals are awaiting repair. Support reference: <span class="font-mono">{profile().supportReference}</span>.
+                              Your progress is saved, but totals need repair. Support reference: <span class="font-mono">{profile().supportReference}</span>.
                             </p>
                           </Show>
                         </>
@@ -260,18 +259,19 @@ const RedeemMissionPage = () => {
                     </Show>
                     <Show when={current().partnerFollowUp?.state !== "granted" ? current().partnerFollowUp : undefined}>
                       {(consent) => (
-                        <form class="mt-5 rounded-lg border border-white/15 bg-base-300/35 p-4" onSubmit={(event) => void grantPartnerFollowUp(event, consent().activityId)} aria-busy={consentBusy() ? "true" : "false"}>
+                        <form class="mt-5 border-t border-white/15 pt-4" onSubmit={(event) => void grantPartnerFollowUp(event, consent().activityId)} aria-busy={consentBusy() ? "true" : "false"}>
                           <fieldset>
                             <legend class="font-mono text-xs font-bold uppercase tracking-[0.1em] text-primary-200">Optional partner follow-up</legend>
                             <p class="mt-2 text-sm leading-relaxed text-secondary-100">
-                              If you opt in, WhatTheStack may make one future handoff to {consent().partner.name} for follow-up about {consent().activityLabel}. The handoff contains only your current name and email. Notice: {consent().noticeVersion}.
+                              WhatTheStack may share your current name and email once with {consent().partner.name} for follow-up about {consent().activityLabel}. Notice: {consent().noticeVersion}.
                             </p>
+                            <p class="mt-2 text-xs leading-relaxed text-secondary-200/85">Consent does not affect mission progress, badges, or XP. Withdraw in your profile before sharing; withdrawal cannot undo a completed handoff.</p>
                              <label class="mt-3 flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-secondary-100" for={`partner-follow-up-${consent().activityId}`}>
                               <input id={`partner-follow-up-${consent().activityId}`} name="partner-follow-up" type="checkbox" class="checkbox checkbox-primary mt-0.5 shrink-0" />
-                              <span>I agree to this separate partner_follow_up handoff.</span>
+                              <span>I agree to this optional contact sharing.</span>
                             </label>
                             <button type="submit" class={`btn btn-outline btn-primary btn-sm mt-4 font-mono ${consentBusy() ? "loading" : ""}`} disabled={consentBusy()}>
-                              Record separate consent
+                              {consentBusy() ? "Saving…" : "Allow follow-up"}
                             </button>
                           </fieldset>
                         </form>
@@ -288,7 +288,7 @@ const RedeemMissionPage = () => {
                     </Show>
                     <Show when={current().status === "rate_limited" || current().status === "unavailable"}>
                       <button type="button" class="btn btn-outline btn-warning mt-4 min-h-12 font-mono" disabled={isRedeeming()} onClick={() => void submitCode(code() || pendingCode() || "", "manual")}>
-                        Try redemption again
+                        Try again
                       </button>
                     </Show>
                   </div>
@@ -297,9 +297,11 @@ const RedeemMissionPage = () => {
             )}
           </Show>
 
-          <p class="mt-6 text-center text-xs leading-relaxed text-secondary-300/70">
-            Need help? Speak with WhatTheStack event support and identify your logged-in profile. Support will not ask you to share a code online.
-          </p>
+          <a href="/user/profile#gamification" class="link link-primary mt-4 inline-block min-h-12 py-3 text-sm">View achievements</a>
+          <details class="mt-2 border-t border-white/10 pt-2 text-xs leading-relaxed text-secondary-300/75">
+            <summary class="cursor-pointer min-h-12 py-3 text-sm">Code help</summary>
+            <p class="pb-3">Scan a WTS mission link or enter its code. For help, contact event support with your signed-in profile. Support will not ask you to share a code online.</p>
+          </details>
         </section>
       </div>
     </Layout>

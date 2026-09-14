@@ -24,7 +24,7 @@ export function useAdminToast() {
   ) => {
     if (hideTimer) window.clearTimeout(hideTimer);
     setToast({ type, text, ...action });
-    hideTimer = window.setTimeout(() => setToast(null), 6000);
+    hideTimer = type === "success" ? window.setTimeout(() => setToast(null), 6000) : undefined;
   };
 
   onCleanup(() => {
@@ -138,7 +138,8 @@ interface AdminPageShellProps extends ParentProps {
   layoutTitle: string;
   layoutDescription: string;
   title: string;
-  subtitle: string;
+  subtitle?: string;
+  dashboard?: boolean;
   hint?: string;
   count?: number;
   countLoading?: boolean;
@@ -188,15 +189,16 @@ export function AdminPageShell(props: AdminPageShellProps) {
                   </span>
                 </Show>
               </h1>
-              <p class="text-secondary-200 font-mono text-sm uppercase tracking-[0.14em] leading-relaxed">
-                {props.subtitle}
-              </p>
+              <Show when={props.subtitle}>
+                <p class="text-secondary-200 text-sm leading-relaxed">{props.subtitle}</p>
+              </Show>
               <Show when={props.hint}>
                 <p class="text-xs text-base-content/60 font-mono mt-2 max-w-2xl leading-relaxed text-pretty">{props.hint}</p>
               </Show>
             </div>
             <div class="flex flex-wrap items-center gap-2 md:justify-end">
               <Show when={props.headerActions}>{props.headerActions}</Show>
+              <Show when={!props.dashboard}>
               <button
                 type="button"
                 class="btn btn-ghost hover:bg-white/10 text-white gap-2 group shrink-0"
@@ -207,8 +209,9 @@ export function AdminPageShell(props: AdminPageShellProps) {
                   class="motion-safe:group-hover:-translate-x-1 transition-transform"
                   aria-hidden="true"
                 />
-                Back to dashboard
+                Dashboard
               </button>
+              </Show>
             </div>
           </div>
 

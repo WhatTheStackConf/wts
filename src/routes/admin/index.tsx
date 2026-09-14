@@ -1,310 +1,120 @@
-import { Show, createSignal } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
 import { createAsyncResource as createResource } from "~/lib/async-resource";
-import { Layout } from "~/layouts/Layout";
 import { clientOnly } from "@solidjs/web";
-import { Icon } from "~/components/Icon";
+import { AdminPageShell, adminFormPanelClass, useAdminToast } from "~/components/admin/AdminPageShell";
 import { useRequireAdmin } from "~/lib/route-guards";
 import { adminUpdateCfpConfig, adminFetchCfpConfig } from "~/lib/admin-actions";
 import { authorizedResourceSource } from "~/lib/route-authorization";
 
-const AdminDashboard = () => {
-    const guard = useRequireAdmin();
+const destinations = [
+  { title: "Programme", links: [
+    { href: "/admin/agenda", label: "Agenda" },
+    { href: "/admin/sessions", label: "Sessions" },
+    { href: "/admin/speakers", label: "Speakers" },
+    { href: "/admin/partners", label: "Sponsors & partners" },
+  ] },
+  { title: "CFP review", links: [
+    { href: "/admin/proposals", label: "Proposal rankings" },
+    { href: "/reviewer/weights", label: "Scoring weights" },
+    { href: "/reviewer/leaderboard", label: "Reviewer progress" },
+  ] },
+  { title: "Event operations", links: [
+    { href: "/admin/checkin", label: "Check-in stations" },
+    { href: "/admin/tickets", label: "Tickets" },
+    { href: "/admin/gamification", label: "Gamification" },
+    { href: "/mc", label: "MC · live Q&A" },
+  ] },
+  { title: "Access", links: [
+    { href: "/admin/users", label: "Users & roles" },
+    { href: "/admin/mcp", label: "MCP tokens" },
+  ] },
+];
 
-    const [toggling, setToggling] = createSignal(false);
-    const [cfpData, { mutate: setCfpData }] = createResource(
-      () => authorizedResourceSource(guard.authorized()),
-      async () => {
-        const result = await adminFetchCfpConfig();
-        return result.success && result.data ? result.data : null;
-      },
-    );
+export const AdminDashboard = () => {
+  const guard = useRequireAdmin();
+  const { toast, showToast } = useAdminToast();
+  const [toggling, setToggling] = createSignal(false);
+  const [cfpData, { mutate: setCfpData }] = createResource(
+    () => authorizedResourceSource(guard.authorized()),
+    async () => {
+      const result = await adminFetchCfpConfig();
+      return result.success && result.data ? result.data : null;
+    },
+  );
 
-    const handleCfpToggle = async () => {
-      const current = cfpData();
-      if (!current || toggling()) return;
-      setToggling(true);
-      const newValue = !current.cfp_open;
+  const handleCfpToggle = async () => {
+    const current = cfpData();
+    if (!current || toggling()) return;
+    setToggling(true);
+    const newValue = !current.cfp_open;
+    try {
       const result = await adminUpdateCfpConfig({ cfp_open: newValue });
       if (result.success) {
         setCfpData((prev) => prev ? { ...prev, cfp_open: newValue } : prev);
+        showToast("success", newValue ? "CFP opened." : "CFP closed.");
+      } else {
+        showToast("error", result.error || "Could not update CFP status. Refresh to check its status before retrying.");
       }
+    } catch {
+      showToast("error", "Could not confirm the CFP change. Refresh to check its status before retrying.");
+    } finally {
       setToggling(false);
-    };
+    }
+  };
 
-    return (
-        <Layout title="Admin Dashboard" description="System administration">
-            <Show when={guard.authorized()}>
-                <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-error-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
+  return (
+    <AdminPageShell layoutTitle="Admin Dashboard" layoutDescription="Conference administration" title="Admin" dashboard toast={toast()}>
+      <Show when={guard.authorized()}>
+        <nav class="grid gap-x-10 gap-y-8 sm:grid-cols-2" aria-label="Admin workspaces">
+          <For each={destinations}>
+            {(group) => (
+              <section class="min-w-0">
+                <h2 class="mb-2 text-lg font-bold text-white">{group.title}</h2>
+                <ul class="divide-y divide-white/10 border-t border-white/10">
+                  <For each={group.links}>
+                    {(link) => (
+                      <li>
+                        <a href={link.href} class="flex min-h-12 items-center justify-between gap-3 py-3 text-base-content/85 hover:text-primary-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                          <span>{link.label}</span><span aria-hidden="true">→</span>
+                        </a>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </section>
+            )}
+          </For>
+        </nav>
 
-                    <div class="container mx-auto px-4">
-                        <div class="max-w-6xl mx-auto">
-                            <div class="mb-8">
-                                <h1 class="text-4xl font-star text-white mb-2">ADMIN DASHBOARD</h1>
-                                <p class="text-secondary-300 font-mono">SYSTEM ACCESS LEVEL: ROOT</p>
-                            </div>
-
-                            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                                <div class="glass-panel p-6 rounded-xl border border-white/10 h-full flex flex-col">
-                                    <h3 class="text-xl font-bold text-white mb-4">CHECK-IN STATIONS</h3>
-                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">Configure station identities, provisioning QRs, client bindings and emergency stops. Admission and printing remain disabled.</p>
-                                    <a href="/admin/checkin" target="_self" class="btn btn-outline btn-primary w-full font-mono mt-auto">MANAGE STATIONS</a>
-                                </div>
-                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-primary-500/50 transition-colors group h-full flex flex-col">
-                                    <div class="flex items-center gap-4 mb-4">
-                                        <div class="p-3 rounded-lg bg-primary-500/20 text-primary-300">
-                                            <Icon icon="ph:users-three-bold" width="24" />
-                                        </div>
-                                        <h3 class="text-xl font-bold text-white">USERS</h3>
-                                    </div>
-                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
-                                        Manage user accounts, roles, and verification status.
-                                    </p>
-                                    <a
-                                        href="/admin/users"
-                                        class="btn btn-outline btn-primary w-full font-mono group-hover:bg-primary-500 group-hover:text-white mt-auto"
-                                    >
-                                        MANAGE USERS
-                                    </a>
-                                </div>
-
-                                 <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-secondary-500/50 transition-colors group h-full flex flex-col">
-                                    <div class="flex items-center gap-4 mb-4">
-                                        <div class="p-3 rounded-lg bg-secondary-500/20 text-secondary-300">
-                                            <Icon icon="mdi:podium" width="24" />
-                                        </div>
-                                        <h3 class="text-xl font-bold text-white">LEADERBOARD</h3>
-                                    </div>
-                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
-                                        View ranked submissions, weighted scores, and reviewer stats.
-                                    </p>
-                                    <a
-                                        href="/admin/proposals"
-                                        class="btn btn-outline btn-secondary w-full font-mono group-hover:bg-secondary-500 group-hover:text-white mt-auto"
-                                    >
-                                        VIEW RANKINGS
-                                    </a>
-                                 </div>
-
-                                 <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-secondary-500/50 transition-colors group h-full flex flex-col">
-                                     <div class="flex items-center gap-4 mb-4">
-                                         <div class="p-3 rounded-lg bg-secondary-500/20 text-secondary-300">
-                                             <Icon icon="ph:calendar-dots-bold" width="24" />
-                                         </div>
-                                         <h3 class="text-xl font-bold text-white">AGENDA</h3>
-                                     </div>
-                                     <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
-                                         Configure Conference Days, Event Programmes, Tracks, time ranges, and public programme Slots.
-                                     </p>
-                                     <a
-                                         href="/admin/agenda"
-                                         class="btn btn-outline btn-secondary w-full font-mono group-hover:bg-secondary-500 group-hover:text-white mt-auto"
-                                     >
-                                         MANAGE AGENDA
-                                     </a>
-                                 </div>
-
-                                 <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-primary-500/50 transition-colors group h-full flex flex-col">
-                                     <div class="flex items-center gap-4 mb-4">
-                                         <div class="p-3 rounded-lg bg-primary-500/20 text-primary-300">
-                                             <Icon icon="ph:game-controller-bold" width="24" />
-                                         </div>
-                                         <h3 class="text-xl font-bold text-white">GAMIFICATION</h3>
-                                     </div>
-                                     <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
-                                         Configure September Missions, score schedules, and audited one-time code operations.
-                                     </p>
-                                     <a
-                                         href="/admin/gamification"
-                                         class="btn btn-outline btn-primary w-full font-mono group-hover:bg-primary-500 group-hover:text-white mt-auto"
-                                     >
-                                         MANAGE GAMIFICATION
-                                     </a>
-                                 </div>
-
-                                 <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-accent-500/50 transition-colors group h-full flex flex-col">
-                                    <div class="flex items-center gap-4 mb-4">
-                                        <div class="p-3 rounded-lg bg-accent-500/20 text-accent-300">
-                                            <Icon icon="mdi:scale-balance" width="24" />
-                                        </div>
-                                        <h3 class="text-xl font-bold text-white">WEIGHTS</h3>
-                                    </div>
-                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
-                                        Configure scoring criteria and view global weight averages.
-                                    </p>
-                                    <a
-                                        href="/reviewer/weights"
-                                        class="btn btn-outline btn-accent w-full font-mono group-hover:bg-accent-500 group-hover:text-white mt-auto"
-                                    >
-                                        VIEW WEIGHTS
-                                    </a>
-                                </div>
-
-                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-secondary-500/50 transition-colors group h-full flex flex-col">
-                                    <div class="flex items-center gap-4 mb-4">
-                                        <div class="p-3 rounded-lg bg-secondary-500/20 text-secondary-300">
-                                            <Icon icon="ph:trophy-bold" width="24" />
-                                        </div>
-                                        <h3 class="text-xl font-bold text-white">REVIEWERS</h3>
-                                    </div>
-                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
-                                        See how many talks each reviewer has reviewed.
-                                    </p>
-                                    <a
-                                        href="/reviewer/leaderboard"
-                                        class="btn btn-outline btn-secondary w-full font-mono group-hover:bg-secondary-500 group-hover:text-white mt-auto"
-                                    >
-                                        VIEW REVIEWERS
-                                    </a>
-                                </div>
-
-                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-primary-500/50 transition-colors group h-full flex flex-col">
-                                    <div class="flex items-center gap-4 mb-4">
-                                        <div class="p-3 rounded-lg bg-primary-500/20 text-primary-300">
-                                            <Icon icon="ph:microphone-stage-bold" width="24" />
-                                        </div>
-                                        <h3 class="text-xl font-bold text-white">SPEAKERS</h3>
-                                    </div>
-                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
-                                        Create draft speaker profiles and publish when ready.
-                                    </p>
-                                    <a
-                                        href="/admin/speakers"
-                                        class="btn btn-outline btn-primary w-full font-mono group-hover:bg-primary-500 group-hover:text-white mt-auto"
-                                    >
-                                        MANAGE SPEAKERS
-                                    </a>
-                                </div>
-
-                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-secondary-500/50 transition-colors group h-full flex flex-col">
-                                    <div class="flex items-center gap-4 mb-4">
-                                        <div class="p-3 rounded-lg bg-secondary-500/20 text-secondary-300">
-                                            <Icon icon="ph:calendar-blank-bold" width="24" />
-                                        </div>
-                                        <h3 class="text-xl font-bold text-white">SESSIONS</h3>
-                                    </div>
-                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
-                                        Build the programme schedule and link speakers to sessions.
-                                    </p>
-                                    <a
-                                        href="/admin/sessions"
-                                        class="btn btn-outline btn-secondary w-full font-mono group-hover:bg-secondary-500 group-hover:text-white mt-auto"
-                                    >
-                                        MANAGE SESSIONS
-                                    </a>
-                                </div>
-
-                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-accent-500/50 transition-colors group h-full flex flex-col">
-                                    <div class="flex items-center gap-4 mb-4">
-                                        <div class="p-3 rounded-lg bg-accent-500/20 text-accent-300">
-                                            <Icon icon="ph:handshake-bold" width="24" />
-                                        </div>
-                                        <h3 class="text-xl font-bold text-white">PARTNERS</h3>
-                                    </div>
-                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
-                                        Add sponsors, organizers, media partners, supporters, and community partners.
-                                    </p>
-                                    <a
-                                        href="/admin/partners"
-                                        class="btn btn-outline btn-accent w-full font-mono group-hover:bg-accent-500 group-hover:text-white mt-auto"
-                                    >
-                                        MANAGE PARTNERS
-                                    </a>
-                                </div>
-
-                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-warning-500/50 transition-colors group h-full flex flex-col">
-                                    <div class="flex items-center gap-4 mb-4">
-                                        <div class="p-3 rounded-lg bg-warning-500/20 text-warning-300">
-                                            <Icon icon="ph:ticket-bold" width="24" />
-                                        </div>
-                                        <h3 class="text-xl font-bold text-white">TICKETS</h3>
-                                    </div>
-                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
-                                        Sync ticket data and view attendee lists.
-                                    </p>
-                                    <a
-                                        href="/admin/tickets"
-                                        class="btn btn-outline btn-warning w-full font-mono group-hover:bg-warning-500 group-hover:text-white mt-auto"
-                                    >
-                                        VIEW TICKETS
-                                    </a>
-                                </div>
-
-                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-info-500/50 transition-colors group h-full flex flex-col">
-                                    <div class="flex items-center gap-4 mb-4">
-                                        <div class="p-3 rounded-lg bg-info-500/20 text-info-300">
-                                            <Icon icon="ph:microphone-stage-bold" width="24" />
-                                        </div>
-                                        <h3 class="text-xl font-bold text-white">CfP SETTINGS</h3>
-                                    </div>
-                                    <p class="text-sm text-secondary-300/80 mb-4 flex-grow">
-                                        Open or close call for papers submissions.
-                                    </p>
-                                    <Show when={cfpData()}>
-                                      <div class="space-y-3 mb-4">
-                                        <div class="flex items-center justify-between">
-                                          <span class="text-sm font-mono text-secondary-300">Status:</span>
-                                          <span class={`badge font-mono ${cfpData()?.cfp_open ? 'badge-success' : 'badge-error'}`}>
-                                            {cfpData()?.cfp_open ? 'OPEN' : 'CLOSED'}
-                                          </span>
-                                        </div>
-                                        <div class="flex items-center justify-between">
-                                          <span class="text-sm font-mono text-secondary-300">Deadline:</span>
-                                          <span class="text-sm font-mono text-white">
-                                            {cfpData()?.cfp_deadline
-                                              ? new Date(cfpData()!.cfp_deadline!).toLocaleDateString("en-US", {
-                                                  year: "numeric",
-                                                  month: "short",
-                                                  day: "numeric",
-                                                })
-                                              : "Not set"}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </Show>
-                                    <button
-                                      onClick={handleCfpToggle}
-                                      disabled={toggling() || !cfpData()}
-                                      class={`btn btn-outline w-full font-mono mt-auto ${
-                                        cfpData()?.cfp_open
-                                          ? "btn-error hover:bg-error-500 hover:text-white"
-                                          : "btn-success hover:bg-success-500 hover:text-white"
-                                      }`}
-                                    >
-                                      {toggling()
-                                        ? "SAVING..."
-                                        : cfpData()?.cfp_open
-                                          ? "CLOSE CfP"
-                                          : "OPEN CfP"}
-                                    </button>
-                                </div>
-
-                                <div class="glass-panel p-6 rounded-xl border border-white/10 hover:border-secondary-500/50 transition-colors group h-full flex flex-col">
-                                    <div class="flex items-center gap-4 mb-4">
-                                        <div class="p-3 rounded-lg bg-secondary-500/20 text-secondary-300">
-                                            <Icon icon="ph:robot-bold" width="24" />
-                                        </div>
-                                        <h3 class="text-xl font-bold text-white">MCP ACCESS</h3>
-                                    </div>
-                                    <p class="text-sm text-secondary-300/80 mb-6 flex-grow">
-                                        Create scoped tokens for LLM assistants to read programme planning data.
-                                    </p>
-                                    <a
-                                        href="/admin/mcp"
-                                        class="btn btn-outline btn-secondary w-full font-mono group-hover:bg-secondary-500 group-hover:text-white mt-auto"
-                                    >
-                                        MANAGE MCP TOKENS
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+        <section class={`${adminFormPanelClass} mt-8`} aria-labelledby="cfp-settings-title">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 id="cfp-settings-title" class="text-lg font-bold text-white">Call for papers</h2>
+              <p class="mt-1 text-sm text-base-content/65">Open or close proposal submissions.</p>
+              <Show when={cfpData()} fallback={
+                <p class="mt-2 text-sm text-base-content/65" role="status">
+                  {cfpData.loading ? "Loading CFP status…" : "CFP status unavailable. Refresh to try again."}
+                </p>
+              }>
+                <div class="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                  <span class={`badge font-mono ${cfpData()?.cfp_open ? "badge-success" : "badge-error"}`}>
+                    {cfpData()?.cfp_open ? "Open" : "Closed"}
+                  </span>
+                  <span class="text-base-content/70">Deadline: {cfpData()?.cfp_deadline
+                    ? new Date(cfpData()!.cfp_deadline!).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+                    : "Not set"}</span>
                 </div>
-            </Show>
-        </Layout>
-    );
+              </Show>
+            </div>
+            <button type="button" onClick={handleCfpToggle} disabled={toggling() || !cfpData()}
+              class={`btn btn-outline shrink-0 font-mono ${cfpData()?.cfp_open ? "btn-error" : "btn-success"}`}>
+              {toggling() ? "Saving…" : cfpData()?.cfp_open ? "Close CFP" : "Open CFP"}
+            </button>
+          </div>
+        </section>
+      </Show>
+    </AdminPageShell>
+  );
 };
 
-export default clientOnly(async () => ({ default: AdminDashboard }), {
-    lazy: true,
-});
+export default clientOnly(async () => ({ default: AdminDashboard }), { lazy: true });

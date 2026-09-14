@@ -153,12 +153,12 @@ const ProfilePage = () => {
       setUser(updatedUser);
       await auth.refresh();
 
-      setMessage({ type: "success", text: "Identity updated successfully." });
+      setMessage({ type: "success", text: "Profile saved." });
     } catch (error) {
       console.error("Error updating profile:", error);
       setMessage({
         type: "error",
-        text: "Database connection failed. Please try again.",
+        text: "Could not save your profile. Try again.",
       });
     } finally {
       setIsUpdating(false);
@@ -171,7 +171,7 @@ const ProfilePage = () => {
       window.location.href = "/";
     } catch (error) {
       console.error("Logout failed.", error);
-      setMessage({ type: "error", text: "Logout failed. Please try again." });
+      setMessage({ type: "error", text: "Could not log out. Try again." });
     }
   };
 
@@ -191,10 +191,10 @@ const ProfilePage = () => {
       setOpsBoardDisplayName(summary.opsBoard.displayName);
       setPublicBadgesVisible(summary.opsBoard.publicBadgesVisible);
       await refetchGamification();
-      setVisibilityMessage("Ops-board visibility settings saved.");
+      setVisibilityMessage("Public visibility saved.");
       setVisibilityMessageKind("success");
     } catch (error) {
-      setVisibilityMessage(error instanceof Error ? error.message : "Ops-board visibility settings could not be saved.");
+      setVisibilityMessage(error instanceof Error ? error.message : "Could not save public visibility. Try again.");
       setVisibilityMessageKind("error");
     } finally {
       setVisibilityBusy(false);
@@ -207,10 +207,10 @@ const ProfilePage = () => {
     try {
       await updateMyGamificationBadgeVisibility(badgeId, publicVisible);
       await refetchGamification();
-      setVisibilityMessage("Badge snippet visibility saved.");
+      setVisibilityMessage("Badge visibility saved.");
       setVisibilityMessageKind("success");
     } catch (error) {
-      setVisibilityMessage(error instanceof Error ? error.message : "Badge snippet visibility could not be saved.");
+      setVisibilityMessage(error instanceof Error ? error.message : "Could not save badge visibility. Try again.");
       setVisibilityMessageKind("error");
     } finally {
       setVisibilityBusy(false);
@@ -258,8 +258,8 @@ const ProfilePage = () => {
 
   return (
     <Layout
-      title="Agent Profile // WhatTheStack"
-      description="Manage your digital identity."
+      title="Profile // WhatTheStack"
+      description="Your profile, achievements, and talk proposals."
     >
       <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
         {/* Background Elements */}
@@ -269,25 +269,26 @@ const ProfilePage = () => {
         <div class="container mx-auto px-4">
           <div class="max-w-4xl mx-auto">
             {/* Header */}
-            <div class="mb-8 text-center md:text-left">
-              <div class="inline-block px-4 py-1 border border-primary-500/30 rounded-full bg-primary-500/10 backdrop-blur-sm mb-4">
-                <span class="text-primary-300 font-mono text-sm tracking-widest uppercase">
-                  ACCESS LEVEL: AUTHENTICATED
-                </span>
-              </div>
-              <h1 class="text-4xl md:text-6xl font-star text-transparent bg-clip-text bg-gradient-to-r from-white via-primary-200 to-secondary-200">
-                WTS PROFILE
+            <div class="mb-6">
+              <h1 class="text-3xl md:text-4xl font-star text-transparent bg-clip-text bg-gradient-to-r from-white via-primary-200 to-secondary-200">
+                Profile
               </h1>
+              <nav class="mt-3 flex flex-wrap gap-x-6" aria-label="Profile sections">
+                <a class="link link-primary min-h-12 py-3 text-sm" href="#profile-settings">Account</a>
+                <a class="link link-primary min-h-12 py-3 text-sm" href="#gamification">Achievements</a>
+                <a class="link link-primary min-h-12 py-3 text-sm" href="#proposals">Talk proposals</a>
+              </nav>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <section id="profile-settings" class="glass-panel rounded-2xl border border-white/10 p-6 md:p-8 scroll-mt-24" aria-labelledby="profile-settings-heading">
+              <h2 id="profile-settings-heading" class="text-2xl font-star text-secondary-300 mb-6">Account</h2>
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Sidebar / Identity Card */}
               <div class="lg:col-span-1">
-                <div class="glass-panel p-6 rounded-2xl border border-white/10 relative overflow-hidden group">
-                  <div class="absolute inset-0 bg-gradient-to-b from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+                <div>
 
                   <div class="flex flex-col items-center text-center">
-                    <div class="w-32 h-32 rounded-full border-2 border-primary-500/50 p-1 mb-6 relative shadow-[0_0_20px_rgba(var(--color-primary-500),0.3)]">
+                    <div class="w-20 h-20 rounded-full border-2 border-primary-500/50 p-1 mb-4 relative">
                       <div class="w-full h-full rounded-full bg-base-300 flex items-center justify-center overflow-hidden relative">
                         <Show
                           when={!imgError()}
@@ -299,20 +300,17 @@ const ProfilePage = () => {
                         >
                           <img
                             src={getGravatarUrl(user()?.email || "")}
-                            alt={`${user()?.name || "Agent"} profile avatar`}
+                            alt={`${user()?.name || "Your"} profile avatar`}
                             class="w-full h-full object-cover"
                             onError={() => setImgError(true)}
                           />
                         </Show>
-
-                        {/* Scan line effect */}
-                        <div class="absolute inset-0 w-full h-[2px] bg-primary-400/50 animate-scan-fast opacity-50 pointer-events-none"></div>
                       </div>
                     </div>
 
-                    <h2 class="max-w-full break-words text-xl font-bold text-white mb-1 font-mono">
-                      {user()?.name || "Unknown Agent"}
-                    </h2>
+                    <p class="max-w-full break-words text-xl font-bold text-white mb-1 font-mono">
+                      {user()?.name || "Your account"}
+                    </p>
                     <p class="text-sm text-secondary-300 font-mono mb-6 truncate max-w-full px-2">
                       {user()?.email}
                     </p>
@@ -324,7 +322,7 @@ const ProfilePage = () => {
                       class="btn btn-outline btn-error w-full font-mono gap-2 hover:bg-error/10"
                     >
                       <Icon icon="material-symbols:logout" />
-                      DISCONNECT
+                      Log out
                     </button>
                   </div>
                 </div>
@@ -332,11 +330,7 @@ const ProfilePage = () => {
 
               {/* Main Content / Edit Form */}
               <div class="lg:col-span-2">
-                <div class="glass-panel p-8 rounded-2xl border border-white/10 h-full">
-                  <h3 class="text-2xl font-star text-secondary-300 mb-8 flex items-center gap-3">
-                    <Icon icon="material-symbols:settings-account-box-outline" />
-                    IDENTITY SETTINGS
-                  </h3>
+                <div>
 
                   <Show when={message()}>
                     <div
@@ -359,7 +353,7 @@ const ProfilePage = () => {
                     <div class="form-control">
                       <label class="label" for="profile-name">
                         <span class="label-text font-mono text-primary-200">
-                          CODENAME (FULL NAME)
+                          Full name
                         </span>
                       </label>
                       <input
@@ -377,33 +371,30 @@ const ProfilePage = () => {
                     <div class="form-control">
                       <label class="label" for="profile-email">
                         <span class="label-text font-mono text-primary-200">
-                          COMMUNICATION LINK (EMAIL)
+                          Email address
                         </span>
                       </label>
                       <input
                         id="profile-email"
                         type="email"
                         value={user()?.email || ""}
+                        aria-describedby="profile-email-help"
                         class="input input-lg bg-base-300/30 border-white/5 text-white/50 font-mono cursor-not-allowed"
                         disabled
                       />
-                      <label class="label">
-                        <span class="label-text-alt text-secondary-300/50">
-                          {" "}
-                          Immutable identifier. Contact command for changes.
-                        </span>
-                      </label>
+                      <p id="profile-email-help" class="mt-2 text-xs text-secondary-300/75">
+                        Contact event support to change your email address.
+                      </p>
                     </div>
 
-                    <div class="pt-8 flex justify-end">
+                    <div class="pt-2 flex justify-end">
                       <button
                         type="submit"
                         disabled={isUpdating()}
-                        class={`btn btn-primary btn-lg rounded-none font-star px-10 relative overflow-hidden group ${isUpdating() ? "loading" : ""}`}
+                        class={`btn btn-primary font-mono ${isUpdating() ? "loading" : ""}`}
                       >
-                        <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                        <span class="relative z-10">
-                          {isUpdating() ? "UPLOADING..." : "SAVE CHANGES"}
+                        <span>
+                          {isUpdating() ? "Saving…" : "Save changes"}
                         </span>
                       </button>
                     </div>
@@ -412,17 +403,19 @@ const ProfilePage = () => {
               </div>
             </div>
 
-            <section id="gamification" class="mt-8 glass-panel overflow-hidden rounded-2xl border border-primary-500/20" aria-labelledby="gamification-heading">
-              <header class="border-b border-primary-500/15 bg-primary-500/5 px-6 py-5 md:px-8">
-                <p class="font-mono text-xs uppercase tracking-[0.14em] text-primary-300">Field progress</p>
-                <h2 id="gamification-heading" class="mt-1 text-2xl font-star text-white">GAMIFICATION PROFILE</h2>
+            </section>
+
+            <section id="gamification" class="mt-8 glass-panel overflow-hidden rounded-2xl border border-primary-500/20 scroll-mt-24" aria-labelledby="gamification-heading">
+              <header class="flex flex-wrap items-center justify-between gap-3 border-b border-primary-500/15 bg-primary-500/5 px-6 py-5 md:px-8">
+                <h2 id="gamification-heading" class="text-2xl font-star text-white">Achievements</h2>
+                <a href="/missions/redeem" class="btn btn-outline btn-primary btn-sm min-h-12 font-mono">Redeem code</a>
               </header>
               <Show
                 when={!gamification.loading}
                 fallback={
                   <div class="flex items-center gap-3 px-6 py-8 font-mono text-sm text-secondary-200/80 md:px-8">
                     <span class="loading loading-bars loading-md text-primary-400" aria-hidden="true" />
-                    Loading field progress...
+                    Loading achievements…
                   </div>
                 }
               >
@@ -430,7 +423,7 @@ const ProfilePage = () => {
                   when={gamification()}
                   fallback={
                     <p class="px-6 py-8 font-mono text-sm text-secondary-200/80 md:px-8" role="status">
-                      Field progress is temporarily unavailable. Try refreshing your profile.
+                      Achievements are unavailable. Refresh your profile to try again.
                     </p>
                   }
                 >
@@ -438,16 +431,16 @@ const ProfilePage = () => {
                     <div class="space-y-7 p-6 md:p-8">
                       <Show when={summary().repair.state === "rebuild_pending"}>
                         <p class="rounded-xl border border-warning-400/30 bg-warning-500/10 p-4 text-sm text-warning-100" role="status">
-                          Your field evidence is recorded, but displayed totals are awaiting repair. Contact event support with reference <span class="font-mono">{summary().repair.supportReference}</span>.
+                          Your progress is saved, but totals need repair. Contact event support with reference <span class="font-mono">{summary().repair.supportReference}</span>.
                         </p>
                       </Show>
-                      <div class="rounded-xl border border-secondary-400/25 bg-secondary-500/10 p-5" aria-live="polite">
+                      <div class="border-b border-white/10 pb-5" aria-live="polite">
                         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                           <div>
                             <p class="font-mono text-xs uppercase tracking-[0.12em] text-secondary-200">Conference ticket status</p>
                             <Show
                               when={!ticketStatus.loading && ticketStatus()}
-                              fallback={<p class="mt-2 font-mono text-sm text-secondary-100/80">Checking conference progress...</p>}
+                              fallback={<p class="mt-2 font-mono text-sm text-secondary-100/80">Checking ticket status…</p>}
                             >
                               {(status) => <>
                                 <p class="mt-2 font-mono text-sm text-white">{status().message}</p>
@@ -463,7 +456,7 @@ const ProfilePage = () => {
                             disabled={ticketStatus.loading}
                             onClick={refreshTicketStatus}
                           >
-                            Refresh ticket status
+                            Refresh status
                           </button>
                         </div>
                         <Show when={ticketStatus.error}>
@@ -472,22 +465,22 @@ const ProfilePage = () => {
                       </div>
 
                       <div class="grid gap-4 sm:grid-cols-2">
-                        <div class="rounded-xl border border-primary-500/25 bg-primary-500/10 p-5">
+                        <div>
                           <p class="font-mono text-xs uppercase tracking-[0.12em] text-primary-200">Total XP</p>
                           <p class="mt-2 text-4xl font-star text-white">{summary().totalXp}</p>
                         </div>
-                        <div class="rounded-xl border border-secondary-400/25 bg-secondary-500/10 p-5">
+                        <div>
                           <p class="font-mono text-xs uppercase tracking-[0.12em] text-secondary-200">Access level</p>
                           <p class="mt-2 text-2xl font-star text-white">{summary().accessLevelLabel}</p>
                         </div>
                       </div>
 
-                      <section class="rounded-xl border border-primary-500/25 bg-primary-500/10 p-5" aria-labelledby="ops-board-visibility-heading">
+                      <details class="border-y border-white/10 py-4">
+                        <summary id="ops-board-visibility-heading" class="cursor-pointer min-h-12 py-3 font-mono text-sm font-bold text-primary-200">Public visibility</summary>
                         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div>
-                            <h3 id="ops-board-visibility-heading" class="font-mono text-sm font-bold uppercase tracking-[0.12em] text-primary-200">Ops-board visibility</h3>
                             <p class="mt-2 text-sm leading-relaxed text-secondary-200/80">
-                              The public ops board uses Leaderboard XP, not your total XP. Your profile and progress remain private when you opt out.
+                              The public ops board ranks Leaderboard XP, not total XP. Opt out to keep your profile and progress private.
                             </p>
                           </div>
                           <a href="/ops-board" class="btn btn-outline btn-primary btn-sm shrink-0 font-mono">View ops board</a>
@@ -503,11 +496,11 @@ const ProfilePage = () => {
                                 checked={opsBoardVisible()}
                                 onChange={(event) => setOpsBoardVisible(event.currentTarget.checked)}
                               />
-                              <span><strong class="text-white">Show me on the public ops board</strong><br />Turning this off removes your public row and rank without changing your XP, Badges, or access level.</span>
+                              <span><strong class="text-white">Show me on the public ops board</strong><br />Turning this off hides your row and rank. Your XP, badges, and access level stay unchanged.</span>
                             </label>
                             <div class="mt-5 form-control">
                               <label class="label" for="ops-board-display-name">
-                                <span class="label-text font-mono text-primary-200">PUBLIC OPS-BOARD DISPLAY NAME</span>
+                                <span class="label-text font-mono text-primary-200">Public display name</span>
                               </label>
                               <input
                                 id="ops-board-display-name"
@@ -529,18 +522,18 @@ const ProfilePage = () => {
                                 checked={publicBadgesVisible()}
                                 onChange={(event) => setPublicBadgesVisible(event.currentTarget.checked)}
                               />
-                              <span><strong class="text-white">Show public Badge snippets</strong><br />This global setting hides all Badge snippets while leaving your ops-board row visible.</span>
+                              <span><strong class="text-white">Show my badges on the ops board</strong><br />Turning this off hides all badges, not your row.</span>
                             </label>
                             <div class="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                               <p class="font-mono text-xs text-secondary-200/80">Current Leaderboard XP: {summary().leaderboardXp}</p>
-                              <button type="submit" class={`btn btn-primary min-h-12 font-mono ${visibilityBusy() ? "loading" : ""}`}>Save ops-board settings</button>
+                              <button type="submit" class={`btn btn-primary min-h-12 font-mono ${visibilityBusy() ? "loading" : ""}`}>{visibilityBusy() ? "Saving…" : "Save visibility"}</button>
                             </div>
                           </fieldset>
                         </form>
-                        <Show when={visibilityMessage()}>
-                          <p class="mt-4 text-sm text-secondary-100" role={visibilityMessageKind() === "error" ? "alert" : "status"}>{visibilityMessage()}</p>
-                        </Show>
-                      </section>
+                      </details>
+                      <Show when={visibilityMessage()}>
+                        <p class="text-sm text-secondary-100" role={visibilityMessageKind() === "error" ? "alert" : "status"}>{visibilityMessage()}</p>
+                      </Show>
 
                       <div>
                         <div class="flex flex-wrap items-baseline justify-between gap-2">
@@ -572,35 +565,25 @@ const ProfilePage = () => {
                       </div>
 
                       <div>
-                        <Show when={summary().badges.length > 0}>
-                          <section class="mb-7" aria-labelledby="recent-badges-heading">
-                            <h3 id="recent-badges-heading" class="font-mono text-sm font-bold uppercase tracking-[0.12em] text-primary-200">Recent Badges</h3>
-                            <ul class="mt-3 grid gap-3 sm:grid-cols-3" role="list">
-                              <For each={summary().badges.slice(0, 3)}>{(badge) => (
-                                <li class="rounded-xl border border-primary-400/20 bg-primary-500/5 p-4">
-                                  <p class="break-words font-mono text-sm font-bold text-white">{badge.name}</p>
-                                  <p class="mt-2 font-mono text-xs uppercase tracking-[0.1em] text-secondary-300/75">Unlocked Badge<Show when={badge.retired}> / Retired</Show></p>
-                                </li>
-                              )}</For>
-                            </ul>
-                          </section>
-                        </Show>
                         <div class="flex items-baseline justify-between gap-3">
-                          <h3 class="font-mono text-sm font-bold uppercase tracking-[0.12em] text-primary-200">Unlocked Badges</h3>
+                          <h3 class="font-mono text-sm font-bold uppercase tracking-[0.12em] text-primary-200">Your badges</h3>
                           <span class="font-mono text-xs text-secondary-300/75">{summary().badges.length} collected</span>
                         </div>
+                        <Show when={summary().badges.length > 0}>
+                          <p class="mt-2 text-xs text-secondary-300/75">Badge choices apply when your ops-board row and badges are public.</p>
+                        </Show>
                         <Show
                           when={summary().badges.length > 0}
                           fallback={
                             <p class="mt-3 rounded-xl border border-dashed border-white/15 bg-base-300/20 p-5 font-mono text-sm text-secondary-200/75">
-                              Your unlocked Badges will appear here as you complete Missions.
+                              No badges yet. Complete missions to earn them.
                             </p>
                           }
                         >
                           <ul class="mt-3 grid gap-3 sm:grid-cols-2" role="list">
                             <For each={summary().badges}>
                               {(badge) => (
-                                <li class="rounded-xl border border-white/10 bg-base-300/35 p-4">
+                                <li class="border-t border-white/10 py-4">
                                   <div class="flex items-start gap-3">
                                     <Icon icon={badge.icon || "material-symbols:military-tech-outline"} class="mt-0.5 text-xl text-primary-300" aria-hidden="true" />
                                     <div class="min-w-0">
@@ -618,7 +601,7 @@ const ProfilePage = () => {
                                            disabled={visibilityBusy()}
                                            onChange={(event) => void saveBadgeVisibility(badge.id, event.currentTarget.checked)}
                                          />
-                                         <span>Show this Badge as a public snippet. <strong class="text-white">{badge.publicVisible ? "Public" : "Private"}</strong></span>
+                                         <span>Show on the public ops board</span>
                                        </label>
                                      </div>
                                    </div>
@@ -635,32 +618,29 @@ const ProfilePage = () => {
                       </div>
 
                       <Show when={summary().lockedBadges.length > 0}>
-                        <section aria-labelledby="locked-badges-heading">
-                          <div class="flex items-baseline justify-between gap-3">
-                            <h3 id="locked-badges-heading" class="font-mono text-sm font-bold uppercase tracking-[0.12em] text-primary-200">Locked Badges</h3>
-                            <span class="font-mono text-xs text-secondary-300/75">{summary().lockedBadges.length} available</span>
-                          </div>
+                        <details class="border-t border-white/10 pt-4">
+                          <summary id="locked-badges-heading" class="cursor-pointer min-h-12 py-3 font-mono text-sm font-bold text-primary-200">Badges to earn ({summary().lockedBadges.length})</summary>
                           <ul class="mt-3 grid gap-3 sm:grid-cols-2" role="list">
                             <For each={summary().lockedBadges}>{(badge) => (
-                              <li class="rounded-xl border border-dashed border-white/15 bg-base-300/20 p-4">
+                              <li class="border-t border-white/10 py-4">
                                 <p class="font-mono text-sm font-bold text-white">{badge.name}</p>
                                 <p class="mt-1 text-sm leading-relaxed text-secondary-200/80">{badge.teaser}</p>
                                 <p class="mt-2 font-mono text-xs uppercase tracking-[0.1em] text-secondary-300/75">{badge.category} / {badge.rarity} / locked</p>
                               </li>
                             )}</For>
                           </ul>
-                        </section>
+                        </details>
                       </Show>
 
                       <Show when={summary().suggestedMissions.length > 0}>
-                        <section class="rounded-xl border border-primary-400/20 bg-primary-500/5 p-5" aria-labelledby="suggested-missions-heading">
-                          <h3 id="suggested-missions-heading" class="font-mono text-sm font-bold uppercase tracking-[0.12em] text-primary-200">Suggested Missions</h3>
+                        <section class="border-t border-white/10 pt-5" aria-labelledby="suggested-missions-heading">
+                          <h3 id="suggested-missions-heading" class="font-mono text-sm font-bold uppercase tracking-[0.12em] text-primary-200">Suggested missions</h3>
                           <ul class="mt-3 space-y-3" role="list">
                             <For each={summary().suggestedMissions}>{(mission) => (
                               <li>
                                 <p class="font-mono text-sm font-bold text-white">{mission.title}</p>
                                 <p class="mt-1 text-sm leading-relaxed text-secondary-200/80">{mission.summary}</p>
-                                <a class="link link-primary mt-2 inline-block min-h-12 py-3 font-mono text-sm" href={mission.redemptionPath}>Redeem Mission code</a>
+                                <a class="link link-primary mt-2 inline-block min-h-12 py-3 font-mono text-sm" href={mission.redemptionPath}>Redeem code</a>
                               </li>
                             )}</For>
                           </ul>
@@ -668,14 +648,14 @@ const ProfilePage = () => {
                       </Show>
 
                       <Show when={!partnerConsents.loading && partnerConsents()?.length}>
-                        <section class="rounded-xl border border-white/10 bg-base-300/25 p-5" aria-labelledby="partner-follow-up-heading">
+                        <section class="border-t border-white/10 pt-5" aria-labelledby="partner-follow-up-heading">
                           <h3 id="partner-follow-up-heading" class="font-mono text-sm font-bold uppercase tracking-[0.12em] text-primary-200">Partner follow-up</h3>
-                          <p class="mt-2 text-sm leading-relaxed text-secondary-200/80">This is optional and separate from Mission progress. It never changes a Claim, Badge, total XP, or Leaderboard XP.</p>
+                          <p class="mt-2 text-sm leading-relaxed text-secondary-200/80">Optional. Consent never changes your claims, badges, total XP, or Leaderboard XP. Withdrawal blocks future WTS handoffs; it cannot undo details already shared.</p>
                            <Show when={consentMessage()}><p class="mt-3 text-xs leading-relaxed text-secondary-100" role={consentMessageKind() === "error" ? "alert" : "status"}>{consentMessage()}</p></Show>
                           <ul class="mt-4 space-y-4" role="list">
                             <For each={partnerConsents()}>
                               {(consent) => (
-                                <li class="rounded-lg border border-white/10 bg-base-300/35 p-4">
+                                <li class="border-t border-white/10 pt-4">
                                   <p class="font-mono text-sm font-bold text-white">{consent.partner.name}</p>
                                    <p class="mt-1 text-sm text-secondary-200/85">Activity: {consent.activityLabel}</p>
                                   <p class="mt-1 text-xs leading-relaxed text-secondary-300/80">Purpose: {consent.purpose}. Notice: {consent.noticeVersion}. Fields: {consent.fields.join(" and ")}.</p>
@@ -686,7 +666,7 @@ const ProfilePage = () => {
                                           <input id={`profile-partner-follow-up-${consent.activityId}`} name="partner-follow-up" type="checkbox" class="checkbox checkbox-primary mt-0.5 shrink-0" />
                                           <span>I agree that WhatTheStack may make one future handoff of my current name and email to {consent.partner.name} for follow-up about this Activity.</span>
                                         </label>
-                                        <button type="submit" class={`btn btn-outline btn-primary btn-sm mt-4 font-mono ${consentBusy() ? "loading" : ""}`} disabled={consentBusy()}>Record separate consent</button>
+                                        <button type="submit" class={`btn btn-outline btn-primary btn-sm mt-4 font-mono ${consentBusy() ? "loading" : ""}`} disabled={consentBusy()}>{consentBusy() ? "Saving…" : "Allow follow-up"}</button>
                                       </fieldset>
                                     </form>
                                   }>
@@ -711,13 +691,10 @@ const ProfilePage = () => {
             </section>
 
             {/* CFP Submissions Section */}
-            <div class="mt-8">
+            <section id="proposals" class="mt-8 scroll-mt-24" aria-labelledby="proposals-heading">
               <div class="glass-panel p-8 rounded-2xl border border-white/10 relative overflow-hidden">
-                <div class="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
-                  <Icon icon="material-symbols:mic-external-on" width="120" />
-                </div>
                 <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                  <h3 class="text-2xl font-star text-white">MY PROPOSALS</h3>
+                  <h2 id="proposals-heading" class="text-2xl font-star text-white">Talk proposals</h2>
                   <button
                     onClick={() => {
                       resetProposalData();
@@ -726,7 +703,7 @@ const ProfilePage = () => {
                     class="btn btn-primary btn-sm font-mono gap-2"
                   >
                     <Icon icon="material-symbols:add" />
-                    SUBMIT TALK
+                    Submit talk
                   </button>
                 </div>
 
@@ -738,11 +715,8 @@ const ProfilePage = () => {
 
                 <Show when={!proposals.loading && proposals()?.length === 0}>
                   <div class="p-6 border border-dashed border-white/20 rounded-xl bg-base-300/20 text-center">
-                    <p class="text-secondary-300 font-mono mb-4">
-                      NO SUBMISSIONS FOUND
-                    </p>
-                    <p class="text-sm text-secondary-300/60 font-mono mb-6">
-                      Join the stage at WhatTheStack!
+                    <p class="text-secondary-300 font-mono">
+                      No talk proposals yet.
                     </p>
                   </div>
                 </Show>
@@ -750,7 +724,7 @@ const ProfilePage = () => {
                 <div class="space-y-4">
                   <For each={proposals()}>
                     {(proposal) => (
-                      <div class="p-6 bg-base-300/30 border border-white/5 rounded-xl hover:border-primary-500/50 transition-colors group relative">
+                      <div class="py-6 border-t border-white/10">
                         <div class="flex flex-col md:flex-row justify-between gap-4">
                           <div class="flex-grow">
                             <div class="flex items-center gap-3 mb-2">
@@ -761,9 +735,9 @@ const ProfilePage = () => {
                                 {new Date(proposal.created).toLocaleDateString()}
                               </span>
                             </div>
-                            <h4 class="text-xl font-bold text-white mb-2 group-hover:text-primary-300 transition-colors">
+                            <h3 class="text-xl font-bold text-white mb-2">
                               {proposal.session_title}
-                            </h4>
+                            </h3>
                             <div class="line-clamp-2 text-sm text-secondary-300/80 font-mono mb-4">
                               <div innerHTML={sanitizeHtml(proposal.abstract)} />
                             </div>
@@ -775,7 +749,7 @@ const ProfilePage = () => {
                                 class="btn btn-outline btn-sm font-mono gap-2 hover:bg-primary-500 hover:text-white"
                               >
                                 <Icon icon="material-symbols:edit-square-outline" />
-                                EDIT
+                                Edit proposal
                               </button>
                             </Show>
                           </div>
@@ -785,7 +759,7 @@ const ProfilePage = () => {
                   </For>
                 </div>
               </div>
-            </div>
+            </section>
           </div>
         </div>
       </div>

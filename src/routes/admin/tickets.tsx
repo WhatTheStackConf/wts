@@ -59,8 +59,7 @@ const AdminTickets = () => {
             <AdminPageShell
                 layoutTitle="Ticket Management"
                 layoutDescription="Monitor event attendees"
-                title="Ticket Management"
-                subtitle="ATTENDEE LIST & CHECK-IN STATUS"
+                title="Tickets"
                 hint="Synced from hi.events. Account matches show linked WTS users."
                 count={stats().total}
                 countLoading={attendees.loading}

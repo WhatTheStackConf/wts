@@ -64,11 +64,11 @@ export default function AdminHiEventsReconciliation() {
         <div class="p-5">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h2 class="font-bold text-white">Hi.Events evidence reconciliation</h2>
-              <p class="mt-1 max-w-3xl text-sm leading-relaxed text-base-content/70">Inspect every attendee page before applying source evidence. Partial and unavailable responses are never treated as an empty attendee list, and cannot create or void gamification evidence.</p>
+              <h2 class="font-bold text-white">Hi.Events sync</h2>
+              <p class="mt-1 max-w-3xl text-sm leading-relaxed text-base-content/70">Preview the complete attendee list before applying changes. Partial or unavailable data cannot create or void evidence.</p>
             </div>
-            <div class="flex shrink-0 gap-2">
-              <button type="button" class={`btn btn-outline btn-secondary font-mono ${busy() ? "loading" : ""}`} disabled={busy()} onClick={inspect}>Preview source snapshot</button>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" class={`btn btn-outline btn-secondary font-mono ${busy() ? "loading" : ""}`} disabled={busy()} onClick={inspect}>Preview source</button>
               <button type="button" class="btn btn-primary font-mono" disabled={busy() || current()?.state !== "complete"} onClick={sync}>Sync and apply</button>
             </div>
           </div>

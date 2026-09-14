@@ -515,7 +515,6 @@ export default function AdminSpeakersHub() {
       layoutTitle="Admin: Speakers"
       layoutDescription="Manage conference speakers"
       title="Speakers"
-      subtitle="Speaker profiles & publication"
       hint="Profiles start as drafts. Toggle Published to show on the public site."
       count={speakers()?.length}
       countLoading={speakers.loading}
@@ -562,8 +561,7 @@ export default function AdminSpeakersHub() {
               Accepted CFP applicants without a profile
             </h2>
             <p class="text-xs text-base-content/60 font-mono mt-1 max-w-3xl leading-relaxed text-pretty">
-              Speaker-only escape hatch: create standalone draft Speaker profiles here. Promoting
-              an accepted proposal from the leaderboard creates or reuses the Speaker automatically.
+              Create a profile only, or create a draft session from Proposals to include the speaker automatically.
             </p>
           </div>
           <a href="/admin/proposals" class="btn btn-xs btn-outline btn-warning font-mono">
@@ -578,10 +576,10 @@ export default function AdminSpeakersHub() {
         </Show>
 
         <Show when={!pendingApplicants.loading && (pendingApplicants()?.length ?? 0) > 0}>
-          <div class="space-y-3">
+          <div class="divide-y divide-white/10">
             <For each={pendingApplicants()}>
               {(item: any) => (
-                <div class="flex flex-wrap justify-between items-center gap-3 bg-white/5 p-3 rounded-lg">
+                <div class="flex flex-wrap justify-between items-center gap-3 py-3">
                   <div class="min-w-0">
                     <div class="font-bold text-white [overflow-wrap:anywhere]">
                       {item.applicant?.expand?.user?.name || "Unknown"}
@@ -615,15 +613,11 @@ export default function AdminSpeakersHub() {
             !pendingError()
           }
         >
-          <div class="rounded-lg border border-dashed border-white/10 bg-white/5 p-6 text-center">
+          <div class="py-4">
             <p class="text-sm text-gray-200 mb-2">
               No accepted CFP applicants waiting for a speaker profile.
             </p>
-            <p class="text-xs text-base-content/60 font-mono max-w-3xl mx-auto leading-relaxed text-pretty">
-              Review submissions on the proposals leaderboard and set status to{" "}
-              <span class="text-success">Accepted</span>. Use this panel only for standalone
-              Speaker profiles; create draft Sessions from the proposal row.
-            </p>
+
           </div>
         </Show>
       </div>
@@ -669,10 +663,9 @@ export default function AdminSpeakersHub() {
                 <div class="space-y-6 lg:order-2 lg:col-span-5">
                   <AdminFormSection
                     title="Photo"
-                    description="Manage the public Speaker photo stored on this Speaker record."
                   >
                     <div class="space-y-4">
-                      <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div>
                         <Show
                           when={editPreviewPhotoUrl()}
                           fallback={
@@ -752,9 +745,8 @@ export default function AdminSpeakersHub() {
 
                   <AdminFormSection
                     title="Source"
-                    description="Read-only origin context for this public snapshot."
                   >
-                    <div class="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <div>
                       <span class="badge badge-ghost font-mono">
                         {row().origin === "cfp" ? "CFP-origin copied snapshot" : "Invited"}
                       </span>
@@ -762,15 +754,12 @@ export default function AdminSpeakersHub() {
                         when={row().origin === "cfp"}
                         fallback={
                           <p class="mt-3 text-xs font-mono leading-relaxed text-base-content/65 text-pretty">
-                            This Speaker was created directly in programme admin. Edits here only change
-                            the public Speaker profile.
+                            Created in admin. Edits change only the public profile.
                           </p>
                         }
                       >
                         <p class="mt-3 text-xs font-mono leading-relaxed text-base-content/65 text-pretty">
-                          CFP-origin data was copied once from the CFP Applicant/User into this public
-                          Speaker snapshot. Edits here do not update CFP Applicant or User data, and
-                          future CFP/User changes do not sync back.
+                          Copied from CFP once. Changes to this profile and the CFP/user account do not sync with each other.
                         </p>
                       </Show>
                       <Show
@@ -795,7 +784,6 @@ export default function AdminSpeakersHub() {
                 <div class="space-y-6 lg:order-1 lg:col-span-7">
                   <AdminFormSection
                     title="Public identity"
-                    description="The public name, URL slug, and affiliation used on the speaker profile."
                   >
                     <div class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-5">
                       <AdminFormField
@@ -894,7 +882,7 @@ export default function AdminSpeakersHub() {
                       <AdminFormField
                         id="edit-speaker-social"
                         label="Social URLs"
-                        hint="One URL or handle per line. Blank lines are ignored on save."
+                        hint="One URL or handle per line."
                       >
                         <textarea
                           id="edit-speaker-social"
@@ -911,7 +899,7 @@ export default function AdminSpeakersHub() {
 
                   <AdminFormSection
                     title="Appearance Events"
-                    description="Select every gathering where this Speaker's participation has been publicly announced. Draft events remain hidden on the public site."
+                    description="Select events where participation has been publicly announced. Draft events stay hidden."
                   >
                     <Show when={appearanceEvents.loading}>
                       <div class="flex justify-center py-5">
@@ -1017,7 +1005,6 @@ export default function AdminSpeakersHub() {
             <div class="space-y-6">
               <AdminFormSection
                 title="Public identity"
-                description="The public name, URL slug, and affiliation used on the speaker profile."
               >
                 <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
                   <AdminFormField
@@ -1145,9 +1132,7 @@ export default function AdminSpeakersHub() {
             </div>
 
             <div class="mt-6 border-t border-white/10 pt-5 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
-              <p class="text-xs text-base-content/45 font-mono">
-                Invite speakers are created as drafts until you publish them from the list.
-              </p>
+
               <div class="flex flex-wrap gap-2 sm:justify-end">
                 <button
                   type="button"
@@ -1220,7 +1205,7 @@ export default function AdminSpeakersHub() {
             <p class="text-sm text-base-content/60 font-mono max-w-md mx-auto leading-relaxed text-pretty">
               {filtersActive()
                 ? "Try changing the origin or visibility filters above."
-                : "Create standalone draft Speaker profiles from accepted CFP applicants or invite a speaker directly."}
+                : "Create a profile from an accepted applicant or invite a speaker."}
             </p>
             <Show when={!filtersActive() && !showInviteForm()}>
               <button
@@ -1237,10 +1222,10 @@ export default function AdminSpeakersHub() {
 
       <Show when={!speakers.loading && filtered().length > 0}>
         <AdminDataPanel>
-          <div class="md:hidden space-y-4 p-4">
+          <div class="md:hidden divide-y divide-white/10">
             <For each={filtered()}>
               {(row) => (
-                <article class="bg-white/5 rounded-xl p-4 border border-white/10 space-y-3">
+                <article class="p-4 space-y-3">
                   <div class="flex justify-between items-start gap-2">
                     <div class="min-w-0">
                       <h2 class="font-bold text-white [overflow-wrap:anywhere]">{speakerLabel(row)}</h2>

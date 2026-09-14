@@ -25,8 +25,8 @@ test("synthetic Name Label: loaded font raster, independent rows and no side eff
   await expect(region.getByRole("paragraph").filter({ hasText: /^Synthetic preview only — not calibrated$/ })).toBeVisible();
   const beforeActions = (await db.collection("admin_actions").getList(1, 1)).totalItems;
   const beforeAudit = (await db.collection("checkin_audit_events").getList(1, 1)).totalItems;
-  await region.getByLabel("Attendee name", { exact: true }).fill("Ѓорѓи Ќосев — Željko gjpqy");
-  await region.getByLabel("Affiliation", { exact: true }).fill("Заедница / Société");
+  await region.getByLabel("Attendee name (required)", { exact: true }).fill("Ѓорѓи Ќосев — Željko gjpqy");
+  await region.getByLabel("Affiliation (optional)", { exact: true }).fill("Заедница / Société");
   const renderResponse = page.waitForResponse((r) => r.url().endsWith("/api/checkin-labels") && r.request().postDataJSON()?.operation === "preview_synthetic");
   await region.getByRole("button", { name: "Preview Name Label", exact: true }).click();
   const response = await renderResponse;
@@ -51,8 +51,8 @@ test("synthetic Name Label: loaded font raster, independent rows and no side eff
   const firstHash = raster.payloadHash;
   await region.getByRole("button", { name: "Preview Name Label", exact: true }).click();
   await expect(canvas).toHaveAttribute("data-payload-hash", firstHash);
-  await region.getByLabel("Attendee name", { exact: true }).fill("Љубомир-Александар ".repeat(12).trim());
-  await region.getByLabel("Affiliation", { exact: true }).fill("");
+  await region.getByLabel("Attendee name (required)", { exact: true }).fill("Љубомир-Александар ".repeat(12).trim());
+  await region.getByLabel("Affiliation (optional)", { exact: true }).fill("");
   await expect(canvas).toHaveCount(0); // Edits never retain a stale image.
   await region.getByRole("button", { name: "Preview Name Label", exact: true }).click();
   await expect(region.getByText("Name shortened with ellipsis", { exact: true })).toBeVisible();

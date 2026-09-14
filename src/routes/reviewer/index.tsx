@@ -33,22 +33,18 @@ const ReviewerDashboard = () => {
     };
 
     return (
-        <Layout title="Reviewer Portal" description="CFP Evaluation">
+        <Layout title="Review proposals" description="CFP Evaluation">
             <Show when={guard.authorized()}>
                 <div class="min-h-screen w-full max-w-full pt-24 pb-20 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-secondary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
-                    <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
+
 
                     <div class="container mx-auto w-full max-w-full px-4">
                         <div class="w-full max-w-4xl mx-auto">
                             <div class="flex flex-col md:flex-row justify-between items-stretch md:items-center mb-10 gap-6">
                                 <div class="min-w-0">
-                                    <h1 class="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-secondary-400 to-primary-400 uppercase drop-shadow-sm mb-2 break-words">
-                                        Reviewer Portal
+                                    <h1 class="text-3xl font-bold text-white mb-2 break-words">
+                                        Review proposals
                                     </h1>
-                                    <p class="text-secondary-300 font-mono text-sm tracking-widest uppercase">
-                                        CFP Evaluation
-                                    </p>
                                 </div>
                                 <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
                                     <button
@@ -69,7 +65,7 @@ const ReviewerDashboard = () => {
                                             icon="mdi:scale-balance"
                                             class="text-xl group-hover:scale-110 transition-transform text-accent-400"
                                         />
-                                        Vote on Weights
+                                        Criteria weights
                                     </button>
                                 </div>
                             </div>
@@ -81,37 +77,29 @@ const ReviewerDashboard = () => {
                             </Show>
 
                             <Show when={!data.loading}>
-                                <div class="glass-panel p-5 sm:p-8 md:p-12 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40 text-center mb-8">
+                                <div class="glass-panel p-5 sm:p-8 rounded-2xl border border-white/10 bg-black/40 mb-8">
                                     <Show
                                         when={(data()?.totalLeft ?? 0) > 0}
                                         fallback={
-                                            <div class="py-8">
-                                                <Icon
-                                                    icon="ph:check-circle-bold"
-                                                    class="text-6xl text-green-400 mb-4 block mx-auto"
-                                                />
-                                                <p class="text-2xl font-bold text-white mb-2">
-                                                    All caught up!
-                                                </p>
-                                                <p class="text-white/50 font-mono text-sm">
-                                                    You've reviewed every submission in the
-                                                    queue.
+                                            <div>
+                                                <p class="text-lg font-bold text-white">
+                                                    No proposals left to review
                                                 </p>
                                             </div>
                                         }
                                     >
-                                        <div class="py-4">
-                                            <p class="text-white/50 font-mono text-sm uppercase tracking-widest mb-6">
+                                        <div class="flex flex-wrap items-center justify-between gap-4">
+                                            <p class="text-secondary-300 text-sm">
                                                 {data()!.totalLeft} submission
                                                 {data()!.totalLeft !== 1 ? "s" : ""} left to
                                                 review
                                             </p>
                                             <button
                                                 onClick={reviewRandom}
-                                                class="btn btn-primary btn-lg h-auto min-h-14 w-full max-w-full whitespace-normal font-mono gap-3 text-base shadow-lg shadow-primary-500/30 hover:shadow-primary-500/50 transition-all sm:w-auto sm:text-lg sm:hover:scale-105"
+                                                class="btn btn-primary w-full gap-2 sm:w-auto"
                                             >
                                                 <Icon icon="ph:shuffle-bold" class="text-2xl shrink-0" />
-                                                Review Next Submission
+                                                Review next
                                             </button>
                                         </div>
                                     </Show>
@@ -123,25 +111,23 @@ const ReviewerDashboard = () => {
                                             <div class="p-2 bg-green-500/20 rounded-lg text-green-400 shrink-0">
                                                 <Icon icon="ph:check-square-bold" class="text-xl" />
                                             </div>
-                                            <h3 class="min-w-0 text-lg font-bold text-white tracking-wide break-words">
-                                                YOUR REVIEWS ({data()!.reviewed.length})
-                                            </h3>
+                                            <h2 class="min-w-0 text-lg font-bold text-white break-words">
+                                                Your reviews ({data()!.reviewed.length})
+                                            </h2>
                                         </div>
 
                                         <div class="grid gap-3">
                                             <For each={data()!.reviewed}>
                                                 {(submission) => (
-                                                    <div
+                                                    <a
+                                                        href={`/reviewer/${submission.id}`}
                                                         class="p-4 bg-white/5 border border-white/5 rounded-xl hover:border-green-500/30 hover:bg-white/10 transition-all duration-300 group cursor-pointer flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center sm:gap-4"
-                                                        onClick={() =>
-                                                            navigate(`/reviewer/${submission.id}`)
-                                                        }
                                                     >
                                                         <div class="w-full min-w-0 flex-1 sm:w-auto">
-                                                            <h4 class="text-white font-semibold group-hover:text-green-300 transition-colors break-words sm:truncate">
+                                                            <h3 class="text-white font-semibold group-hover:text-green-300 transition-colors break-words sm:truncate">
                                                                 {submission.session_title ||
                                                                     "Untitled Session"}
-                                                            </h4>
+                                                            </h3>
                                                         </div>
                                                         <div class="flex flex-wrap items-center gap-2 shrink-0">
                                                             <span class="badge badge-outline border-green-500/30 text-green-400 font-mono text-xs">
@@ -152,7 +138,7 @@ const ReviewerDashboard = () => {
                                                                 class="text-white/30 group-hover:text-green-400 transition-colors"
                                                             />
                                                         </div>
-                                                    </div>
+                                                    </a>
                                                 )}
                                             </For>
                                         </div>

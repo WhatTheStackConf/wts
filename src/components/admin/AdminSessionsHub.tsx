@@ -244,7 +244,6 @@ export default function AdminSessionsHub() {
       layoutTitle="Admin: Sessions"
       layoutDescription="Manage conference sessions"
       title="Sessions"
-      subtitle="Programme items & publication"
       hint="Sessions start as drafts. Toggle Published to show on the public site."
       count={sessions()?.length}
       countLoading={sessions.loading}
@@ -288,9 +287,7 @@ export default function AdminSessionsHub() {
                 <h2 class="text-lg font-bold text-white">
                   {editingId() ? "Edit session" : "New session"}
                 </h2>
-                <p class="text-xs text-base-content/60 font-mono mt-1 leading-relaxed">
-                  Saves as draft. Toggle Published when ready for the public site.
-                </p>
+
               </div>
             </div>
             <div class="space-y-6">
@@ -298,9 +295,8 @@ export default function AdminSessionsHub() {
                 {(submissionId) => (
                   <AdminFormSection
                     title="Source"
-                    description="Read-only provenance context for this public Session."
                   >
-                    <div class="rounded-xl border border-secondary-500/20 bg-secondary-500/10 p-4">
+                    <div>
                       <div class="mb-3 flex flex-wrap items-center gap-2">
                         <span class="badge border-secondary-500/40 bg-secondary-500/20 font-mono text-secondary-100">
                           From CFP
@@ -310,9 +306,7 @@ export default function AdminSessionsHub() {
                           </span>
                       </div>
                       <p class="max-w-3xl text-xs font-mono leading-relaxed text-base-content/65 text-pretty">
-                        This Session was copied once from an accepted CFP Submission. Edit the public
-                        Session fields here; CFP private and review fields are not shown or editable in
-                        this panel.
+                        Copied from an accepted CFP submission. These public fields do not edit private CFP data or reviews.
                       </p>
                       <a
                         href={`/reviewer/${submissionId()}`}
@@ -327,7 +321,6 @@ export default function AdminSessionsHub() {
 
               <AdminFormSection
                 title="Public identity"
-                description="The title and slug used for the public session page."
               >
                 <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
                   <AdminFormField
@@ -375,7 +368,7 @@ export default function AdminSessionsHub() {
                 </div>
               </AdminFormSection>
 
-              <AdminFormSection title="Format" description="Optional public format label.">
+              <AdminFormSection title="Format">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5">
                   <AdminFormField id="session-format" label="Format">
                     <input
@@ -391,10 +384,9 @@ export default function AdminSessionsHub() {
                 </div>
               </AdminFormSection>
 
-              <AdminFormSection
-                title="Legacy schedule migration data"
-                description="These historical Session fields are read-only. Configure canonical Day, Track, time range, and location in Agenda."
-              >
+              <details class="border-t border-white/10 pt-5">
+                <summary class="cursor-pointer text-sm font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">Legacy schedule data</summary>
+                <p class="my-3 text-xs text-base-content/65">Read-only historical fields. Manage the current schedule in Agenda.</p>
                 <Show
                   when={editingSession()}
                   fallback={<p class="text-sm text-base-content/60 font-mono">Save the Session, then configure its schedule in Agenda.</p>}
@@ -426,9 +418,9 @@ export default function AdminSessionsHub() {
                     </>
                   )}
                 </Show>
-              </AdminFormSection>
+              </details>
 
-              <AdminFormSection title="Public copy" description="This text appears on the public session page.">
+              <AdminFormSection title="Public copy">
                 <AdminFormField
                   id="session-abstract"
                   label="Public abstract"
@@ -457,7 +449,7 @@ export default function AdminSessionsHub() {
               <Show when={speakers()}>
                 <AdminFormSection
                   title="Speakers"
-                  description={`Select one or more speakers for this session. ${selectedSpeakers().length > 0 ? `${selectedSpeakers().length} selected.` : "None selected yet."}`}
+                  description={`${selectedSpeakers().length} selected`}
                 >
                   <AdminFormField id="session-speaker-search" label="Filter speakers" class="mb-3">
                     <input
@@ -511,7 +503,7 @@ export default function AdminSessionsHub() {
 
             <div class="mt-6 border-t border-white/10 pt-5 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
               <p class="text-xs text-base-content/45 font-mono">
-                Sessions save as drafts until you toggle Published in the list.
+                New sessions start as drafts. Saving edits keeps the current publication state.
               </p>
               <div class="flex flex-wrap gap-2 sm:justify-end">
                 <button type="button" class="btn btn-ghost font-mono" onClick={resetForm}>
@@ -541,8 +533,7 @@ export default function AdminSessionsHub() {
             <Icon icon="ph:calendar-blank-bold" class="text-4xl text-base-content/40 mb-4" aria-hidden="true" />
             <p class="text-white font-bold mb-2">No sessions yet</p>
             <p class="text-sm text-base-content/60 font-mono max-w-md mx-auto mb-4 leading-relaxed text-pretty">
-              Create a programme item and link speakers. Publish when the schedule is ready for
-              attendees.
+              Create a session, then publish when ready.
             </p>
             <Show when={!showForm()}>
               <button type="button" class="btn btn-primary btn-sm font-mono" onClick={openNewSession}>
@@ -555,10 +546,10 @@ export default function AdminSessionsHub() {
 
       <Show when={!sessions.loading && (sessions()?.length ?? 0) > 0}>
         <AdminDataPanel>
-          <div class="md:hidden space-y-4 p-4">
+          <div class="md:hidden divide-y divide-white/10">
             <For each={sessions()}>
               {(session) => (
-                <article class="bg-white/5 rounded-xl p-4 border border-white/10 space-y-3">
+                <article class="p-4 space-y-3">
                   <div class="min-w-0">
                     <h2 class="font-bold text-white [overflow-wrap:anywhere]">{session.title}</h2>
                     <div class="text-xs font-mono text-base-content/60 break-all">{session.slug}</div>

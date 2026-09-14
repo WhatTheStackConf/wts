@@ -18,7 +18,7 @@ const LoginMenu = () => {
     if (name) {
       return name.split(" ")[0]; // First name only
     }
-    return auth.record?.email?.split("@")[0] || "Agent";
+    return auth.record?.email?.split("@")[0] || "Account";
   };
 
   const getInitials = () => {
@@ -39,7 +39,7 @@ const LoginMenu = () => {
       window.location.href = "/";
     } catch (error) {
       console.error("Logout failed.", error);
-      window.alert("Logout failed. Please try again.");
+      window.alert("Could not log out. Try again.");
     }
   };
 
@@ -52,7 +52,9 @@ const LoginMenu = () => {
       </Show>
       <Show when={auth.isAuthenticated()}>
         <button
+          type="button"
           class="btn btn-ghost btn-lg gap-3 font-mono text-primary-300 hover:text-primary-100 hover:bg-primary-900/20"
+          aria-label={`Account menu for ${getDisplayName()}`}
           popovertarget="user-menu"
           style="anchor-name:--user-anchor"
         >
@@ -70,7 +72,7 @@ const LoginMenu = () => {
               <div class="w-8 h-8 rounded-full overflow-hidden border border-primary-500/50 shadow-[0_0_10px_rgba(var(--color-primary-500),0.3)]">
                 <img
                   src={getGravatarUrl(auth.record?.email || "")}
-                  alt="Avatar"
+                  alt=""
                   onError={() => setImgError(true)}
                 />
               </div>
@@ -79,11 +81,12 @@ const LoginMenu = () => {
           <span class="max-w-[150px] truncate hidden md:inline-block">
             {getDisplayName()}
           </span>
-          <Icon icon="ph:caret-down-bold" class="text-xs opacity-50" />
+          <Icon icon="ph:caret-down-bold" class="text-xs opacity-50" aria-hidden="true" />
         </button>
 
         <ul
           id="user-menu"
+          aria-label="Account"
           popover
           class="dropdown menu p-2 bg-base-200 border border-white/10 shadow-2xl rounded-xl w-52 text-primary-200 font-mono text-sm z-[9999]"
           style="position-anchor:--user-anchor; top: anchor(bottom); right: anchor(right);"
@@ -94,11 +97,16 @@ const LoginMenu = () => {
               Profile
             </a>
           </li>
-          <div class="divider my-0 border-white/10"></div>
           <li>
-            <button onClick={() => void handleLogout()} class="text-error hover:bg-error/10 hover:text-error">
+            <a href="/user/profile#gamification" class="hover:bg-primary-500/20 hover:text-white mb-1">
+              <Icon icon="material-symbols:military-tech-outline" class="text-lg" aria-hidden="true" />
+              Achievements
+            </a>
+          </li>
+          <li class="border-t border-white/10 mt-1 pt-1">
+            <button type="button" onClick={() => void handleLogout()} class="text-error hover:bg-error/10 hover:text-error">
               <Icon icon="ph:sign-out-bold" class="text-lg" />
-              Logout
+              Log out
             </button>
           </li>
         </ul>

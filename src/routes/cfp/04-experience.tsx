@@ -41,35 +41,21 @@ const Experience = () => {
 
   return (
     <CfpStepLayout
-      title="Call for Papers - Step 4"
+      title="Speaking experience"
       description="Step 4: Previous Speaking Experiences"
       step={4}
     >
       <div class="mb-10 space-y-8">
-        <h2 class="text-2xl font-bold font-star text-white mb-6 flex items-center gap-3">
-          <span class="text-primary">//</span> PREVIOUS EXPERIENCES
-        </h2>
-
-        <div class="mb-6 mx-auto w-full md:w-2/3">
-          <div class="p-4 rounded-xl border border-primary/20 bg-primary/5 flex gap-4 items-start">
-            <Icon
-              icon="material-symbols:school-outline"
-              class="text-primary text-xl shrink-0 mt-1"
-            />
-            <p class="text-sm font-mono text-secondary-300">
-              Protip: Previous speaking experience is <strong>not</strong> a
-              requirement. We encourage first-time speakers to apply! Your
-              previous speaking experience (or lack thereof) doesn't count for
-              much towards acceptance.
-            </p>
-          </div>
-        </div>
+        <p class="text-sm text-secondary-300">
+          This step is optional. First-time speakers are welcome; previous experience
+          carries little weight in selection.
+        </p>
 
         <div class="space-y-6">
           <div class="form-control w-full">
             <label
               for="previous_presentation"
-              class="label font-mono text-xs uppercase text-primary"
+              class="label text-sm font-medium text-primary"
             >
               Have you presented this topic before?
             </label>
@@ -87,7 +73,7 @@ const Experience = () => {
           <div class="form-control w-full">
             <label
               for="previous_talk_links"
-              class="label font-mono text-xs uppercase text-primary"
+              class="label text-sm font-medium text-primary"
             >
               Links to previous talks or your speaker profile
             </label>
@@ -105,8 +91,7 @@ const Experience = () => {
                 Videos, slide decks, or profiles (Sessionize, Notist, etc.)
               </span>
               <span class="opacity-60">
-                Note: this field is for your previous presentations and gets
-                saved to your speaker profile.
+                Saved to your speaker profile.
               </span>
             </div>
           </div>
@@ -117,16 +102,16 @@ const Experience = () => {
         <button
           type="button"
           onClick={handlePrevious}
-          class="btn btn-outline btn-lg px-8 font-mono hover:bg-white/10"
+          class="btn btn-outline hover:bg-white/10"
         >
-          BACK
+          Back
         </button>
         <button
           type="button"
           onClick={handleNext}
-          class="btn btn-primary btn-lg shadow-[0_0_20px_rgba(var(--color-primary-500),0.3)] px-10 font-mono"
+          class="btn btn-primary gap-2"
         >
-          NEXT <Icon icon="material-symbols:arrow-forward" />
+          Next <Icon icon="material-symbols:arrow-forward" />
         </button>
       </div>
     </CfpStepLayout>

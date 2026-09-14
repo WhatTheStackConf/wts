@@ -62,62 +62,58 @@ const Confirmation = () => {
     step: number;
     children: any;
   }) => (
-    <div class="border border-white/10 rounded-xl overflow-hidden mb-6 bg-base-300/10">
-      <div class="bg-base-200/30 px-4 py-3 flex justify-between items-center border-b border-white/10">
-        <h3 class="font-bold text-lg font-star text-white tracking-wide">{props.title}</h3>
+    <section class="border-t border-white/10 pt-4 mb-6 min-w-0">
+      <div class="flex justify-between items-center gap-3 mb-3">
+        <h2 class="font-bold text-lg text-white">{props.title}</h2>
         <button
           onClick={() => {
             const routes = ["", "01-intro", "02-personal", "03-proposal", "04-experience", "05-expenses"];
             navigate(`/cfp/${routes[props.step]}`);
           }}
-          class="btn btn-ghost btn-sm gap-2 text-primary font-mono hover:bg-primary/10"
+          aria-label={`Edit ${props.title.toLowerCase()}`}
+          class="btn btn-ghost btn-sm gap-2 text-primary hover:bg-primary/10"
         >
-          <Icon icon="material-symbols:edit-outline" /> EDIT
+          <Icon icon="material-symbols:edit-outline" /> Edit
         </button>
       </div>
-      <div class="p-4 space-y-3">{props.children}</div>
-    </div>
+      <div class="space-y-3 break-words">{props.children}</div>
+    </section>
   );
 
 
 
   return (
     <CfpStepLayout
-      title="Confirm Submission - WhatTheStack 2026"
+      title="Review your proposal"
       description="Step 6: Confirm Submission"
       step={6}
     >
       {/* Modal */}
       <dialog id="confirmation_modal" class="modal">
         <div class="modal-box glass-panel border border-white/10">
-          <h3 class="font-bold text-2xl font-star text-primary">
-            {cfpStore.formData.id ? "EDITS SAVED!" : "PROPOSAL RECEIVED!"}
+          <h3 class="font-bold text-2xl text-primary">
+            {cfpStore.formData.id ? "Changes saved" : "Proposal received"}
           </h3>
-          <p class="py-4 font-mono text-sm leading-relaxed">
+          <p class="py-4 text-sm leading-relaxed">
             {cfpStore.formData.id
-              ? "Your changes have been successfully updated. You can continue to edit your proposal until the CFP closes."
-              : "Thanks for throwing your hat in the ring! We've sent a confirmation email to your inbox."}
-            <br /><br />
-            Do you want to submit another talk?
+              ? "You can edit your proposal until the CFP closes."
+              : "We've sent you a confirmation email."}
           </p>
           <div class="modal-action">
             <form method="dialog">
               <button
-                class="btn btn-primary font-mono"
+                class="btn btn-primary"
                 onClick={handleModalClose}
               >
-                SUBMIT ANOTHER / RETURN
+                Submit another talk
               </button>
             </form>
           </div>
         </div>
       </dialog>
 
-      <h2 class="text-2xl font-bold font-star text-white mb-2 pt-4 flex items-center justify-center gap-3">
-        <span class="text-primary">//</span> FINAL REVIEW
-      </h2>
-      <p class="text-center text-secondary-300 mb-8 font-mono text-sm">
-        Check everything one last time. Our review process is anonymized.
+      <p class="text-secondary-300 mb-8 text-sm">
+        Check your details before submitting. Committee review is anonymized.
       </p>
 
       <Show when={errors().length > 0}>
@@ -134,8 +130,8 @@ const Confirmation = () => {
         </div>
       </Show>
       <div class="grid grid-cols-1 gap-4">
-        <SummarySection title="SPEAKER INFO" step={2}>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-y-2 text-sm font-mono text-secondary-300">
+        <SummarySection title="Speaker details" step={2}>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-y-2 text-sm text-secondary-300">
             <p>
               <span class="opacity-60 text-white">Name:</span>{" "}
               {cfpStore.formData.full_name}
@@ -151,11 +147,11 @@ const Confirmation = () => {
           </div>
         </SummarySection>
 
-        <SummarySection title="TALK PROPOSAL" step={3}>
+        <SummarySection title="Talk proposal" step={3}>
           <p class="text-xl font-bold text-white mb-4">
             {cfpStore.formData.talk_title}
           </p>
-          <div class="bg-base-300/30 p-4 rounded-lg border border-white/5 mb-4">
+          <div class="mb-4">
             <p class="font-mono text-xs uppercase text-primary mb-2">
               Abstract
             </p>
@@ -164,7 +160,7 @@ const Confirmation = () => {
               innerHTML={cfpStore.formData.abstract}
             />
           </div>
-          <div class="bg-base-300/30 p-4 rounded-lg border border-white/5">
+          <div>
             <p class="font-mono text-xs uppercase text-primary mb-2">
               Takeaways
             </p>
@@ -175,10 +171,10 @@ const Confirmation = () => {
           </div>
         </SummarySection>
 
-        <SummarySection title="LOGISTICS" step={5}>
+        <SummarySection title="Expenses and notes" step={5}>
           <div class="flex items-center gap-3">
             <div
-              class={`badge badge-lg font-mono ${cfpStore.formData.company_cover_expenses === "Yes"
+              class={`badge badge-lg h-auto whitespace-normal ${cfpStore.formData.company_cover_expenses === "Yes"
                 ? "badge-success text-base-100"
                 : "badge-warning text-base-100"
                 }`}
@@ -199,32 +195,26 @@ const Confirmation = () => {
         </SummarySection>
       </div>
 
-      <div class="alert bg-primary/10 border-primary/20 mt-8 rounded-xl shadow-lg">
-        <Icon
-          icon="material-symbols:info-outline"
-          class="text-primary text-2xl"
-        />
-        <span class="text-sm font-mono text-primary-content/80">
-          Once submitted, you'll still be able to edit the proposal details.
-          Personal profile changes will still sync as described in{" "}
-          <a class="link link-primary font-bold" href="/cfp/step-2">
-            Step 2.
+      <p class="text-sm text-secondary-300 mt-6">
+          You can edit proposal details after submitting. Changes to your{" "}
+          <a class="link link-primary" href="/cfp/02-personal">
+            personal details
           </a>
-        </span>
-      </div>
+          {" "}apply to all your submissions.
+      </p>
 
       <div class="flex flex-col md:flex-row justify-between mt-10 gap-4">
         <button
           onClick={() => navigate("/cfp/05-expenses")}
-          class="btn btn-outline btn-lg flex-1 font-mono hover:bg-white/10"
+          class="btn btn-outline flex-1 hover:bg-white/10"
         >
-          BACK
+          Back
         </button>
         <button
           onClick={handleSubmit}
-          class="btn btn-primary btn-lg flex-[2] gap-2 shadow-[0_0_20px_rgba(var(--color-primary-500),0.4)] font-mono border-primary"
+          class="btn btn-primary flex-[2] gap-2"
         >
-          {cfpStore.formData.id ? "SAVE PROPOSAL EDITS" : "SUBMIT PROPOSAL"}
+          {cfpStore.formData.id ? "Save changes" : "Submit proposal"}
           <Icon
             icon={
               cfpStore.formData.id

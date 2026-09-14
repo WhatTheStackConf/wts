@@ -89,8 +89,8 @@ export function CheckinEventAdmin() {
 
   return (
     <section aria-label="Event configuration" class="min-w-0 rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-4 break-words">
-      <h2 class="text-2xl font-bold">WTS 2026 event configuration</h2>
-      <p>Discover events from the authorized Hi.Events account. Explicitly mark edition membership and select an exact admission list; titles never determine membership. Selection later belongs to each phone, not its station.</p>
+      <h2 class="text-2xl font-bold">WTS 2026 events</h2>
+      <p>Mark WTS 2026 membership and choose an exact admission list from Hi.Events; event titles do not establish membership. Each phone selects its own event.</p>
       <div aria-live="polite" class="space-y-2">
         <Show when={catalogue.loading}><p role="status">Loading event catalogue…</p></Show>
         <Show when={catalogue.error}><p role="alert" class="alert alert-error">Event catalogue unavailable. Previously displayed events are not verified; this is not an empty catalogue.</p></Show>
@@ -124,7 +124,7 @@ export function CheckinEventAdmin() {
               <Show when={loaded().state !== "complete"}><p class="alert alert-warning" role="status">Event options are {loaded().state}. Saving is unavailable until the full list, question and product catalogue is verified.</p></Show>
               <form method="post" action="/api/checkin-events" class="space-y-4" onSubmit={(event) => { event.preventDefault(); if (!canReview()) return; setReviewing(true); setError(""); requestAnimationFrame(() => { reasonInput?.focus(); reasonInput?.scrollIntoView({ block: "center" }); }); }}>
                 <fieldset class="min-w-0 space-y-4" disabled={pending() || reviewing() || !!frozen() || !sourceAvailable() || loaded().state !== "complete"}>
-                  <legend class="font-bold">Edition membership and admission mapping</legend>
+                  <legend class="font-bold">Membership and admission list</legend>
                   <label class="flex items-start gap-3"><input type="checkbox" class="checkbox" checked={current().member} onChange={(event) => update({ member: event.currentTarget.checked })} /><span>This event belongs to WTS 2026</span></label>
                   <label for="checkin-event-list" class="block font-medium">Admission list (required when enabled)</label>
                   <select id="checkin-event-list" class="select select-bordered min-h-12 w-full min-w-0 max-w-full text-base" required={current().enabled} value={current().listId} onChange={(event) => update({ listId: event.currentTarget.value })}>
@@ -141,7 +141,7 @@ export function CheckinEventAdmin() {
                   </select>
                   <Show when={current().affiliation}>
                     <fieldset class="min-w-0 space-y-3">
-                      <legend class="font-medium">Affiliation product scope (optional)</legend>
+                      <legend class="font-medium">Restrict affiliation by product (optional)</legend>
                       <p class="text-sm">No products selected means no additional product restriction. Products outside this question's scope are unavailable.</p>
                       <For each={loaded().products}>{(product) => (
                         <label class="flex items-start gap-3"><input type="checkbox" class="checkbox" disabled={!productApplies(product.id)} checked={current().affiliation?.productIds.includes(product.id) ?? false} onChange={(event) => {

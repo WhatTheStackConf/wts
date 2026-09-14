@@ -1,0 +1,15 @@
+[
+  {
+    "date": "2026-09-14",
+    "scope": "app",
+    "macrostructure": "Existing WTS task-first workspaces",
+    "theme": "Existing WTS — DESIGN.md preserved",
+    "enrichment": "none added",
+    "brief": "Simplify signed-in Q&A, account/achievements, admin, reviewer/CFP and check-in interfaces without changing the design system",
+    "designSystem": "DESIGN.md",
+    "systemChanged": false,
+    "verification": "docs/signed-in-usability.md",
+    "critique": { "philosophy": 5, "hierarchy": 4, "execution": 4, "specificity": 5, "restraint": 4, "variety": 4 },
+    "gateScope": "In-place usability cleanup. Existing system, shared public chrome, and catalog/export/rotation gates excluded by explicit user scope; no universal 58/58 claim."
+  }
+]

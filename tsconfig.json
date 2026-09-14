@@ -34,7 +34,9 @@
     "playwright.config.ts",
     "playwright.lifecycle.config.ts",
     "playwright.live-qa.config.ts",
+    "playwright.workspace.config.ts",
     "tests/live-qa.spec.ts",
+    "tests/workspace-usability.spec.ts",
     "tests/checkin*.ts",
     "tests/checkin*.tsx",
     "tests/fixtures/checkin*.tsx"

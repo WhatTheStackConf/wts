@@ -37,28 +37,28 @@ const MyProposals = () => {
         <div class="max-w-5xl mx-auto">
           <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
             <div>
-              <h1 class="text-4xl font-bold text-primary mb-2 italic">
-                Your Submissions
+              <h1 class="text-3xl font-bold text-white mb-2">
+                My proposals
               </h1>
-              <p class="text-base-content/60 font-medium font-mono text-sm">
-                {proposals()?.length || 0} proposals found for{" "}
+              <p class="text-base-content/70 text-sm">
+                {proposals()?.length || 0} proposals ·{" "}
                 {auth.record?.name}
               </p>
             </div>
             <a
               href="/cfp/01-intro"
-              class="btn btn-primary gap-2 shadow-lg shadow-primary/30 px-8"
+              class="btn btn-primary gap-2"
             >
               <Icon icon="material-symbols:add" class="text-xl" />
-              New Proposal
+              New proposal
             </a>
           </div>
 
           <Show when={proposals.loading}>
             <div class="flex flex-col items-center justify-center py-20 gap-4">
               <span class="loading loading-bars loading-lg text-primary"></span>
-              <p class="text-xs uppercase tracking-widest opacity-50">
-                Fetching Data...
+              <p class="text-sm text-base-content/70">
+                Loading proposals…
               </p>
             </div>
           </Show>
@@ -67,15 +67,15 @@ const MyProposals = () => {
             when={!proposals.loading && proposals()}
             fallback={
               <Show when={!proposals.loading}>
-                <div class="bg-base-200/30 border-2 border-dashed border-base-content/10 rounded-3xl p-20 text-center">
+                <div class="bg-base-200/30 border border-base-content/10 rounded-2xl p-6 sm:p-12 text-center">
                   <h3 class="text-2xl font-bold opacity-60 mb-2">
-                    Silence in the stack...
+                    No proposals yet
                   </h3>
                   <p class="mb-8 opacity-40">
                     You haven't submitted any proposals for 2026 yet.
                   </p>
                   <a href="/cfp/01-intro" class="btn btn-outline btn-wide">
-                    Submit a Talk
+                    Submit a talk
                   </a>
                 </div>
               </Show>

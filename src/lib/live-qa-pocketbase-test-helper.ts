@@ -10,7 +10,7 @@ import PocketBase from 'pocketbase';
 
 /** Synthetic loopback-only DB. Relevant real migrations/hooks are copied unchanged.
  * Never reads .env or existing pb_data; excludes mail, cron and outbound hooks. */
-export async function startLiveQaPocketBase() {
+export async function startLiveQaPocketBase(options: { workspace?: boolean } = {}) {
   // All default slots in this disposable programme share an anchor, even if
   // setup or a restart crosses local midnight while the test is running.
   const fixtureInstant = new Date().toISOString();
@@ -32,9 +32,25 @@ export async function startLiveQaPocketBase() {
     '1787000009_backfill_empty_user_roles.js', '1788000003_create_appearance_events.js',
     '1788000004_create_event_programmes.js', '1790000000_add_checkin_operator_role.js',
     ...readdirSync(join(source, 'pb_migrations')).filter(name => name.endsWith('_create_live_qa.js')),
+    ...(options.workspace ? [
+      '1767175796_updated_cfp_applicants.js', '1767175834_updated_cfp_submissions.js',
+      '1767297280_updated_cfp_submissions.js',
+      '1780000000_create_conference_config.js',
+      '1782000000_create_partners.js', '1782000001_remove_bank_partner_tier.js',
+      '1783000000_create_mcp_tokens.js',
+      ...readdirSync(join(source, 'pb_migrations')).filter(name => name.startsWith('17860000')),
+      '1787000000_normalize_partner_vocabulary.js', '1787000002_partner_draft_lifecycle.js',
+      '1787000003_repair_partner_draft_fields.js', '1787000004_create_admin_actions.js',
+      '1787000005_migrate_mcp_token_scopes.js', '1787000006_govern_mcp_tokens.js',
+      '1788000002_add_partner_logo_surface.js', '1789000001_add_bank_partner_tier.js',
+    ] : []),
   ];
   const hooks = readdirSync(join(source, 'pb_hooks')).filter(name => name.startsWith('live-qa') || [
     'users_role_guard.pb.js', 'agenda_constraints.pb.js', 'appearance_event_constraints.pb.js', 'programme_public_fields.pb.js',
+    ...(options.workspace ? [
+      'gamification_accounting_constraints.pb.js', 'partner_administration.pb.js',
+      'admin_action_ledger.pb.js', 'mcp_token_administration.pb.js', 'cfp_close_guard.pb.js',
+    ] : []),
   ].includes(name));
   for (const name of migrations) copyFileSync(join(source, 'pb_migrations', name), join(migrationsDir, name));
   for (const name of hooks) copyFileSync(join(source, 'pb_hooks', name), join(hooksDir, name));

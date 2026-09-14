@@ -1,3 +1,4 @@
+import { For, Show } from "solid-js";
 import { Icon } from "~/components/Icon";
 
 interface CfpStepIndicatorProps {
@@ -6,45 +7,26 @@ interface CfpStepIndicatorProps {
 
 export const CfpStepIndicator = (props: CfpStepIndicatorProps) => {
     return (
-        <div class="mb-10">
-            <div class="flex justify-between relative z-10">
-                {[1, 2, 3, 4, 5, 6].map((s) => (
-                    <div class="flex flex-col items-center group cursor-default">
-                        <div
-                            class={`w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all duration-300 ${props.currentStep === s
-                                    ? "bg-primary text-white border-primary shadow-[0_0_15px_rgba(var(--color-primary-500),0.4)]"
-                                    : s < props.currentStep
-                                        ? "bg-success text-white border-success"
-                                        : "bg-base-300/50 text-white/30 border-white/10"
-                                }`}
+        <div class="mb-8">
+            <p class="text-sm text-secondary-300 mb-3">Step {props.currentStep} of 6</p>
+            <ol aria-label="Proposal progress" class="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                <For each={["Intro", "Personal", "Proposal", "Experience", "Expenses", "Confirm"]}>
+                    {(label, index) => (
+                        <li
+                            aria-current={props.currentStep === index() + 1 ? "step" : undefined}
+                            class={`flex min-w-0 flex-col items-start gap-1 text-xs ${props.currentStep === index() + 1 ? "text-primary font-bold" : "text-secondary-300"}`}
                         >
-                            {s < props.currentStep ? (
-                                <Icon icon="material-symbols:check" />
-                            ) : (
-                                <span class="font-mono font-bold">{s}</span>
-                            )}
-                        </div>
-                        <div
-                            class={`text-[10px] uppercase tracking-wider mt-2 font-mono font-bold transition-colors duration-300 ${props.currentStep === s ? "text-primary text-shadow-glow" : "text-white/30"
-                                }`}
-                        >
-                            {s === 1 && "Intro"}
-                            {s === 2 && "Personal"}
-                            {s === 3 && "Proposal"}
-                            {s === 4 && "Experience"}
-                            {s === 5 && "Expenses"}
-                            {s === 6 && "Confirm"}
-                        </div>
-                    </div>
-                ))}
-            </div>
-            {/* Connecting line */}
-            <div class="absolute top-5 left-0 w-full h-0.5 bg-white/5 -z-0 translate-y-[28px]">
-                <div
-                    class="h-full bg-success/50 transition-all duration-500"
-                    style={{ width: `${((props.currentStep - 1) / 5) * 100}%` }}
-                ></div>
-            </div>
+                            <span class={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center border ${props.currentStep === index() + 1 ? "border-primary bg-primary/10" : "border-white/20"}`}>
+                                <Show when={index() + 1 < props.currentStep} fallback={index() + 1}>
+                                    <Icon icon="material-symbols:check" />
+                                    <span class="sr-only">Completed: </span>
+                                </Show>
+                            </span>
+                            {label}
+                        </li>
+                    )}
+                </For>
+            </ol>
         </div>
     );
 };

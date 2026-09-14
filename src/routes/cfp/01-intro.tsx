@@ -66,67 +66,28 @@ const Intro = () => {
 
   return (
     <CfpStepLayout
-      title="Call for Papers - Step 1"
+      title="Submit a talk"
       description="Submit your talk proposal for WhatTheStack 2026 - Step 1: Introduction"
       step={1}
     >
       <div class="mb-10">
-        <h2 class="text-2xl font-bold font-star text-white mb-6 flex items-center gap-3">
-          <span class="text-primary">//</span> INTRODUCTION
-        </h2>
-        <div class="prose prose-invert prose-lg max-w-none text-gray-200 leading-relaxed">
-          <p>
-            Do you love software development (of any kind) and love
-            talking about it? So do we. Plus, we have a few stages you can
-            do that talking on. This is our official CfP form for
-            WhatTheStack 2026.
-          </p>
-          <div class="bg-base-300/30 p-6 rounded-xl border border-white/5 my-6">
-            <p class="mt-0 text-secondary-300">
-              Each CfP submission will be anonymized before being
-              carefully reviewed by our committee. We'll be in touch after
-              each round of decisions and we'll keep things transparent.
-              Thanks for the interest and for taking the time to apply to
-              WhatTheStack 2026!
-            </p>
-          </div>
-          <p>
-            If you're not sure what to talk about, we've got a few ideas:
-          </p>
-          <ul class="list-none space-y-2 pl-0">
-            {[
-              "How to build a thing with React/Flutter/Electron/Express/Laravel/Rails/Your own framework?",
-              "AI's AbOUt tO RePlAce uS!!1! (But better make it a good one. We mean it.)",
-              "The latest in serverless, containers, or why sticking to a VPS is still a good idea.",
-              "Machine learning, LLMs, and how to use them to solve real-world problems (ideally not just via chatbots).",
-              "I built/hacked something together that I'm proud of and want to share with the world.",
-              "Why soft skills matter in the tech industry.",
-            ].map((item) => (
-              <li class="flex items-start gap-3 pl-0">
-                <span class="text-primary mt-1.5">›</span>
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-          <p>
-            That's a pretty wide range of example already, but even if you
-            don't see your intended topic (topic space?) covered, please
-            apply - we aim to widen the array of topics covered this time
-            around.
-          </p>
-          <div class="bg-primary/5 border border-primary/20 p-6 rounded-xl relative overflow-hidden text-secondary-300">
-            <div class="absolute top-0 right-0 w-20 h-20 bg-primary/10 rounded-bl-full -mr-10 -mt-10"></div>
-            <p class="font-bold text-white mb-2 relative z-10">
-              EXPENSES COVERED
-            </p>
-            <p class="text-sm m-0 relative z-10">
-              Note: If your talk gets chosen, we're covering travel and
-              accommodation expenses in full. If your employer is willing
-              to cover that, we'll be happy to list them as a supporter
-              during the WTS promo campaign - just make sure to specify
-              that in the related question later in the application.
-            </p>
-          </div>
+
+        <div class="space-y-5 text-sm text-secondary-300 leading-relaxed">
+          <p>Propose a software-development talk for WhatTheStack 2026. Submissions are anonymized for committee review; we'll notify you after each decision round.</p>
+          <section class="border-t border-white/10 pt-4" aria-labelledby="cfp-expenses-heading">
+            <h2 id="cfp-expenses-heading" class="font-bold text-white mb-2">Travel and accommodation</h2>
+            <p>We cover both in full for accepted talks. If your employer covers them, mention it in the Expenses step so we can list them as a supporter during the WTS promo campaign.</p>
+          </section>
+          <details class="border-t border-white/10 pt-2">
+            <summary class="cursor-pointer min-h-12 py-3 font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">Topic ideas</summary>
+            <ul class="list-disc space-y-2 pl-5">
+              <li>Building with frameworks, tools, or your own project.</li>
+              <li>Serverless, containers, infrastructure, or a VPS.</li>
+              <li>Practical machine learning, LLMs, or AI's impact on development.</li>
+              <li>Soft skills and lessons from working in tech.</li>
+            </ul>
+            <p class="mt-3">Other software-development topics are welcome.</p>
+          </details>
         </div>
 
         <div class="mt-8 p-4 bg-base-300/50 rounded-lg border border-white/10 font-mono text-sm flex items-center gap-3 text-secondary-300">
@@ -134,7 +95,7 @@ const Intro = () => {
             icon="material-symbols:mark-email-read-outline"
             class="text-xl text-primary"
           />
-          <span>
+          <span class="min-w-0 [overflow-wrap:anywhere]">
             Logged in as{" "}
             <span class="text-white font-bold">
               {auth?.record?.email}
@@ -149,9 +110,9 @@ const Intro = () => {
         <button
           type="button"
           onClick={handleNext}
-          class="btn btn-primary btn-lg shadow-[0_0_20px_rgba(var(--color-primary-500),0.3)] px-10 font-mono"
+          class="btn btn-primary gap-2"
         >
-          NEXT <Icon icon="material-symbols:arrow-forward" />
+          Next <Icon icon="material-symbols:arrow-forward" />
         </button>
       </div>
     </CfpStepLayout>
