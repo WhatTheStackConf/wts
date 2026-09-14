@@ -2,7 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, onSettled
 import { Meta, Title } from "@solidjs/meta";
 import { useAuth } from "~/lib/auth-context";
 import { useRequireCheckinOperator } from "~/lib/route-guards";
-import { createAsyncResource } from "~/lib/async-resource";
+import { createCheckinPollingResource } from "./checkin-polling-resource";
 import { bindCheckinStation, checkinStatus, previewCheckinStation } from "~/lib/checkin-client";
 import { checkinEventCatalogue, selectCheckinEvent } from "~/lib/checkin-event-client";
 import { agentStatus } from "~/lib/checkin-agent-client";
@@ -21,12 +21,12 @@ export default function CheckinScannerPage() {
   const guard = useRequireCheckinOperator();
   const auth = useAuth();
   const actorKey = createMemo(() => guard.authorized() ? `${guard.user()?.id}:${guard.user()?.role}` : undefined);
-  const [status, statusActions] = createAsyncResource(actorKey, async key => ({ ...(await checkinStatus()), verifiedFor: key }));
+  const [status, statusActions] = createCheckinPollingResource(actorKey, async key => ({ ...(await checkinStatus()), verifiedFor: key }));
   const bound = () => status()?.bindingState === "bound" && !!status()?.binding && !status()?.binding?.revoked;
   const scope = createMemo(() => !status.error && status()?.verifiedFor === actorKey() && bound() ? `${status()!.binding!.id}:${status()!.binding!.version}:${status()?.station?.id}` : undefined);
   const eventSource = createMemo(() => scope() ? `${scope()}:${status()?.station?.generation}:${status()?.system.generation}` : undefined);
-  const [events, eventActions] = createAsyncResource(eventSource, checkinEventCatalogue);
-  const [machine, machineActions] = createAsyncResource(scope, async binding => ({ binding, ...(await agentStatus()) }));
+  const [events, eventActions] = createCheckinPollingResource(eventSource, checkinEventCatalogue);
+  const [machine, machineActions] = createCheckinPollingResource(scope, async binding => ({ binding, ...(await agentStatus()) }));
   const [pane, setPane] = createSignal<"scan" | "event" | "lookup" | "lookup-result">("scan");
   const [pairCode, setPairCode] = createSignal("");
   const [preview, setPreview] = createSignal<{ code: string; value: CheckinPreviewDTO }>();
@@ -66,8 +66,8 @@ export default function CheckinScannerPage() {
   const stationLabel = () => !status.error ? status()?.station?.label || "Pair a station" : "Connection unavailable";
   const eventLabel = () => events.error ? "Event unavailable" : events()?.selected?.title || "Choose an event";
   async function refreshStatus(force = false) {
-    if (!guard.authorized() || (!force && status.loading)) return;
-    await statusActions.refetch().catch(() => undefined);
+    if (!guard.authorized() || (!force && status.refreshing)) return;
+    await (force ? statusActions.refetch() : statusActions.poll()).catch(() => undefined);
   }
   onSettled(() => {
     const fragment = window.location.hash;
@@ -76,17 +76,17 @@ export default function CheckinScannerPage() {
       const match = /^#provision=([a-f0-9]{64})$/.exec(fragment);
       if (match) setPairCode(match[1]); else setMessage("That station link is invalid. Scan the station QR again.");
     }
-    const tick = () => { if (!document.hidden) { void refreshStatus(); if (!machine.loading) void machineActions.refetch().catch(() => undefined); } };
+    const tick = () => { if (!document.hidden) { void refreshStatus(); if (!machine.refreshing) void machineActions.poll().catch(() => undefined); } };
     const timer = window.setInterval(tick, 5000);
     // Held work uses its frozen context, not a newly fetched catalogue. Keep
     // station/permission checks running; source-fence changes still refetch and
     // redact. Defer optional focus refresh until no arrival/lookup is held.
-    const focus = () => { tick(); if (!eventBusy() && !cameraBusy() && !lookupBusy()) void eventActions.refetch().catch(() => undefined); };
+    const focus = () => { tick(); if (!eventBusy() && !cameraBusy() && !lookupBusy()) void eventActions.poll().catch(() => undefined); };
     window.addEventListener("focus", focus);
     return () => { window.clearInterval(timer); window.removeEventListener("focus", focus); };
   });
   onCleanup(() => { disposed = true; });
-  createEffect(() => [actorKey(), scope()] as const, () => { pairingEpoch++; setPreview(undefined); setMessage(""); setLookupOutcome(undefined); queuedResume = undefined; });
+  createEffect(() => `${actorKey()}:${scope()}`, () => { pairingEpoch++; setPreview(undefined); setMessage(""); setLookupOutcome(undefined); queuedResume = undefined; });
   async function review(code: string) {
     if (pairBusy() || !guard.authorized()) return;
     const epoch = ++pairingEpoch, actor = actorKey();

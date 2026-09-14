@@ -145,6 +145,179 @@ test("public Q&A is stage-first, keeps stage links on reload, and excludes weekd
   await expect(page.getByRole("link", { name: "Log in to ask", exact: true })).toHaveCount(0);
 });
 
+// Sample each frame across a delayed real response: identical-looking replacement
+// controls still lose keyboard focus, and a settled screenshot misses the jump.
+async function watchPoll(page: Page, scope: Locator, focus: Locator) {
+  await focus.focus();
+  const root = await scope.elementHandle();
+  if (!root) throw new Error("Polling scope missing");
+  await page.evaluate(root => {
+    const focused = document.activeElement;
+    const controls = Array.from(root.querySelectorAll<HTMLElement>("button, input, textarea, a, summary"))
+      .map(node => ({ node, top: node.getBoundingClientRect().top, disabled: node.matches(":disabled") }));
+    const failures = new Set<string>();
+    let frames = 0;
+    let active = true;
+    const sample = () => {
+      frames++;
+      for (const { node, top, disabled } of controls) {
+        if (!node.isConnected) failures.add("control replaced");
+        if (Math.abs(node.getBoundingClientRect().top - top) > 1) failures.add("control moved");
+        if (node.matches(":disabled") !== disabled) failures.add("control availability changed");
+      }
+      if (document.activeElement !== focused) failures.add("focus lost");
+      if (active) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+    Object.assign(window, { qaPollProbe: { stop: () => { active = false; return { frames, failures: [...failures] }; } } });
+  }, root);
+  return async () => {
+    const result = await page.evaluate(() => (window as unknown as { qaPollProbe: { stop: () => { frames: number; failures: string[] } } }).qaPollProbe.stop());
+    expect(result.frames).toBeGreaterThan(1);
+    expect(result.failures).toEqual([]);
+  };
+}
+
+async function holdQaRead(page: Page, method: "GET" | "POST") {
+  let release = () => {};
+  let observed = () => {};
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const requested = new Promise<void>(resolve => { observed = resolve; });
+  await page.route("**/api/live-qa", async route => {
+    if (route.request().method() === method && (method === "GET" || route.request().postDataJSON()?.operation === "session")) {
+      observed();
+      await gate;
+    }
+    await route.continue();
+  });
+  return { release, requested };
+}
+
+async function pollVisible(page: Page) {
+  // The real visibility-triggered poll, without advancing auth/browser time.
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+}
+async function twoFrames(page: Page) {
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+}
+async function unchangedPoll(page: Page, scope: Locator, focus: Locator, method: "GET" | "POST") {
+  const held = await holdQaRead(page, method);
+  const stop = await watchPoll(page, scope, focus);
+  const response = page.waitForResponse(response => response.url().endsWith("/api/live-qa") && response.request().method() === method);
+  try { await pollVisible(page); await held.requested; await twoFrames(page); }
+  finally { held.release(); }
+  await response;
+  await twoFrames(page);
+  await stop();
+  await page.unroute("**/api/live-qa");
+}
+
+test("polling keeps stage controls, links, search and geometry stable and publishes real updates", async ({ page }) => {
+  await page.route("https://**/*", route => route.abort());
+  const initial = await holdQaRead(page, "GET");
+  try {
+    await page.goto("/qa?stage=stage-3");
+    await initial.requested;
+    await expect(page.getByText("Refreshing main-day sessions…", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Stage 2", exact: true })).toHaveCount(0);
+  } finally { initial.release(); }
+  const stage = page.getByRole("button", { name: "Stage 2", exact: true });
+  await expect(stage).toBeVisible();
+  await page.unroute("**/api/live-qa");
+  const scope = page.getByRole("region", { name: "Choose your stage", exact: true });
+  const search = page.getByLabel("Search sessions in this stage");
+  await search.fill(state.slug);
+  const link = scope.getByRole("link", { name: new RegExp(`Session ${state.slug}`) });
+  for (const focus of [stage, search, link]) {
+    await unchangedPoll(page, scope, focus, "GET");
+    await expect(search).toHaveValue(state.slug);
+  }
+  const pb = await rootClient();
+  const session = await pb.collection("sessions").getOne(state.sessionId);
+  const linkHandle = await link.elementHandle();
+  try {
+    await pb.collection("sessions").update(state.sessionId, { title: `Updated Session ${state.slug}` });
+    await pollVisible(page);
+    await expect(scope.getByRole("heading", { name: `Updated Session ${state.slug}`, exact: true })).toBeVisible();
+    expect(await linkHandle!.evaluate(node => node.isConnected)).toBe(true);
+  } finally { await pb.collection("sessions").update(state.sessionId, { title: session.title }); }
+});
+
+test("polling keeps private question controls and drafts stable, updates answers and redacts denial", async ({ browser }) => {
+  const pb = await rootClient();
+  const seeded = await pb.collection("live_qa_questions").create({ session: state.sessionId, author: state.users.user.id, body: "Polling identity fixture question", answered: false, request_id: crypto.randomUUID(), request_payload: { fixture: true }, request_reply: { fixture: true } });
+  const mc = await actorPage(browser, "mc");
+  const { page } = mc;
+  try {
+    const initial = await holdQaRead(page, "POST");
+    try {
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await initial.requested;
+      await expect(page.getByText("Checking questions…", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Send question", exact: true })).toBeDisabled();
+      await expect(page.getByRole("region", { name: "Submitted questions", exact: true })).toHaveCount(0);
+    } finally { initial.release(); }
+    await expect(page.getByRole("heading", { name: "Session questions", exact: true })).toBeVisible();
+    await page.unroute("**/api/live-qa");
+    const scope = page.getByRole("region", { name: "Live Q&A", exact: true });
+    const draft = page.getByLabel("Your question", { exact: true });
+    await draft.fill("Keep this private polling draft");
+    const row = scope.getByRole("listitem").filter({ hasText: seeded.body });
+    const answer = row.getByRole("button", { name: "Mark answered", exact: true });
+    await expect(answer).toBeVisible();
+    for (const focus of [draft, answer]) {
+      await unchangedPoll(page, scope, focus, "POST");
+      await expect(draft).toHaveValue("Keep this private polling draft");
+    }
+    const answerHandle = await answer.elementHandle();
+    await pb.collection("live_qa_questions").update(seeded.id, { answered: true });
+    await pollVisible(page);
+    await expect(row.getByRole("button", { name: "Reopen question", exact: true })).toBeVisible();
+    expect(await answerHandle!.evaluate(node => node.isConnected)).toBe(true);
+    await page.route("**/api/live-qa", route => route.request().postDataJSON()?.operation === "session"
+      ? route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "Synthetic permission denial" }) }) : route.continue());
+    await pollVisible(page);
+    await expect(scope.getByRole("alert")).toContainText("Q&A access could not be verified");
+    await expect(draft).toHaveCount(0);
+    await expect(row).toHaveCount(0);
+    await expect(scope.getByRole("button", { name: "Open questions", exact: true })).toHaveCount(0);
+    await page.unroute("**/api/live-qa");
+    await scope.getByRole("button", { name: "Refresh questions", exact: true }).click();
+    await expect(draft).toHaveValue("");
+  } finally { await mc.context.close(); await pb.collection("live_qa_questions").delete(seeded.id); }
+});
+
+test("polling does not drop a question-page click during an in-flight refresh", async ({ browser }) => {
+  const pb = await rootClient();
+  const seeded: string[] = [];
+  let actor: Awaited<ReturnType<typeof actorPage>> | undefined;
+  try {
+    for (let index = 0; index < 51; index++) {
+      const question = await pb.collection("live_qa_questions").create({ session: state.sessionId, author: state.users.user.id, body: `Paging fixture ${index}`, answered: false, request_id: crypto.randomUUID(), request_payload: { fixture: true }, request_reply: { fixture: true } });
+      seeded.push(question.id);
+    }
+    actor = await actorPage(browser, "mc");
+    const { page } = actor;
+    const next = page.getByRole("button", { name: "Next questions", exact: true });
+    await expect(next).toBeEnabled();
+    const held = await holdQaRead(page, "POST");
+    try {
+      await pollVisible(page);
+      await held.requested;
+      await next.click();
+      await expect(next).toBeDisabled();
+    } finally { held.release(); }
+    await expect(page.getByText("Page 2 of 2", { exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Submitted questions", exact: true }).getByRole("listitem")).toHaveCount(1);
+    await page.unroute("**/api/live-qa");
+    await page.getByRole("button", { name: "Previous questions", exact: true }).click();
+    await expect(page.getByText("Page 1 of 2", { exact: true })).toBeVisible();
+  } finally {
+    await actor?.context.close();
+    for (const id of seeded) await pb.collection("live_qa_questions").delete(id);
+  }
+});
+
 async function expectResponsive(page: Page, scope: Locator, width: number) {
   await page.setViewportSize({ width, height: 900 });
   await expect(scope).toBeVisible();

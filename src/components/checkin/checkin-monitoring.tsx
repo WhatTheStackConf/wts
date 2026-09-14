@@ -1,5 +1,5 @@
 import { For, Show, createSignal, onSettled } from "solid-js";
-import { createAsyncResource } from "~/lib/async-resource";
+import { createCheckinPollingResource } from "./checkin-polling-resource";
 import type { AgentReadinessDTO } from "~/lib/checkin-agent-contract";
 import type { MonitoringDashboard, MonitoringIncident, MonitoringConfigureCommand } from "~/lib/checkin-monitoring-contract";
 import { monitoringDashboard, configureMonitoring, acknowledgeMonitoring, CheckinMonitoringRequestError } from "~/lib/checkin-monitoring-client";
@@ -110,8 +110,8 @@ export function CheckinMonitoringPanel(props: CheckinMonitoringPanelProps) {
   const [editor, setEditor] = createSignal<MonitoringDashboard>();
   const editing = () => !!editor();
   const client = props.client ?? defaultClient;
-  const [dashboard, dashboardActions] = createAsyncResource(() => mounted() && { audience: props.audience, offset: offset() }, async (query) => client.dashboard(query.audience, query.offset));
-  onSettled(() => { setNow(Date.now()); setMounted(true); const refresh = () => { setNow(Date.now()); if (!document.hidden && !dashboard.loading && !editing()) void dashboardActions.refetch().catch(() => undefined); }; const timer = setInterval(refresh, 5000); window.addEventListener("focus", refresh); return () => { clearInterval(timer); window.removeEventListener("focus", refresh); }; });
+  const [dashboard, dashboardActions] = createCheckinPollingResource(() => mounted() ? `${props.audience}:${offset()}` : undefined, async (query) => { const [audience, page] = query.split(":"); return client.dashboard(audience as "admin" | "operator", Number(page)); });
+  onSettled(() => { setNow(Date.now()); setMounted(true); const refresh = () => { setNow(Date.now()); if (!document.hidden && !dashboard.refreshing && !editing()) void dashboardActions.poll().catch(() => undefined); }; const timer = setInterval(refresh, 5000); window.addEventListener("focus", refresh); return () => { clearInterval(timer); window.removeEventListener("focus", refresh); }; });
   async function acknowledge(id: string) {
     if (acknowledging()) return; setAcknowledging(id); setMessage("");
     try { await client.acknowledge(id); setMessage("Incident acknowledged. Operational state is unchanged."); void dashboardActions.refetch().catch(() => undefined); }

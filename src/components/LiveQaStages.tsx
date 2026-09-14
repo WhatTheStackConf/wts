@@ -51,7 +51,8 @@ export function LiveQaStages(props: LiveQaStagesProps) {
       throw cause;
     } finally { inFlight = false; }
   });
-  const loading = () => programme.loading;
+  // A background read must not insert a loading row or disable focused controls.
+  const loading = () => programme.loading && !programme();
 
   const selectedStage = createMemo(() => {
     const stages = programme()?.stages ?? [];
@@ -110,13 +111,13 @@ export function LiveQaStages(props: LiveQaStagesProps) {
           <Show when={data().day} fallback={<p role="status">The main-day Q&A programme is not published yet.</p>}>
             <Show when={data().stages.length} fallback={<p>No stages are published for the main conference day yet.</p>}>
               <div role="group" aria-label="Conference stages" class="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                <For each={data().stages}>
+                <For each={data().stages} keyed={stage => stage.key}>
                   {(stage) => <button
                     type="button"
-                    aria-pressed={selectedStage()?.key === stage.key ? "true" : "false"}
-                    class={`btn min-h-12 h-auto min-w-0 whitespace-normal break-words px-3 py-3 ${selectedStage()?.key === stage.key ? "btn-primary" : "btn-outline"}`}
-                    onClick={() => { setSearch(""); setParams({ stage: stage.key }, { replace: false, scroll: false }); }}
-                  >{stage.name}</button>}
+                    aria-pressed={selectedStage()?.key === stage().key ? "true" : "false"}
+                    class={`btn min-h-12 h-auto min-w-0 whitespace-normal break-words px-3 py-3 ${selectedStage()?.key === stage().key ? "btn-primary" : "btn-outline"}`}
+                    onClick={() => { setSearch(""); setParams({ stage: stage().key }, { replace: false, scroll: false }); }}
+                  >{stage().name}</button>}
                 </For>
               </div>
               <Show when={unknownStage()}>
@@ -135,18 +136,18 @@ export function LiveQaStages(props: LiveQaStagesProps) {
                     </div>
                     <Show when={sessions().length} fallback={<p>No talks in this stage match your search.</p>}>
                       <ul class="space-y-3 list-none p-0 min-w-0">
-                        <For each={sessions()}>
+                        <For each={sessions()} keyed={session => session.slug}>
                           {(session) => {
-                            const status = createMemo(() => talkStatus(session, programme()?.serverNow, !error()));
+                            const status = createMemo(() => talkStatus(session(), programme()?.serverNow, !error()));
                             const action = createMemo(() => props.moderation ? "View question queue"
                               : status().accepting ? "Ask a question" : status().finished ? "View your questions" : "View talk");
                             return <li class={`rounded-xl border p-4 space-y-3 min-w-0 ${status().highlighted ? "border-primary-400 bg-primary-400/10" : "border-white/15"}`}>
                               <p class="font-mono text-sm text-secondary-200">
-                                <time datetime={session.startAt}>{sessionTime.format(new Date(session.startAt))}</time>–<time datetime={session.endAt}>{sessionTime.format(new Date(session.endAt))}</time>
+                                <time datetime={session().startAt}>{sessionTime.format(new Date(session().startAt))}</time>–<time datetime={session().endAt}>{sessionTime.format(new Date(session().endAt))}</time>
                               </p>
-                              <h4 class="font-bold text-white break-words">{session.title}</h4>
+                              <h4 class="font-bold text-white break-words">{session().title}</h4>
                               <p class={`text-sm ${status().highlighted ? "font-bold text-secondary-300" : "text-primary-200"}`}>{status().label}</p>
-                              <a href={`/sessions/${encodeURIComponent(session.slug)}#live-qa`} class="btn btn-outline min-h-12 h-auto whitespace-normal py-3 max-w-full" aria-label={`${action()}: ${session.title}`}>{action()}</a>
+                              <a href={`/sessions/${encodeURIComponent(session().slug)}#live-qa`} class="btn btn-outline min-h-12 h-auto whitespace-normal py-3 max-w-full" aria-label={`${action()}: ${session().title}`}>{action()}</a>
                             </li>;
                           }}
                         </For>

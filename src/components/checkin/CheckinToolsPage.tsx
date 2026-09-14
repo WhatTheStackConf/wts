@@ -2,7 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, onSettled
 import { Meta, Title } from "@solidjs/meta";
 import { useAuth } from "~/lib/auth-context";
 import { useRequireCheckinOperator } from "~/lib/route-guards";
-import { createAsyncResource } from "~/lib/async-resource";
+import { createCheckinPollingResource } from "./checkin-polling-resource";
 import { bindCheckinStation, checkinStatus, previewCheckinStation } from "~/lib/checkin-client";
 import { agentStatus } from "~/lib/checkin-agent-client";
 import type { CheckinPreviewDTO } from "~/lib/checkin-contract";
@@ -25,7 +25,7 @@ export default function CheckinToolsPage() {
   const guard = useRequireCheckinOperator(), auth = useAuth();
   const actorKey = createMemo(() => guard.authorized() && guard.user()?.id ? `${guard.user()!.id}:${guard.user()!.role}` : undefined);
   const [statusFailed, setStatusFailed] = createSignal(false);
-  const [status, statusActions] = createAsyncResource(actorKey, async actor => {
+  const [status, statusActions] = createCheckinPollingResource(actorKey, async actor => {
     try { const value = await checkinStatus(); if (!disposed && actor === actorKey()) setStatusFailed(false); return { ...value, verifiedFor: actor }; }
     catch (error) { if (!disposed && actor === actorKey()) setStatusFailed(true); throw error; }
   });
@@ -33,10 +33,17 @@ export default function CheckinToolsPage() {
   // command surface; redact on an actual failure or actor/binding fence change.
   const current = () => actorKey() && status()?.verifiedFor === actorKey() ? status() : undefined;
   const unavailable = () => !current() || statusFailed() || !!status.error;
+  let recoveryScope: { actor: string; key: string } | undefined;
   const scope = createMemo(() => {
     const s = current();
-    return s?.bindingState === "bound" && s.binding && !s.binding.revoked && s.station && s.binding.stationId === s.station.id
+    // Keep only the opaque mount identity on a read failure. Recovery redacts
+    // personal data and disables commands through unavailable(), but must not
+    // discard its exact uncertain command. Actor changes never reuse the key.
+    if (!s && status.error) return recoveryScope && recoveryScope.actor === actorKey() ? recoveryScope.key : undefined;
+    const key = s?.bindingState === "bound" && s.binding && !s.binding.revoked && s.station && s.binding.stationId === s.station.id
       ? `${actorKey()}:${s.binding.id}:${s.binding.version}:${s.station.id}` : undefined;
+    recoveryScope = key && actorKey() ? { actor: actorKey()!, key } : undefined;
+    return key;
   });
   const machineSource = createMemo(() => !unavailable() && scope() ? `${scope()}:${current()?.station?.version}:${current()?.system.generation}` : undefined);
   const [machineFailed, setMachineFailed] = createSignal(false);
@@ -98,9 +105,9 @@ export default function CheckinToolsPage() {
     previousActor = actor;
   });
   async function refreshStatus(force = false) {
-    if (!actorKey() || (!force && (statusInFlight || status.loading))) return;
+    if (!actorKey() || (!force && (statusInFlight || status.refreshing))) return;
     statusInFlight = true;
-    try { await statusActions.refetch(); } catch { /* statusFailed keeps old data unavailable during retry */ }
+    try { await (force ? statusActions.refetch() : statusActions.poll()); } catch { /* statusFailed keeps old data unavailable during retry */ }
     finally { statusInFlight = false; }
   }
   onSettled(() => {
