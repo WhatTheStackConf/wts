@@ -625,8 +625,7 @@ export default function AdminPartnersHub() {
       layoutTitle="Admin: Sponsors & Partners"
       layoutDescription="Manage conference sponsors and partners"
       title="Sponsors & Partners"
-      subtitle="Public logo wall & partner network"
-      hint="Create incomplete drafts, review publication requirements, then publish intentionally."
+      hint="New partners start as drafts. Publish from the list when ready."
       count={partners().length}
       countLoading={partnerReviews.loading}
       accent="secondary"
@@ -681,7 +680,6 @@ export default function AdminPartnersHub() {
             <div class="space-y-6">
               <AdminFormSection
                 title="Public identity"
-                description="The name, link, and logo that visitors will see on the public sponsor surface."
               >
                 <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
                   <AdminFormField
@@ -765,7 +763,7 @@ export default function AdminPartnersHub() {
                   <AdminFormField
                     id="partner-logo-surface"
                     label="Logo surface"
-                    hint="Choose the surface that gives the official logo enough contrast without altering it."
+                    hint="Choose a background with enough logo contrast."
                     class="min-w-0 lg:col-span-4"
                   >
                     <select
@@ -817,7 +815,6 @@ export default function AdminPartnersHub() {
 
               <AdminFormSection
                 title="Placement"
-                description="Controls which public group this record appears in and whether sponsor tiering applies."
               >
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 lg:gap-5 items-end">
                   <AdminFormField id="partner-type" label="Classification" required class="min-w-0 lg:col-span-4">
@@ -840,14 +837,7 @@ export default function AdminPartnersHub() {
                     </select>
                   </AdminFormField>
 
-                  <Show
-                    when={type() === "sponsor"}
-                    fallback={
-                      <div class="lg:col-span-8 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-base-content/60 min-h-12 flex items-center">
-                        Sponsor tiers only apply when type is <span class="font-mono text-base-content/80 ml-1">Sponsor</span>.
-                      </div>
-                    }
-                  >
+                  <Show when={type() === "sponsor"}>
                     <AdminFormField id="partner-tier" label="Sponsor tier" required class="min-w-0 lg:col-span-4">
                       <select
                         id="partner-tier"
@@ -892,10 +882,9 @@ export default function AdminPartnersHub() {
               </AdminFormSection>
 
               <AdminFormSection
-                title="Draft lifecycle"
-                description="Save changes here first. Publication is a separate action from the Partner list."
+                title="Publication"
               >
-                <div class="rounded-xl border border-white/10 bg-white/5 px-4 py-4">
+                <div>
                   <Show
                     when={editingOriginal()}
                     fallback={<p class="text-sm font-mono text-base-content/65">This record will be created as a draft.</p>}
@@ -920,9 +909,7 @@ export default function AdminPartnersHub() {
             </fieldset>
 
             <div class="mt-6 border-t border-white/10 pt-5 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
-              <p class="text-xs text-base-content/45 font-mono">
-                New records always stay drafts until a separate publication action succeeds.
-              </p>
+
               <div class="flex flex-wrap gap-2 sm:justify-end">
                 <button type="button" class="btn btn-ghost font-mono" disabled={saving()} onClick={() => resetForm()}>
                   Cancel
@@ -1002,10 +989,10 @@ export default function AdminPartnersHub() {
 
       <Show when={!partnerReviews.loading && filtered().length > 0}>
         <AdminDataPanel>
-          <div class="md:hidden space-y-4 p-4">
+          <div class="md:hidden divide-y divide-white/10">
             <For each={filtered()}>
               {(partner) => (
-                <div class="bg-white/5 rounded-xl p-4 border border-white/10 space-y-3">
+                <div class="p-4 space-y-3">
                   <div class="flex items-center gap-4">
                     <div
                       class="partner-logo-stage h-16 w-24 shrink-0 rounded-lg p-2 flex items-center justify-center"
@@ -1109,7 +1096,7 @@ export default function AdminPartnersHub() {
               </Show>
             </h2>
             <p class="mt-1 text-xs font-mono text-base-content/55">
-              Durable admin operations. Partner Note content is never copied into this history.
+              Partner Note content is never included in history.
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">

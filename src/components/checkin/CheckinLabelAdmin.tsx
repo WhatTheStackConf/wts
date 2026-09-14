@@ -44,9 +44,9 @@ export function CheckinLabelAdmin() {
   async function refresh() { invalidate(); await actions.refetch().catch(() => undefined); }
   return (
     <section aria-label="Name Label profiles" data-font-ready={fontReady() ? "true" : "false"} class="wts-name-label-text min-w-0 rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-5 break-words">
-      <h2 class="text-2xl font-bold">Name Label profiles and preview</h2>
-      <p>50×30 mm generic pre-cut gap stock. Exactly two rows: larger bold name, smaller affiliation; a missing affiliation stays blank. Rows shrink independently to readable minima, then use visible ellipsis.</p>
-      <p>Device measurements are explicit dots, not a millimetre conversion. Historical 40×20 mm / 384×120 settings are not calibrated defaults.</p>
+      <h2 class="text-2xl font-bold">Name Label preview and profiles</h2>
+      <p>50×30 mm generic pre-cut gap stock. Two rows: large bold name and smaller affiliation (blank if absent). Each row shrinks to its minimum, then uses ellipsis.</p>
+      <p>Enter device dots, not converted millimetres. Historical 40×20 mm / 384×120 settings are not calibrated defaults.</p>
       <Show when={catalogue.error}><p role="alert" class="alert alert-error">Name Label profiles unavailable. Refresh before configuring or previewing a stored profile.</p></Show>
       <Show when={fontError()}><p role="alert" class="alert alert-error">Pinned display fonts failed to load. Restore the bundled Name Label fonts and reload this page; preview is unavailable.</p></Show>
       <button type="button" class="btn btn-outline min-h-12" disabled={catalogue.loading} onClick={() => void refresh()}>Refresh Name Label profiles</button>
@@ -60,9 +60,9 @@ export function CheckinLabelAdmin() {
             </select>
             <Show when={!profileId()}><p class="alert alert-warning">Synthetic preview only — not calibrated</p></Show>
             <p id="label-text-help" class="text-sm">Transient label text only. No email, QR, URL or upstream capability. Text and raster stay in memory, never in profile audit history.</p>
-            <label for="label-name" class="block font-medium">Attendee name</label>
+            <label for="label-name" class="block font-medium">Attendee name (required)</label>
             <input id="label-name" class="input input-bordered min-h-12 w-full text-base" required maxlength={300} autocomplete="off" value={name()} aria-describedby="label-text-help" onInput={(event) => { invalidate(); setName(event.currentTarget.value); }} />
-            <label for="label-affiliation" class="block font-medium">Affiliation</label>
+            <label for="label-affiliation" class="block font-medium">Affiliation (optional)</label>
             <input id="label-affiliation" class="input input-bordered min-h-12 w-full text-base" maxlength={300} autocomplete="off" value={affiliation()} onInput={(event) => { invalidate(); setAffiliation(event.currentTarget.value); }} />
             <button type="submit" class="btn btn-primary min-h-12" disabled={!fontReady() || pending() || catalogue.loading || !!catalogue.error}>{pending() ? "Rendering Name Label…" : "Preview Name Label"}</button>
             <button type="button" class="btn btn-ghost min-h-12" onClick={() => { invalidate(); setName(""); setAffiliation(""); }}>Clear preview text and raster</button>

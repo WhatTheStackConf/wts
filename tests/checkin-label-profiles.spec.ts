@@ -47,7 +47,7 @@ function controls(page: Page) {
   const region = page.getByRole("region", { name: "Name Label profiles", exact: true });
   return {
     region,
-    station: region.getByLabel("Station for profile configuration", { exact: true }),
+    station: region.getByLabel("Station", { exact: true }),
     editor: region.getByRole("form", { name: "Edit Name Label profile", exact: true }),
     confirmation: region.getByRole("form", { name: "Confirm Name Label profile action", exact: true }),
     approval: region.getByRole("button", { name: "Review physical profile approval", exact: true }),
@@ -97,7 +97,7 @@ async function enterMeasurements(editor: Locator, config: LabelProfileConfig) {
 async function review(page: Page, note: string, approve = false) {
   const ui = controls(page);
   await (approve ? ui.approval : ui.editor.getByRole("button", { name: "Review Name Label profile", exact: true })).click();
-  const reason = ui.confirmation.getByLabel("Profile action reason (required)", { exact: true });
+  const reason = ui.confirmation.getByLabel("Reason (required)", { exact: true });
   await expect(reason).toBeFocused();
   await reason.selectOption("configuration");
   await ui.confirmation.getByLabel("Profile action note", { exact: true }).fill(note);
@@ -163,7 +163,7 @@ test("test-only measured profile: actual admin approval, immutable edit, and pri
   await ui.editor.screenshot({ path: info.outputPath("label-profile-measured-editor-390.png") });
   const form = await review(page, configurationNote);
   await page.setViewportSize({ width: 320, height: 740 });
-  const reason = form.getByLabel("Profile action reason (required)", { exact: true });
+  const reason = form.getByLabel("Reason (required)", { exact: true });
   await reason.focus();
   await page.keyboard.press("Tab");
   await expect(form.getByLabel("Profile action note", { exact: true })).toBeFocused();
@@ -184,7 +184,7 @@ test("test-only measured profile: actual admin approval, immutable edit, and pri
 
   // Real stored-profile preview stays unapproved; no synthetic approval response.
   await ui.region.getByLabel("Preview profile version", { exact: true }).selectOption(configured.result.profile.id);
-  await ui.region.getByLabel("Attendee name", { exact: true }).fill("Synthetic Test Name");
+  await ui.region.getByLabel("Attendee name (required)", { exact: true }).fill("Synthetic Test Name");
   const previewResponse = page.waitForResponse((response) => response.url().endsWith(endpoint) && response.request().postDataJSON()?.operation === "preview");
   await ui.region.getByRole("button", { name: "Preview Name Label", exact: true }).click();
   const preview = await previewResponse;
@@ -350,8 +350,8 @@ for (const failureMode of ["transport", "empty-json", "null-json", "error-json"]
   await expect(retry).toBeEnabled();
   await expect(ui.station).toBeDisabled();
   await expect(ui.station).toHaveValue(station.id);
-  await expect(ui.confirmation.getByLabel("Profile action reason (required)", { exact: true })).toBeDisabled();
-  await expect(ui.confirmation.getByLabel("Profile action reason (required)", { exact: true })).toHaveValue("configuration");
+  await expect(ui.confirmation.getByLabel("Reason (required)", { exact: true })).toBeDisabled();
+  await expect(ui.confirmation.getByLabel("Reason (required)", { exact: true })).toHaveValue("configuration");
   await expect(ui.confirmation.getByLabel("Profile action note", { exact: true })).toBeDisabled();
   await expect(ui.confirmation.getByLabel("Profile action note", { exact: true })).toHaveValue(retryNote);
   await expect(ui.confirmation.getByRole("button", { name: "Cancel profile action", exact: true })).toBeDisabled();

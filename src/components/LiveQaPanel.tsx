@@ -60,17 +60,16 @@ function EligibleLiveQaPanel(props: LiveQaPanelProps) {
   const scope = createMemo(() => !auth.isLoading() && auth.isAuthenticated() && auth.user
     ? JSON.stringify([auth.user.id, auth.user.role, props.slug]) : undefined);
   return (
-    <section id="live-qa" aria-labelledby="live-qa-heading" class="glass-panel rounded-2xl p-6 md:p-8 mt-8 scroll-mt-24 space-y-5">
+    <section id="live-qa" aria-labelledby="live-qa-heading" class="glass-panel rounded-2xl min-w-0 p-4 sm:p-6 md:p-8 mt-8 scroll-mt-24 space-y-5">
       <header class="space-y-2">
-        <p class="speaker-kicker">Live Q&A</p>
-        <h2 id="live-qa-heading" class="text-2xl font-bold text-white">Questions for this session</h2>
-        <p class="text-sm text-primary-200">Questions are private: only you and the MC or administrators can read yours. Other attendees cannot see them.</p>
+        <h2 id="live-qa-heading" class="text-2xl font-bold text-white">Live Q&A</h2>
+        <p class="text-sm text-primary-200">Private: only you, MCs and administrators can read your questions.</p>
       </header>
       <Show when={!auth.isLoading()} fallback={<p role="status">Checking your login…</p>}>
         <Show when={scope()} keyed fallback={
           <div class="space-y-3">
-            <p>Log in to send a question and read your previous questions.</p>
-            <a href={`/login?redirect_url=${encodeURIComponent(`/sessions/${props.slug}#live-qa`)}`} onClick={() => loginRedirect()} class="btn btn-primary min-h-12">Log in to ask a question</a>
+            <p>Log in to ask and read your questions.</p>
+            <a href={`/login?redirect_url=${encodeURIComponent(`/sessions/${props.slug}#live-qa`)}`} onClick={() => loginRedirect()} class="btn btn-primary min-h-12 whitespace-nowrap">Log in to ask</a>
           </div>
         }>
           {(key) => <PrivateLiveQa slug={props.slug} actorId={auth.user!.id} current={() => scope() === key} />}
@@ -235,16 +234,16 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
   }
 
   return (
-    <div class="space-y-6">
+    <div class="space-y-5">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div role="status" class="text-sm">
-          <Show when={session()} fallback={<span>Question availability not verified.</span>}>
+          <Show when={session()} fallback={<span>{reading() && !readError() ? "Checking questions…" : "Question availability not verified."}</span>}>
             {(data) => <><strong class="block text-white">{data().accepting ? "Questions are open" : "Questions are closed"}</strong><span>{modeLabel(data().mode)}</span></>}
           </Show>
         </div>
-        <button type="button" class="btn btn-outline min-h-12" disabled={reading() || sending() || moderating()} onClick={() => void refresh()}>Refresh questions</button>
+        <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" disabled={reading() || sending() || moderating()} onClick={() => void refresh()}>Refresh questions</button>
       </div>
-      <p class="text-sm text-primary-200">Agenda timing opens questions during this session's scheduled slot. The MC can adjust for delays. Your questions remain readable after the session ends.</p>
+      <Show when={session() && !session()!.accepting}><p class="text-sm text-primary-200">You can still read submitted questions or prepare a draft.</p></Show>
       <Show when={readError()}><p role="alert" class="alert alert-warning">{readError()}</p></Show>
       <Show when={denied()}>
         <a href={`/login?redirect_url=${encodeURIComponent(`/sessions/${slug}#live-qa`)}`} onClick={() => loginRedirect()} class="btn btn-outline min-h-12">Log in again</a>
@@ -253,37 +252,41 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
       <Show when={!denied()}>
         <form class="space-y-3" onSubmit={(event) => { event.preventDefault(); void sendQuestion(); }}>
           <label for="live-qa-question" class="block font-bold text-white">Your question</label>
-          <textarea id="live-qa-question" name="question" class="textarea textarea-bordered w-full min-h-36 text-base" rows={4} value={body()} readonly={!!held()} disabled={sending()} aria-describedby="live-qa-draft-help" onInput={(event) => { setBody(event.currentTarget.value); setSent(false); }} />
-          <p id="live-qa-draft-help" class="text-sm text-primary-200">Keep it focused on this session. No names or contact details are needed. Limit: 1000 characters.</p>
-          <p class={draftLength() > 1000 ? "text-error text-sm" : "text-primary-200 text-sm"} aria-live="polite">{draftLength()} / 1000 characters<Show when={draftLength() > 1000}> — Shorten your question before sending.</Show></p>
+          <p id="live-qa-draft-help" class="text-sm text-primary-200">About this session. No names or contact details needed.</p>
+          <textarea id="live-qa-question" name="question" class="textarea textarea-bordered w-full min-w-0 min-h-28 text-base" rows={3} value={body()} readonly={!!held()} disabled={sending()} aria-describedby="live-qa-draft-help live-qa-draft-count" onInput={(event) => { setBody(event.currentTarget.value); setSent(false); }} />
+          <p id="live-qa-draft-count" class={draftLength() > 1000 ? "text-error text-sm" : "text-primary-200 text-sm"} aria-live="polite">{draftLength()} / 1000 characters<Show when={draftLength() > 1000}> — Shorten your question before sending.</Show></p>
           <Show when={held()}><p class="text-sm">This question is locked until delivery is confirmed. Exact retries also work after questions close.</p></Show>
           <Show when={askError()}><p role="alert" class="alert alert-warning">{askError()}</p></Show>
           <Show when={sent()}><p role="status" class="text-success font-bold">Question sent</p></Show>
-          <button type="submit" class="btn btn-primary min-h-12 w-full sm:w-auto" disabled={sending() || moderating() || (!held() && (!canAsk() || !validDraft()))}>
+          <button type="submit" class="btn btn-primary min-h-12 w-full sm:w-auto whitespace-nowrap" disabled={sending() || moderating() || (!held() && (!canAsk() || !validDraft()))}>
             {sending() ? "Sending question…" : held() ? "Retry exact question" : "Send question"}
           </button>
         </form>
       </Show>
       <Show when={canModerate()}>
-        <fieldset class="border border-white/15 rounded-xl p-4 space-y-3" disabled={moderating() || sending()}>
+        <fieldset class="min-w-0 border-t border-white/15 pt-3 space-y-3" disabled={moderating() || sending()}>
           <legend class="px-2 font-bold text-white">MC controls</legend>
-          <p class="text-sm text-primary-200">Open and closed overrides stay in effect until changed. Use agenda timing to clear the override.</p>
-          <div class="flex flex-wrap gap-3">
-            <button type="button" class="btn btn-outline min-h-12" aria-pressed={session()?.mode === "open" ? "true" : "false"} onClick={() => void moderate({ operation: "mode", slug, mode: "open" })}>Open questions</button>
-            <button type="button" class="btn btn-outline min-h-12" aria-pressed={session()?.mode === "closed" ? "true" : "false"} onClick={() => void moderate({ operation: "mode", slug, mode: "closed" })}>Close questions</button>
-            <button type="button" class="btn btn-outline min-h-12" aria-pressed={session()?.mode === "auto" ? "true" : "false"} onClick={() => void moderate({ operation: "mode", slug, mode: "auto" })}>Use agenda timing</button>
+          <p class="text-sm text-primary-200">Overrides stay active until changed.</p>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" aria-pressed={session()?.mode === "open" ? "true" : "false"} onClick={() => void moderate({ operation: "mode", slug, mode: "open" })}>Open questions</button>
+            <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" aria-pressed={session()?.mode === "closed" ? "true" : "false"} onClick={() => void moderate({ operation: "mode", slug, mode: "closed" })}>Close questions</button>
+            <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" aria-pressed={session()?.mode === "auto" ? "true" : "false"} onClick={() => void moderate({ operation: "mode", slug, mode: "auto" })}>Use agenda timing</button>
           </div>
         </fieldset>
       </Show>
       <Show when={moderationError() && !denied()}><p role="alert" class="alert alert-warning">{moderationError()}</p></Show>
+      <details class="text-sm text-primary-200">
+        <summary class="cursor-pointer min-h-12 py-3 text-white focus-visible:outline-2 focus-visible:outline-primary-400">How timing works</summary>
+        <p>Questions open during the scheduled slot and remain readable afterward. MCs can override timing for delays; “Use agenda timing” clears the override.</p>
+      </details>
       <Show when={session()}>
-        {(data) => <section aria-label="Submitted questions" class="space-y-4">
+        {(data) => <section aria-label="Submitted questions" class="border-t border-white/15 pt-4 space-y-3 min-w-0">
           <h3 class="text-xl font-bold text-white">{data().canModerate ? "Session questions" : "Your questions"}</h3>
-          <p class="text-sm text-primary-200">Oldest first · Up to 50 questions per page · Refreshes every 5 seconds while visible.</p>
-          <Show when={data().questions.length} fallback={<p>No questions on this page yet.</p>}>
-            <ul class="space-y-3 list-none p-0">
+          <p class="text-sm text-primary-200">Oldest first · Updates every 5 seconds while visible</p>
+          <Show when={data().questions.length} fallback={<p>{page() > 1 ? "No questions on this page." : data().canModerate ? "No questions yet." : "You haven't sent any questions yet."}</p>}>
+            <ul class="divide-y divide-white/15 list-none p-0">
               <For each={data().questions}>
-                {(question) => <li class="rounded-xl border border-white/15 p-4 space-y-3">
+                {(question) => <li class="py-4 space-y-3 min-w-0">
                   <div class="flex flex-wrap items-center gap-2 text-sm">
                     <Show when={question.own}><span class="font-bold text-white">Your question</span></Show>
                     <span class={question.answered ? "badge badge-success" : "badge badge-outline"}>{question.answered ? "Answered" : "Unanswered"}</span>
@@ -296,10 +299,10 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
               </For>
             </ul>
           </Show>
-          <nav aria-label="Question pages" class="flex flex-wrap items-center gap-3">
-            <button type="button" class="btn btn-outline min-h-12" disabled={reading() || sending() || moderating() || page() <= 1} onClick={() => void refresh(page() - 1)}>Previous questions</button>
-            <span>Page {page()} of {Math.max(1, data().totalPages)}</span>
-            <button type="button" class="btn btn-outline min-h-12" disabled={reading() || sending() || moderating() || page() >= data().totalPages} onClick={() => void refresh(page() + 1)}>Next questions</button>
+          <nav aria-label="Question pages" class="flex flex-wrap items-center gap-2 text-sm">
+            <button type="button" aria-label="Previous questions" class="btn btn-sm btn-outline min-h-12 whitespace-nowrap" disabled={reading() || sending() || moderating() || page() <= 1} onClick={() => void refresh(page() - 1)}>Previous</button>
+            <span class="whitespace-nowrap">Page {page()} of {Math.max(1, data().totalPages)}</span>
+            <button type="button" aria-label="Next questions" class="btn btn-sm btn-outline min-h-12 whitespace-nowrap" disabled={reading() || sending() || moderating() || page() >= data().totalPages} onClick={() => void refresh(page() + 1)}>Next</button>
           </nav>
         </section>}
       </Show>

@@ -115,7 +115,7 @@ export default function AdminSessionAttendanceMissions(props: AdminSessionAttend
     <div class="space-y-8">
       <Show when={message()}>{(notice) => <div class={`alert ${notice().kind === "error" ? "alert-error" : "alert-success"}`} role="status">{notice().text}</div>}</Show>
       <form class={adminFormPanelClass} onSubmit={save}>
-        <AdminFormSection title="Session attendance Mission" description="The Agenda Slot provides a proposed window only. This form persists independent WTS evidence, limits, caps, and safe historic presentation; slot changes cannot award attendance.">
+        <AdminFormSection title="Session attendance Mission" description="Agenda times prefill the evidence window. Attendance still requires independent WTS evidence; schedule changes never award it.">
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <AdminFormField id="session-mission-session" label="Published Session" required>
               <select id="session-mission-session" class={adminSelectClass()} required value={sessionId()} onChange={(event) => chooseSession(event.currentTarget.value)}>
@@ -153,7 +153,7 @@ export default function AdminSessionAttendanceMissions(props: AdminSessionAttend
           {(context) => <p class="mt-5 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info-content">Agenda context: {context().dayDate}, {scheduleInstantToLocalDateTime(context().startAt)} to {scheduleInstantToLocalDateTime(context().endAt)} Europe/Skopje. Selecting it prefilled the proposed evidence window only.</p>}
         </Show>
 
-        <AdminFormSection title="WTS evidence and policy" description="QR, WTS link, and manual entry are delivery forms for one generated single-code Activity. The fixed 20 total XP / 15 Leaderboard XP policy receives independent Activity, category, day, and conference caps." class="mt-6">
+        <AdminFormSection title="Evidence and scoring" description="QR, link, and manual entry use the same code. Awards 20 total XP / 15 Leaderboard XP, subject to activity, category, day, and conference caps." class="mt-6">
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <AdminFormField id="session-mission-channel" label="Primary WTS artifact" required>
               <select id="session-mission-channel" class={adminSelectClass()} value={evidenceChannel()} onChange={(event) => setEvidenceChannel(event.currentTarget.value as "wts_qr" | "wts_link" | "wts_manual_code")}>
@@ -187,7 +187,7 @@ export default function AdminSessionAttendanceMissions(props: AdminSessionAttend
             <label class="flex min-h-12 items-center gap-2 text-sm font-mono"><input type="checkbox" class="checkbox checkbox-sm" checked={metaEligible()} onChange={(event) => setMetaEligible(event.currentTarget.checked)} /> Eligible for selected Session Meta rules</label>
           </div>
         </AdminFormSection>
-        <div class="mt-5 flex items-center justify-between gap-3"><p class="text-xs font-mono text-base-content/60">Per-User limit: 1, enforced across scans, links, manual entry, and code reissues.</p><div class="flex gap-2"><button type="button" class="btn btn-ghost font-mono" onClick={reset}>Clear</button><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Save Session Mission draft</button></div></div>
+        <div class="mt-5 flex flex-wrap items-center justify-between gap-3"><p class="text-xs font-mono text-base-content/60">Per-User limit: 1, enforced across scans, links, manual entry, and code reissues.</p><div class="flex gap-2"><button type="button" class="btn btn-ghost font-mono" onClick={reset}>Clear</button><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Save draft</button></div></div>
       </form>
 
       <AdminDataPanel>

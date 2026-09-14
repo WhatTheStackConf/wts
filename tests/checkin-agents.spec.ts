@@ -39,7 +39,7 @@ async function fixtureProfile(page: Page) {
 
 function agentUi(page: Page) {
   const region = page.getByRole("region", { name: "Station agents", exact: true });
-  return { region, selector: region.getByLabel("Station for agent administration", { exact: true }),
+  return { region, selector: region.getByLabel("Station", { exact: true }),
     issue: region.getByRole("form", { name: "Provision station agent", exact: true }),
     confirm: region.getByRole("form", { name: "Confirm agent action", exact: true }) };
 }
@@ -51,11 +51,11 @@ async function reviewIssue(page: Page, fixture: Awaited<ReturnType<typeof fixtur
   await ui.issue.getByLabel("Stable printer identity (required)", { exact: true }).fill("test-only-agent-printer");
   await ui.issue.getByLabel("Expected journal identity (required)", { exact: true }).fill("test-only-journal");
   await ui.issue.getByLabel("Pinned Name Label profile (required)", { exact: true }).selectOption(fixture.profile.id);
-  await ui.issue.getByLabel("Credential lifetime in hours (required)", { exact: true }).fill("24");
+  await ui.issue.getByLabel("Credential lifetime (hours, required)", { exact: true }).fill("24");
   await ui.issue.getByRole("button", { name: "Review agent issuance", exact: true }).click();
-  await expect(ui.confirm.getByLabel("Agent action reason (required)", { exact: true })).toBeFocused();
-  await ui.confirm.getByLabel("Agent action reason (required)", { exact: true }).selectOption("configuration");
-  await ui.confirm.getByLabel("Agent action note", { exact: true }).fill("Synthetic browser agent issuance only");
+  await expect(ui.confirm.getByLabel("Reason (required)", { exact: true })).toBeFocused();
+  await ui.confirm.getByLabel("Reason (required)", { exact: true }).selectOption("configuration");
+  await ui.confirm.getByLabel("Note (optional)", { exact: true }).fill("Synthetic browser agent issuance only");
   return ui;
 }
 async function confirmAgent(page: Page, operation: AgentMutation["operation"], retry = false) {
@@ -72,7 +72,7 @@ test("station agent controls are separate from browser provisioning and keep eve
   const agents = page.getByRole("region", { name: "Station agents", exact: true });
   await expect(agents).toBeVisible();
   await expect(agents.getByRole("heading", { name: "Station agents", exact: true })).toBeVisible();
-  await expect(agents.getByText("Agent credentials are not User logins, Station Client Bindings or provisioning QRs.", { exact: true })).toBeVisible();
+  await expect(agents.getByText("One outbound agent per station. Its credential is separate from human logins, phone bindings and station QRs.", { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 320, height: 740 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.goto("/checkin-tools");
@@ -87,9 +87,9 @@ test("actual agent issuance and revocation remain audited, secret-free in reads,
   await page.goto("/admin/checkin");
   const ui = await reviewIssue(page, fixture);
   await page.setViewportSize({ width: 320, height: 740 });
-  await ui.confirm.getByLabel("Agent action reason (required)", { exact: true }).focus();
+  await ui.confirm.getByLabel("Reason (required)", { exact: true }).focus();
   await page.keyboard.press("Tab");
-  await expect(ui.confirm.getByLabel("Agent action note", { exact: true })).toBeFocused();
+  await expect(ui.confirm.getByLabel("Note (optional)", { exact: true })).toBeFocused();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await ui.confirm.screenshot({ path: info.outputPath("agent-confirmation-320.png") });
   const issued = await confirmAgent(page, "admin_issue");
@@ -148,8 +148,8 @@ test("actual agent issuance and revocation remain audited, secret-free in reads,
   await expect(ui.selector).toBeEnabled();
   await ui.selector.selectOption(fixture.stationId);
   await ui.region.getByRole("button", { name: "Review agent revocation", exact: true }).click();
-  await ui.confirm.getByLabel("Agent action reason (required)", { exact: true }).selectOption("security");
-  await ui.confirm.getByLabel("Agent action note", { exact: true }).fill("Synthetic revocation test only");
+  await ui.confirm.getByLabel("Reason (required)", { exact: true }).selectOption("security");
+  await ui.confirm.getByLabel("Note (optional)", { exact: true }).fill("Synthetic revocation test only");
   const revoked = await confirmAgent(page, "admin_revoke");
   expect(revoked.result.station).toMatchObject({ agentId: issued.result.station.agentId, credentialState: "revoked", readyForAuthorization: false });
   expect(revoked.result).not.toHaveProperty("credential");
@@ -238,8 +238,8 @@ for (const failureMode of ["transport", "empty-json", "null-json"] as const) tes
   await ui.region.getByRole("button", { name: "Refresh station agents", exact: true }).click();
   await expect(ui.region.getByText(/^Agent readiness unavailable/)).toBeVisible();
   await expect(retry).toBeEnabled();
-  await expect(ui.confirm.getByLabel("Agent action reason (required)", { exact: true })).toBeDisabled();
-  await expect(ui.confirm.getByLabel("Agent action note", { exact: true })).toHaveValue("Synthetic browser agent issuance only");
+  await expect(ui.confirm.getByLabel("Reason (required)", { exact: true })).toBeDisabled();
+  await expect(ui.confirm.getByLabel("Note (optional)", { exact: true })).toHaveValue("Synthetic browser agent issuance only");
   await expect(ui.issue.getByLabel("Expected agent identity (required)", { exact: true })).toBeDisabled();
   await expect(ui.confirm.getByRole("button", { name: "Cancel agent action", exact: true })).toBeDisabled();
   const replay = await confirmAgent(page, "admin_issue", true);

@@ -372,8 +372,8 @@ export default function AdminAgendaHub() {
       layoutTitle="Admin: Agenda"
       layoutDescription="Manage the public conference programme"
       title="Agenda"
-      subtitle="Conference Days, Event Programmes, Tracks, and Slots"
-      hint={`All schedule times are interpreted in ${SCHEDULE_TIME_ZONE}. Session Speakers need matching Event Appearances before their Slot can be published.`}
+      subtitle={`Schedule times: ${SCHEDULE_TIME_ZONE}.`}
+      hint="Before publishing a session slot, assign its speakers to the matching Appearance Event."
       count={programme()?.slots.length}
       countLoading={programme.loading}
       accent="secondary"
@@ -398,7 +398,7 @@ export default function AdminAgendaHub() {
 
       <div class="grid gap-8 xl:grid-cols-3">
         <form class={adminFormPanelClass} onSubmit={submitDay}>
-          <AdminFormSection title={dayEditingId() ? "Edit Conference Day" : "New Conference Day"} description="Keys are immutable after creation. The local date is evaluated in Europe/Skopje.">
+          <AdminFormSection title={dayEditingId() ? "Edit Conference Day" : "New Conference Day"} description="The key cannot change after creation.">
             <div class="grid gap-4 sm:grid-cols-2">
               <AdminFormField id="agenda-day-key" label="Key" required hint="Example: workshop-day">
                 <input id="agenda-day-key" class={adminInputClass("font-mono")} required disabled={Boolean(dayEditingId())} value={dayKey()} onInput={(event) => setDayKey(event.currentTarget.value)} />
@@ -421,7 +421,7 @@ export default function AdminAgendaHub() {
         </form>
 
         <form class={adminFormPanelClass} onSubmit={submitProgramme}>
-          <AdminFormSection title={programmeEditingId() ? "Edit Event Programme" : "New Event Programme"} description="Pairs one Appearance Event with one Conference Day. The pair is immutable after creation.">
+          <AdminFormSection title={programmeEditingId() ? "Edit Event Programme" : "New Event Programme"} description="The event and day cannot change after creation.">
             <div class="grid gap-4">
               <AdminFormField id="agenda-programme-day" label="Conference Day" required>
                 <select id="agenda-programme-day" name="day" class={adminSelectClass()} required disabled={Boolean(programmeEditingId())} value={programmeDayId()} onChange={(event) => setProgrammeDayId(event.currentTarget.value)}>
@@ -447,7 +447,7 @@ export default function AdminAgendaHub() {
         </form>
 
         <form class={adminFormPanelClass} onSubmit={submitTrack}>
-          <AdminFormSection title={trackEditingId() ? "Edit Track" : "New Track"} description="Tracks are scoped to exactly one Event Programme and their keys are immutable.">
+          <AdminFormSection title={trackEditingId() ? "Edit Track" : "New Track"} description="The programme and key cannot change after creation.">
             <div class="grid gap-4 sm:grid-cols-2">
               <AdminFormField id="agenda-track-programme" label="Event Programme" required>
                 <select id="agenda-track-programme" name="programme" class={adminSelectClass()} required disabled={Boolean(trackEditingId())} value={trackProgrammeId()} onChange={(event) => setTrackProgrammeId(event.currentTarget.value)}>

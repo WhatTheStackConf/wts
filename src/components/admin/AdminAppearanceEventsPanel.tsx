@@ -144,8 +144,7 @@ export function AdminAppearanceEventsPanel(props: AdminAppearanceEventsPanelProp
             Appearance Events
           </h2>
           <p class="mt-1 max-w-3xl text-xs font-mono leading-relaxed text-base-content/60 text-pretty">
-            Create the shared catalogue used by public Speaker ribbons and Event Programmes. Draft
-            events can be assigned without appearing publicly.
+            Events used on speaker ribbons and the agenda. Draft events stay hidden publicly.
           </p>
         </div>
         <Show when={!editingId()}>
@@ -305,7 +304,7 @@ export function AdminAppearanceEventsPanel(props: AdminAppearanceEventsPanelProp
         </Show>
         <Show when={!props.loading && props.events.length === 0}>
           <p class="py-8 text-center text-sm font-mono text-base-content/60">
-            No Appearance Events yet. Add the first shared catalogue entry.
+            No Appearance Events yet.
           </p>
         </Show>
         <Show when={!props.loading && props.events.length > 0}>

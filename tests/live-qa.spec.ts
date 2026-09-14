@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { test, expect, type Browser, type Locator, type Page } from "@playwright/test";
 import PocketBase from "pocketbase";
 
 const state = JSON.parse(readFileSync(process.env.WTS_LIVE_QA_BROWSER_STATE!, "utf8")) as {
@@ -18,7 +18,7 @@ async function actorPage(browser: Browser, actor: string, mobile = false) {
   });
   const page = await context.newPage();
   await page.goto(talkPath);
-  await page.getByRole("link", { name: "Log in to ask a question" }).click();
+  await page.getByRole("link", { name: "Log in to ask", exact: true }).click();
   await page.getByLabel("Email", { exact: true }).fill(state.users[actor].email);
   await page.getByLabel("Password", { exact: true }).fill(state.users[actor].password);
   await page.getByRole("button", { name: "Log In", exact: true }).click();
@@ -142,8 +142,33 @@ test("public Q&A is stage-first, keeps stage links on reload, and excludes weekd
   await programme;
   await expect(page.getByRole("heading", { name: `Session ${state.weekdaySlug}`, exact: true })).toBeVisible();
   await expect(page.locator("#live-qa")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Log in to ask a question" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Log in to ask", exact: true })).toHaveCount(0);
 });
+
+async function expectResponsive(page: Page, scope: Locator, width: number) {
+  await page.setViewportSize({ width, height: 900 });
+  await expect(scope).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // Check actual layout, not just CSS classes or a root overflow clip.
+  await expect.poll(() => scope.evaluate(root => {
+    const failures: string[] = [];
+    for (const element of [root, ...root.querySelectorAll("button, input, textarea, summary, li, a")]) {
+      const rect = element.getBoundingClientRect();
+      if (!rect.width || !rect.height) continue;
+      const label = element.getAttribute("aria-label") || element.textContent?.trim().slice(0, 80) || element.tagName;
+      // Text fields may scroll their value internally without overflowing layout.
+      if (rect.left < -1 || rect.right > window.innerWidth + 1 || (!element.matches("input, textarea") && element.scrollWidth > element.clientWidth + 1)) failures.push(`Overflow: ${label}`);
+      if (element.matches("button, summary")) {
+        if (rect.height < 44) failures.push(`Small target: ${label}`);
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const lines = new Set(Array.from(range.getClientRects()).filter(line => line.width && line.height).map(line => Math.round(line.top)));
+        if (lines.size > 1) failures.push(`Wrapped control: ${label}`);
+      }
+    }
+    return failures;
+  })).toEqual([]);
+}
 
 test("attendee asks privately; MC reads and marks answered after the session ends", async ({ browser }) => {
   const attendee = await actorPage(browser, "user", true);
@@ -216,6 +241,8 @@ test("lost submission response retries the same question once even after closure
     await attendee.page.getByRole("button", { name: "Send question", exact: true }).click();
     await expect(attendee.page.getByRole("button", { name: "Retry exact question", exact: true })).toBeVisible();
     await expect(attendee.page.getByLabel("Your question", { exact: true })).toHaveAttribute("readonly", "");
+    await expectResponsive(attendee.page, attendee.page.getByRole("region", { name: "Live Q&A", exact: true }), 320);
+    await expect(attendee.page.getByRole("alert")).toContainText("Keep this page open");
     await mc.page.getByRole("button", { name: "Close questions", exact: true }).click();
     await expect(attendee.page.getByText("Questions are closed", { exact: true })).toBeVisible();
     await attendee.page.getByRole("button", { name: "Retry exact question", exact: true }).click();
@@ -278,8 +305,59 @@ test("revoked MC loses private queue and failed reads preserve attendee draft", 
     await expect(attendee.page.getByRole("alert")).toContainText("Couldn't refresh questions");
     await expect(attendee.page.getByLabel("Your question", { exact: true })).toHaveValue("Do not lose this draft during a failed refresh.");
     await expect(attendee.page.getByRole("button", { name: "Send question", exact: true })).toBeDisabled();
+    await expectResponsive(attendee.page, attendee.page.getByRole("region", { name: "Live Q&A", exact: true }), 320);
     await attendee.page.unroute("**/api/live-qa");
     await attendee.page.getByRole("button", { name: "Refresh questions", exact: true }).click();
     await expect(attendee.page.getByRole("alert")).toHaveCount(0);
   } finally { await pb.collection("users").update(state.users.mc.id, { role: "mc" }); await mc.context.close(); await attendee.context.close(); }
+});
+
+test("attendee form, MC queue and catalogue fit narrow screens with timing help expanded or closed", async ({ browser }) => {
+  const attendee = await actorPage(browser, "user");
+  const mc = await actorPage(browser, "mc");
+  try {
+    for (const actor of [attendee, mc]) {
+      const panel = actor.page.getByRole("region", { name: "Live Q&A", exact: true });
+      await expect(panel.getByRole("heading", { name: actor === mc ? "Session questions" : "Your questions", exact: true })).toBeVisible();
+      await actor.page.getByLabel("Your question", { exact: true }).fill("A-long-draft-without-spaces-".repeat(12));
+      for (const width of [320, 375, 414, 768]) {
+        await test.step(`${actor === mc ? "MC queue" : "Attendee"} at ${width}px`, async () => {
+          await expectResponsive(actor.page, panel, width);
+          await expect(panel.getByText("Private: only you, MCs and administrators can read your questions.", { exact: true })).toBeVisible();
+          const help = panel.locator("summary", { hasText: "How timing works" });
+          await help.focus();
+          await help.press("Enter");
+          await expect(panel.locator("details")).toHaveAttribute("open", "");
+          await expectResponsive(actor.page, panel, width);
+          await help.press("Enter");
+          await expect(panel.locator("details")).not.toHaveAttribute("open", "");
+          if (actor === mc) {
+            await expect(panel.getByRole("button", { name: "Open questions", exact: true })).toBeVisible();
+            await expect(panel.getByRole("button", { name: "Close questions", exact: true })).toBeVisible();
+            await expect(panel.getByRole("button", { name: "Use agenda timing", exact: true })).toBeVisible();
+          }
+          await expect(actor.page.getByLabel("Your question", { exact: true })).toHaveValue("A-long-draft-without-spaces-".repeat(12));
+        });
+      }
+    }
+    await mc.page.goto("/mc");
+    await expect(mc.page.getByRole("heading", { name: "MC Q&A", exact: true })).toBeVisible();
+    await mc.page.getByRole("button", { name: "Stage 2", exact: true }).click();
+    await expect(mc.page).toHaveURL(/\/mc\?stage=stage-3$/);
+    const catalogue = mc.page.getByRole("region", { name: "Choose your stage", exact: true });
+    for (const width of [320, 375, 414, 768]) {
+      await test.step(`MC catalogue at ${width}px`, async () => {
+        await mc.page.setViewportSize({ width, height: 900 });
+        await mc.page.getByLabel("Search sessions in this stage").fill(state.slug);
+        await expect(catalogue.getByRole("link", { name: `View question queue: Session ${state.slug}`, exact: true })).toBeVisible();
+        await expect(catalogue.getByText(`Session ${state.weekdaySlug}`, { exact: true })).toHaveCount(0);
+        await expect(catalogue.getByText("Session main-stage-one", { exact: true })).toHaveCount(0);
+        await expectResponsive(mc.page, catalogue, width);
+        const missing = "unmatched-session-".repeat(10);
+        await mc.page.getByLabel("Search sessions in this stage").fill(missing);
+        await expect(catalogue.getByText("No talks in this stage match your search.", { exact: true })).toBeVisible();
+        await expectResponsive(mc.page, catalogue, width);
+      });
+    }
+  } finally { await attendee.context.close(); await mc.context.close(); }
 });

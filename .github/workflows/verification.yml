@@ -43,6 +43,8 @@ jobs:
         run: pnpm test --no-file-parallelism
       - if: matrix.gate == 'test'
         run: pnpm test:mcs
+      - if: matrix.gate == 'test'
+        run: pnpm test:usability
 
   checkin-browser:
     name: Disposable Check-in browser
@@ -63,8 +65,8 @@ jobs:
       - run: pnpm test:checkin-components
       - run: pnpm test:checkin-browser
       - run: pnpm test:checkin-lifecycle-browser
-      - name: Verify live Q&A in the built app
-        run: pnpm test:live-qa-browser
+      - name: Verify signed-in workspaces and live Q&A in the built app
+        run: pnpm test:workspace-browser
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:

@@ -55,34 +55,19 @@ const Proposal = () => {
 
   return (
     <CfpStepLayout
-      title="Call for Papers - Step 3"
+      title="Talk proposal"
       description="Submit your talk proposal"
       step={3}
     >
       <div class="mb-10 space-y-8">
-        <h2 class="text-2xl font-bold font-star text-white mb-6 flex items-center gap-3">
-          <span class="text-primary">//</span> PROPOSAL DETAILS
-        </h2>
-        <div class="mb-6 mx-auto w-full md:w-2/3">
-          <div class="p-4 rounded-xl border border-primary/20 bg-primary/5 flex gap-4 items-start">
-            <Icon
-              icon="material-symbols:timer-outline"
-              class="text-primary text-xl shrink-0 mt-1"
-            />
-            <p class="text-sm font-mono text-secondary-300">
-              Please note that the time limit for each talk is 35 minutes in
-              total (including Q&A). You can decide how you'd like to allocate
-              the time between your talk and Q&A. <br />
-              That said, if your proposal is about a workshop, lighting talk, or
-              any other format that requires a different amount of time, please
-              specify an estimated duration in your proposal.
-            </p>
-          </div>
-        </div>
+        <p class="text-sm text-secondary-300">
+          Talks are 35 minutes including Q&A; you choose the split. For a workshop,
+          lightning talk, or another format, include your estimated duration.
+        </p>
 
         <div class="space-y-6">
           <div class="form-control w-full">
-            <label class="label font-mono text-xs uppercase text-primary">
+            <label class="label text-sm font-medium text-primary">
               Title of your talk *
             </label>
             <input
@@ -104,7 +89,7 @@ const Proposal = () => {
           </div>
 
           <div class="form-control w-full">
-            <label class="label font-mono text-xs uppercase text-primary">
+            <label class="label text-sm font-medium text-primary">
               Abstract *
             </label>
             <RichEditor
@@ -119,7 +104,7 @@ const Proposal = () => {
           </div>
 
           <div class="form-control w-full">
-            <label class="label font-mono text-xs uppercase text-primary">
+            <label class="label text-sm font-medium text-primary">
               Key takeaways *
             </label>
             <RichEditor
@@ -134,7 +119,7 @@ const Proposal = () => {
           </div>
 
           <div class="form-control w-full">
-            <label class="label font-mono text-xs uppercase text-primary">
+            <label class="label text-sm font-medium text-primary">
               Technical requirements / Additional notes
             </label>
             <textarea
@@ -146,8 +131,7 @@ const Proposal = () => {
               placeholder="e.g. I need to plug in my own device, or special audio requirements."
             />
             <label class="label text-xs text-secondary-300">
-              By default, we assume you'll use your own laptop. You can connect
-              to the projector via HDMI or type-c.
+              Default setup: your own laptop connected to the projector via HDMI or USB-C.
             </label>
           </div>
         </div>
@@ -155,16 +139,16 @@ const Proposal = () => {
 
       <div class="flex justify-between mt-12 border-t border-white/10 pt-8">
         <button
-          class="btn btn-outline btn-lg px-8 font-mono hover:bg-white/10"
+          class="btn btn-outline hover:bg-white/10"
           onClick={() => navigate("/cfp/02-personal")}
         >
-          BACK
+          Back
         </button>
         <button
-          class="btn btn-primary btn-lg shadow-[0_0_20px_rgba(var(--color-primary-500),0.3)] px-10 font-mono"
+          class="btn btn-primary gap-2"
           onClick={handleNext}
         >
-          NEXT <Icon icon="material-symbols:arrow-forward" />
+          Next <Icon icon="material-symbols:arrow-forward" />
         </button>
       </div>
     </CfpStepLayout>

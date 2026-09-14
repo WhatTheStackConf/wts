@@ -136,17 +136,12 @@ const ReviewPage = () => {
         }
     };
 
-    // ... imports ...
-
-    // ... (logic remains same until return) ...
 
     return (
         <Layout title="Review Session" description="CFP Evaluation">
             <Show when={guard.authorized()}>
             <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
-                {/* Background Elements */}
-                <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-secondary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
-                <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
+
 
                 <div class="container mx-auto px-4 max-w-5xl">
                     <button
@@ -154,7 +149,7 @@ const ReviewPage = () => {
                         onClick={() => navigate(isAdmin() ? "/admin" : "/reviewer")}
                     >
                         <Icon icon="ph:arrow-left-bold" class="group-hover:-translate-x-1 transition-transform" />
-                        Back to {isAdmin() ? "Dashboard" : "Queue"}
+                        Back to {isAdmin() ? "admin" : "reviews"}
                     </button>
 
                     <Show when={loading()}>
@@ -165,9 +160,9 @@ const ReviewPage = () => {
                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
                             {/* Main Content Column */}
-                            <div class="lg:col-span-2 space-y-8">
-                                <div class="glass-panel p-8 rounded-2xl border border-white/10 shadow-xl backdrop-blur-md bg-black/40">
-                                    <h1 class="text-3xl lg:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 mb-6 leading-tight">
+                            <div class="lg:col-span-2 min-w-0 space-y-8">
+                                <div class="glass-panel p-4 sm:p-8 rounded-2xl border border-white/10 bg-black/40">
+                                    <h1 class="text-2xl sm:text-3xl font-bold text-white mb-6 leading-tight break-words">
                                         {submission().session_title}
                                     </h1>
 
@@ -205,7 +200,7 @@ const ReviewPage = () => {
                                     <Show when={isAdmin()}>
                                         <div class="mb-8 p-6 bg-white/5 rounded-xl border border-white/5 space-y-4">
                                             <h3 class="text-xs font-bold text-primary-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                                                <Icon icon="ph:info-bold" /> Logistics & Meta
+                                                <Icon icon="ph:info-bold" /> Expenses and notes
                                             </h3>
 
                                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -282,7 +277,7 @@ const ReviewPage = () => {
                                             <div class="p-2 bg-accent-500/20 rounded-lg text-accent-400">
                                                 <Icon icon="ph:star-half-bold" class="text-xl" />
                                             </div>
-                                            <h3 class="font-bold text-white uppercase tracking-wider text-sm">Evaluation</h3>
+                                            <h2 class="font-bold text-white text-lg">Your review</h2>
                                         </div>
 
                                         <div class="space-y-6">
@@ -324,10 +319,13 @@ const ReviewPage = () => {
                                         </div>
 
                                         <div class="form-control mt-6">
-                                            <label class="label"><span class="label-text text-gray-400 text-xs uppercase tracking-widest">Private Notes</span></label>
+                                            <label for="review-notes" class="label"><span class="label-text text-gray-300 text-sm">Private notes</span></label>
+                                            <p id="review-notes-help" class="text-xs text-gray-400 mb-2">Visible only to the committee.</p>
                                             <textarea
+                                                id="review-notes"
+                                                aria-describedby="review-notes-help"
                                                 class="textarea textarea-bordered bg-black/20 focus:bg-black/40 h-24 text-sm"
-                                                placeholder="Only visible to committee..."
+                                                placeholder="Strengths, concerns, or questions"
                                                 value={notes()}
                                                 onInput={(e) => setNotes(e.currentTarget.value)}
                                             ></textarea>
@@ -343,7 +341,7 @@ const ReviewPage = () => {
                                                 onClick={handleSubmit}
                                                 disabled={saving()}
                                             >
-                                                {saving() ? <span class="loading loading-spinner"></span> : "Save Review"}
+                                                {saving() ? <span class="loading loading-spinner"></span> : "Save review"}
                                             </button>
                                         </div>
                                     </div>

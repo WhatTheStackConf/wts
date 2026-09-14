@@ -381,8 +381,7 @@ export default function AdminGamificationHub() {
       layoutTitle="Admin: Gamification"
       layoutDescription="Configure September gamification, Mission codes, and single-User support"
       title="Gamification"
-      subtitle="Audited September configuration, code, and single-User support operations"
-      hint="Definitions are drafted first. Used accounting definitions are retired and replaced, never deleted. Support actions retain authoritative history and rebuild only the selected User's cache."
+      hint="Save drafts before activation. Retire used definitions instead of deleting them; accounting history is kept."
       count={operations()?.activities.length}
       countLoading={operations.loading}
       toast={toast()}
@@ -406,12 +405,14 @@ export default function AdminGamificationHub() {
         <div class="mb-6 grid gap-4 lg:grid-cols-3">
           <AdminDataPanel><div class="p-5"><p class="text-xs font-mono text-base-content/60">PROFILE CACHE</p><p class="mt-1 text-xl font-bold text-white">{operations()?.profileCache.state || "Loading"}</p><p class="mt-1 text-xs font-mono text-base-content/55">{operations()?.profileCache.profiles || 0} profiles / last rebuild {formatTime(operations()?.profileCache.lastRecalculatedAt)}</p></div></AdminDataPanel>
           <AdminDataPanel><div class="p-5"><p class="text-xs font-mono text-base-content/60">ACTIVE ACTIVITIES</p><p class="mt-1 text-xl font-bold text-white">{activeActivities().length}</p><p class="mt-1 text-xs font-mono text-base-content/55">Only active enabled Activities accept new evidence.</p></div></AdminDataPanel>
-          <AdminDataPanel><div class="p-5"><p class="text-xs font-mono text-base-content/60">LIFECYCLE CONFIRMATION</p><input class={adminInputClass("mt-2 text-sm")} value={lifecycleReason()} onInput={(event) => setLifecycleReason(event.currentTarget.value)} placeholder="Reason for activation or retirement" /></div></AdminDataPanel>
+          <AdminDataPanel><div class="p-5"><AdminFormField id="gam-lifecycle-reason" label="Activation / retirement reason"><input id="gam-lifecycle-reason" class={adminInputClass("text-sm")} value={lifecycleReason()} onInput={(event) => setLifecycleReason(event.currentTarget.value)} /></AdminFormField></div></AdminDataPanel>
         </div>
 
         <div class="grid gap-8 xl:grid-cols-2">
-          <form class={adminFormPanelClass} onSubmit={saveAchievement}>
-            <AdminFormSection title={achievementId() ? "Edit Achievement draft" : "New Achievement draft"} description="Achievements own Badge presentation and unlock rules. Active definitions require an active window and valid rule dependencies.">
+          <details class={adminFormPanelClass} open={Boolean(achievementId())}>
+            <summary class="cursor-pointer font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">Achievement draft</summary>
+          <form class="mt-5" onSubmit={saveAchievement}>
+            <AdminFormSection title={achievementId() ? "Edit Achievement" : "New Achievement"} description="Set the badge and unlock rule. Activation requires a valid time window and rule dependencies.">
               <div class="grid gap-4 md:grid-cols-2">
                 <AdminFormField id="gam-achievement-key" label="Key" required><input id="gam-achievement-key" class={adminInputClass("font-mono")} required disabled={Boolean(achievementId())} value={achievementKey()} onInput={(event) => setAchievementKey(event.currentTarget.value)} /></AdminFormField>
                 <AdminFormField id="gam-achievement-name" label="Badge name" required><input id="gam-achievement-name" class={adminInputClass()} required value={achievementName()} onInput={(event) => setAchievementName(event.currentTarget.value)} /></AdminFormField>
@@ -431,9 +432,12 @@ export default function AdminGamificationHub() {
             </AdminFormSection>
             <div class="mt-5 flex justify-end gap-2"><button type="button" class="btn btn-ghost font-mono" onClick={resetAchievement}>Clear</button><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Save draft</button></div>
           </form>
+          </details>
 
-          <form class={adminFormPanelClass} onSubmit={saveMission}>
-            <AdminFormSection title={missionId() ? "Edit Mission draft" : "New Mission draft"} description="Missions are user-facing groupings. Activities own evidence, limits, caps, and score policies.">
+          <details class={adminFormPanelClass} open={Boolean(missionId())}>
+            <summary class="cursor-pointer font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">Mission draft</summary>
+          <form class="mt-5" onSubmit={saveMission}>
+            <AdminFormSection title={missionId() ? "Edit Mission" : "New Mission"} description="Group activities into a mission. Configure evidence, limits, and scoring on each activity.">
               <div class="grid gap-4 md:grid-cols-2">
                 <AdminFormField id="gam-mission-key" label="Key" required><input id="gam-mission-key" class={adminInputClass("font-mono")} required disabled={Boolean(missionId())} value={missionKey()} onInput={(event) => setMissionKey(event.currentTarget.value)} /></AdminFormField>
                 <AdminFormField id="gam-mission-slug" label="Slug" required><input id="gam-mission-slug" class={adminInputClass("font-mono")} required disabled={Boolean(missionId())} value={missionSlug()} onInput={(event) => setMissionSlug(event.currentTarget.value)} /></AdminFormField>
@@ -450,10 +454,13 @@ export default function AdminGamificationHub() {
             </AdminFormSection>
             <div class="mt-5 flex justify-end gap-2"><button type="button" class="btn btn-ghost font-mono" onClick={resetMission}>Clear</button><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Save draft</button></div>
           </form>
+          </details>
         </div>
 
-        <form class={`${adminFormPanelClass} mt-8`} onSubmit={saveActivity}>
-          <AdminFormSection title={activityId() ? "Edit Activity draft" : "New Activity draft"} description="Activity-owned direct scoring is attached to a draft score schedule after the Activity has an ID. Activate only after dependencies, limits, source references, and score policy validate.">
+        <details class={`${adminFormPanelClass} mt-8`} open={Boolean(activityId())}>
+          <summary class="cursor-pointer font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">Activity draft</summary>
+        <form class="mt-5" onSubmit={saveActivity}>
+          <AdminFormSection title={activityId() ? "Edit Activity" : "New Activity"} description="Save first, then attach a draft score policy. Activation requires valid dependencies, evidence sources, and limits.">
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <AdminFormField id="gam-activity-key" label="Key" required><input id="gam-activity-key" class={adminInputClass("font-mono")} required disabled={Boolean(activityId())} value={activityKey()} onInput={(event) => setActivityKey(event.currentTarget.value)} /></AdminFormField>
               <AdminFormField id="gam-activity-mission" label="Mission"><select id="gam-activity-mission" class={adminSelectClass()} value={activityMission()} onChange={(event) => setActivityMission(event.currentTarget.value)}><option value="">No Mission</option><For each={operations()?.missions || []}>{(mission) => <option value={mission.id}>{mission.key}</option>}</For></select></AdminFormField>
@@ -497,8 +504,9 @@ export default function AdminGamificationHub() {
                </div>
              </AdminFormSection>
            </Show>
-          <div class="mt-5 flex items-center justify-between gap-3"><label class="flex items-center gap-2 text-sm font-mono"><input type="checkbox" class="checkbox checkbox-sm" checked={activityEnabled()} onChange={(event) => setActivityEnabled(event.currentTarget.checked)} /> Enabled when active</label><div class="flex gap-2"><button type="button" class="btn btn-ghost font-mono" onClick={resetActivity}>Clear</button><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Save draft</button></div></div>
+          <div class="mt-5 flex flex-wrap items-center justify-between gap-3"><label class="flex items-center gap-2 text-sm font-mono"><input type="checkbox" class="checkbox checkbox-sm" checked={activityEnabled()} onChange={(event) => setActivityEnabled(event.currentTarget.checked)} /> Enabled when active</label><div class="flex gap-2"><button type="button" class="btn btn-ghost font-mono" onClick={resetActivity}>Clear</button><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Save draft</button></div></div>
         </form>
+        </details>
 
         <div class="mt-8 grid gap-8 xl:grid-cols-3">
           <For each={[{ kind: "achievement" as const, title: "Achievements", rows: operations()?.achievements || [] }, { kind: "mission" as const, title: "Missions", rows: operations()?.missions || [] }, { kind: "activity" as const, title: "Activities", rows: operations()?.activities || [] }]}>
@@ -524,6 +532,11 @@ export default function AdminGamificationHub() {
       </Show>
 
        <Show when={tab() === "schedule"}>
+        <div class="mb-6 max-w-xl">
+          <AdminFormField id="gam-schedule-activation-reason" label="Activation reason" hint="Activation makes the current schedule historic.">
+            <input id="gam-schedule-activation-reason" class={adminInputClass()} value={lifecycleReason()} onInput={(event) => setLifecycleReason(event.currentTarget.value)} />
+          </AdminFormField>
+        </div>
         <div class="grid gap-8 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
           <form class={adminFormPanelClass} onSubmit={createSchedule}><AdminFormSection title="New score schedule draft" description="Activate only after every intended direct Activity policy is attached and its Activity is active."><div class="grid gap-4"><AdminFormField id="gam-schedule-key" label="Schedule key" required><input id="gam-schedule-key" class={adminInputClass("font-mono")} required value={scheduleKey()} onInput={(event) => setScheduleKey(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-schedule-effective" label="Effective at" required><input id="gam-schedule-effective" type="datetime-local" class={adminInputClass("font-mono")} required value={scheduleEffectiveAt()} onInput={(event) => setScheduleEffectiveAt(event.currentTarget.value)} /></AdminFormField></div></AdminFormSection><div class="mt-5 flex justify-end"><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Create schedule draft</button></div></form>
           <AdminDataPanel><div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">Versioned September schedules</h2><p class="mt-1 text-xs font-mono text-base-content/60">Only active score-bearing policies on active Activities produce the cap snapshot and Access Level thresholds.</p></div><ul class="divide-y divide-white/10" role="list"><For each={operations()?.schedules || []}>{(schedule) => <li class="flex flex-wrap items-center justify-between gap-4 p-5"><div><p class="font-bold text-white">{schedule.key}</p><p class="text-xs font-mono text-base-content/60">total cap {schedule.totalXpCeiling} / leaderboard cap {schedule.leaderboardXpCeiling} / effective {formatTime(schedule.effectiveAt)}</p></div><div class="flex items-center gap-2"><span class={statusClass(schedule.status === "active")}>{schedule.status}</span><Show when={schedule.status === "draft"}><button type="button" class="btn btn-sm btn-success font-mono" disabled={busy()} onClick={() => activateSchedule(schedule.id)}>Activate</button></Show></div></li>}</For></ul></AdminDataPanel>

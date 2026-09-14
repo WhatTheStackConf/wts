@@ -116,21 +116,17 @@ export default function ReviewerWeightsPage() {
     const hasVoted = () => !!voteId();
 
     return (
-        <Layout title="Vote on Weights" description="Committee Weighting">
+        <Layout title="Criteria weights" description="Committee scoring weights">
             <Show when={guard.authorized()}>
                 <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-accent-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
-                    <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
+
 
                     <div class="container mx-auto px-4 max-w-3xl">
-                        <div class="flex items-center justify-between mb-8">
+                        <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
                             <div>
-                                <h1 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-accent-400 uppercase drop-shadow-sm mb-1">
-                                    Weighting Vote
+                                <h1 class="text-3xl font-bold text-white mb-1">
+                                    Criteria weights
                                 </h1>
-                                <p class="text-secondary-300 font-mono text-sm">
-                                    COMMITTEE SCORING CRITERIA
-                                </p>
                             </div>
                             <button
                                 class="btn btn-ghost hover:bg-white/10 text-white gap-2 group"
@@ -145,42 +141,29 @@ export default function ReviewerWeightsPage() {
                                     class="group-hover:-translate-x-1 transition-transform"
                                 />
                                 {isReviewer()
-                                    ? "Back to Portal"
-                                    : "Back to Dashboard"}
+                                    ? "Back to reviews"
+                                    : "Back to admin"}
                             </button>
                         </div>
 
-                        <div class="glass-panel p-8 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
+                        <div class="glass-panel p-4 sm:p-8 rounded-2xl border border-white/10 bg-black/40">
                             <Show when={!isReviewer()}>
                                 <div class="alert alert-info bg-primary-900/30 border-primary-500/30 text-primary-200 mb-8 shadow-lg backdrop-blur-md">
                                     <Icon icon="ph:eye-bold" class="text-2xl" />
-                                    <div>
-                                        <h3 class="font-bold">Admin View Mode</h3>
-                                        <div class="text-xs opacity-80">
-                                            You are viewing the calculated averages
-                                            of all committee votes. Only Reviewers
-                                            can cast votes.
-                                        </div>
-                                    </div>
+                                    <p class="text-sm">Committee averages. Only reviewers can vote.</p>
                                 </div>
                             </Show>
 
-                            <p class="mb-8 text-sm text-gray-400 leading-relaxed border-l-2 border-accent-500 pl-4">
+                            <p class="mb-8 text-sm text-secondary-300">
                                 {isReviewer()
-                                    ? "As a committee member, please assign a weight (1-6) to each criteria. The final weight used in the scoring formula will be the average of all committee members' votes."
-                                    : "Current global averages across all criteria. These weights determine the final score calculation for proposals."}
+                                    ? "Assign each criterion a weight from 1–6. Committee votes are averaged to weight proposal scores."
+                                    : "These averaged weights are used to calculate proposal scores."}
                             </p>
 
                             <Show when={success() && isReviewer()}>
                                 <div class="alert alert-success bg-success-900/30 border-success-500/30 text-success-200 mb-8 shadow-lg">
                                     <Icon icon="mdi:check-circle" class="text-2xl" />
-                                    <div>
-                                        <h3 class="font-bold">Weights Saved!</h3>
-                                        <div class="text-xs">
-                                            You have successfully saved your
-                                            weight preferences.
-                                        </div>
-                                    </div>
+                                    <p role="status">Weights saved</p>
                                 </div>
                             </Show>
 
@@ -197,20 +180,13 @@ export default function ReviewerWeightsPage() {
                                             <div class="form-control group">
                                                 <div class="flex justify-between items-end mb-3">
                                                     <label class="label cursor-pointer flex-col items-start p-0">
-                                                        <span class="label-text font-bold text-lg text-white group-hover:text-primary-300 transition-colors uppercase tracking-wide">
+                                                        <span class="label-text font-semibold text-white">
                                                             {item.label}
                                                         </span>
-                                                        <Show when={!isReviewer()}>
-                                                            <span class="label-text-alt text-gray-500 font-mono text-xs mt-1">
-                                                                GLOBAL AVG:{" "}
-                                                                <span class="text-secondary-400">
-                                                                    {averages()[item.id] || "-"}
-                                                                </span>
-                                                            </span>
-                                                        </Show>
+
                                                     </label>
                                                     <div class="flex flex-col items-end">
-                                                        <span class="font-mono text-3xl font-black text-transparent bg-clip-text bg-gradient-to-br from-primary-400 to-white drop-shadow-sm">
+                                                        <span class="font-mono text-2xl font-bold text-white">
                                                             {isReviewer()
                                                                 ? votes()[item.id]
                                                                 : averages()[item.id] ||
@@ -242,14 +218,9 @@ export default function ReviewerWeightsPage() {
                                     <Show when={isReviewer()}>
                                         <div class="divider border-white/5"></div>
                                         <div class="card-actions justify-end mt-4">
-                                            <Show when={success()}>
-                                                <div class="text-success mr-4 flex items-center animate-pulse">
-                                                    <Icon icon="ph:check-bold" class="mr-1" />
-                                                    <span class="font-bold">Votes Saved!</span>
-                                                </div>
-                                            </Show>
+
                                             <button
-                                                class="btn btn-primary btn-lg shadow-lg shadow-primary-500/20 hover:shadow-primary-500/40 border-none bg-gradient-to-r from-primary-600 to-primary-500 text-white min-w-[200px]"
+                                                class="btn btn-primary w-full sm:w-auto"
                                                 onClick={handleSave}
                                                 disabled={saving()}
                                             >
@@ -257,8 +228,8 @@ export default function ReviewerWeightsPage() {
                                                     <span class="loading loading-spinner"></span>
                                                 ) : (
                                                     hasVoted()
-                                                        ? "UPDATE WEIGHTS"
-                                                        : "SUBMIT WEIGHTS"
+                                                        ? "Update weights"
+                                                        : "Save weights"
                                                 )}
                                             </button>
                                         </div>

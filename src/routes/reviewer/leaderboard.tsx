@@ -27,34 +27,20 @@ const ReviewerLeaderboard = () => {
 
     const backPath = () => (guard.user()?.role === "admin" ? "/admin" : "/reviewer");
     const backLabel = () =>
-        guard.user()?.role === "admin" ? "Back to Dashboard" : "Back to Portal";
+        guard.user()?.role === "admin" ? "Back to admin" : "Back to reviews";
 
     return (
         <Layout title="Reviewer Leaderboard" description="Reviewer activity counts">
             <Show when={guard.authorized()}>
                 <div class="min-h-screen w-full max-w-full pt-24 pb-20 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-secondary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
-                    <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary-900/10 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
+
 
                     <div class="container mx-auto w-full max-w-full px-4 sm:px-6 md:max-w-5xl">
                         <div class="flex flex-col md:flex-row justify-between items-stretch md:items-center mb-10 gap-4">
                             <div class="min-w-0">
-                                <h1 class="flex max-w-full flex-wrap items-center gap-2 text-3xl sm:text-4xl font-black uppercase drop-shadow-sm mb-2">
-                                    <span class="min-w-0 text-transparent bg-clip-text bg-gradient-to-r from-secondary-400 to-primary-400 break-words">
-                                        Reviewer Leaderboard
-                                    </span>
-                                    <Show when={!leaderboard.loading}>
-                                        <span class="badge badge-lg font-mono font-black bg-secondary-500/20 border-secondary-500/40 text-secondary-300">
-                                            {leaderboard()?.length || 0}
-                                        </span>
-                                    </Show>
+                                <h1 class="text-3xl font-bold text-white mb-2 break-words">
+                                    Reviewer leaderboard
                                 </h1>
-                                <p class="text-secondary-300 font-mono text-sm tracking-widest uppercase">
-                                    Talks reviewed per reviewer
-                                </p>
-                                <p class="text-xs text-gray-500 font-mono mt-1 break-words">
-                                    Submission titles and review details are intentionally hidden.
-                                </p>
                             </div>
                             <button
                                 class="btn btn-ghost w-full justify-center hover:bg-white/10 text-white gap-2 group sm:w-auto"
@@ -75,24 +61,9 @@ const ReviewerLeaderboard = () => {
                         </Show>
 
                         <Show when={!leaderboard.loading}>
-                            <div class="grid gap-4 md:grid-cols-3 mb-6">
-                                <div class="glass-panel p-5 rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl">
-                                    <div class="text-xs font-mono uppercase tracking-widest text-gray-500 mb-2">
-                                        Reviewers
-                                    </div>
-                                    <div class="text-3xl font-black text-white">
-                                        {leaderboard()?.length || 0}
-                                    </div>
-                                </div>
-                                <div class="glass-panel p-5 rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl md:col-span-2">
-                                    <div class="text-xs font-mono uppercase tracking-widest text-gray-500 mb-2">
-                                        Talks Reviewed
-                                    </div>
-                                    <div class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-secondary-300 to-primary-300">
-                                        {totalReviews()}
-                                    </div>
-                                </div>
-                            </div>
+                            <p class="text-sm text-secondary-300 mb-6">
+                                {leaderboard()?.length || 0} reviewers · {totalReviews()} reviews
+                            </p>
 
                             <div class="glass-panel rounded-2xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl bg-black/40">
                                 <Show
@@ -106,9 +77,7 @@ const ReviewerLeaderboard = () => {
                                             <p class="text-xl font-bold text-white mb-2">
                                                 No reviewers yet
                                             </p>
-                                            <p class="text-sm text-gray-500 font-mono">
-                                                Reviewer activity will appear here once reviewer accounts exist.
-                                            </p>
+
                                         </div>
                                     }
                                 >
@@ -153,7 +122,7 @@ const ReviewerLeaderboard = () => {
                                                     <th class="w-24 font-mono text-secondary-300">RANK</th>
                                                     <th class="font-mono text-secondary-300">REVIEWER</th>
                                                     <th class="w-48 text-right font-mono text-secondary-300">
-                                                        TALKS REVIEWED
+                                                        Reviews
                                                     </th>
                                                 </tr>
                                             </thead>

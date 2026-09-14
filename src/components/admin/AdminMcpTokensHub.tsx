@@ -210,8 +210,7 @@ export default function AdminMcpTokensHub() {
       layoutTitle="Admin: MCP"
       layoutDescription="Govern MCP access tokens and activity"
       title="MCP Access"
-      subtitle="TEAM TOKEN GOVERNANCE"
-      hint="Every current admin can inspect safe credential metadata, review activity, and permanently revoke any token. Token material remains one-time and unrecoverable."
+      hint="Tokens are shown once and cannot be recovered. Any admin can permanently revoke them."
       count={activeCount()}
       countLoading={tokens.loading}
       accent="secondary"
@@ -227,7 +226,7 @@ export default function AdminMcpTokensHub() {
         <form onSubmit={submit} class={`${adminFormPanelClass} xl:col-span-2`}>
           <AdminFormSection
             title="Create token"
-            description="Tokens default to 90 days and are shown once. Store only the generated credential in your MCP client."
+            description="Store the generated token securely in your MCP client."
           >
             <div class="space-y-5">
               <AdminFormField
@@ -284,7 +283,7 @@ export default function AdminMcpTokensHub() {
                 />
               </AdminFormField>
 
-              <fieldset class="border border-white/10 rounded-xl p-4">
+              <fieldset class="border-t border-white/10 pt-4">
                 <legend class="px-2 text-xs font-mono uppercase tracking-[0.14em] text-base-content/80">
                   Scopes
                 </legend>
@@ -381,8 +380,8 @@ export default function AdminMcpTokensHub() {
 
         <div class="xl:col-span-3 space-y-6">
           <AdminDataPanel>
-            <div class="p-5 sm:p-6 border-b border-white/10">
-              <h2 class="text-lg font-bold text-white">MCP client configuration</h2>
+            <details class="p-5 sm:p-6">
+              <summary class="cursor-pointer text-lg font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">MCP client setup</summary>
               <p class="text-xs text-base-content/45 font-mono mt-1 max-w-3xl">
                 Point your MCP client at this endpoint and send the generated token as a bearer token.
               </p>
@@ -396,7 +395,7 @@ export default function AdminMcpTokensHub() {
                   <dd class="mt-1 rounded-xl bg-black/50 border border-white/10 p-3 font-mono text-secondary-200 break-all">Authorization: Bearer wts_mcp_...</dd>
                 </div>
               </dl>
-            </div>
+            </details>
           </AdminDataPanel>
 
           <AdminDataPanel>
@@ -404,7 +403,7 @@ export default function AdminMcpTokensHub() {
               <div>
                 <h2 class="text-lg font-bold text-white">Team tokens</h2>
                 <p class="text-xs text-base-content/45 font-mono mt-1">
-                  Ownership stays recorded. Any current admin can permanently revoke any credential with a reason.
+                  Revocation is permanent and requires a reason. Ownership stays recorded.
                 </p>
               </div>
               <button type="button" class="btn btn-sm btn-ghost font-mono min-h-12" onClick={() => refetchTokens()}>Refresh</button>
@@ -473,7 +472,7 @@ export default function AdminMcpTokensHub() {
                               Revocation reason <span class="text-error" aria-hidden="true">*</span>
                             </label>
                             <p id={`revoke-reason-${token.id}-hint`} class="mt-1 text-xs font-mono text-base-content/55">
-                              Required for the immutable Admin Action. Maximum 500 characters; do not paste credentials.
+                              Permanently revokes this token. The reason is kept in the audit log. Max 500 characters; do not paste credentials.
                             </p>
                             <textarea
                               id={`revoke-reason-${token.id}`}
@@ -521,7 +520,7 @@ export default function AdminMcpTokensHub() {
           <div>
             <h2 class="text-lg font-bold text-white">Recent MCP activity</h2>
             <p class="text-xs text-base-content/45 font-mono mt-1">
-              Applied, pending, and failed Admin Actions for MCP credentials and MCP-initiated mutations.
+              Token changes and actions made through MCP.
             </p>
           </div>
           <button type="button" class="btn btn-sm btn-ghost font-mono min-h-12" onClick={() => refetchActivity()}>Refresh</button>
@@ -570,10 +569,10 @@ export default function AdminMcpTokensHub() {
             when={filteredActivity().length > 0}
             fallback={<div class="py-8 text-center text-base-content/50 font-mono text-sm">No MCP activity matches these filters.</div>}
           >
-            <div class="grid gap-3">
+            <div class="divide-y divide-white/10">
               <For each={filteredActivity()}>
                 {(item) => (
-                  <article class="rounded-xl border border-white/10 bg-black/25 p-4">
+                  <article class="py-4">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                       <div class="min-w-0">
                         <div class="flex flex-wrap items-center gap-2">

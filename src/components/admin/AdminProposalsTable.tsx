@@ -400,9 +400,9 @@ export default function AdminProposalsTable() {
         <AdminPageShell
             layoutTitle="Proposals Leaderboard"
             layoutDescription="Ranked submissions"
-            title="Proposal Leaderboard"
-            subtitle="RANKING BASED ON WEIGHTED COMMITTEE SCORES"
-            hint="Set status to Accepted, then create a draft Session from the proposal row. Promotion creates or reuses the Speaker automatically."
+            title="Proposals"
+            subtitle="Ranked by weighted review scores."
+            hint="Accept a proposal, then create its draft session. The speaker profile is created or reused automatically."
             count={submissions()?.length || 0}
             countLoading={submissions.loading}
             accent="secondary"
@@ -567,10 +567,10 @@ export default function AdminProposalsTable() {
                                 }
                             >
                             {/* Mobile Card View */}
-                            <div class="md:hidden space-y-4 p-4">
+                            <div class="md:hidden divide-y divide-white/10">
                                 <For each={filteredSubmissions()}>
                                     {(item, index) => (
-                                        <article class="bg-white/5 rounded-xl p-4 border border-white/10 space-y-3">
+                                        <article class="p-4 space-y-3">
                                             <div class="flex justify-between items-start gap-3">
                                                 <div class="flex items-center gap-2">
                                                     <input

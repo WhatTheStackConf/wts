@@ -113,8 +113,7 @@ export default function AdminUsersTable() {
         <AdminPageShell
             layoutTitle="User Management"
             layoutDescription="Manage system users"
-            title="User Management"
-            subtitle="SYSTEM ACCESS & STATS"
+            title="Users"
             count={users()?.length || 0}
             countLoading={users.loading}
         >

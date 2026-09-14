@@ -57,10 +57,10 @@ export function NameLabelProfileAdmin(props: Props) {
   }
   return (
     <div class="min-w-0 border-t border-base-content/20 pt-5 space-y-4">
-      <h3 class="text-xl font-bold">Station printer and stock configuration</h3>
+      <h3 class="text-xl font-bold">Printer and stock profiles</h3>
       <Show when={error()}><p role="alert" class="alert alert-error">{error()}</p></Show>
       <Show when={message()}><p role="status" class="alert alert-success">{message()}</p></Show>
-      <label for="label-profile-station" class="block font-medium">Station for profile configuration</label>
+      <label for="label-profile-station" class="block font-medium">Station</label>
       <select id="label-profile-station" class="select select-bordered min-h-12 w-full min-w-0 text-base" value={selected()?.station.id ?? ""} disabled={!props.available || pending() || !!intent() || !!frozen()} onChange={(event) => choose(event.currentTarget.value)}>
         <option value="">Choose a station</option>
         <For each={props.catalogue.stations}>{(station) => <option value={station.id}>{station.label} · {station.printerRef || "No printer asset"}</option>}</For>
@@ -84,7 +84,7 @@ export function NameLabelProfileAdmin(props: Props) {
         <form method="post" action="/api/checkin-labels" aria-label="Confirm Name Label profile action" class="min-w-0 rounded-lg border-2 border-warning p-4 space-y-4" onSubmit={(event) => void confirm(event)}>
           <h4 class="text-lg font-bold">{action().operation === "configure" ? "Save an unapproved profile version" : "Record physical profile approval"}</h4>
           <p>Station: {selected()?.station.label} · Printer: {selected()?.station.printerRef}. The exact command and its expected versions are frozen after submission, including reason and note.</p>
-          <label for="label-profile-reason" class="block font-medium">Profile action reason (required)</label>
+          <label for="label-profile-reason" class="block font-medium">Reason (required)</label>
           <select id="label-profile-reason" ref={(element) => { reasonInput = element; }} class="select select-bordered min-h-12 w-full text-base" required value={reason()} disabled={pending() || !!frozen()} onChange={(event) => setReason(event.currentTarget.value as CheckinReasonCode | "")}>
             <option value="">Choose a reason</option>
             <For each={CHECKIN_REASON_CODES}>{(value) => <option value={value}>{value.replaceAll("_", " ")}</option>}</For>

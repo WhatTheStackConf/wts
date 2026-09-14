@@ -54,14 +54,14 @@ export function NameLabelProfileEditor(props: Props) {
   return (
     <form method="post" action="/api/checkin-labels" aria-label="Edit Name Label profile" onSubmit={submit}>
       <fieldset disabled={props.locked || !props.station.printerRef} class="min-w-0 space-y-4">
-        <legend class="text-lg font-bold">New immutable profile version</legend>
+        <legend class="text-lg font-bold">New profile version</legend>
         <p>Printer asset: {props.station.printerRef || "Not configured — set the station printer asset reference first"}. Configuration saves as unapproved, including changes to previously approved profiles.</p>
         <p class="text-sm">Printer and stock asset references use 1–80 letters, digits, dots, underscores or hyphens, starting with a letter or digit. Do not enter device paths, credentials or capability identifiers.</p>
         <label for="label-profile-synthetic" class="flex gap-3 items-start"><input id="label-profile-synthetic" type="checkbox" class="checkbox" checked={synthetic()} onChange={(event) => changeMode(event.currentTarget.checked)} /><span>Synthetic profile — tests and previews only</span></label>
         <Show when={!synthetic()}><p class="alert alert-warning">Enter measured device dots for this exact printer and stock. Changing to measured mode clears synthetic dimensions. Saving or previewing is not physical approval.</p></Show>
         <label for="label-stock" class="block font-medium">Stock asset reference</label>
         <input id="label-stock" class="input input-bordered min-h-12 w-full text-base" required maxlength={80} value={stockRef()} onInput={(event) => setStockRef(event.currentTarget.value)} />
-        <p>Stock format fixed: 50×30 mm generic pre-cut gap. Geometry, margins, offsets and feed below are dots, not mm. Density and threshold are device/raster settings.</p>
+        <p>Fixed stock: 50×30 mm generic pre-cut gap. Geometry, margins, offsets and feed use dots, not mm. Density and threshold are device/raster settings.</p>
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <For each={geometryFields}>{([key, label, min]) => (
             <div class="min-w-0">
@@ -74,7 +74,7 @@ export function NameLabelProfileEditor(props: Props) {
         <select id="label-direction" class="select select-bordered min-h-12 w-full text-base" value={direction()} onChange={(event) => setDirection(Number(event.currentTarget.value) as LabelProfileConfig["direction"])}>
           <For each={[0, 90, 180, 270]}>{(degrees) => <option value={degrees}>{degrees}° clockwise</option>}</For>
         </select>
-        <p class="text-sm break-words">Renderer: {LABEL_RENDERER_VERSION}<br />Font: {LABEL_FONT_VERSION}. Font sizes and the two-row layout are renderer-owned, not a label designer.</p>
+        <p class="text-sm break-words">Renderer: {LABEL_RENDERER_VERSION}<br />Font: {LABEL_FONT_VERSION}. Font sizes and the two-row layout are fixed by the renderer.</p>
         <button type="submit" class="btn btn-outline min-h-12">Review Name Label profile</button>
       </fieldset>
     </form>
