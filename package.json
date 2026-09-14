@@ -32,10 +32,11 @@
     "generate:pb-types": "echo 'Manual type definition required. Update src/lib/pocketbase-types.ts based on your PocketBase collections.'",
     "generate:icons": "node scripts/generate-icons.mjs",
     "checkin:maintenance": "node .output/checkin-runtime/runtime/checkin/cli.js maintenance",
-    "test:checkin-components": "node --test tests/checkin-lifecycle-component.test.mjs && node scripts/run-checkin-lookup-ui.mjs && node scripts/run-checkin-recovery-history-ui.mjs && node tests/checkin-recovery-compact.test.mjs && node scripts/run-checkin-admission-retry-ui.mjs",
+    "test:checkin-components": "pnpm test:checkin-polling && node --test tests/checkin-lifecycle-component.test.mjs && node scripts/run-checkin-lookup-ui.mjs && node scripts/run-checkin-recovery-history-ui.mjs && node tests/checkin-recovery-compact.test.mjs && node scripts/run-checkin-admission-retry-ui.mjs",
     "test:checkin-lifecycle-browser": "pnpm exec tsc --project tsconfig.checkin-browser.json && node scripts/run-checkin-browser.mjs --config=playwright.lifecycle.config.ts",
     "test:usability": "vp test run --maxWorkers=2 src/components/account-usability.test.tsx src/components/admin/admin-usability.test.tsx src/components/reviewer/reviewer-usability.test.tsx",
-    "test:workspace-browser": "node --experimental-strip-types scripts/run-live-qa-browser.mjs --workspace"
+    "test:workspace-browser": "node --experimental-strip-types scripts/run-live-qa-browser.mjs --workspace",
+    "test:checkin-polling": "node scripts/test-checkin-polling-resource.mjs && node scripts/run-checkin-polling-ui.mjs"
   },
   "dependencies": {
     "@mdx-js/mdx": "^3.1.1",

@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createSignal, onCleanup, onSettled } from "solid-js";
-import { createAsyncResource } from "~/lib/async-resource";
+import { createCheckinPollingResource } from "./checkin-polling-resource";
 import type { CheckinStatusDTO } from "~/lib/checkin-contract";
 import { checkinEventCatalogue, selectCheckinEvent } from "~/lib/checkin-event-client";
 import { CheckinArrivalPreflight } from "~/components/checkin/CheckinArrivalPreflight";
@@ -30,7 +30,7 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
   // Refresh on binding/station fences, focus, explicit refresh and each selection.
   // The server always revalidates mappings and generations for new requests.
   const source = () => props.status?.bindingState === "bound" ? `${props.authorityKey ?? "legacy"}:${props.status?.binding?.id}:${props.status?.binding?.version}:${props.status?.station?.generation}:${props.status?.system.generation}` : undefined;
-  const [catalogue, actions] = createAsyncResource(source, async fence => ({ ...(await checkinEventCatalogue()), verifiedFor: fence }));
+  const [catalogue, actions] = createCheckinPollingResource(source, async fence => ({ ...(await checkinEventCatalogue()), verifiedFor: fence }));
   const [resumeRequest, setResumeRequest] = createSignal<{ operationId: string; scope: string }>();
   const bindingScope = () => props.status?.bindingState === "bound" && props.status.binding && !props.status.binding.revoked ? `${props.status.binding.id}:${props.status.binding.version}:${props.status.station?.id}` : undefined;
   const [choice, setChoice] = createSignal("");
@@ -66,7 +66,7 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
   const chosen = () => catalogue()?.events.find((event) => event.id === choice());
   async function refresh() { await actions.refetch().catch(() => undefined); }
   onSettled(() => {
-    const focus = () => { if (!pending()) void refresh(); };
+    const focus = () => { if (!document.hidden && !pending() && !arrivalBusy()) void actions.poll().catch(() => undefined); };
     window.addEventListener("focus", focus);
     return () => window.removeEventListener("focus", focus);
   });

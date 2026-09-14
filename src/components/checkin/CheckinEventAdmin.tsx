@@ -1,5 +1,5 @@
 import { For, Show, createSignal, onSettled } from "solid-js";
-import { createAsyncResource } from "~/lib/async-resource";
+import { createCheckinPollingResource } from "./checkin-polling-resource";
 import { CHECKIN_NOTE_MAX_LENGTH, CHECKIN_REASON_CODES, type CheckinReasonCode } from "~/lib/checkin-contract";
 import { CheckinEventRequestError, checkinAdminEventCatalogue, checkinAdminEventOptions, configureCheckinEvent } from "~/lib/checkin-event-client";
 import type { CheckinConfigureEvent } from "~/lib/checkin-event-contract";
@@ -7,9 +7,9 @@ import type { CheckinConfigureEvent } from "~/lib/checkin-event-contract";
 type EventDraft = Omit<CheckinConfigureEvent, "operationId" | "reason" | "note">;
 
 export function CheckinEventAdmin() {
-  const [catalogue, catalogueActions] = createAsyncResource(checkinAdminEventCatalogue);
+  const [catalogue, catalogueActions] = createCheckinPollingResource(checkinAdminEventCatalogue);
   const [draft, setDraft] = createSignal<EventDraft>();
-  const [options, optionActions] = createAsyncResource(() => draft()?.upstreamEventId || undefined, async (id) => ({ id, data: await checkinAdminEventOptions(id) }));
+  const [options, optionActions] = createCheckinPollingResource(() => draft()?.upstreamEventId || undefined, async (id) => ({ id, data: await checkinAdminEventOptions(id) }));
   const [reviewing, setReviewing] = createSignal(false);
   const [reason, setReason] = createSignal<CheckinReasonCode | "">("");
   const [note, setNote] = createSignal("");
@@ -56,7 +56,11 @@ export function CheckinEventAdmin() {
     if (draft()) await optionActions.refetch().catch(() => undefined);
   }
   onSettled(() => {
-    const focus = () => { if (!pending()) void refresh(); };
+    const focus = () => {
+      if (document.hidden || pending()) return;
+      void catalogueActions.poll().catch(() => undefined);
+      if (draft()) void optionActions.poll().catch(() => undefined);
+    };
     window.addEventListener("focus", focus);
     return () => window.removeEventListener("focus", focus);
   });

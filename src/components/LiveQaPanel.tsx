@@ -86,6 +86,7 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
   const [session, setSession] = createSignal<LiveQaSession>();
   const [page, setPage] = createSignal(1);
   const [reading, setReading] = createSignal(false);
+  const [readAction, setReadAction] = createSignal(false);
   const [readError, setReadError] = createSignal("");
   const [denied, setDenied] = createSignal(false);
   const [body, setBody] = createSignal("");
@@ -104,6 +105,7 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
   let command: AskCommand | undefined;
   let ambiguous = false;
   let requestedPage = 1;
+  let queuedPage: number | undefined;
   const current = () => alive && props.current();
   const draftLength = createMemo(() => Array.from(body().trim()).length);
   const validDraft = () => draftLength() > 0 && draftLength() <= 1000;
@@ -119,12 +121,19 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
     if (!command) setBody("");
   }
 
-  async function refresh(nextPage = requestedPage) {
-    if (!current() || readInFlight || askInFlight || moderationInFlight) return;
+  async function refresh(nextPage = requestedPage, background = false) {
+    if (!current() || askInFlight || moderationInFlight) return;
+    if (readInFlight) {
+      // Keep controls stable during polls without dropping a user's page/refresh
+      // click. Serialize it after the poll so denial handling still runs first.
+      if (!background) { queuedPage = nextPage; setReadAction(true); }
+      return;
+    }
     readInFlight = true;
     requestedPage = nextPage;
     const version = ++epoch;
     setReading(true);
+    setReadAction(!background);
     try {
       const result = await liveQaRequest<LiveQaSession>({ operation: "session", slug, page: nextPage }, actorId);
       if (!current() || version !== epoch) return;
@@ -144,7 +153,15 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
       }
     } finally {
       readInFlight = false;
-      if (current()) setReading(false);
+      if (current()) {
+        setReading(false);
+        setReadAction(false);
+        if (queuedPage !== undefined) {
+          const next = queuedPage;
+          queuedPage = undefined;
+          void refresh(next);
+        }
+      }
     }
   }
 
@@ -223,7 +240,7 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
   onSettled(() => {
     if (typeof window === "undefined") return;
     void refresh();
-    const poll = () => { if (!document.hidden) void refresh(); };
+    const poll = () => { if (!document.hidden) void refresh(requestedPage, true); };
     const timer = window.setInterval(poll, 5000);
     document.addEventListener("visibilitychange", poll);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", poll); };
@@ -241,7 +258,7 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
             {(data) => <><strong class="block text-white">{data().accepting ? "Questions are open" : "Questions are closed"}</strong><span>{modeLabel(data().mode)}</span></>}
           </Show>
         </div>
-        <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" disabled={reading() || sending() || moderating()} onClick={() => void refresh()}>Refresh questions</button>
+        <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" disabled={readAction() || sending() || moderating()} onClick={() => void refresh()}>Refresh questions</button>
       </div>
       <Show when={session() && !session()!.accepting}><p class="text-sm text-primary-200">You can still read submitted questions or prepare a draft.</p></Show>
       <Show when={readError()}><p role="alert" class="alert alert-warning">{readError()}</p></Show>
@@ -285,24 +302,24 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
           <p class="text-sm text-primary-200">Oldest first · Updates every 5 seconds while visible</p>
           <Show when={data().questions.length} fallback={<p>{page() > 1 ? "No questions on this page." : data().canModerate ? "No questions yet." : "You haven't sent any questions yet."}</p>}>
             <ul class="divide-y divide-white/15 list-none p-0">
-              <For each={data().questions}>
+              <For each={data().questions} keyed={question => question.id}>
                 {(question) => <li class="py-4 space-y-3 min-w-0">
                   <div class="flex flex-wrap items-center gap-2 text-sm">
-                    <Show when={question.own}><span class="font-bold text-white">Your question</span></Show>
-                    <span class={question.answered ? "badge badge-success" : "badge badge-outline"}>{question.answered ? "Answered" : "Unanswered"}</span>
+                    <Show when={question().own}><span class="font-bold text-white">Your question</span></Show>
+                    <span class={question().answered ? "badge badge-success" : "badge badge-outline"}>{question().answered ? "Answered" : "Unanswered"}</span>
                   </div>
-                  <p class="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{question.body}</p>
+                  <p class="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{question().body}</p>
                   <Show when={data().canModerate}>
-                    <button type="button" class="btn btn-sm btn-outline min-h-12" disabled={moderating() || sending()} onClick={() => void moderate({ operation: "answer", slug, questionId: question.id, answered: !question.answered })}>{question.answered ? "Reopen question" : "Mark answered"}</button>
+                    <button type="button" class="btn btn-sm btn-outline min-h-12" disabled={moderating() || sending()} onClick={() => void moderate({ operation: "answer", slug, questionId: question().id, answered: !question().answered })}>{question().answered ? "Reopen question" : "Mark answered"}</button>
                   </Show>
                 </li>}
               </For>
             </ul>
           </Show>
           <nav aria-label="Question pages" class="flex flex-wrap items-center gap-2 text-sm">
-            <button type="button" aria-label="Previous questions" class="btn btn-sm btn-outline min-h-12 whitespace-nowrap" disabled={reading() || sending() || moderating() || page() <= 1} onClick={() => void refresh(page() - 1)}>Previous</button>
+            <button type="button" aria-label="Previous questions" class="btn btn-sm btn-outline min-h-12 whitespace-nowrap" disabled={readAction() || sending() || moderating() || page() <= 1} onClick={() => void refresh(page() - 1)}>Previous</button>
             <span class="whitespace-nowrap">Page {page()} of {Math.max(1, data().totalPages)}</span>
-            <button type="button" aria-label="Next questions" class="btn btn-sm btn-outline min-h-12 whitespace-nowrap" disabled={reading() || sending() || moderating() || page() >= data().totalPages} onClick={() => void refresh(page() + 1)}>Next</button>
+            <button type="button" aria-label="Next questions" class="btn btn-sm btn-outline min-h-12 whitespace-nowrap" disabled={readAction() || sending() || moderating() || page() >= data().totalPages} onClick={() => void refresh(page() + 1)}>Next</button>
           </nav>
         </section>}
       </Show>

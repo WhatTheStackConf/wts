@@ -125,7 +125,9 @@ export function CheckinCameraArrival(props: CheckinCameraArrivalProps) {
     const current = held();
     if (!current || !visible() || pending() || statusInFlight || document.hidden) return;
     statusInFlight = true;
-    setReading(true);
+    // A same-authority observation must not disable or blur the settled retry
+    // control. Failed/initial reads still block until a descriptor is verified.
+    setReading(!resume() || !!error());
     const epoch = authorityEpoch;
     try {
       const status = await checkinArrivalStatus(current.operationId);

@@ -60,6 +60,7 @@ test("failed preflight stays visibly held across status and readiness polls", as
     await showSyntheticQr(phone, "A-UXS0001");
     await expect(phone.getByRole("heading", { name: "Check unavailable", exact: true })).toBeVisible();
     await expect(phone.getByRole("button", { name: "Retry check", exact: true })).toBeEnabled();
+    await phone.getByRole("button", { name: "Retry check", exact: true }).focus();
     const before = { ...counts };
     // Exercise the parent scanner's focus-triggered event verification too.
     await phone.route("**/api/checkin-events", async route => {
@@ -72,6 +73,8 @@ test("failed preflight stays visibly held across status and readiness polls", as
       const focusPoll = window.setInterval(() => window.dispatchEvent(new Event("focus")), 5000);
       const w = window as any;
       const video = document.querySelector("video")!;
+      const retryNode = Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Retry check")!;
+      const initialBox = retryNode.getBoundingClientRect().toJSON();
       const initial = { cues: { ...w.__failedCues }, requests: w.__wtsSyntheticCamera.requests, stopped: w.__wtsSyntheticCamera.stopped, time: video.currentTime, held: Object.entries(localStorage).filter(([key]) => key.startsWith("wts:camera-held:")) };
       const bad: object[] = [];
       const until = performance.now() + 16200;
@@ -79,8 +82,8 @@ test("failed preflight stays visibly held across status and readiness polls", as
         const frame = () => {
           const title = document.querySelector<HTMLElement>(".checkin-result-title");
           const retry = Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Retry check");
-          if (title?.textContent !== "Check unavailable" || !title.offsetParent || !retry?.offsetParent || video !== document.querySelector("video") || video.paused || !video.srcObject) {
-            if (bad.length < 10) bad.push({ title: title?.textContent, visible: !!title?.offsetParent, retry: !!retry?.offsetParent, paused: video.paused });
+          if (title?.textContent !== "Check unavailable" || !title.offsetParent || !retry?.offsetParent || retry.disabled || retry !== retryNode || document.activeElement !== retryNode || JSON.stringify(retry.getBoundingClientRect().toJSON()) !== JSON.stringify(initialBox) || video !== document.querySelector("video") || video.paused || !video.srcObject) {
+            if (bad.length < 10) bad.push({ title: title?.textContent, visible: !!title?.offsetParent, retry: !!retry?.offsetParent, disabled: retry?.disabled, focused: document.activeElement === retryNode, paused: video.paused });
           }
           if (performance.now() < until) requestAnimationFrame(frame); else resolve();
         }; frame();

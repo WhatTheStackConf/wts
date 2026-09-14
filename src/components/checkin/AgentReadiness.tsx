@@ -1,13 +1,13 @@
 import { Show, createSignal, onSettled } from "solid-js";
-import { createAsyncResource } from "~/lib/async-resource";
+import { createCheckinPollingResource } from "./checkin-polling-resource";
 import { agentStatus, CheckinAgentRequestError } from "~/lib/checkin-agent-client";
 import type { AgentReadinessDTO } from "~/lib/checkin-agent-contract";
 
 /** Safe status queries only: no overlapping polls, three consecutive failed
  * attempts, bounded backoff, explicit recovery. Mutations never use this loop. */
-export function createAgentReadinessResource<S, T>(source: () => S | undefined, fetcher: (source: S) => Promise<T>) {
+export function createAgentReadinessResource<S extends string | number | boolean, T>(source: () => S | undefined, fetcher: (source: S) => Promise<T>) {
   const [failures, setFailures] = createSignal(0);
-  const [data, actions] = createAsyncResource(source, async (value) => {
+  const [data, actions] = createCheckinPollingResource(source, async (value) => {
     try { const result = await fetcher(value); setFailures(0); return result; }
     catch (error) { setFailures((count) => error instanceof CheckinAgentRequestError && !error.retryable ? 3 : count + 1); throw error; }
   });
@@ -15,11 +15,11 @@ export function createAgentReadinessResource<S, T>(source: () => S | undefined, 
     let timer: number;
     let disposed = false;
     const refreshVisible = () => {
-      if (!document.hidden && source() !== undefined && !data.loading && failures() < 3) void actions.refetch().catch(() => undefined);
+      if (!document.hidden && source() !== undefined && !data.refreshing && failures() < 3) void actions.poll().catch(() => undefined);
     };
     const poll = async () => {
       if (disposed) return;
-      if (!document.hidden && source() !== undefined && !data.loading && failures() < 3) await actions.refetch().catch(() => undefined);
+      if (!document.hidden && source() !== undefined && !data.refreshing && failures() < 3) await actions.poll().catch(() => undefined);
       if (!disposed) timer = window.setTimeout(() => void poll(), Math.min(30000, 5000 * 2 ** failures()) + Math.floor(Math.random() * 500));
     };
     timer = window.setTimeout(() => void poll(), 5000);
@@ -32,7 +32,7 @@ export function createAgentReadinessResource<S, T>(source: () => S | undefined, 
     };
   });
   async function refresh() {
-    if (data.loading) return;
+    if (data.refreshing) return;
     setFailures(0);
     await actions.refetch().catch(() => undefined);
   }

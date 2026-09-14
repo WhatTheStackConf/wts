@@ -6,7 +6,7 @@ import { CheckinLayout } from "~/components/checkin/CheckinLayout";
 import { CheckinEventSelector } from "~/components/checkin/CheckinEventSelector";
 import { BoundAgentReadiness } from "~/components/checkin/AgentReadiness";
 import { useRequireCheckinOperator } from "~/lib/route-guards";
-import { createAsyncResource } from "~/lib/async-resource";
+import { createCheckinPollingResource } from "./checkin-polling-resource";
 import { bindCheckinStation, checkinStatus, previewCheckinStation } from "~/lib/checkin-client";
 import type { CheckinPreviewDTO, CheckinStationDTO } from "~/lib/checkin-contract";
 
@@ -45,7 +45,7 @@ export default function CheckinStationPage() {
   const [pending, setPending] = createSignal(false);
   const [message, setMessage] = createSignal("");
   const [error, setError] = createSignal("");
-  const [status, actions] = createAsyncResource(() => guard.authorized() ? true : undefined, checkinStatus);
+  const [status, actions] = createCheckinPollingResource(() => guard.authorized() ? true : undefined, checkinStatus);
 
   onSettled(() => {
     const fragment = window.location.hash;
@@ -57,7 +57,7 @@ export default function CheckinStationPage() {
       else setError("Invalid provisioning link. Scan the current station QR again.");
     }
     const refreshStatus = () => {
-      if (guard.authorized() && !document.hidden) void actions.refetch().catch(() => undefined);
+      if (guard.authorized() && !document.hidden) void actions.poll().catch(() => undefined);
     };
     const timer = window.setInterval(refreshStatus, 5000);
     window.addEventListener("focus", refreshStatus);
