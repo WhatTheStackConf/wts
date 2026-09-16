@@ -2,6 +2,7 @@ import { Loading, createSignal, onSettled } from "solid-js";
 import { isServer } from "@solidjs/web";
 import { AuthProvider } from "~/lib/auth-context";
 import { initPocketBase } from "~/lib/pocketbase-utils";
+import { initializeServerFunctionTransport } from "~/lib/server-function-transport";
 import { Router } from "~/router";
 // Client-only protected routes still call these server references after
 // hydration. Preload the modules in the SSR graph so the dev server registers
@@ -14,11 +15,15 @@ import "~/lib/mcp-actions";
 import "~/lib/gamification-operations-actions";
 import "~/lib/gamification-admin-actions";
 import "~/lib/gamification-hievents-actions";
+import "~/lib/mission-question-actions";
+import "~/lib/mission-code-redemption-action";
 import "~/lib/partner-contact-consent-actions";
 import "~/lib/profile-actions";
 import "~/lib/cfp-actions";
 import "./styles/app.css";
 
+// The generated client entry imports App before hydration or route rendering.
+if (!isServer) initializeServerFunctionTransport();
 initPocketBase();
 
 function DeferredBackground() {

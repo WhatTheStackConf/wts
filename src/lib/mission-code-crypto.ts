@@ -1,22 +1,15 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  CROCKFORD_BASE32,
+  MISSION_CODE_PREFIX_LENGTH,
+  MISSION_CODE_SECRET_LENGTH,
+  MISSION_CODE_VERSION,
+  parseMissionCode,
+} from "~/lib/mission-code-format";
+export { containsMissionCode, parseMissionCode, MISSION_CODE_PREFIX_LENGTH, MISSION_CODE_SECRET_LENGTH } from "~/lib/mission-code-format";
+export type { ParsedMissionCode } from "~/lib/mission-code-format";
 
 export const MISSION_CODE_HASH_VERSION = "hmac-sha256-v1" as const;
-export const MISSION_CODE_PREFIX_LENGTH = 8;
-export const MISSION_CODE_SECRET_LENGTH = 26;
-
-const MISSION_CODE_VERSION = "WTS26";
-const CROCKFORD_BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-const CODE_PATTERN = new RegExp(
-  `^${MISSION_CODE_VERSION}([${CROCKFORD_BASE32}]{${MISSION_CODE_PREFIX_LENGTH}})([${CROCKFORD_BASE32}]{${MISSION_CODE_SECRET_LENGTH}})$`,
-);
-const EMBEDDED_CODE_PATTERN = new RegExp(
-  `${MISSION_CODE_VERSION}[${CROCKFORD_BASE32}]{${MISSION_CODE_PREFIX_LENGTH + MISSION_CODE_SECRET_LENGTH}}`,
-);
-
-export interface ParsedMissionCode {
-  normalizedCode: string;
-  lookupPrefix: string;
-}
 
 export interface MissionCodeGeneration {
   /** Display this bearer secret once, then discard it. */
@@ -29,20 +22,6 @@ export interface MissionCodeGeneration {
   };
 }
 
-/** Removes only separators the printed format permits before validating its exact shape. */
-export function parseMissionCode(rawCode: unknown): ParsedMissionCode | undefined {
-  if (typeof rawCode !== "string") return undefined;
-  const normalizedCode = rawCode.trim().toUpperCase().replace(/[\s-]/g, "");
-  const match = CODE_PATTERN.exec(normalizedCode);
-  if (!match) return undefined;
-  return { normalizedCode, lookupPrefix: match[1] };
-}
-
-/** Detects every separator-tolerant representation accepted by `parseMissionCode`. */
-export function containsMissionCode(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-  return EMBEDDED_CODE_PATTERN.test(value.toUpperCase().replace(/[\s-]/g, ""));
-}
 
 export function hashNormalizedMissionCode(normalizedCode: string, pepper: string): string {
   if (!pepper) throw new Error("GAMIFICATION_CODE_PEPPER is required for Mission code operations.");

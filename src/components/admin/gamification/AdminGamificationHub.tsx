@@ -32,6 +32,9 @@ import AdminSessionAttendanceMissions from "~/components/admin/gamification/Admi
 import AdminConfiguredEventMissions from "~/components/admin/gamification/AdminConfiguredEventMissions";
 import AdminCommunityPartnerMissions from "~/components/admin/gamification/AdminCommunityPartnerMissions";
 import AdminEasterEggMissions from "~/components/admin/gamification/AdminEasterEggMissions";
+import AdminMissionQuestions from "~/components/admin/gamification/AdminMissionQuestions";
+import AdminPrintedMissionCodes from "~/components/admin/gamification/AdminPrintedMissionCodes";
+import MissionCodeQr from "~/components/admin/gamification/MissionCodeQr";
 import type {
   AdminActivityDto,
   AdminCodeBatchResult,
@@ -42,11 +45,11 @@ import type {
 } from "~/lib/gamification-operations";
 
 const CATEGORIES = ["onboarding", "ticketing", "attendance", "session", "partner", "booth", "workshop", "satellite_event", "warmup_event", "community", "social", "meta", "admin_manual"];
-const ACTIVITY_KINDS = ["booth", "community_partner", "hievents", "admin_manual", "meta"];
+const ACTIVITY_KINDS = ["qr", "booth", "community_partner", "hievents", "admin_manual", "meta"];
 const EVIDENCE_MODES = ["single_code", "two_code_start", "two_code_finish", "hievents_ticket", "hievents_checkin", "admin_manual", "meta_rule"];
 const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"];
 const DEDICATED_EVENT_KINDS = new Set(["workshop", "warmup", "satellite", "social"]);
-type AdminGamificationTab = "catalog" | "events" | "community" | "eggs" | "sessions" | "codes" | "schedule" | "hievents" | "support";
+type AdminGamificationTab = "catalog" | "events" | "community" | "eggs" | "sessions" | "codes" | "printed" | "questions" | "schedule" | "hievents" | "support";
 
 function usesDedicatedConfiguration(kind: GamificationDefinitionKind, item: any): boolean {
   if (kind === "activity") return item.kind === "session" || item.kind === "community_partner" || item.kind === "easter_egg" || ["workshop", "warmup_event", "satellite_event", "social"].includes(item.kind);
@@ -149,9 +152,9 @@ export default function AdminGamificationHub() {
   const [activityId, setActivityId] = createSignal("");
   const [activityKey, setActivityKey] = createSignal("");
   const [activityMission, setActivityMission] = createSignal("");
-  const [activityKind, setActivityKind] = createSignal("booth");
-  const [activityCategory, setActivityCategory] = createSignal("booth");
-  const [activityOutcome, setActivityOutcome] = createSignal("visit");
+  const [activityKind, setActivityKind] = createSignal("qr");
+  const [activityCategory, setActivityCategory] = createSignal("social");
+  const [activityOutcome, setActivityOutcome] = createSignal("completion");
   const [activityEvidence, setActivityEvidence] = createSignal("single_code");
   const [activityEvidenceChannel, setActivityEvidenceChannel] = createSignal<"wts_qr" | "wts_link" | "wts_manual_code" | "wts_static_code">("wts_qr");
   const [activityDeploymentLabel, setActivityDeploymentLabel] = createSignal("");
@@ -254,7 +257,7 @@ export default function AdminGamificationHub() {
   });
 
   const resetActivity = () => {
-    setActivityId(""); setActivityKey(""); setActivityMission(""); setActivityKind("booth"); setActivityCategory("booth"); setActivityOutcome("visit");
+    setActivityId(""); setActivityKey(""); setActivityMission(""); setActivityKind("qr"); setActivityCategory("social"); setActivityOutcome("completion");
     setActivityEvidence("single_code"); setActivityEvidenceChannel("wts_qr"); setActivityDeploymentLabel(""); setActivityAchievement(""); setActivityPartner(""); setActivityPartnerKind("sponsor"); setActivitySession("");
     setActivityEventKey(""); setActivityLimit("1"); setActivityMaxClaims("100"); setActivityFrom(""); setActivityUntil(""); setActivityEnabled(true); setActivityPartnerFollowUpEnabled(false); setActivityPartnerFollowUpNoticeVersion("");
     setPolicySchedule(""); setPolicyKey(""); setPolicyTotalXp("0"); setPolicyLeaderboardXp("0"); setPolicyRelatedCap(""); setPolicyScoreDay("");
@@ -281,6 +284,11 @@ export default function AdminGamificationHub() {
         { dimension: "category" as const, key: "booth" },
         { dimension: "conference_day" as const, key: policyScoreDay() },
         { dimension: "conference" as const, key: "conference" },
+      ] : []),
+      ...(activityKind() === "qr" ? [
+        { dimension: "category" as const, key: activityCategory() },
+        { dimension: "conference" as const, key: "conference" },
+        ...(policyScoreDay() ? [{ dimension: "conference_day" as const, key: policyScoreDay() }] : []),
       ] : []),
     ] : [];
     const result = await adminSaveGamificationActivityDraft({
@@ -381,7 +389,7 @@ export default function AdminGamificationHub() {
       layoutTitle="Admin: Gamification"
       layoutDescription="Configure September gamification, Mission codes, and single-User support"
       title="Gamification"
-      hint="Save drafts before activation. Retire used definitions instead of deleting them; accounting history is kept."
+      hint="Create a QR Activity for direct points, or attach questions before activating it. Save drafts, configure scoring, activate definitions and the score schedule, then generate or register codes. Retire used definitions instead of deleting them; accounting history is kept."
       count={operations()?.activities.length}
       countLoading={operations.loading}
       toast={toast()}
@@ -391,6 +399,8 @@ export default function AdminGamificationHub() {
 
        <nav class="mb-6 flex flex-wrap gap-2" aria-label="Gamification operations">
           <button type="button" class={`btn btn-sm font-mono ${tab() === "catalog" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "catalog" ? "true" : "false"} onClick={() => selectTab("catalog")}>Catalog</button>
+          <button type="button" class={`btn btn-sm font-mono ${tab() === "questions" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "questions" ? "true" : "false"} onClick={() => selectTab("questions")}>QR questions</button>
+          <button type="button" class={`btn btn-sm font-mono ${tab() === "printed" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "printed" ? "true" : "false"} onClick={() => selectTab("printed")}>Printed codes</button>
             <button type="button" class={`btn btn-sm font-mono ${tab() === "schedule" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "schedule" ? "true" : "false"} onClick={() => selectTab("schedule")}>Score schedules</button>
             <button type="button" class={`btn btn-sm font-mono ${tab() === "sessions" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "sessions" ? "true" : "false"} onClick={() => selectTab("sessions")}>Session Missions</button>
             <button type="button" class={`btn btn-sm font-mono ${tab() === "events" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "events" ? "true" : "false"} onClick={() => selectTab("events")}>Event Missions</button>
@@ -556,11 +566,17 @@ export default function AdminGamificationHub() {
        <Show when={tab() === "eggs"}>
          <AdminEasterEggMissions operations={operations} onChanged={refetch} />
        </Show>
+       <Show when={tab() === "questions"}>
+         <AdminMissionQuestions operations={operations} onChanged={refetch} />
+       </Show>
+       <Show when={tab() === "printed"}>
+         <AdminPrintedMissionCodes operations={operations} onChanged={refetch} />
+       </Show>
 
         <Show when={tab() === "codes"}>
         <div class="grid gap-8 xl:grid-cols-2">
           <form class={adminFormPanelClass} onSubmit={generateCodes}><AdminFormSection title="Generate Mission code batch" description="The raw code, QR/link URL, and CSV are shown once only. A retry with the same operation never creates a second secret batch."><div class="grid gap-4 md:grid-cols-2"><AdminFormField id="gam-code-activity" label="Active Activity" required><select id="gam-code-activity" class={adminSelectClass()} required value={codeActivity()} onChange={(event) => setCodeActivity(event.currentTarget.value)}><option value="">Choose Activity</option><For each={activeActivities()}>{(activity) => <option value={activity.id}>{activity.key}</option>}</For></select></AdminFormField><AdminFormField id="gam-code-label" label="Batch label" required><input id="gam-code-label" class={adminInputClass()} required value={codeLabel()} onInput={(event) => setCodeLabel(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-quantity" label="Quantity" required><input id="gam-code-quantity" type="number" min="1" max="100" class={adminInputClass("font-mono")} required value={codeQuantity()} onInput={(event) => setCodeQuantity(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-role" label="Evidence role" required><select id="gam-code-role" class={adminSelectClass()} value={codeRole()} onChange={(event) => setCodeRole(event.currentTarget.value as "single" | "start" | "finish" | "static_puzzle")}><option value="single">single</option><option value="start">start</option><option value="finish">finish</option><option value="static_puzzle">static puzzle</option></select></AdminFormField><AdminFormField id="gam-code-from" label="Code active from" required><input id="gam-code-from" type="datetime-local" class={adminInputClass("font-mono")} required value={codeFrom()} onInput={(event) => setCodeFrom(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-until" label="Code active until" required><input id="gam-code-until" type="datetime-local" class={adminInputClass("font-mono")} required value={codeUntil()} onInput={(event) => setCodeUntil(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-max" label="Max redemptions" required><input id="gam-code-max" type="number" min="1" class={adminInputClass("font-mono")} required value={codeMaxRedemptions()} onInput={(event) => setCodeMaxRedemptions(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-user-limit" label="Per-User limit" required><input id="gam-code-user-limit" type="number" min="1" class={adminInputClass("font-mono")} required value={codePerUserLimit()} onInput={(event) => setCodePerUserLimit(event.currentTarget.value)} /></AdminFormField></div></AdminFormSection><div class="mt-5 flex justify-end"><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Generate one-time batch</button></div></form>
-          <AdminDataPanel><div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">One-time secret response</h2><p class="mt-1 text-xs font-mono text-base-content/60">This panel is intentionally not recoverable from later admin reads.</p></div><Show when={oneTimeBatch()} fallback={<p class="p-5 text-sm font-mono text-base-content/60">Generate or reissue a code to receive its one-time export.</p>}>{(batch) => <div class="p-5"><Show when={batch().batch.secretsAvailable} fallback={<div class="alert alert-warning text-sm">{batch().batch.committed ? "This batch was committed, but its secret response is unrecoverable. Invalidate the affected code and reissue a replacement. No raw code can be regenerated." : "Code generation did not complete. Any persisted code definitions were disabled and their secrets cannot be recovered."}</div>}><div class="alert alert-warning mb-4 items-start text-sm" role="alert"><span>These bearer codes are visible only in this response. Download the CSV, store it securely, then clear the secrets from this page. Leaving Mission codes clears them automatically.</span></div><div class="mb-4 flex flex-wrap gap-2"><button type="button" class="btn btn-sm btn-secondary font-mono" onClick={() => batch().csvExport && downloadCsv(batch().csvExport!)}>Download CSV now</button><button type="button" class="btn btn-sm btn-outline btn-warning font-mono" onClick={() => setOneTimeBatch(null)}>Clear secrets from this page</button></div><ul class="space-y-3" role="list"><For each={batch().codes || []}>{(code) => <li class="rounded-lg border border-warning-400/30 bg-warning-500/10 p-3"><p class="font-mono text-xs text-base-content/60">{code.label}</p><code class="mt-1 block break-all text-sm text-warning-100">{code.rawCode}</code><code class="mt-2 block break-all text-xs text-secondary-200">{code.qrLink}</code></li>}</For></ul></Show></div>}</Show></AdminDataPanel>
+          <AdminDataPanel><div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">One-time secret response</h2><p class="mt-1 text-xs font-mono text-base-content/60">This panel is intentionally not recoverable from later admin reads.</p></div><Show when={oneTimeBatch()} fallback={<p class="p-5 text-sm font-mono text-base-content/60">Generate or reissue a code to receive its one-time export.</p>}>{(batch) => <div class="p-5"><Show when={batch().batch.secretsAvailable} fallback={<div class="alert alert-warning text-sm">{batch().batch.committed ? "This batch was committed, but its secret response is unrecoverable. Invalidate the affected code and reissue a replacement. No raw code can be regenerated." : "Code generation did not complete. Any persisted code definitions were disabled and their secrets cannot be recovered."}</div>}><div class="alert alert-warning mb-4 items-start text-sm" role="alert"><span>These bearer codes are visible only in this response. Download the CSV, store it securely, then clear the secrets from this page. Leaving Mission codes clears them automatically.</span></div><div class="mb-4 flex flex-wrap gap-2"><button type="button" class="btn btn-sm btn-secondary font-mono" onClick={() => batch().csvExport && downloadCsv(batch().csvExport!)}>Download CSV now</button><button type="button" class="btn btn-sm btn-outline btn-warning font-mono" onClick={() => setOneTimeBatch(null)}>Clear secrets from this page</button></div><ul class="space-y-3" role="list"><For each={batch().codes || []}>{(code) => <li class="rounded-lg border border-warning-400/30 bg-warning-500/10 p-3"><p class="font-mono text-xs text-base-content/60">{code.label}</p><code class="mt-1 block break-all text-sm text-warning-100">{code.rawCode}</code><code class="mt-2 block break-all text-xs text-secondary-200">{code.qrLink}</code><MissionCodeQr path={code.qrLink} codeId={code.id} /></li>}</For></ul></Show></div>}</Show></AdminDataPanel>
         </div>
 
         <div class={`${adminFormPanelClass} mt-8`}><form onSubmit={lookupCodes}><AdminFormSection title="Safe code lookup" description="Search batch ID, label, lookup prefix, Activity/Mission, or redemption support reference. Raw-code verification is compared on the server and is never stored or returned."><div class="grid gap-4 md:grid-cols-2"><AdminFormField id="gam-code-search" label="Safe search"><input id="gam-code-search" class={adminInputClass("font-mono")} value={codeSearch()} onInput={(event) => setCodeSearch(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-raw-search" label="Verify raw code"><input id="gam-code-raw-search" class={adminInputClass("font-mono")} value={rawCodeSearch()} onInput={(event) => setRawCodeSearch(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-reason" label="Invalidation / reissue reason" required class="md:col-span-2"><input id="gam-code-reason" class={adminInputClass()} required value={codeReason()} onInput={(event) => setCodeReason(event.currentTarget.value)} placeholder="Do not include secrets, hashes, tokens, or unnecessary personal data." /></AdminFormField></div></AdminFormSection><div class="mt-5 flex justify-end"><button type="submit" class="btn btn-secondary font-mono" disabled={busy()}>Look up</button></div></form></div>

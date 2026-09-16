@@ -2,15 +2,17 @@
 
 Use this checklist for `[EVENT_NAME]` on `[EVENT_DATE: YYYY-MM-DD]`. Primary owner: `[PRIMARY ON-CALL]`. Backup: `[BACKUP ON-CALL]`. Incident channel: `[CHANNEL]`.
 
+For direct QR rewards, question workflows, PNG downloads and registration of already-printed codes, follow [QR Missions](gamification-qr-workflows.md).
+
 ## Pre-Event Readiness
 
 Complete by `[READINESS_DATE: YYYY-MM-DD]`:
 
 1. Confirm all web replicas use one PocketBase database, one `GAMIFICATION_CODE_PEPPER`, and the expected `PUBLIC_POCKETBASE_URL`/`POCKETBASE_URL` pair. Confirm `HIEVENTS_API_URL`, `HIEVENTS_EVENT_ID`, credentials, timeout, and retry settings without posting values in chat or logs.
-2. Deploy and verify PocketBase migration `1786000011_harden_event_day_operations.js`. Confirm the operation-lock and rate-limit collections are private and the profile, accounting, reconciliation, and agenda indexes exist.
+2. Deploy and verify migrations through `1786000013_harden_gamification_unique_keys.js`, including the private question collections and `gamification_questions.pb.js` hook. Preflight duplicates before adding the unique indexes; never delete retained accounting to force migration. Confirm operation-lock keys are genuinely unique and private, not merely declared with a legacy field option.
 3. Run `pnpm test`, `pnpm typecheck`, and `pnpm build` against the release revision. Record revision `[REVISION]` and results in `[CHANGE RECORD]`.
 4. In `/admin/gamification`, confirm `[CATALOG VERSION]`: active Achievements, Missions, Activities, windows, one-per-User limits, global limits, source references, cap memberships, and Badge privacy.
-5. Test one sacrificial User `[TEST USER ID]`: valid redemption, duplicate redemption, disabled code, profile refresh, opt-out, private Badge, ops-board read, and audited cleanup. Never paste the raw code into a ticket or log.
+5. Test one sacrificial User `[TEST USER ID]`: direct redemption, question scan with no award, wrong and qualifying answers, lost-response retry, duplicate redemption, disabled code, profile refresh, opt-out, private Badge, ops-board read, and audited cleanup. Verify a shared code separately with another User. Never paste the raw code or answer keys into a ticket or log.
 6. Confirm `/agenda`, `/ops-board`, `/missions/redeem`, `/user/profile`, and `/admin/gamification` on a phone and desktop. Local Mission redemption must work while Hi.Events is deliberately unavailable.
 
 ## Score Schedule Activation

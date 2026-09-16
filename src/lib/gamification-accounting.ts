@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { samePersistedJson } from "~/lib/persisted-json";
 import {
   buildGamificationPublicOpsBoardRows,
   defaultGamificationDisplayName,
@@ -28,6 +29,7 @@ import type {
   GamificationActivityClaimRecord,
   GamificationAdminActionRecord,
   GamificationCategory,
+  GamificationCodeRecord,
   GamificationMissionRecord,
   GamificationProfileRecord,
   GamificationScoreScheduleCapRecord,
@@ -58,6 +60,7 @@ export const GAMIFICATION_COLLECTIONS = {
 } as const;
 
 export interface GamificationAccountingStore {
+  count?(collection: string, match: Record<string, unknown>): Promise<number>;
   findOne<T>(collection: string, match: Record<string, unknown>): Promise<T | undefined>;
   list<T>(
     collection: string,
@@ -1406,12 +1409,39 @@ export class GamificationAccountingService {
 
   async summaryForUser(user: AccountingUser): Promise<GamificationProfileSummary> {
     const profile = await this.ensureProfile(user);
-    const [userAchievements, achievements, missions] = await Promise.all([
+    const [userAchievements, achievements, missions, activities, claims] = await Promise.all([
       this.store.list<GamificationUserAchievementRecord>(GAMIFICATION_COLLECTIONS.userAchievements, { user: user.id }),
       this.store.list<GamificationAchievementRecord>(GAMIFICATION_COLLECTIONS.achievements, undefined, { sort: "sort_order,key", limit: 500 }),
-      this.store.list<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, { status: "active", visibility: "public", suggested: true }, { sort: "sort_order,key", limit: 20 }),
+      this.store.list<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, { status: "active", visibility: "public", suggested: true }, { sort: "sort_order,key" }),
+      this.store.list<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, { status: "active", enabled: true }),
+      this.store.list<GamificationActivityClaimRecord>(GAMIFICATION_COLLECTIONS.activityClaims, { user: user.id, status: "accepted" }),
     ]);
-    return buildGamificationProfileSummary(profile, userAchievements, achievements, missions);
+    const now = this.clock();
+    const time = Date.parse(now);
+    const inWindow = (from?: string, until?: string) => (!from || Date.parse(from) <= time) && (!until || Date.parse(until) >= time);
+    const missionIds = new Set(missions.filter(mission => inWindow(mission.starts_at, mission.ends_at)).map(mission => mission.id));
+    const completed = new Set(claims.map(claim => claim.activity));
+    const candidates = new Map(activities.filter(activity => missionIds.has(activity.mission || "") && !completed.has(activity.id) && inWindow(activity.active_from, activity.active_until)).map(activity => [activity.id, activity]));
+    const inventory = candidates.size ? await this.store.list<GamificationCodeRecord>(GAMIFICATION_COLLECTIONS.codes, { status: "active", enabled: true }, { sort: "id", limit: 10001, fields: "id,activity,status,enabled,evidence_role,starts_at,ends_at,invalidated_at,max_redemptions,total_redemptions_cached" }) : [];
+    const countUpTo = async (collection: string, match: Record<string, unknown>, ceiling: number) => {
+      if (this.store.count) return this.store.count(collection, match);
+      const bound = Math.min(ceiling, 10001);
+      const rows = await this.store.list(collection, match, { limit: bound, fields: "id" });
+      return rows.length >= bound ? ceiling : rows.length;
+    };
+    const activityCapacity = new Map<string, Promise<boolean>>();
+    // Advice is bounded: omit unverified opportunities rather than publish stale availability.
+    const checkedCodes = await Promise.all(inventory.filter(code => candidates.has(code.activity) && !code.invalidated_at && inWindow(code.starts_at, code.ends_at)).slice(0, 100).map(async code => {
+      const activity = candidates.get(code.activity)!;
+      if (!activityCapacity.has(activity.id)) activityCapacity.set(activity.id, activity.max_claims
+        ? countUpTo(GAMIFICATION_COLLECTIONS.activityClaims, { activity: activity.id, status: "accepted" }, activity.max_claims).then(count => count < activity.max_claims!)
+        : Promise.resolve(true));
+      if (!await activityCapacity.get(activity.id)) return undefined;
+      const count = code.max_redemptions ? await countUpTo(GAMIFICATION_COLLECTIONS.codeRedemptions, { code: code.id, status: "accepted" }, code.max_redemptions) : 0;
+      return code.max_redemptions && count >= code.max_redemptions ? undefined : { ...code, total_redemptions_cached: count };
+    }));
+    const availableCodes = checkedCodes.filter((code): code is GamificationCodeRecord => Boolean(code));
+    return buildGamificationProfileSummary(profile, userAchievements, achievements, missions, activities, claims, now, availableCodes);
   }
 
   /** Reads only profile-cache rows and configuration needed to allowlist public Badge presentation. */
@@ -1891,7 +1921,7 @@ export class GamificationAccountingService {
         existing.target_user !== input.targetUser ||
         existing.related_collection !== relatedCollection ||
         existing.related_record_id !== relatedRecordId ||
-        JSON.stringify(existing.after_summary || {}) !== JSON.stringify(afterSummary)
+        !samePersistedJson(existing.after_summary || {}, afterSummary)
       ) {
         throw new Error("This admin operation ID belongs to another accounting action.");
       }

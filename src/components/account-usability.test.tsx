@@ -98,7 +98,9 @@ describe("account route presentation contracts", () => {
     expect(redeem).toContain("Your scanned code stays only in this tab");
     expect(redeem).toMatch(/<summary[^>]+>Code help<\/summary>/);
     expect(redeem).toContain('id="mission-code-error"');
-    expect(redeem).toContain('current().status === "rate_limited" || current().status === "unavailable"');
+    expect(redeem).toContain('["rate_limited", "unavailable", "questions_incorrect"');
+    expect(redeem).toContain('retrySeconds() > 0');
+    expect(redeem).toContain('code() || pendingCode() || ""');
     expect(redeem).toContain('href="/user/profile#gamification"');
     expect(redeem).toContain("profile().supportReference");
     expect(redeem).not.toContain("separate partner_follow_up handoff");
