@@ -45,6 +45,8 @@ jobs:
         run: pnpm test:mcs
       - if: matrix.gate == 'test'
         run: pnpm test:usability
+      - if: matrix.gate == 'test'
+        run: pnpm test:auth
 
   checkin-browser:
     name: Disposable Check-in browser
@@ -67,6 +69,8 @@ jobs:
       - run: pnpm test:checkin-lifecycle-browser
       - name: Verify signed-in workspaces and live Q&A in the built app
         run: pnpm test:workspace-browser
+      - name: Verify signup and authentication recovery in the built app
+        run: pnpm test:auth-browser
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:

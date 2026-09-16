@@ -10,7 +10,9 @@ onRecordCreateRequest((e) => {
 
 onRecordAuthWithOAuth2Request((e) => {
     if (e.isNewRecord) {
-        e.createData.role = "user";
+        // OAuth clients may omit createData entirely. Initialize the map before
+        // assigning the server-controlled role; never trust a submitted role.
+        e.createData = Object.assign({}, e.createData || {}, { role: "user" });
     }
     return e.next();
 }, "users");

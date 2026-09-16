@@ -3,6 +3,7 @@ import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
 import { clientOnly } from "@solidjs/web";
 import { Icon } from "~/components/Icon";
+import { authFailure } from "~/lib/auth-errors";
 
 const LoginPage = () => {
   const [email, setEmail] = createSignal("");
@@ -36,20 +37,18 @@ const LoginPage = () => {
 
   const handleEmailLogin = async (e: Event) => {
     e.preventDefault();
+    if (auth.isLoading()) return;
     setError("");
+    setShowResendVerification(false);
+    setResendSuccess(false);
 
     try {
       await auth?.login(email(), password());
       completeLogin();
-    } catch (err: any) {
-      console.error("Login error:", err);
-      const errorMessage = err.message || "Login failed";
-      setError(errorMessage);
-
-      // Check if the error is verification related
-      if (errorMessage.includes("verify your email")) {
-        setShowResendVerification(true);
-      }
+    } catch (err) {
+      const failure = authFailure(err, "password");
+      setError(failure.message);
+      setShowResendVerification(failure.code === "verification");
     }
   };
 
@@ -58,7 +57,11 @@ const LoginPage = () => {
     try {
       // Dynamic import to avoid issues if utils not loaded
       const { requestEmailVerification } = await import("~/lib/pocketbase-utils");
-      await requestEmailVerification(email());
+      const sent = await requestEmailVerification(email());
+      if (!sent) {
+        setError("We could not send the verification email. Please try again shortly or contact the WTS organizers.");
+        return;
+      }
       setResendSuccess(true);
       setError(""); // Clear the error to reduce visual noise
     } catch (err) {
@@ -69,22 +72,26 @@ const LoginPage = () => {
   };
 
   const loginWithGithub = async () => {
+    if (auth.isLoading()) return;
+    setError("");
+    setShowResendVerification(false);
     try {
       await auth?.githubLogin();
       completeLogin();
-    } catch (err: any) {
-      console.error("Login error:", err);
-      setError(err.message || "Login failed");
+    } catch (err) {
+      setError(authFailure(err, "oauth").message);
     }
   };
 
   const loginWithGoogle = async () => {
+    if (auth.isLoading()) return;
+    setError("");
+    setShowResendVerification(false);
     try {
       await auth?.googleLogin();
       completeLogin();
-    } catch (err: any) {
-      console.error("Login error:", err);
-      setError(err.message || "Login failed");
+    } catch (err) {
+      setError(authFailure(err, "oauth").message);
     }
   };
 
@@ -102,6 +109,7 @@ const LoginPage = () => {
           <button
             type="button"
             onClick={loginWithGithub}
+            disabled={auth.isLoading()}
             class="btn btn-primary w-full mb-4"
           >
             <Icon icon="mdi:github" class="mr-2" /> Log in with GitHub
@@ -110,6 +118,7 @@ const LoginPage = () => {
           <button
             type="button"
             onClick={loginWithGoogle}
+            disabled={auth.isLoading()}
             class="btn btn-primary w-full mb-4"
           >
             <Icon icon="mdi:google" class="mr-2" /> Log in with Google
@@ -149,13 +158,13 @@ const LoginPage = () => {
             </div>
 
             <Show when={error()}>
-              <div class="mb-4 p-3 bg-error text-error-content rounded-lg">
+              <div role="alert" class="mb-4 p-3 bg-error text-error-content rounded-lg">
                 {error()}
               </div>
             </Show>
 
             <div class="flex flex-col gap-3">
-              <button type="submit" class="btn btn-primary w-full">
+              <button type="submit" class="btn btn-primary w-full" disabled={auth.isLoading()}>
                 Log In
               </button>
             </div>

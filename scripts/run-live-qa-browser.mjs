@@ -40,7 +40,7 @@ async function run(command, args, options) {
   if (code !== 0) throw new Error(`${command} exited ${code}`);
 }
 try {
-  fixture = await startLiveQaPocketBase({ workspace });
+  fixture = await startLiveQaPocketBase({ workspace, binary: process.env.WTS_AUTH_TEST_PB_BINARY });
   await mkdir(appDir);
   for (const name of ["src", "public", "content", "scripts", "runtime"]) {
     await cp(join(repo, name), join(appDir, name), { recursive: true, filter: path => !path.split(/[\\/]/).some(part => part.startsWith(".env")) });
