@@ -10,7 +10,8 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = await mkdtemp(join(tmpdir(), "wts-live-qa-browser-"));
 const appDir = join(root, "app");
 const children = new Set();
-const workspace = process.argv.includes("--workspace");
+const gamification = process.argv.includes("--gamification");
+const workspace = process.argv.includes("--workspace") || gamification;
 let fixture;
 let cleanupPromise;
 async function clean() {
@@ -100,7 +101,7 @@ try {
     console.log(`Disposable Q&A inspection ready: ${baseURL}\nFixture: ${statePath}\nStop runner ${process.pid} with SIGTERM to remove the disposable services and data.`);
     await new Promise(() => {});
   }
-  await run("pnpm", ["exec", "playwright", "test", `--config=${workspace ? "playwright.workspace.config.ts" : "playwright.live-qa.config.ts"}`, ...process.argv.slice(2).filter(argument => argument !== "--workspace")], { cwd: repo, env: { ...env, WTS_LIVE_QA_BROWSER_STATE: statePath } });
+  await run("pnpm", ["exec", "playwright", "test", `--config=${gamification ? "playwright.gamification.config.ts" : workspace ? "playwright.workspace.config.ts" : "playwright.live-qa.config.ts"}`, ...process.argv.slice(2).filter(argument => argument !== "--workspace" && argument !== "--gamification")], { cwd: repo, env: { ...env, WTS_LIVE_QA_BROWSER_STATE: statePath } });
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;

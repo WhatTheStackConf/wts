@@ -48,14 +48,14 @@ export async function startLiveQaPocketBase(options: { workspace?: boolean; bina
   const hooks = readdirSync(join(source, 'pb_hooks')).filter(name => name.startsWith('live-qa') || [
     'users_role_guard.pb.js', 'agenda_constraints.pb.js', 'appearance_event_constraints.pb.js', 'programme_public_fields.pb.js',
     ...(options.workspace ? [
-      'gamification_accounting_constraints.pb.js', 'partner_administration.pb.js',
+      'gamification_accounting_constraints.pb.js', 'gamification_questions.pb.js', 'partner_administration.pb.js',
       'admin_action_ledger.pb.js', 'mcp_token_administration.pb.js', 'cfp_close_guard.pb.js',
     ] : []),
   ].includes(name));
   for (const name of migrations) copyFileSync(join(source, 'pb_migrations', name), join(migrationsDir, name));
   for (const name of hooks) copyFileSync(join(source, 'pb_hooks', name), join(hooksDir, name));
   const hookHashes = Object.fromEntries(hooks.map(name => [name, createHash('sha256').update(readFileSync(join(hooksDir, name))).digest('hex')]));
-  const binary = options.binary || join(source, 'pocketbase');
+  const binary = options.binary || process.env.WTS_TEST_POCKETBASE_BINARY || join(source, 'pocketbase');
   const args = [`--dir=${dataDir}`, `--migrationsDir=${migrationsDir}`, `--hooksDir=${hooksDir}`];
   function run(command: string[]) {
     const result = spawnSync(binary, [...command, ...args], { encoding: 'utf8' });

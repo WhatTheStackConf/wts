@@ -83,7 +83,7 @@ export function buildCommunityPartnerMissionPresentations(input: {
         summary: mission.summary,
         visibility: "public" as const,
         badge: badgeApproved && badgeDescription ? {
-          name: achievement.badge_name,
+          name: achievement.visibility === "locked_teaser" ? "Locked Badge" : achievement.badge_name,
           description: badgeDescription,
           icon: achievement.icon || undefined,
           rarity: achievement.rarity,

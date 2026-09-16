@@ -258,6 +258,7 @@ export interface GamificationMissionRecord extends RecordModel {
 }
 
 export type GamificationActivityKind =
+  | "qr"
   | "session"
   | "booth"
   | "workshop"

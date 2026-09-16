@@ -1,4 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
+import { evaluateMissionAnswers, parseQuestionnaire, publicQuestions, validMissionAnswers, type MissionQuestionChallenge } from "~/lib/mission-questions";
+import { QUESTION_COLLECTIONS, type MissionQuestionAttemptRecord, type MissionQuestionnaireRecord } from "~/lib/mission-question-records";
 import {
   GAMIFICATION_COLLECTIONS,
   GamificationAccountingService,
@@ -39,8 +41,13 @@ export type MissionCodeRedemptionStatus =
   | "rate_limited"
   | "unavailable";
 
+type CodeRejectionStatus = "not_yet_active" | "expired" | "disabled" | "global_limit" | "user_limit";
+type QuestionStatus = "questions_required" | "questions_incorrect" | "questions_incomplete" | "questions_malformed" | "question_conflict";
+
 export interface MissionCodeRedemptionResult {
-  status: MissionCodeRedemptionStatus;
+  status: MissionCodeRedemptionStatus | QuestionStatus;
+  questionnaire?: MissionQuestionChallenge;
+  retryAfterSeconds?: number;
   title: string;
   message: string;
   supportMessage?: string;
@@ -164,6 +171,14 @@ export interface RedeemMissionCodeInput {
   requestFingerprint: string;
 }
 
+export interface SubmitMissionAnswersInput {
+  user: AccountingUser;
+  challengeId: string;
+  operationId: string;
+  answers: unknown;
+  requestFingerprint: string;
+}
+
 export interface MissionCodeRedemptionServiceOptions {
   clock?: () => string;
   rateLimiter?: MissionCodeRateLimiter;
@@ -264,7 +279,7 @@ function publicResult(status: Exclude<MissionCodeRedemptionStatus, "accepted" | 
       supportMessage: "If retrying does not resolve this, contact WhatTheStack event support with the support reference below.",
     },
   };
-  return { status, ...copy[status] };
+  return { status, ...copy[status], ...(status === "rate_limited" ? { retryAfterSeconds: 60 } : {}) };
 }
 
 /** Server-only Code Redemption service; browser values are limited to raw code and source hint. */
@@ -294,6 +309,63 @@ export class MissionCodeRedemptionService {
       }));
       return { ...publicResult("unavailable"), supportReference };
     });
+  }
+
+  /** One immutable command per challenge. Failed answers need a fresh challenge, never a changed replay. */
+  async submitAnswers(input: SubmitMissionAnswersInput): Promise<MissionCodeRedemptionResult> {
+    try {
+      if (!/^[0-9a-f-]{36}$/.test(input.challengeId) || !/^[0-9a-f-]{36}$/.test(input.operationId) || !validMissionAnswers(input.answers)) return this.questionResult("malformed");
+      const initial = await this.store.findOne<MissionQuestionAttemptRecord>(QUESTION_COLLECTIONS.attempts, { challenge_id: input.challengeId, user: input.user.id });
+      if (!initial) return publicResult("invalid");
+      return await withGamificationLocks(this.store, [`redemption:code:${initial.code}`, `award:activity:${initial.activity}`, `award:user:${input.user.id}`], async () => {
+        const attempt = await this.store.getById<MissionQuestionAttemptRecord>(QUESTION_COLLECTIONS.attempts, initial.id);
+        const answers = input.answers as Record<string, string>;
+        const hash = createHmac("sha256", this.pepper).update(JSON.stringify([input.challengeId, Object.keys(answers).sort().map(key => [key, answers[key]])])).digest("hex");
+        if (attempt.operation_id && (attempt.operation_id !== input.operationId || attempt.answer_hash !== hash)) return { status: "question_conflict", title: "Answer retry changed", message: "Retry the original answers or scan again for a new challenge." };
+        const currentTime = this.clock();
+        const code = await this.store.getById<GamificationCodeRecord>(GAMIFICATION_COLLECTIONS.codes, attempt.code);
+        const activity = await this.store.getById<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, attempt.activity);
+        const redemptionInput = { user: input.user, rawCode: undefined, requestFingerprint: input.requestFingerprint, sourceHint: "qr" };
+        if (attempt.status === "passed") return this.redeemMatchedCode(code, redemptionInput, currentTime);
+        if (attempt.status !== "pending") return this.questionResult(attempt.status);
+        if (!await this.rateLimiter.consume(this.rateKeys(input.user.id, input.requestFingerprint), GENERAL_RATE_LIMIT, RATE_LIMIT_WINDOW_MS, timestamp(currentTime))) return publicResult("rate_limited");
+        if (Date.parse(attempt.expires_at) <= timestamp(currentTime)) return publicResult("expired");
+        const rejected = await this.rejectionStatus(code, activity, input.user.id, currentTime);
+        if (rejected) return publicResult(rejected);
+        const definition = await this.store.getById<MissionQuestionnaireRecord>(QUESTION_COLLECTIONS.definitions, attempt.questionnaire);
+        if (definition.activity !== activity.id || definition.version !== attempt.version) return publicResult("disabled");
+        const outcome = evaluateMissionAnswers(parseQuestionnaire(definition.definition), answers);
+        await this.store.update<MissionQuestionAttemptRecord>(QUESTION_COLLECTIONS.attempts, attempt.id, {
+          status: outcome, operation_id: input.operationId, answer_hash: hash,
+          ...(outcome === "passed" ? { passed_at: currentTime } : {}),
+        });
+        if (outcome !== "passed") return this.questionResult(outcome);
+        return this.redeemMatchedCode(code, redemptionInput, this.clock());
+      });
+    } catch (error) {
+      // Never log free text, answer keys, bearer codes, or database error bodies.
+      console.error(JSON.stringify({ event: "mission_question_unavailable", errorType: error instanceof Error ? error.name : "UnknownError", status: (error as { status?: number })?.status }));
+      return publicResult("unavailable");
+    }
+  }
+
+  private questionResult(status: "incorrect" | "incomplete" | "malformed"): MissionCodeRedemptionResult {
+    return { status: `questions_${status}`, title: status === "incorrect" ? "Answers not yet correct" : "Check your answers", message: status === "incorrect" ? "No points awarded. Start a new attempt to try again." : "Answer every question using the offered fields. No points awarded; start a new attempt." };
+  }
+
+  private async questionGate(code: GamificationCodeRecord, activity: GamificationActivityRecord, userId: string, currentTime: string): Promise<MissionCodeRedemptionResult | undefined> {
+    const definition = await this.store.findOne<MissionQuestionnaireRecord>(QUESTION_COLLECTIONS.definitions, { activity: activity.id });
+    if (!definition) return undefined;
+    const [approved] = await this.store.list<MissionQuestionAttemptRecord>(QUESTION_COLLECTIONS.attempts, { code: code.id, user: userId, questionnaire: definition.id, version: definition.version, status: "passed" }, { sort: "-expires_at", limit: 1 });
+    if (approved && Date.parse(approved.expires_at) > timestamp(currentTime)) return undefined;
+    const parsed = parseQuestionnaire(definition.definition);
+    const expires = Math.min(timestamp(currentTime) + 15 * 60_000, ...[code.ends_at, activity.active_until].filter(Boolean).map(value => Date.parse(value!)).filter(Number.isFinite));
+    const [pending] = await this.store.list<MissionQuestionAttemptRecord>(QUESTION_COLLECTIONS.attempts, { code: code.id, user: userId, questionnaire: definition.id, version: definition.version, status: "pending" }, { sort: "-expires_at", limit: 1 });
+    const attempt = pending && Date.parse(pending.expires_at) > timestamp(currentTime) ? pending : await this.store.create<MissionQuestionAttemptRecord>(QUESTION_COLLECTIONS.attempts, {
+      challenge_id: randomUUID(), user: userId, code: code.id, activity: activity.id,
+      questionnaire: definition.id, version: definition.version, expires_at: new Date(expires).toISOString(), opened_at: currentTime, status: "pending",
+    });
+    return { status: "questions_required", title: "Complete the Mission questions", message: parsed.policy === "all_correct" ? "All answers must be correct to qualify. No partial points." : "Answer every question to qualify. No partial points.", questionnaire: { challengeId: attempt.challenge_id, expiresAt: attempt.expires_at, policy: parsed.policy, questions: publicQuestions(parsed) } };
   }
 
   private async redeemNow(input: RedeemMissionCodeInput): Promise<MissionCodeRedemptionResult> {
@@ -333,7 +405,7 @@ export class MissionCodeRedemptionService {
     return withGamificationLocks(
       this.store,
       [`redemption:code:${code.id}`, `award:activity:${code.activity}`, `award:user:${input.user.id}`],
-      () => this.redeemMatchedCode(code, input, currentTime),
+      async () => this.redeemMatchedCode(await this.store.getById<GamificationCodeRecord>(GAMIFICATION_COLLECTIONS.codes, code.id), input, this.clock()),
     );
   }
 
@@ -358,6 +430,9 @@ export class MissionCodeRedemptionService {
       return { ...publicResult(rejectedStatus), supportReference: `WTS-${attempt.id}` };
     }
 
+    const questions = await this.questionGate(code, activity, input.user.id, currentTime);
+    if (questions) return questions;
+
     const accepted = await this.createAcceptedRedemption(code, activity, input, currentTime);
     if (!accepted.created) {
       const award = await this.completeAcceptedRedemption(accepted.redemption, code, activity, input.user, currentTime);
@@ -375,10 +450,10 @@ export class MissionCodeRedemptionService {
     return this.successResult("accepted", activity, award);
   }
 
-  private rateKeys(userId: string, fingerprint: string): string[] {
+  private rateKeys(userId: string, _fingerprint: string): string[] {
     return [
       `mission-redemption:user:${userId}`,
-      `mission-redemption:fingerprint:${fingerprint || "unavailable"}`,
+
     ];
   }
 
@@ -391,7 +466,7 @@ export class MissionCodeRedemptionService {
     activity: GamificationActivityRecord,
     userId: string,
     currentTime: string,
-  ): Promise<Exclude<MissionCodeRedemptionStatus, "accepted" | "already_redeemed" | "invalid" | "rate_limited"> | undefined> {
+  ): Promise<CodeRejectionStatus | undefined> {
     const mission = activity.mission
       ? await this.store.getById<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, activity.mission).catch(() => undefined)
       : undefined;
@@ -427,7 +502,7 @@ export class MissionCodeRedemptionService {
     code: GamificationCodeRecord,
     activity: GamificationActivityRecord,
     input: RedeemMissionCodeInput,
-    status: Exclude<MissionCodeRedemptionStatus, "accepted" | "already_redeemed" | "invalid" | "rate_limited">,
+    status: CodeRejectionStatus,
     currentTime: string,
   ): Promise<GamificationCodeRedemptionRecord> {
     return this.store.create<GamificationCodeRedemptionRecord>(GAMIFICATION_COLLECTIONS.codeRedemptions, {

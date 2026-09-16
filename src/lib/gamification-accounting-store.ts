@@ -41,6 +41,11 @@ function wait(delayMs: number): Promise<void> {
 export function createGamificationAccountingStore(): GamificationAccountingStore {
   const admin = getAdminPB();
   const store: GamificationAccountingStore = {
+    async count(collection, match) {
+      const { expression, parameters } = matchingFilter(match);
+      const pb = await admin.getInstance();
+      return (await pb.collection(collection).getList(1, 1, { filter: pb.filter(expression, parameters), fields: "id", skipTotal: false })).totalItems;
+    },
     async findOne<T>(collection: string, match: Record<string, unknown>): Promise<T | undefined> {
       const { expression, parameters } = matchingFilter(match);
       const pb = await admin.getInstance();

@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
+import { samePersistedJson } from "~/lib/persisted-json";
 import {
   GAMIFICATION_COLLECTIONS,
   withGamificationLocks,
@@ -38,6 +39,8 @@ import {
 import {
   containsMissionCode,
   createMissionCodeGeneration,
+  hashNormalizedMissionCode,
+  MISSION_CODE_HASH_VERSION,
   parseMissionCode,
   verifyMissionCodeHash,
 } from "~/lib/mission-code-crypto";
@@ -84,6 +87,7 @@ const GAMIFICATION_CATEGORIES = [
 ] as const;
 
 const ACTIVITY_KINDS = [
+  "qr",
   "session",
   "booth",
   "workshop",
@@ -368,6 +372,21 @@ export interface AdminCodeGenerationInput {
   maxRedemptions: number;
   perUserLimit: number;
   operationId: string;
+}
+
+export type AdminCodeRegistrationInput = Omit<AdminCodeGenerationInput, "quantity"> & { rawCodes: string[] };
+
+/** A repeatable receipt, never an export of bearer secrets or code hashes. */
+export interface AdminCodeRegistrationResult {
+  batch: {
+    id: string;
+    label: string;
+    activityId: string;
+    quantity: number;
+    committed: true;
+    secretsAvailable: false;
+  };
+  codes: Array<{ id: string; label: string; lookupPrefix: string }>;
 }
 
 export interface AdminCodeInvalidationInput {
@@ -1157,6 +1176,9 @@ export class GamificationOperationsService {
     }
     if (!cleanText(input.outcomeKey) || !isPositiveInteger(input.perUserClaimLimit)) {
       throw new Error("Activity outcome and per-User claim limit are required.");
+    }
+    if (input.kind === "qr" && (input.evidenceMode !== "single_code" || input.outcomeKey !== "completion")) {
+      throw new Error("QR Activities require single-code evidence and the completion outcome.");
     }
     const context = await this.context();
     const existing = input.id ? this.requireDefinition("activity", input.id, context) as GamificationActivityRecord : undefined;
@@ -2306,14 +2328,123 @@ export class GamificationOperationsService {
   }
 
   async generateCodes(input: AdminCodeGenerationInput, actor: AdminOperationActor): Promise<AdminCodeBatchResult> {
-    return withGamificationLocks(this.store, [`code-operation:${operationId(input.operationId)}`], () =>
+    return withGamificationLocks(this.store, ["code-inventory", `code-operation:${operationId(input.operationId)}`], () =>
       this.generateCodesNow(input, actor)
     );
   }
 
-  private async generateCodesNow(input: AdminCodeGenerationInput, actor: AdminOperationActor): Promise<AdminCodeBatchResult> {
-    const config = this.validateCodeGenerationInput(input);
-    const context = await this.context();
+  async registerCodes(input: AdminCodeRegistrationInput, actor: AdminOperationActor): Promise<AdminCodeRegistrationResult> {
+    // Parse and snapshot before awaiting a lock; never put caller-supplied secrets in audit data.
+    if (!Array.isArray(input.rawCodes) || input.rawCodes.length < 1 || input.rawCodes.length > 100) {
+      throw new Error("Register between 1 and 100 codes per batch.");
+    }
+    const parsed = input.rawCodes.map((rawCode) => parseMissionCode(rawCode));
+    if (parsed.some((code) => !code)) throw new Error("Every supplied Mission code must have a valid format.");
+    const identities = parsed.map((code) => ({
+      lookupPrefix: code!.lookupPrefix,
+      codeHash: hashNormalizedMissionCode(code!.normalizedCode, this.codePepper),
+    }));
+    if (!uniqueKeys(identities.map((code) => code.lookupPrefix)) || !uniqueKeys(identities.map((code) => code.codeHash))) {
+      throw new Error("Supplied Mission codes and lookup prefixes must be unique.");
+    }
+    const config = this.validateCodeGenerationInput({
+      activityId: input.activityId,
+      label: input.label,
+      quantity: identities.length,
+      evidenceRole: input.evidenceRole,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
+      maxRedemptions: input.maxRedemptions,
+      perUserLimit: input.perUserLimit,
+      operationId: input.operationId,
+    });
+    assertNoSecretInput(config, "Code registration configuration");
+    // Domain separation and base64url keep this opaque payload commitment distinct from stored code hashes.
+    const payloadDigest = createHmac("sha256", this.codePepper)
+      .update(`mission-code-registration:v1:${JSON.stringify({ config, identities })}`)
+      .digest("base64url");
+    return withGamificationLocks(this.store, ["code-inventory", "configuration:gamification", `code-operation:${config.operationId}`], async () => {
+      if (!this.store.createManyAtomic) throw new Error("Code registration requires atomic batch storage.");
+      const context = await this.context();
+      const priorBatch = context.codes.filter((code) => code.batch_id === config.operationId);
+      const priorAudit = await this.store.findOne(GAMIFICATION_COLLECTIONS.adminActions, { idempotency_key: auditIdempotencyKey("code_generation", config.operationId) });
+      const validateRegistration = () => {
+        this.requireCodeGenerationActivity(config, context);
+        const prefixes = new Set(identities.map((code) => code.lookupPrefix));
+        const hashes = new Set(identities.map((code) => code.codeHash));
+        if (context.codes.some((code) => prefixes.has(code.lookup_prefix) || hashes.has(code.code_hash))) {
+          throw new Error("A supplied Mission code or lookup prefix is already registered. No codes were registered.");
+        }
+      };
+      // Reconcile existing commands first, but validation failures are not Admin Actions.
+      if (!priorAudit) {
+        if (priorBatch.length > 0) throw new Error("This batch ID belongs to another operation.");
+        validateRegistration();
+      }
+      // Reuse the existing audit action enum; the operation kind and reason distinguish registration.
+      const audit = await this.beginAudit(actor, "code_generation", GAMIFICATION_COLLECTIONS.codes, config.operationId, config.operationId,
+        "Registered preprinted Mission code batch.", { operation: "code_registration", ...config, payloadDigest });
+      const receipt = (records: GamificationCodeRecord[]): AdminCodeRegistrationResult => {
+        const ordered = identities.map((identity) => records.find((record) =>
+          record.lookup_prefix === identity.lookupPrefix && record.code_hash === identity.codeHash && record.activity === config.activityId
+        ));
+        if (records.length !== identities.length || ordered.some((record) => !record)) {
+          throw new Error("The prior registration is incomplete. Contact an administrator.");
+        }
+        return {
+          batch: { id: config.operationId, label: config.label, activityId: config.activityId, quantity: identities.length, committed: true, secretsAvailable: false },
+          codes: ordered.map((record) => ({ id: record!.id, label: config.label, lookupPrefix: record!.lookup_prefix })),
+        };
+      };
+      if ((!audit.existing || audit.failed) && priorBatch.length > 0) {
+        await this.failAudit(audit.record.id);
+        throw new Error("This batch ID belongs to another operation.");
+      }
+      if (audit.replayed || priorBatch.length > 0) {
+        const result = receipt(priorBatch);
+        if (!audit.replayed) await this.completeAudit(audit.record.id);
+        return result;
+      }
+      try {
+        if (priorAudit) validateRegistration();
+        if (audit.failed) await this.resumeAudit(audit.record.id);
+        await this.store.createManyAtomic<GamificationCodeRecord>(GAMIFICATION_COLLECTIONS.codes, identities.map((identity) => ({
+          key: `code-${randomUUID()}`,
+          batch_id: config.operationId,
+          label: config.label,
+          activity: config.activityId,
+          lookup_prefix: identity.lookupPrefix,
+          code_hash: identity.codeHash,
+          hash_version: MISSION_CODE_HASH_VERSION,
+          evidence_role: config.evidenceRole,
+          status: "active",
+          enabled: true,
+          starts_at: config.startsAt,
+          ends_at: config.endsAt,
+          max_redemptions: config.maxRedemptions,
+          per_user_limit: config.perUserLimit,
+          total_redemptions_cached: 0,
+          created_by: actor.id,
+          reissued_from: "",
+        })));
+      } catch (error) {
+        // A lost atomic response may still represent a full commit. Read back exact identities.
+        const persisted = await this.store.list<GamificationCodeRecord>(GAMIFICATION_COLLECTIONS.codes, { batch_id: config.operationId });
+        if (persisted.length > 0) {
+          const result = receipt(persisted);
+          await this.completeAudit(audit.record.id);
+          return result;
+        }
+        await this.failAudit(audit.record.id);
+        throw error;
+      }
+      const result = receipt(await this.store.list<GamificationCodeRecord>(GAMIFICATION_COLLECTIONS.codes, { batch_id: config.operationId }));
+      await this.completeAudit(audit.record.id);
+      return result;
+    });
+  }
+
+  private requireCodeGenerationActivity(config: AdminCodeGenerationInput, context: GamificationContext): GamificationActivityRecord {
     const activity = context.activities.find((candidate) => candidate.id === config.activityId);
     if (!activity || activity.status !== "active" || !activity.enabled) throw new Error("Choose an active enabled Activity.");
     if (isConfiguredEventActivityKind(activity.kind) && configuredEventReference(activity.event_ref)) {
@@ -2333,13 +2464,7 @@ export class GamificationOperationsService {
       if (linkedAchievements.some((achievement) => achievement.status !== "active")) {
         throw new Error("Activate every linked configured event Badge before generating its codes.");
       }
-      const scorePolicy = context.policies.find((policy) => policy.activity === activity.id && policy.active);
-      const scoreSchedule = scorePolicy
-        ? context.schedules.find((schedule) => schedule.id === scorePolicy.schedule)
-        : undefined;
-      if (!scorePolicy || scoreSchedule?.status !== "active" || Date.parse(scoreSchedule.effective_at) > Date.parse(config.startsAt)) {
-        throw new Error("Activate an applicable configured event score schedule before generating codes.");
-      }
+
     }
     if (activity.kind === "community_partner") {
       const mission = activity.mission ? context.missions.find((candidate) => candidate.id === activity.mission) : undefined;
@@ -2358,11 +2483,7 @@ export class GamificationOperationsService {
       if (linkedAchievements.some((achievement) => achievement.status !== "active")) {
         throw new Error("Activate every linked Community Partner Badge before generating its codes.");
       }
-      const scorePolicy = context.policies.find((policy) => policy.activity === activity.id && policy.active);
-      const scoreSchedule = scorePolicy ? context.schedules.find((schedule) => schedule.id === scorePolicy.schedule) : undefined;
-      if (!scorePolicy || scoreSchedule?.status !== "active" || Date.parse(scoreSchedule.effective_at) > Date.parse(config.startsAt)) {
-        throw new Error("Activate an applicable Community Partner score schedule before generating codes.");
-      }
+
     }
     if (activity.kind === "easter_egg" || activity.category === "easter_egg") {
       const mission = activity.mission ? context.missions.find((candidate) => candidate.id === activity.mission) : undefined;
@@ -2371,11 +2492,7 @@ export class GamificationOperationsService {
       if (validationErrors.length > 0 || mission?.status !== "active" || achievement?.status !== "active") {
         throw new Error(validationErrors.join(" ") || "Activate the canonical hidden Easter Egg Mission and Badge before generating codes.");
       }
-      const scorePolicy = context.policies.find((policy) => policy.activity === activity.id && policy.active);
-      const scoreSchedule = scorePolicy ? context.schedules.find((schedule) => schedule.id === scorePolicy.schedule) : undefined;
-      if (!scorePolicy || scoreSchedule?.status !== "active" || Date.parse(scoreSchedule.effective_at) > Date.parse(config.startsAt)) {
-        throw new Error("Activate an applicable Easter Egg score schedule before generating codes.");
-      }
+
     }
     const effectivePolicy = context.policies.find((policy) =>
       policy.activity === activity.id &&
@@ -2393,6 +2510,13 @@ export class GamificationOperationsService {
       throw new Error("Code evidence role must match the configured Activity evidence mode.");
     }
     this.assertCodeWindowInsideActivity(config.startsAt, config.endsAt, activity);
+    return activity;
+  }
+
+  private async generateCodesNow(input: AdminCodeGenerationInput, actor: AdminOperationActor): Promise<AdminCodeBatchResult> {
+    const config = this.validateCodeGenerationInput(input);
+    const context = await this.context();
+    const activity = this.requireCodeGenerationActivity(config, context);
     const audit = await this.beginAudit(actor, "code_generation", GAMIFICATION_COLLECTIONS.codes, config.operationId, config.operationId, "Generated Mission code batch.", {
       batchId: config.operationId,
       activity: definitionSummary(activity),
@@ -2526,7 +2650,7 @@ export class GamificationOperationsService {
   }
 
   async reissueCode(input: AdminCodeReissueInput, actor: AdminOperationActor): Promise<AdminCodeBatchResult> {
-    return withGamificationLocks(this.store, [`code:${cleanText(input.codeId)}`], () =>
+    return withGamificationLocks(this.store, ["code-inventory", `code:${cleanText(input.codeId)}`], () =>
       this.reissueCodeNow(input, actor)
     );
   }
@@ -3535,6 +3659,9 @@ export class GamificationOperationsService {
     if (!isPositiveInteger(Number(activity.max_claims))) errors.push("Activity global claim limit is required.");
     hasRequiredWindow(activity.active_from, activity.active_until, "Activity", errors);
     const hieventsEvidence = activity.evidence_mode === "hievents_ticket" || activity.evidence_mode === "hievents_checkin";
+    if (activity.kind === "qr" && (activity.evidence_mode !== "single_code" || activity.outcome_key !== "completion")) {
+      errors.push("QR Activities require single-code evidence and the completion outcome.");
+    }
     if (hieventsEvidence && activity.kind !== "hievents") errors.push("Only Hi.Events Activities may use Hi.Events evidence.");
     if (activity.kind === "hievents" && !hieventsEvidence) errors.push("Hi.Events Activities require ticket or check-in evidence.");
     if (expectedCodeRole(activity.evidence_mode) && ["hievents", "admin_manual", "meta"].includes(activity.kind)) {
@@ -4109,7 +4236,7 @@ export class GamificationOperationsService {
       ) {
         throw new Error("This admin operation ID belongs to another operation.");
       }
-      if (JSON.stringify(existing.after_summary || {}) !== JSON.stringify(afterSummary)) {
+      if (!samePersistedJson(existing.after_summary || {}, afterSummary)) {
         throw new Error("This admin operation ID belongs to a different request.");
       }
       return { record: existing, replayed: existing.status === "applied", failed: existing.status === "failed", existing: true };
@@ -4157,7 +4284,7 @@ export class GamificationOperationsService {
         existing.reason !== safeReason(reason) ||
         existing.related_collection !== collection ||
         existing.related_record_id !== recordId ||
-        JSON.stringify(existing.after_summary || {}) !== JSON.stringify(afterSummary)
+        !samePersistedJson(existing.after_summary || {}, afterSummary)
       ) {
         throw new Error("This admin operation ID belongs to another operation.");
       }

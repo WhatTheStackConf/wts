@@ -183,6 +183,9 @@ export const Navbar = () => {
                     <a href="/agenda">{`>`} Agenda</a>
                   </li>
                   <li>
+                    <a href="/missions">{`>`} Missions</a>
+                  </li>
+                  <li>
                     <a href="/sessions">{`>`} Sessions</a>
                   </li>
                   <li>
@@ -374,6 +377,9 @@ export const Navbar = () => {
                   </li>
                   <li>
                     <a href="/agenda" onClick={closeDrawer}>Agenda</a>
+                  </li>
+                  <li>
+                    <a href="/missions" onClick={closeDrawer}>Missions</a>
                   </li>
                   <li>
                     <a href="/sessions" onClick={closeDrawer}>Sessions</a>
