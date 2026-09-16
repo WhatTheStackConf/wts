@@ -13,6 +13,7 @@ import {
   type SessionUser,
 } from "~/lib/session-policy";
 import { createAuthRequestQueue } from "~/lib/auth-request-queue";
+import { AuthFlowError, unwrapAuthResult } from "~/lib/auth-errors";
 
 interface AuthContextType {
   isAuthenticated: () => boolean;
@@ -56,7 +57,8 @@ function readLegacyBrowserToken(): string | null {
 }
 
 function isUnauthorizedError(error: unknown): boolean {
-  return error instanceof Error && error.message === "Unauthorized";
+  return (error instanceof AuthFlowError && error.failure.code === "session") ||
+    (error instanceof Error && error.message === "Unauthorized");
 }
 
 export const AuthProvider = (props: { children: JSX.Element }) => {
@@ -82,7 +84,7 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
           const legacyToken = readLegacyBrowserToken();
           if (legacyToken) {
             try {
-              user = await serverLoginWithToken(legacyToken);
+              user = unwrapAuthResult(await serverLoginWithToken(legacyToken));
             } catch (error) {
               if (!isUnauthorizedError(error)) throw error;
             }
@@ -103,7 +105,7 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
     return enqueueAuthRequest(async () => {
       setLoading(true);
       try {
-        const user = await serverLogin(email, password);
+        const user = unwrapAuthResult(await serverLogin(email, password));
         setRecord(user);
         removeLegacyBrowserAuth();
         return user;
@@ -121,7 +123,7 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
       try {
         const authData = await authenticate();
         pb.authStore.clear();
-        const user = await serverLoginWithToken(authData.token);
+        const user = unwrapAuthResult(await serverLoginWithToken(authData.token));
         setRecord(user);
         removeLegacyBrowserAuth();
         return user;

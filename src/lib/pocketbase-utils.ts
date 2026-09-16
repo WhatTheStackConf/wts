@@ -6,6 +6,7 @@ import {
   CollectionRecord,
 } from "./pocketbase-types";
 import pb from "./pocketbase";
+import { authFailure } from "./auth-errors";
 
 // Initialize PocketBase client instance
 
@@ -26,7 +27,7 @@ export const loginWithGithub = async (): Promise<AuthData> => {
 
     return authData;
   } catch (error) {
-    console.error("Login with GitHub error:", error);
+    console.error("Login with GitHub error:", authFailure(error, "oauth").code);
     throw error;
   }
 };
@@ -36,7 +37,7 @@ export const requestEmailVerification = async (email: string): Promise<boolean> 
     await pb.collection("users").requestVerification(email);
     return true;
   } catch (error) {
-    console.error("Request verification error:", error);
+    console.error("Request verification failed.");
     return false; // Don't throw to avoid breaking the registration flow if email fails
   }
 };
@@ -59,7 +60,7 @@ export const loginWithGoogle = async (): Promise<AuthData> => {
 
     return authData;
   } catch (error) {
-    console.error("Login with Google error:", error);
+    console.error("Login with Google error:", authFailure(error, "oauth").code);
     throw error;
   }
 };
@@ -79,10 +80,8 @@ export const register = async (
     });
 
     return userData;
-  } catch (error: any) {
-    console.error("Registration error:", error);
-    console.error("Error response:", JSON.stringify(error.response, null, 2));
-    console.error("Error data:", JSON.stringify(error.response?.data, null, 2));
+  } catch (error) {
+    console.error("Registration error:", authFailure(error, "register").code);
     throw error;
   }
 };

@@ -10,7 +10,7 @@ import PocketBase from 'pocketbase';
 
 /** Synthetic loopback-only DB. Relevant real migrations/hooks are copied unchanged.
  * Never reads .env or existing pb_data; excludes mail, cron and outbound hooks. */
-export async function startLiveQaPocketBase(options: { workspace?: boolean } = {}) {
+export async function startLiveQaPocketBase(options: { workspace?: boolean; binary?: string } = {}) {
   // All default slots in this disposable programme share an anchor, even if
   // setup or a restart crosses local midnight while the test is running.
   const fixtureInstant = new Date().toISOString();
@@ -55,7 +55,7 @@ export async function startLiveQaPocketBase(options: { workspace?: boolean } = {
   for (const name of migrations) copyFileSync(join(source, 'pb_migrations', name), join(migrationsDir, name));
   for (const name of hooks) copyFileSync(join(source, 'pb_hooks', name), join(hooksDir, name));
   const hookHashes = Object.fromEntries(hooks.map(name => [name, createHash('sha256').update(readFileSync(join(hooksDir, name))).digest('hex')]));
-  const binary = join(source, 'pocketbase');
+  const binary = options.binary || join(source, 'pocketbase');
   const args = [`--dir=${dataDir}`, `--migrationsDir=${migrationsDir}`, `--hooksDir=${hooksDir}`];
   function run(command: string[]) {
     const result = spawnSync(binary, [...command, ...args], { encoding: 'utf8' });

@@ -3,6 +3,7 @@ import { useNavigate } from "@solidjs/router";
 import { Redirect } from "~/components/Redirect";
 import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
+import { authFailure } from "~/lib/auth-errors";
 
 const RegisterPage = () => {
   const [email, setEmail] = createSignal("");
@@ -11,6 +12,7 @@ const RegisterPage = () => {
   const [name, setName] = createSignal("");
   const [error, setError] = createSignal("");
   const [success, setSuccess] = createSignal(false);
+  const [verificationSent, setVerificationSent] = createSignal(false);
   const [loading, setLoading] = createSignal(false);
 
   // Turnstile state
@@ -126,19 +128,18 @@ const RegisterPage = () => {
       await register(email(), password(), passwordConfirm(), name());
 
       // Trigger email verification
-      await requestEmailVerification(email());
+      setVerificationSent(await requestEmailVerification(email()));
 
       setSuccess(true);
-    } catch (err: any) {
-      console.error("Registration error:", err);
-      setError(err.message || "Registration failed");
+    } catch (err) {
+      setError(authFailure(err, "register").message);
     } finally {
       setLoading(false);
     }
   };
 
   createEffect(
-    () => success(),
+    () => success() && verificationSent(),
     (didSucceed) => {
     if (didSucceed) {
       setTimeout(() => {
@@ -204,6 +205,7 @@ const RegisterPage = () => {
                     type="password"
                     id="password"
                     name="password"
+                    minlength={8}
                     value={password()}
                     onInput={(e) => setPassword(e.currentTarget.value)}
                     class="input input-bordered w-full"
@@ -231,7 +233,7 @@ const RegisterPage = () => {
               </Show>
 
               <Show when={error()}>
-                <div class="mb-4 p-3 bg-error text-error-content rounded-lg">
+                <div role="alert" class="mb-4 p-3 bg-error text-error-content rounded-lg">
                   {error()}
                 </div>
               </Show>
@@ -239,7 +241,7 @@ const RegisterPage = () => {
               <button
                 type="submit"
                 class="btn btn-primary w-full"
-                disabled={loading() || (!isDev() && !turnstileToken())}
+                disabled={loading() || !turnstileToken()}
               >
                 {loading() ? (
                   <>
@@ -265,11 +267,15 @@ const RegisterPage = () => {
             <h1 class="text-2xl font-bold mb-4">Registration Successful!</h1>
             <p class="mb-6">
               Your account has been created. <br />
-              <span class="font-bold text-primary-500">Please check your email to verify your account.</span>
+              <Show when={verificationSent()} fallback={
+                <span role="alert">We could not send your verification email. Go to Log In and sign in with your email and password to resend it. You do not need to register again.</span>
+              }>
+                <span class="font-bold text-primary-500">Please check your email to verify your account.</span>
+              </Show>
             </p>
-            <p class="mb-6 text-sm text-base-content/70">
-              Redirecting to login in 3 seconds...
-            </p>
+            <Show when={verificationSent()}>
+              <p class="mb-6 text-sm text-base-content/70">Redirecting to login in 3 seconds...</p>
+            </Show>
             <a href="/login" class="btn btn-primary">
               Go to Login Now
             </a>
