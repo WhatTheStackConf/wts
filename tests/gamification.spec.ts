@@ -56,6 +56,9 @@ async function xp(role: string) {
 async function fill(page: Page, fields: Record<string, string>) { for (const [id, value] of Object.entries(fields)) await page.locator(`#${id}`).fill(value); }
 async function createActivity(page: Page, key: string, total: string, rank: string) {
   let form = await openForm(page, "gam-activity-key");
+  await page.locator("#gam-activity-kind").selectOption("booth");
+  await expect(page.getByText("Optional partner follow-up consent", { exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Offer separate partner_follow_up consent" })).not.toBeChecked();
   await fill(page, { "gam-activity-key": key, "gam-activity-from": windowStart, "gam-activity-until": windowEnd });
   await page.locator("#gam-activity-kind").selectOption("qr");
   await page.locator("#gam-activity-category").selectOption("social");

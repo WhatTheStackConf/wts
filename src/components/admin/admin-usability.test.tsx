@@ -80,8 +80,14 @@ describe("admin workspace simplicity", () => {
     for (const name of ["Achievement draft", "Mission draft", "Activity draft"]) expect(html).toContain(name);
     expect(html).toContain('id="gam-lifecycle-reason"');
     expect(html).toContain("accounting history is kept");
-    expect(html).toContain("Optional partner follow-up consent");
-    expect(html).toContain("never changes a Claim, Badge, total XP, or Leaderboard XP");
+    expect(html).toContain('value="qr"');
+    expect(html).toContain("QR questions");
+    expect(html).toContain("Printed codes");
+    expect(html).not.toContain("Optional partner follow-up consent");
+    // The QR default has no partner. Booth-specific consent remains conditional
+    // and is exercised by the real gamification browser suite.
+    expect(source("gamification/AdminGamificationHub.tsx")).toContain("Optional partner follow-up consent");
+    expect(source("gamification/AdminGamificationHub.tsx")).toContain("never changes a Claim, Badge, total XP, or Leaderboard XP");
   });
 
   it("keeps agenda publication consequences and MCP revocation rules visible", () => {

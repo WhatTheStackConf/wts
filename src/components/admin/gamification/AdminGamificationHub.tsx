@@ -389,7 +389,7 @@ export default function AdminGamificationHub() {
       layoutTitle="Admin: Gamification"
       layoutDescription="Configure September gamification, Mission codes, and single-User support"
       title="Gamification"
-      hint="Create a QR Activity for direct points, or attach questions before activating it. Save drafts, configure scoring, activate definitions and the score schedule, then generate or register codes."
+      hint="Create a QR Activity for direct points, or attach questions before activating it. Save drafts, configure scoring, activate definitions and the score schedule, then generate or register codes. Retire used definitions instead of deleting them; accounting history is kept."
       count={operations()?.activities.length}
       countLoading={operations.loading}
       toast={toast()}
