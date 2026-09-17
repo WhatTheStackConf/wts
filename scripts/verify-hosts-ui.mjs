@@ -48,6 +48,7 @@ try {
   programme = agenda.days.find(day => day.key === "main-day").programmes[0];
   const byId = new Map(source.speakers.map(s => [s.id, s]));
   const bySlug = new Map(source.speakers.map(s => [s.slug, s]));
+  for (const slug of ['darko-bozhinovski', 'miodrag-cekikj']) assert.equal(bySlug.get(slug).is_mc, false);
   sessions = source.sessions.filter(s => s.published && s.format === "Fireside chat").map(s => {
     const projected = publicAgendaSession(s, byId);
     const detail = person => ({ slug: person.slug, displayName: person.name, photoUrl: person.photoUrl, affiliation: bySlug.get(person.slug).affiliation || "", isMc: bySlug.get(person.slug).is_mc, sessionCount: 1, appearanceEvents: [] });
@@ -64,9 +65,29 @@ try {
     // Delegate image processing to the real read-only image endpoint.
     await page.route("**/api/image?**", async route => {
       const response = await route.fetch({ url: `https://wts.sh${new URL(route.request().url()).pathname}${new URL(route.request().url()).search}` });
+      assert.equal(response.status(), 200, `Live portrait failed: ${new URL(route.request().url()).search}`);
       await route.fulfill({ response });
     });
     await page.goto(origin);
+    const assignedMcs = [['Stage 1', 'tony-edwards'], ['Stage 2', 'stojan-ezhov'], ['Stage 3', 'dimitar-grozdanov'], ['Stage 4', 'nikola-dinevski'], ['Stage 5', 'marijana-ilovska-zlatanovska']];
+    for (const [stageName, slug] of assignedMcs) {
+      const track = programme.tracks.find(t => t.name === stageName);
+      if (width < 1024) await page.getByRole('combobox', { name: 'Choose a stage' }).selectOption(track.key);
+      const mcs = page.getByRole('list', { name: `${stageName} MCs`, exact: true });
+      await expect(mcs).toBeVisible();
+      await expect(mcs.locator('a')).toHaveCount(1);
+      await expect(mcs.locator('a')).toHaveAttribute('href', `/speakers/${slug}`);
+      await mcs.scrollIntoViewIfNeeded();
+      await expect.poll(() => mcs.locator('img').evaluateAll(images => images.map(i => ({ loaded: i.complete && i.naturalWidth > 0, src: i.currentSrc }))), { message: `${width}px ${stageName} MC portrait must decode` }).toEqual([{ loaded: true, src: expect.any(String) }]);
+      await expect(page.locator('[data-stage-mcs]:visible')).toHaveCount(width < 1024 ? 1 : 5);
+      if (stageName === 'Stage 5') await mcs.locator('..').screenshot({ path: `${evidence}/stage-mc-${width}.png` });
+    }
+    // Back to the first stage, then Stage 5: reactive selections must not retain the prior MC.
+    if (width < 1024) {
+      await page.getByRole('combobox', { name: 'Choose a stage' }).selectOption('stage-2');
+      await expect(page.getByRole('list', { name: 'Stage 1 MCs', exact: true })).toContainText('Tony Edwards');
+      await expect(page.getByRole('list', { name: 'Stage 5 MCs', exact: true })).toHaveCount(0);
+    }
     if (width < 1024) await page.getByRole("combobox", { name: "Choose a stage" }).selectOption("stage-5");
     const list = width < 1024 ? page.locator('#host-agenda-mobile-slots > ol') : page.getByRole("list", { name: /all stages, chronological order/ });
     await expect(list).toBeVisible();
@@ -104,7 +125,7 @@ try {
       if (session.slug === "fireside-who-owes-open-source-what") await page.screenshot({ path: `${evidence}/participants-${width}.png`, fullPage: true });
     }
     assert.deepEqual(errors, []);
-    console.log(`PASS ${width}px: opening/closing photos; six separated agenda hosts; six session participant groups; decoded images; zero overflow/page errors.`);
+    console.log(`PASS ${width}px: all five assigned stage MCs; opening/closing photos; six separated non-MC fireside hosts; decoded images; zero overflow/page errors.`);
     await page.unrouteAll({ behavior: "wait" });
     await page.close();
   }

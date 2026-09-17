@@ -4,7 +4,7 @@ import { sessionHostIds, sharedSlotHosts, withoutHostCredit } from "~/lib/progra
 import type { AgendaSlotRecord, AppearanceEventRecord, ConferenceDayRecord, EventProgrammeRecord, SessionRecord, SpeakerRecord } from "~/lib/pocketbase-types";
 import assignments from "../../scripts/hosts-2026.manifest.json";
 
-const speakers = assignments.profiles.map(({ record }) => ({ ...record, published: true, photo: `${record.slug}.jpg` }) as SpeakerRecord);
+const speakers = assignments.profiles.map(({ record }) => ({ ...record, is_mc: false, published: true, photo: `${record.slug}.jpg` }) as SpeakerRecord);
 const darko = speakers[0];
 const guest = { ...darko, id: "guest", slug: "guest", display_name: "Guest", is_mc: true };
 const byId = new Map([...speakers, guest].map((speaker) => [speaker.id, speaker]));

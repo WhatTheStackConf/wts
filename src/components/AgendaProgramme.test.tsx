@@ -95,6 +95,30 @@ describe("agenda day filtering", () => {
 });
 
 describe("public agenda programme", () => {
+  it("shows compact linked MC portraits in stage headings, distinct from session hosts", () => {
+    const tony = { slug: "tony-edwards", name: "Tony Edwards", photoUrl: "https://pb.example/tony.jpg" };
+    const marijana = { slug: "marijana-ilovska-zlatanovska", name: "Marijana Ilovska Zlatanovska", photoUrl: null };
+    const html = renderProgramme({ ...programme, tracks: [
+      { ...programme.tracks[0], mcs: [tony] },
+      { ...programme.tracks[1], mcs: [marijana] },
+      programme.tracks[2],
+    ] });
+    expect(html.match(/data-stage-mcs="one"/g)).toHaveLength(2);
+    expect(html.match(/data-stage-mcs="two"/g)).toHaveLength(1);
+    expect(html).not.toContain('data-stage-mcs="five"');
+    expect(html).toContain('aria-label="Stage1 MCs"');
+    expect(html).toContain('href="/speakers/tony-edwards"');
+    expect(html).toContain('tony.jpg');
+    expect(html).toContain('sizes="40px"');
+    expect(html).toContain('Marijana Ilovska Zlatanovska');
+    expect(html).not.toContain('src="null"');
+    expect(html).not.toContain('data-session-hosts');
+  });
+
+  it("omits empty stage MC rows", () => {
+    expect(renderProgramme()).not.toContain('data-stage-mcs');
+  });
+
   it("renders opening/closing portraits and separates each fireside host below guests", () => {
     const host = { slug: "host", name: "Host Person", photoUrl: "https://pb.example/host.jpg" };
     const guest = { slug: "guest", name: "Guest Person", photoUrl: null };

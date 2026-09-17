@@ -49,7 +49,7 @@ jobs:
         run: pnpm test:auth
       - if: matrix.gate == 'test'
         name: Verify explicit hosts and participant presentation
-        run: pnpm exec vp test run src/lib/programme-hosts.test.ts src/components/conference/SessionParticipants.test.tsx
+        run: pnpm exec vp test run src/lib/programme-hosts.test.ts src/lib/programme-stage-mcs.test.ts src/components/conference/SessionParticipants.test.tsx
 
   checkin-browser:
     name: Disposable Check-in browser
