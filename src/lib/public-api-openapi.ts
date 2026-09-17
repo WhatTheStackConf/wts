@@ -49,6 +49,7 @@ const schemas: Record<string, Schema> = {
     ...sessionCard,
     abstract: text("Website-authored rich text, which may contain HTML. Sanitize before rendering HTML."),
     speakers: array(ref("SpeakerSummary")), schedule: ref("SessionSchedule"), announcement: ref("SessionAnnouncement"),
+    hosts: { ...array(ref("SpeakerSummary")), description: "Explicit host subset of speakers. Display separately from other participants." },
     relatedSessions: array(ref("SessionCard")),
   }, ["slug", "title", "abstract", "speakers", "relatedSessions"]),
   SessionSchedule: object({
@@ -61,7 +62,7 @@ const schemas: Record<string, Schema> = {
     locationLabel: text(),
   }, ["dayDate", "event"]),
   AgendaSpeaker: object({ slug: ref("Slug"), name: text(), photoUrl: { type: ["string", "null"], format: "uri" } }, ["slug", "name"]),
-  AgendaSession: object({ ...sessionCard, schedule: ref("SessionSchedule"), speakers: array(ref("AgendaSpeaker")) }, ["slug", "title", "speakers"]),
+  AgendaSession: object({ ...sessionCard, schedule: ref("SessionSchedule"), speakers: array(ref("AgendaSpeaker")), hosts: array(ref("AgendaSpeaker")) }, ["slug", "title", "speakers"]),
   AgendaTrack: object({ key: text(), name: text(), locationLabel: text() }, ["key", "name"]),
   AgendaSlot: object({
     kind: { type: "string", enum: ["session", "break", "meal", "networking", "opening", "closing", "other"] },

@@ -47,6 +47,9 @@ jobs:
         run: pnpm test:usability
       - if: matrix.gate == 'test'
         run: pnpm test:auth
+      - if: matrix.gate == 'test'
+        name: Verify explicit hosts and participant presentation
+        run: pnpm exec vp test run src/lib/programme-hosts.test.ts src/components/conference/SessionParticipants.test.tsx
 
   checkin-browser:
     name: Disposable Check-in browser

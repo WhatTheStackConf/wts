@@ -20,6 +20,23 @@ import {
 } from "~/lib/pocketbase-thumbnail";
 
 describe("MC public profiles", () => {
+  it("carries explicit hosts through both detail loaders while retaining the full participant list", async () => {
+    const host = { id: "host26darko0001", collectionName: "speakers", slug: "darko-bozhinovski", display_name: "Darko Bozhinovski", published: true, is_mc: true, photo: "darko.jpg", user: "private-user" };
+    const guest = { id: "guest", slug: "guest", display_name: "Guest", published: true, is_mc: true };
+    const session = { id: "fs26f7995331c81", slug: "fireside-who-owes-open-source-what", title: "Fireside", abstract: "Abstract", published: true, speakers: [guest.id, host.id], expand: { speakers: [guest, host] } };
+    fetchAllRecords.mockReset();
+    fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({ speakers: [guest, host], sessions: [session] }[collection] || []));
+    for (const detail of [await loadPublicSessionBySlug(session.slug), (await loadPublicConferenceGuideProgramme()).sessions[0]]) {
+      expect(detail?.speakers).toHaveLength(2);
+      expect(detail?.hosts).toEqual([expect.objectContaining({ slug: host.slug, photoUrl: expect.stringContaining('darko.jpg') })]);
+      expect(detail?.hosts?.[0]).toEqual(detail?.speakers.find((person) => person.slug === host.slug));
+      expect(JSON.stringify(detail?.hosts)).not.toContain('private-user');
+    }
+    host.published = false;
+    expect((await loadPublicSessionBySlug(session.slug))?.hosts).toBeUndefined();
+    expect((await loadPublicConferenceGuideProgramme()).sessions[0].hosts).toBeUndefined();
+  });
+
   it("projects explicit MC status independently of sessions and hides private fields", async () => {
     fetchAllRecords.mockReset();
     fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
