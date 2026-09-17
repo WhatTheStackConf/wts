@@ -205,7 +205,7 @@ export function checkinMetadataUrl(url: URL, endpoint: string): boolean {
     && (url.pathname === target.pathname || url.pathname === new URL(metadataAlias(endpoint)).pathname)
     && !url.username && !url.password && !url.hash;
 }
-function link(value: unknown, endpoint: string, expectedPage: number | null, perPage: number): void {
+function link(value: unknown, endpoint: string, expectedPage: number | null, perPage: number, requestedPerPage: number): void {
   if (expectedPage === null) { requireContract(value === null); return; }
   requireContract(typeof value === "string" && value.length <= 4096 && !/[\s\\]/.test(value));
   let url: URL;
@@ -214,36 +214,41 @@ function link(value: unknown, endpoint: string, expectedPage: number | null, per
   requireContract(url.searchParams.getAll("page").length === 1 && url.searchParams.get("page") === String(expectedPage));
   // Laravel may omit query parameters. Validate links but construct page URLs locally.
   for (const [key, value] of url.searchParams) {
-    requireContract(key === "page" || (key === "per_page" && (value === "25" || value === String(perPage))));
+    requireContract(key === "page" || (key === "per_page" && (value === String(requestedPerPage) || value === String(perPage))));
   }
   requireContract(url.searchParams.getAll("per_page").length <= 1);
 }
-export async function paginated<T extends { id: string }>(scope: ReadScope, endpoint: string, path: string, parse: (value: unknown) => T): Promise<T[]> {
+export async function paginated<T extends { id: string }>(scope: ReadScope, endpoint: string, path: string, parse: (value: unknown) => T, limits = { pageSize: 25, maxItems: 1000, maxPages: 40 }): Promise<T[]> {
+  // Discovery keeps its original budget. Bulk read-only rosters opt into a
+  // separate bounded traversal; never let growing unrelated ticket counts
+  // silently truncate or suppress the configured programmes.
+  const pageSize = count(limits.pageSize, 1), maxItems = count(limits.maxItems, 1), maxPages = count(limits.maxPages, 1);
+  requireContract(pageSize <= 100 && maxItems <= 10000 && maxPages <= 100);
   const items: T[] = [];
   const ids = new Set<string>();
   let total: number | undefined;
   let perPage: number | undefined;
-  for (let current = 1; current <= 40; current++) {
-    const body = await scope.read(`${path}?page=${current}&per_page=25`);
+  for (let current = 1; current <= maxPages; current++) {
+    const body = await scope.read(`${path}?page=${current}&per_page=${pageSize}`);
     requireContract(!("errors" in body) && Array.isArray(body.data));
     const meta = record(body.meta);
     const links = record(body.links);
     const pageTotal = count(meta.total);
     const size = count(meta.per_page, 1);
     const last = count(meta.last_page, 1);
-    requireContract(size <= 25 && count(meta.current_page, 1) === current && last === Math.max(1, Math.ceil(pageTotal / size)));
-    if (pageTotal > 1000 || last > 40) throw new DiscoveryError("limit");
+    requireContract(size <= pageSize && count(meta.current_page, 1) === current && last === Math.max(1, Math.ceil(pageTotal / size)));
+    if (pageTotal > maxItems || last > maxPages) throw new DiscoveryError("limit");
     requireContract((total === undefined || pageTotal === total) && (perPage === undefined || perPage === size));
     total = pageTotal;
     perPage = size;
     requireContract(current <= last && body.data.length === Math.min(size, total - items.length));
     requireContract(meta.from === (total ? items.length + 1 : null) && meta.to === (total ? items.length + body.data.length : null));
     requireContract(checkinMetadataPath(meta.path, endpoint));
-    if (meta.current_page_url !== undefined) link(meta.current_page_url, endpoint, current, size);
-    link(links.first, endpoint, 1, size);
-    link(links.last, endpoint, last, size);
-    link(links.prev, endpoint, current > 1 ? current - 1 : null, size);
-    link(links.next, endpoint, current < last ? current + 1 : null, size);
+    if (meta.current_page_url !== undefined) link(meta.current_page_url, endpoint, current, size, pageSize);
+    link(links.first, endpoint, 1, size, pageSize);
+    link(links.last, endpoint, last, size, pageSize);
+    link(links.prev, endpoint, current > 1 ? current - 1 : null, size, pageSize);
+    link(links.next, endpoint, current < last ? current + 1 : null, size, pageSize);
     if (meta.links !== undefined) {
       requireContract(Array.isArray(meta.links) && meta.links.length <= 100);
       for (const value of meta.links) {
@@ -253,7 +258,7 @@ export async function paginated<T extends { id: string }>(scope: ReadScope, endp
           const target = new URL(navigation.url, endpoint);
           const page = Number(target.searchParams.get("page"));
           requireContract(Number.isSafeInteger(page) && page >= 1 && page <= last);
-          link(navigation.url, endpoint, page, size);
+          link(navigation.url, endpoint, page, size, pageSize);
         }
       }
     }
