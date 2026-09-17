@@ -15,6 +15,7 @@ import {
 import { fetchPublicPartnerGroups } from "~/lib/partners-public";
 import { conferenceGuideContent } from "~/lib/conference-guide-content";
 import { ConferenceWeek } from "~/components/conference/ConferenceWeek";
+import { CampusMap } from "~/components/conference/CampusMap";
 
 export default function Home() {
   const [speakers] = createResource(fetchPublicSpeakerTeaser);
@@ -141,6 +142,7 @@ export default function Home() {
                 </a>
               </div>
             </div>
+            <CampusMap />
           </div>
         </section>
       </div>
