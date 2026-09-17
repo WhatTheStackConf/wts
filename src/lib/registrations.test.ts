@@ -5,7 +5,9 @@ import { readRegistrations } from "./registrations-source";
 import { registrationProgrammes } from "./registrations-contract";
 import { conferenceWeekTracks } from "./conference-week";
 import { isCheckinPath } from "./checkin-privacy";
+import { paginated } from "~/lib/checkin-hievents";
 const request = () => new Request("https://wts.test/api/registrations", { method: "POST", headers: { origin: "https://wts.test" } });
+const requestedUrl = (input: RequestInfo | URL) => new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
 const empty = { refreshedAt: "2026-09-12T10:00:00.000Z", registrations: [] };
 const operator = { id: "synthetic-operator", role: "checkin_operator" };
 // Entirely synthetic IDs, token and attendee identities. Never production data.
@@ -16,7 +18,52 @@ function page(current: number, product = 15) {
  const link = (n: number) => `${endpoint}?page=${n}`;
  return { data: [{ id: 90000 + current, event_id: 5, product_id: product, first_name: "Synthetic", last_name: "Person", email: "fixture@example.invalid", status: "ACTIVE", short_id: "never-expose", check_ins: [{ short_id: "never-expose" }] }], meta: { current_page: current, last_page: 2, total: 2, per_page: 1, from: current, to: current, path: endpoint }, links: { first: link(1), last: link(2), prev: current === 1 ? null : link(1), next: current === 2 ? null : link(2) } };
 }
+function rosterPage(input: RequestInfo | URL, total: number, productAt: (index: number) => number) {
+ const url = requestedUrl(input), current = Number(url.searchParams.get("page")), perPage = Number(url.searchParams.get("per_page"));
+ const start = (current - 1) * perPage, end = Math.min(total, start + perPage);
+ const endpoint = "https://upstream.test/events/5/attendees", last = Math.ceil(total / perPage);
+ const link = (n: number) => `${endpoint}?page=${n}&per_page=${perPage}`;
+ return { data: Array.from({ length: end - start }, (_, offset) => {
+  const index = start + offset;
+  return { id: 90001 + index, event_id: 5, product_id: productAt(index), first_name: "Synthetic", last_name: "Person", email: "fixture@example.invalid", status: "ACTIVE" };
+ }), meta: { current_page: current, last_page: last, total, per_page: perPage, from: start + 1, to: end, path: endpoint }, links: { first: link(1), last: link(last), prev: current > 1 ? link(current - 1) : null, next: current < last ? link(current + 1) : null } };
+}
 describe("private registrations", () => {
+ it("reads pre-conference registrations beyond 1000 event attendees without returning unrelated tickets", async () => {
+  const total = 1010;
+  const selected = new Map([[900, 15], [1004, 14], [1009, 9]]);
+  const fetcher = vi.fn(async (input: RequestInfo | URL) => Response.json(rosterPage(input, total, index => selected.get(index) ?? 2)));
+  const result = await readRegistrations(config, fetcher);
+  expect(result.registrations.map(row => row.id)).toEqual([...selected.keys()].map(index => String(90001 + index)));
+  expect(result.registrations.map(row => row.programmeId)).toEqual(["15", "14", "9"]);
+  expect(fetcher).toHaveBeenCalledTimes(Math.ceil(total / 100));
+  expect(fetcher.mock.calls.every(([url]) => requestedUrl(url).searchParams.get("per_page") === "100")).toBe(true);
+ });
+ it("keeps ordinary discovery's 1000-record bound unchanged", async () => {
+  const body = page(1); body.meta.total = 1001; body.meta.last_page = 1001;
+  const read = vi.fn(async () => body);
+  await expect(paginated({ acceptedPages: 0, read }, "https://upstream.test/api/events/5/attendees", "events/5/attendees", value => ({ id: String((value as { id: number }).id) }))).rejects.toThrow();
+  expect(read).toHaveBeenCalledWith("events/5/attendees?page=1&per_page=25");
+ });
+ it.each([
+  { total: 10000, included: 1, accepted: true },
+  { total: 10001, included: 1, accepted: false },
+  { total: 1000, included: 1000, accepted: true },
+  { total: 1001, included: 1001, accepted: false },
+ ])("enforces independent source/output limits at $total attendees and $included included registrations", async ({ total, included, accepted }) => {
+  const fetcher = vi.fn(async (input: RequestInfo | URL) => Response.json(rosterPage(input, total, index => index >= total - included ? 15 : 2)));
+  const result = readRegistrations(config, fetcher);
+  if (accepted) {
+   expect((await result).registrations).toHaveLength(included);
+   expect(fetcher).toHaveBeenCalledTimes(Math.ceil(total / 100));
+  } else if (total > 10000) {
+   await expect(result).rejects.toMatchObject({ reason: "limit" });
+   expect(fetcher).toHaveBeenCalledTimes(1);
+  } else {
+   await expect(result).rejects.toMatchObject({ name: "ZodError" });
+   expect(fetcher).toHaveBeenCalledTimes(Math.ceil(total / 100));
+  }
+ });
  it("lists free and paid WTS pre-conference programmes in weekday order", () => {
   expect(registrationProgrammes).toEqual([
    { id: "15", name: "InfoSec Monday" },
@@ -98,11 +145,10 @@ describe("private registrations", () => {
   await expect(readRegistrations(config, vi.fn().mockResolvedValueOnce(Response.json(page(1))).mockResolvedValueOnce(Response.json(second)))).rejects.toThrow();
   await expect(readRegistrations(config, vi.fn().mockResolvedValueOnce(Response.json(page(1))).mockResolvedValueOnce(Response.json({}, { status: 403 })))).rejects.toThrow();
  });
- it("rejects foreign events, oversized rosters and malformed included attendee data", async () => {
+ it("rejects foreign events and malformed included attendee data", async () => {
   const foreign = page(1); foreign.data[0].event_id = 6;
-  const oversized = page(1); oversized.meta.total = 1001;
   const malformed = page(1); malformed.data[0].email = "x".repeat(501);
-  for (const response of [foreign, oversized, malformed]) {
+  for (const response of [foreign, malformed]) {
    await expect(readRegistrations(config, vi.fn().mockResolvedValue(Response.json(response)))).rejects.toThrow();
   }
  });
