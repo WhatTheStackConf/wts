@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
-import type { PublicAgendaSession, PublicAgendaSlot, PublicEventProgramme } from "~/lib/programme-public";
+import type { PublicAgendaSession, PublicAgendaSlot, PublicAgendaTrack, PublicEventProgramme } from "~/lib/programme-public";
 import { SCHEDULE_TIME_ZONE } from "~/lib/programme";
 import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
 
@@ -96,6 +96,19 @@ function AgendaParticipants(props: AgendaParticipantsProps) {
 interface AgendaProgrammeProps {
   programme: PublicEventProgramme;
   id: string;
+}
+
+interface StageMcsProps {
+  track?: PublicAgendaTrack;
+}
+
+function StageMcs(props: StageMcsProps) {
+  return <Show when={props.track?.mcs?.length}>
+    <div class="mt-3" data-stage-mcs={props.track?.key}>
+      <p class="font-mono text-xs uppercase tracking-wide text-secondary-200">{props.track?.mcs?.length === 1 ? "MC" : "MCs"}</p>
+      <AgendaSpeakers speakers={props.track?.mcs || []} label={`${props.track?.name} MCs`} />
+    </div>
+  </Show>;
 }
 
 export function AgendaProgramme(props: AgendaProgrammeProps) {
@@ -227,6 +240,7 @@ function TimedAgendaProgramme(props: AgendaProgrammeProps) {
                 </For>
               </select>
               <Show when={stage()?.locationLabel}><p class="mt-2 text-sm text-secondary-200">{stage()?.locationLabel}</p></Show>
+              <StageMcs track={stage()} />
               <p class="mt-2 text-sm leading-relaxed text-secondary-100/85">Includes all programme-wide opening, breaks and closing items.</p>
             </div>
           </Show>
@@ -249,6 +263,7 @@ function TimedAgendaProgramme(props: AgendaProgrammeProps) {
                   {(track, index) => (
                     <div class="border-l border-white/10 px-3 pb-4" style={{ "grid-column": `${index() + 2}`, "grid-row": "1" }}>
                       <p class="font-bold text-white">{track.name}</p>
+                      <StageMcs track={track} />
                       <Show when={track.locationLabel}><p class="mt-1 text-xs leading-5 text-secondary-200/80">{track.locationLabel}</p></Show>
                       <Show when={!hasStageSlots(track.key)}><p class="mt-2 text-sm text-secondary-200">TBD · Sessions to be announced</p></Show>
                     </div>

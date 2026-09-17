@@ -63,7 +63,7 @@ const schemas: Record<string, Schema> = {
   }, ["dayDate", "event"]),
   AgendaSpeaker: object({ slug: ref("Slug"), name: text(), photoUrl: { type: ["string", "null"], format: "uri" } }, ["slug", "name"]),
   AgendaSession: object({ ...sessionCard, schedule: ref("SessionSchedule"), speakers: array(ref("AgendaSpeaker")), hosts: array(ref("AgendaSpeaker")) }, ["slug", "title", "speakers"]),
-  AgendaTrack: object({ key: text(), name: text(), locationLabel: text() }, ["key", "name"]),
+  AgendaTrack: object({ key: text(), name: text(), locationLabel: text(), mcs: array(ref("AgendaSpeaker")) }, ["key", "name"]),
   AgendaSlot: object({
     kind: { type: "string", enum: ["session", "break", "meal", "networking", "opening", "closing", "other"] },
     startAt: ref("Timestamp"), endAt: ref("Timestamp"), locationLabel: text(), track: ref("AgendaTrack"),

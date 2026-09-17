@@ -10,6 +10,7 @@ import type {
 } from "~/lib/pocketbase-types";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
 import { sessionHostIds, sharedSlotHosts, withoutHostCredit } from "~/lib/programme-hosts";
+import { stageMcRecords } from "~/lib/programme-stage-mcs";
 
 /** Date/event assignment is known, but the session itself has no clock time yet. */
 export interface PublicSessionAnnouncement {
@@ -70,6 +71,8 @@ export interface PublicAgendaTrack {
   key: string;
   name: string;
   locationLabel?: string;
+  /** Explicit published stage MCs; independent from session speakers/hosts. */
+  mcs?: PublicAgendaSession["speakers"];
 }
 
 export interface PublicAgendaEvent {
@@ -246,7 +249,11 @@ export function buildPublicAgenda(
               tracks: tracks
                 .filter((track) => track.programme === programme.id)
                 .sort((a, b) => Number(a.display_order) - Number(b.display_order) || a.key.localeCompare(b.key))
-                .map((track) => ({ key: track.key, name: track.name, locationLabel: track.location_label || undefined })),
+                .map((track) => {
+                  const mcs = publicAgendaSpeakers(stageMcRecords(event.id, track.key, speakersById));
+                  return { key: track.key, name: track.name, locationLabel: track.location_label || undefined,
+                    ...(mcs.length ? { mcs } : {}) };
+                }),
               slots: visibleSlots,
             }]
             : [];
