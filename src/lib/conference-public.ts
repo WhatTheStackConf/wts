@@ -1,5 +1,6 @@
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
+import { sessionHostIds } from "~/lib/programme-hosts";
 import { addAnnouncedWeekProgrammes, announcedWeekSessionAppearance, announcedWeekSessionSchedule } from "~/lib/conference-week-agenda";
 import {
   buildPublicAgenda,
@@ -201,6 +202,8 @@ export interface PublicSessionDetail {
   schedule?: PublicSessionSchedule;
   announcement?: PublicSessionAnnouncement;
   speakers: PublicSpeakerSummary[];
+  /** Explicit host subset of speakers; not inferred from global MC status. */
+  hosts?: PublicSpeakerSummary[];
   /** Populated when related-sessions feature ships; empty at launch. */
   relatedSessions: PublicSessionCard[];
 }
@@ -539,6 +542,12 @@ export const loadPublicConferenceGuideProgramme = async (signal?: AbortSignal): 
 
   const sessions = sortByTitle(sessionRows.map((session): PublicSessionDetail => {
     const schedule = scheduleFromPublicAgenda(agenda, session.slug);
+    const hostIds = sessionHostIds(session);
+    const hosts = (session.expand?.speakers ?? []).filter((speaker) => speaker.published && hostIds.includes(speaker.id))
+      .map((speaker) => ({
+        ...mapSpeakerSummary(speaker, appearanceEventsForSpeaker(appearanceEvents, speaker)),
+        sessionCount: sessionsForSpeaker(rawSessionRows, speaker.id).length,
+      }));
     return {
       slug: session.slug,
       title: session.title,
@@ -546,6 +555,7 @@ export const loadPublicConferenceGuideProgramme = async (signal?: AbortSignal): 
       format: session.format || undefined,
       schedule,
       announcement: schedule ? undefined : announcedWeekSessionAppearance(session, appearanceEvents),
+      ...(hosts.length ? { hosts } : {}),
       speakers: sortByDisplayName(
         (session.expand?.speakers ?? [])
           .filter((speaker) => speaker.published)
@@ -597,6 +607,8 @@ export const loadPublicSessionBySlug = async (
   if (!session) return null;
 
   const speakerRows = (session.expand?.speakers ?? []).filter((speaker) => speaker.published);
+  const hostIds = sessionHostIds(session);
+  const hosts = speakerRows.filter((speaker) => hostIds.includes(speaker.id)).map((speaker) => mapSpeakerSummary(speaker));
   const speakers = sortByDisplayName(
     speakerRows.map((speaker) => mapSpeakerSummary(speaker)),
   );
@@ -629,6 +641,7 @@ export const loadPublicSessionBySlug = async (
     schedule,
     announcement: schedule ? undefined : announcedWeekSessionAppearance(session, events as AppearanceEventRecord[]),
     speakers,
+    ...(hosts.length ? { hosts } : {}),
     relatedSessions: [],
   };
 };

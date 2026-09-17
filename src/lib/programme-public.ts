@@ -9,6 +9,7 @@ import type {
   SpeakerRecord,
 } from "~/lib/pocketbase-types";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
+import { sessionHostIds, sharedSlotHosts, withoutHostCredit } from "~/lib/programme-hosts";
 
 /** Date/event assignment is known, but the session itself has no clock time yet. */
 export interface PublicSessionAnnouncement {
@@ -35,14 +36,21 @@ export interface PublicAgendaSession {
   /** Organizer-announced session timing, possibly without a confirmed end. */
   schedule?: PublicSessionSchedule;
   speakers: { slug: string; name: string; photoUrl?: string | null }[];
+  /** Explicit hosts, also retained in speakers for participant-list compatibility. */
+  hosts?: PublicAgendaSession["speakers"];
 }
 
 /** Shared allowlist for timed and announced sessions; never copy private profile fields. */
 export function publicAgendaSession(session: SessionRecord, speakersById: ReadonlyMap<string, SpeakerRecord>): PublicAgendaSession {
+  const hosts = publicAgendaSpeakers(sessionHostIds(session).flatMap((id) => {
+    const speaker = speakersById.get(id);
+    return speaker ? [speaker] : [];
+  }));
   return {
     slug: session.slug,
     title: session.title,
     format: session.format || undefined,
+    ...(hosts.length ? { hosts } : {}),
     speakers: publicAgendaSpeakers((session.speakers || []).flatMap((id) => {
       const speaker = speakersById.get(id);
       return speaker ? [speaker] : [];
@@ -217,6 +225,7 @@ export function buildPublicAgenda(
               });
               continue;
             }
+            const hosts = publicAgendaSpeakers(sharedSlotHosts(slot, event.id, speakersById));
             visibleSlots.push({
               kind: slot.kind,
               startAt: slot.start_at,
@@ -226,7 +235,8 @@ export function buildPublicAgenda(
                 ? { key: track.key, name: track.name, locationLabel: track.location_label || undefined }
                 : undefined,
               title: slot.title || undefined,
-              summary: slot.summary || undefined,
+              ...(hosts.length ? { speakers: hosts } : {}),
+              summary: withoutHostCredit(slot.summary || "", hosts.map((host) => host.name)) || undefined,
             });
           }
 

@@ -3,7 +3,8 @@ import { createEffect, createMemo, For, Show } from "solid-js";
 import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { Layout } from "~/layouts/Layout";
 import { fetchSessionBySlug } from "~/lib/speakers-public";
-import { SpeakerAvatar } from "~/components/conference/SpeakerAvatar";
+import { SessionParticipants } from "~/components/conference/SessionParticipants";
+import { withoutHostCredit } from "~/lib/programme-hosts";
 import { LiveQaPanel } from "~/components/LiveQaPanel";
 import { proseArticleClasses } from "~/components/MDXContent";
 import { sanitizeHtml } from "~/lib/sanitize-html";
@@ -160,53 +161,12 @@ export default function SessionDetail() {
                     {(abstract) => (
                       <div
                         class={proseArticleClasses}
-                        innerHTML={sanitizeHtml(abstract())}
+                        innerHTML={sanitizeHtml(withoutHostCredit(abstract(), (s().hosts || []).map((host) => host.displayName), true))}
                       />
                     )}
                   </Show>
 
-                  <section class="mt-10 pt-8 border-t border-white/10">
-                    <h2 class="text-xl md:text-2xl font-bold text-white mb-6">
-                      Speakers
-                    </h2>
-                    <Show
-                      when={s().speakers.length > 0}
-                      fallback={
-                        <p class="text-primary-200/60 italic">
-                          Speakers haven't been announced for this session yet.
-                        </p>
-                      }
-                    >
-                      <ul class="grid grid-cols-1 sm:grid-cols-2 gap-4 list-none p-0 m-0">
-                        <For each={s().speakers}>
-                          {(speaker) => (
-                            <li>
-                              <a
-                                href={`/speakers/${speaker.slug}`}
-                                class="flex items-center gap-4 glass-panel p-4 md:p-5 rounded-2xl hover:border-primary-500/50 transition-all duration-300 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400/60"
-                              >
-                                <SpeakerAvatar
-                                  name={speaker.displayName}
-                                  photoUrl={speaker.photoUrl}
-                                  size="sm"
-                                />
-                                <span class="min-w-0">
-                                  <span class="block font-bold text-white group-hover:text-primary-400 transition-colors truncate">
-                                    {speaker.displayName}
-                                  </span>
-                                  <Show when={speaker.affiliation}>
-                                    <span class="block text-xs text-secondary-500 truncate">
-                                      {speaker.affiliation}
-                                    </span>
-                                  </Show>
-                                </span>
-                              </a>
-                            </li>
-                          )}
-                        </For>
-                      </ul>
-                    </Show>
-                  </section>
+                  <SessionParticipants speakers={s().speakers} hosts={s().hosts} />
 
                   <Show when={s().relatedSessions.length > 0}>
                     <section class="mt-10 pt-8 border-t border-white/10">

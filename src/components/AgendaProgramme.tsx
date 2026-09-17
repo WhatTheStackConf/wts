@@ -63,7 +63,7 @@ function SlotContent(props: { slot: PublicAgendaSlot }) {
         </Show>
       </h4>
       <Show when={props.slot.session?.speakers.length || props.slot.speakers?.length}>
-        <AgendaSpeakers speakers={props.slot.session?.speakers || props.slot.speakers || []} />
+        <AgendaParticipants speakers={props.slot.session?.speakers || props.slot.speakers || []} hosts={props.slot.session?.hosts} />
       </Show>
       <Show when={props.slot.summary}>
         <p class="mt-2 max-w-3xl text-sm leading-relaxed text-secondary-100/85">{props.slot.summary}</p>
@@ -73,6 +73,24 @@ function SlotContent(props: { slot: PublicAgendaSlot }) {
       </Show>
     </>
   );
+}
+
+interface AgendaParticipantsProps {
+  speakers: PublicAgendaSession["speakers"];
+  hosts?: PublicAgendaSession["speakers"];
+}
+
+function AgendaParticipants(props: AgendaParticipantsProps) {
+  const guests = () => props.speakers.filter((speaker) => !props.hosts?.some((host) => host.slug === speaker.slug));
+  return <>
+    <AgendaSpeakers speakers={guests()} />
+    <Show when={props.hosts?.length}>
+      <div class="mt-3 border-t border-white/20 pt-3" data-session-hosts>
+        <p class="font-mono text-xs uppercase tracking-wide text-secondary-200">{props.hosts?.length === 1 ? "Host" : "Hosts"}</p>
+        <AgendaSpeakers speakers={props.hosts || []} label="Hosts" />
+      </div>
+    </Show>
+  </>;
 }
 
 interface AgendaProgrammeProps {
@@ -130,7 +148,7 @@ export function AgendaProgramme(props: AgendaProgrammeProps) {
                       <h4 class="mt-2 text-base font-bold leading-snug text-white [overflow-wrap:anywhere]">
                         <a href={`/sessions/${session.slug}`} class={linkClass}>{session.title}</a>
                       </h4>
-                      <AgendaSpeakers speakers={session.speakers} />
+                      <AgendaParticipants speakers={session.speakers} hosts={session.hosts} />
                     </li>
                   )}
                 </For>

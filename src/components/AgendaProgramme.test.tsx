@@ -95,6 +95,32 @@ describe("agenda day filtering", () => {
 });
 
 describe("public agenda programme", () => {
+  it("renders opening/closing portraits and separates each fireside host below guests", () => {
+    const host = { slug: "host", name: "Host Person", photoUrl: "https://pb.example/host.jpg" };
+    const guest = { slug: "guest", name: "Guest Person", photoUrl: null };
+    for (const kind of ["opening", "closing"] as const) {
+      const html = renderProgramme({ ...programme, slots: [{ ...programme.slots[0], kind, speakers: [host] }] });
+      expect(html).toContain('href="/speakers/host"');
+      expect(html).toContain('host.jpg');
+      expect(html).toContain('sizes="40px"');
+      expect(html).not.toContain('Hosted by');
+    }
+    const session = { slug: "fireside", title: "Fireside", speakers: [host, guest], hosts: [host] };
+    for (const value of [
+      { ...programme, slots: [{ ...programme.slots[1], session }] },
+      { event: programme.event, tracks: [], slots: [], untimed: { summary: "Untimed", sessions: [session] } },
+    ]) {
+      const html = renderProgramme(value);
+      const hostBlock = html.indexOf('data-session-hosts');
+      expect(html.indexOf('href="/speakers/guest"')).toBeLessThan(hostBlock);
+      expect(html.indexOf('href="/speakers/host"')).toBeGreaterThan(hostBlock);
+      expect(html).toContain('border-t border-white/20');
+      expect(html).toContain('aria-label="Hosts"');
+      expect(html).toContain('host.jpg');
+      expect(html.match(/href="\/speakers\/host"/g)).toHaveLength(value.slots.length ? 2 : 1);
+    }
+  });
+
   it("renders a scheduled speaker with an unannounced topic without a fake session link", () => {
     const html = renderProgramme({
       event: { name: "Angular Day", compactLabel: "Angular" }, tracks: [],
