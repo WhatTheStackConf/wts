@@ -3,6 +3,7 @@ import { Meta, Title } from "@solidjs/meta";
 import { useAuth } from "~/lib/auth-context";
 import { useRequireCheckinOperator } from "~/lib/route-guards";
 import { createCheckinPollingResource } from "./checkin-polling-resource";
+import { listenForProvisioningFragment } from "./provisioning-fragment";
 import { bindCheckinStation, checkinStatus, previewCheckinStation } from "~/lib/checkin-client";
 import { agentStatus } from "~/lib/checkin-agent-client";
 import type { CheckinPreviewDTO } from "~/lib/checkin-contract";
@@ -73,16 +74,17 @@ export default function CheckinToolsPage() {
   };
   const [view, setView] = createSignal<View>("recent");
   const [heldNotice, setHeldNotice] = createSignal(false);
-  function refreshHeldNotice() {
-    if (!scope() || typeof window === "undefined") { setHeldNotice(false); return; }
+  function refreshHeldNotice(): boolean {
+    if (!scope() || typeof window === "undefined") { setHeldNotice(false); return false; }
     const s = current();
-    if (!s?.binding || !s.station) return;
+    if (!s?.binding || !s.station) { setHeldNotice(true); return true; }
     // Keep the dashboard concise without hiding a persisted camera/lookup hold.
     // The explicit review action only opens recovery; it never resends arrival.
     try {
       const cameraScope = `${s.binding.id}:${s.binding.version}:${s.station.id}`;
-      setHeldNotice(!!(cameraHeldReference(window.localStorage, cameraScope).read() || readLookupHold()));
-    } catch { setHeldNotice(true); }
+      const held = !!(cameraHeldReference(window.localStorage, cameraScope).read() || readLookupHold());
+      setHeldNotice(held); return held;
+    } catch { setHeldNotice(true); return true; }
   }
   createEffect(scope, () => { refreshHeldNotice(); });
   const [eventLabel, setEventLabel] = createSignal("Choose an event");
@@ -94,40 +96,52 @@ export default function CheckinToolsPage() {
   const [code, setCode] = createSignal("");
   const [preview, setPreview] = createSignal<{ code: string; value: CheckinPreviewDTO }>();
   const [message, setMessage] = createSignal("");
-  let disposed = false, setupEpoch = 0, setupInFlight = false, statusInFlight = false;
+  let disposed = false, setupEpoch = 0, setupDraftVersion = 0, setupInFlight = false, statusInFlight = false;
+  let confirmationPanel: HTMLDivElement | undefined;
+  function stageCode(value: string) { setupDraftVersion++; setupEpoch++; setCode(value); setPreview(undefined); }
   onCleanup(() => { disposed = true; setupEpoch++; });
+  createEffect(preview, chosen => {
+    if (!chosen || typeof window === "undefined") return;
+    const frame = window.requestAnimationFrame(() => {
+      if (disposed || preview() !== chosen || !confirmationPanel?.isConnected) return;
+      confirmationPanel.focus({ preventScroll: true });
+      confirmationPanel.scrollIntoView({ block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  });
   createEffect(() => `${actorKey()}:${scope()}:${current()?.station?.version}:${current()?.system.generation}:${unavailable()}`, () => {
     setupEpoch++; setPreview(undefined);
   });
   let previousActor = actorKey();
   createEffect(actorKey, actor => {
-    if (previousActor !== undefined && actor !== previousActor) { setCode(""); setMessage(""); setEventBusy(false); }
+    if (previousActor !== undefined && actor !== previousActor) { stageCode(""); setMessage(""); setEventBusy(false); }
     previousActor = actor;
   });
   async function refreshStatus(force = false) {
     if (!actorKey() || (!force && (statusInFlight || status.refreshing))) return;
     statusInFlight = true;
     try { await (force ? statusActions.refetch() : statusActions.poll()); } catch { /* statusFailed keeps old data unavailable during retry */ }
-    finally { statusInFlight = false; }
+    finally { statusInFlight = false; if (!disposed) refreshHeldNotice(); }
   }
   onSettled(() => {
-    const fragment = window.location.hash;
-    if (fragment) {
-      window.history.replaceState(window.history.state, "", window.location.pathname);
-      setView("phone");
-      const match = /^#provision=([a-f0-9]{64})$/.exec(fragment);
-      if (match) setCode(match[1]); else setMessage("Invalid provisioning link. Scan the current station QR again.");
-    }
+    const stopProvisioning = listenForProvisioningFragment(value => {
+      stageCode(value ?? "");
+      // Keep held recovery/arrival panels visible and mounted. The staged code
+      // is available in Phone after the operator resolves that work.
+      if (!recoveryBusy() && !eventBusy() && !loggingOut()) setView("phone");
+      setMessage(!value ? "Invalid provisioning link. Scan the current station QR again." : recoveryBusy() || eventBusy() ? "Finish the current work, then open Phone to review the new station." : "");
+    });
     const refresh = () => { if (!document.hidden) void refreshStatus(); };
     const leave = (event: BeforeUnloadEvent) => { if (busy()) { event.preventDefault(); event.returnValue = ""; } };
     const timer = window.setInterval(refresh, 5000);
     window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);
     window.addEventListener("beforeunload", leave);
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); window.removeEventListener("beforeunload", leave); };
+    return () => { stopProvisioning(); window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); window.removeEventListener("beforeunload", leave); };
   });
   function changeView(next: View) { if (!busy()) { refreshHeldNotice(); setView(next); } }
   async function review(value: string) {
     if (busy() || setupInFlight || unavailable() || !actorKey()) return;
+    if (refreshHeldNotice()) return;
     if (!/^[a-f0-9]{64}$/.test(value)) { setMessage("Use the 64-character station provisioning code."); return; }
     const epoch = ++setupEpoch, actor = actorKey();
     setupInFlight = true; setPairBusy(true); setPreview(undefined); setMessage("");
@@ -138,16 +152,20 @@ export default function CheckinToolsPage() {
   }
   async function confirm() {
     const chosen = preview();
-    if (!chosen || !chosen.value.canBind || busy() || setupInFlight || unavailable()) return;
-    const epoch = setupEpoch, actor = actorKey();
+    if (!chosen || chosen.code !== code() || !chosen.value.canBind || busy() || setupInFlight || unavailable() || !actorKey()) return;
+    if (refreshHeldNotice()) return;
+    const epoch = setupEpoch, draft = setupDraftVersion, actor = actorKey();
     const live = () => !disposed && epoch === setupEpoch && actor === actorKey();
     setupInFlight = true; setPairBusy(true); setMessage("");
     try {
       await bindCheckinStation(chosen.code, chosen.value.confirmation);
-      if (live()) { setPreview(undefined); setCode(""); await refreshStatus(true); }
+      if (!disposed && draft === setupDraftVersion && actor === actorKey()) { setPreview(undefined); setCode(""); }
     } catch {
-      if (live()) { setPreview(undefined); setMessage("Binding not confirmed. Refresh station status, then review the station again."); await refreshStatus(true); }
-    } finally { setupInFlight = false; if (!disposed) setPairBusy(false); }
+      if (live()) { setPreview(undefined); setMessage("Binding not confirmed. Refresh station status, then review the station again."); }
+    } finally {
+      if (!disposed && actor === actorKey()) await refreshStatus(true);
+      setupInFlight = false; if (!disposed) setPairBusy(false);
+    }
   }
   async function logout() {
     if (busy()) return;
@@ -175,19 +193,20 @@ export default function CheckinToolsPage() {
       </div>
       <section id="tools-phone" hidden={view() !== "phone"} aria-label="Pair this phone" class="wts-tools-pair">
         <h2>Pair this phone</h2><p>Scan a station QR, not an attendee ticket. Review the station before confirming.</p>
+        <Show when={!unavailable() && heldNotice()}><p role="status">Finish or recover the held work before changing stations.</p><button type="button" class="btn btn-outline" disabled={busy()} onClick={() => changeView("arrivals")}>Review held scan</button></Show>
         <Show when={current()?.bindingState === "revoked"}><p role="alert">This browser binding was revoked. Ask an admin for help; logging in again does not restore it.</p></Show>
-        <CheckinCameraScanner compact purpose="station" enabled={view() === "phone" && !busy() && !unavailable() && current()?.bindingState !== "revoked"} held={!!preview() || pairBusy()} scope={!unavailable() ? `${actorKey()}:${scope() ?? "unbound"}` : undefined} onDecode={value => {
+        <CheckinCameraScanner compact purpose="station" enabled={view() === "phone" && !busy() && !unavailable() && !heldNotice() && current()?.bindingState !== "revoked"} held={!!preview() || pairBusy()} scope={!unavailable() ? `${actorKey()}:${scope() ?? "unbound"}` : undefined} onDecode={value => {
           const provision = provisioningCameraCode(value, window.location.origin);
           if (!provision) { setMessage("Not a station provisioning QR for this site. Attendee QRs cannot bind a phone."); return false; }
-          setCode(provision); void review(provision);
+          stageCode(provision); void review(provision);
         }} />
         <details open={!!code()}><summary>Enter station code instead</summary><form onSubmit={event => { event.preventDefault(); void review(code()); }}>
           <label for="station-code">Station provisioning code<span aria-hidden="true"> *</span></label>
           <p id="station-code-help">64 characters: 0–9 and a–f, from the current station QR.</p>
-          <input id="station-code" name="code" aria-label="Station provisioning code" class="input input-bordered" value={code()} disabled={busy() || unavailable()} onInput={event => { setCode(event.currentTarget.value); setPreview(undefined); }} required pattern="[a-f0-9]{64}" maxlength={64} autocomplete="off" spellcheck={false} aria-describedby="station-code-help" />
-          <button type="submit" class="btn btn-primary" disabled={busy() || unavailable()}>Review station</button>
+          <input id="station-code" name="code" aria-label="Station provisioning code" class="input input-bordered" value={code()} disabled={busy() || unavailable() || heldNotice()} onInput={event => stageCode(event.currentTarget.value)} required pattern="[a-f0-9]{64}" maxlength={64} autocomplete="off" spellcheck={false} aria-describedby="station-code-help" />
+          <button type="submit" class="btn btn-primary" disabled={busy() || unavailable() || heldNotice()}>Review station</button>
         </form></details>
-        <Show when={preview()}>{chosen => <div class="wts-tools-confirm" aria-label="Confirm station"><h3>{chosen().value.station.label}</h3><p>{chosen().value.station.location || "Location not configured"} · Printer: {chosen().value.station.printerRef || "Not configured"}</p><p>Confirming replaces this phone's binding. Existing work stays at its original station.</p><button type="button" class="btn btn-primary" disabled={busy() || unavailable() || !chosen().value.canBind} onClick={() => void confirm()}>Confirm station binding</button><button type="button" class="btn btn-ghost" disabled={busy()} onClick={() => { setPreview(undefined); setCode(""); }}>Cancel</button></div>}</Show>
+        <Show when={preview()}>{chosen => <div ref={element => { confirmationPanel = element; }} role="region" tabindex="-1" class="wts-tools-confirm" aria-label="Confirm station"><h3>{chosen().value.station.label}</h3><p>{chosen().value.station.location || "Location not configured"} · Printer: {chosen().value.station.printerRef || "Not configured"}</p><p>Confirming replaces this phone's binding. Existing work stays at its original station.</p><button type="button" class="btn btn-primary" disabled={busy() || unavailable() || heldNotice() || !chosen().value.canBind} onClick={() => void confirm()}>Confirm station binding</button><button type="button" class="btn btn-ghost" disabled={busy()} onClick={() => stageCode("")}>Cancel</button></div>}</Show>
       </section>
       <section id="tools-diagnostics" hidden={view() !== "diagnostics"} aria-label="Diagnostics">
         <h2>Diagnostics</h2><p>Connection alone does not verify printer or media readiness.</p>
