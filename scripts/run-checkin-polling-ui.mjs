@@ -54,7 +54,11 @@ try {
       const path = new URL(route.request().url()).pathname;
       const body = route.request().postDataJSON();
       let json;
-      if (path === "/api/checkin") { assert.equal(body.operation, "status"); json = { ...status, station: { ...status.station, label: changed ? "Changed synthetic station" : status.station.label } }; }
+      if (path === "/api/checkin") {
+        const current = { ...status, station: { ...status.station, label: changed ? "Changed synthetic station" : status.station.label } };
+        if (body.operation === "status") json = current;
+        else { assert.equal(body.operation, "printers"); json = { printers: [{ station: current.station, system: current.system, canBind: true, confirmation: { stationId, stationVersion: 1, bindingVersion: 1, systemGeneration: 1 } }] }; }
+      }
       else if (path === "/api/checkin-agents") { assert.equal(body.operation, "status"); json = { station: { ...agent, connection: changed ? "stale" : "connected" } }; }
       else if (path === "/api/checkin-events") {
         if (mode !== "events") { assert.equal(body.operation, "catalogue"); json = catalogue; }

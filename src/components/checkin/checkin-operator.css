@@ -22,7 +22,14 @@
 .wts-operator-context span { font-size: .875rem; color: var(--color-base-content); }
 .wts-operator-status { min-height: 1.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: .8125rem; line-height: 1.4; }
 .wts-operator-status button { text-decoration: underline; font-weight: 700; }
-.wts-operator-main { min-height: 0; min-width: 0; position: relative; }
+.wts-operator-main { min-height: 0; min-width: 0; position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: auto; }
+.wts-operator-content { min-height: 0; min-width: 0; overflow: auto; }
+.wts-operator-printer { padding-block: 8px; min-width: 0; }
+.checkin-printer-compact { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; }
+.checkin-printer-compact > p, .checkin-printer-compact > button { grid-column: 1 / -1; }
+.wts-operator-printer label { font-size: .875rem; font-weight: 600; }
+.wts-operator-printer .select { min-height: 44px; font-size: 1rem; }
+.wts-operator-printer p { font-size: .8125rem; line-height: 1.35; }
 .wts-operator-workspace { height: 100%; min-height: 0; }
 .wts-operator-step, .wts-operator-lookup { height: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; padding-block: 12px; }
 .wts-operator-step h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; }

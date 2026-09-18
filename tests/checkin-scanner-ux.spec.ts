@@ -1,4 +1,4 @@
-import { test, expect, login } from "./checkin-fixtures";
+import { test, expect, login, selectPrinter } from "./checkin-fixtures";
 import { arrivalPrerequisites } from "./checkin-arrival-fixture";
 import { installSyntheticCamera, showSyntheticQr } from "./checkin-camera-fixture";
 import { checkinArrivalResultSchema } from "~/lib/checkin-arrival-client";
@@ -35,13 +35,13 @@ test("scanner-first phone flow: no document scroll, capture feedback, stable ref
     await phone.setViewportSize({ width: 390, height: 844 });
     await installSyntheticCamera(phone);
     await phone.context().grantPermissions(["camera"]);
-    await phone.goto(`/checkin#provision=${setup.stations[0].provisionCode}`);
-    await expect(phone.getByRole("heading", { name: "Pair your station" })).toBeVisible();
-    await phone.getByRole("button", { name: "Review station", exact: true }).click();
-    await phone.getByRole("button", { name: "Confirm station", exact: true }).click();
+    await phone.goto("/checkin");
+    await expect(phone.getByLabel("Printer", { exact: true })).toHaveValue("");
+    await selectPrinter(phone, setup.stations[0].stationId);
     await expect(phone.getByRole("heading", { name: "Which event?" })).toBeVisible();
     await phone.getByLabel("Event", { exact: true }).selectOption(setup.events[0].id);
     await phone.getByRole("button", { name: "Use event", exact: true }).click();
+    await expect(phone.getByText("Printer ready", { exact: true })).toBeVisible();
     await expect(phone.getByRole("button", { name: "Start scanning", exact: true })).toBeEnabled();
     await phone.getByRole("button", { name: "Find attendee", exact: true }).click();
     await expect(phone.getByLabel("Attendee name or email", { exact: true })).toBeVisible();
@@ -76,6 +76,7 @@ test("scanner-first phone flow: no document scroll, capture feedback, stable ref
     expect(outcome.state).toBe("reserved");
     if (outcome.state !== "reserved") throw new Error("Expected a fresh test attendee");
     await expect(phone.getByText("Јана Scanner UX", { exact: true })).toBeVisible();
+    await expect(phone.getByLabel("Printer", { exact: true })).toBeDisabled();
     await expect.poll(() => phone.evaluate(() => window.__uxBeeps)).toBeGreaterThan(0);
     await expect.poll(() => phone.evaluate(() => window.__uxVibrations)).toBeGreaterThan(0);
     const cues = await phone.evaluate(() => ({ beeps: window.__uxBeeps, vibrations: window.__uxVibrations }));
@@ -135,5 +136,8 @@ test("scanner-first phone flow: no document scroll, capture feedback, stable ref
     await phone.route("**/api/checkin", async route => route.request().postDataJSON()?.operation === "status" ? route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "Synthetic denial" }) }) : route.continue());
     await expect(phone.getByText("Јана Scanner UX", { exact: true })).toHaveCount(0);
     expect(await phone.evaluate(() => !!localStorage.getItem(Object.keys(localStorage).find(k => k.startsWith("wts:camera-held:"))!))).toBe(true);
-  } finally { await setup.cleanup(); }
+  } finally {
+    await phone.unrouteAll({ behavior: "wait" });
+    await setup.cleanup();
+  }
 });

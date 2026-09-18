@@ -18,8 +18,10 @@ test("existing Users controls promote and demote a live operator session", async
   // The existing cookie is revalidated, rather than forging a role in storage.
   await ordinary.goto("/checkin-tools");
   await phoneProvisioning(ordinary);
-  await expect(ordinary.getByLabel("Station provisioning code")).toBeVisible();
-  expect((await status(ordinary)).bindingState).toBe("unbound");
+  await expect(ordinary.getByLabel("Printer", { exact: true })).toBeEnabled();
+  await expect(ordinary.getByLabel("Printer", { exact: true })).toHaveValue("");
+  // The catalogue establishes an HttpOnly identity, not a station binding.
+  expect(await status(ordinary)).toMatchObject({ bindingState: "invalid", binding: null, station: null });
   await row.getByRole("button", { name: "Check-in Operator", exact: true }).click();
   page.once("dialog", async (dialog) => { expect(dialog.type()).toBe("confirm"); await dialog.accept(); });
   await row.getByText("USER", { exact: true }).click();
