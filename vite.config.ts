@@ -25,6 +25,9 @@ export default defineConfig({
     // splitting the Solid SSR/API graph. Keep server imports together until the
     // upstream chunk-linking bug is fixed; client route splitting is unchanged.
     inlineDynamicImports: true,
+    // Satori's HarfBuzz loader needs its real CommonJS directory and WASM file.
+    // Preserve the package boundary through both server bundling passes.
+    traceDeps: ["satori*", "harfbuzzjs*"],
     routeRules: {
       "/assets/**": {
         headers: { "cache-control": "public, max-age=31536000, immutable" },
@@ -102,6 +105,6 @@ export default defineConfig({
   },
   ssr: {
     noExternal: ["fsevents"],
-    external: ["../pkg"],
+    external: ["../pkg", "satori"],
   },
 });
