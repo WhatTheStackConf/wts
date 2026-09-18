@@ -9,7 +9,7 @@ import type {
   SpeakerRecord,
 } from "~/lib/pocketbase-types";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
-import { sessionHostIds, sharedSlotHosts, withoutHostCredit } from "~/lib/programme-hosts";
+import { sessionHostIds, sharedSlotHosts, slotDjRecords, withoutHostCredit } from "~/lib/programme-hosts";
 import { stageMcRecords } from "~/lib/programme-stage-mcs";
 
 /** Date/event assignment is known, but the session itself has no clock time yet. */
@@ -88,7 +88,7 @@ export interface PublicAgendaSlot {
   locationLabel?: string;
   track?: PublicAgendaTrack;
   session?: PublicAgendaSession;
-  /** Announced speaker in a timed slot whose topic has not been published. */
+  /** Published participants in a non-Session item, including DJ appearances and untitled talks. */
   speakers?: PublicAgendaSession["speakers"];
   title?: string;
   summary?: string;
@@ -229,6 +229,7 @@ export function buildPublicAgenda(
               continue;
             }
             const hosts = publicAgendaSpeakers(sharedSlotHosts(slot, event.id, speakersById));
+            const participants = [...hosts, ...publicAgendaSpeakers(slotDjRecords(slot, event.id, speakersById))];
             visibleSlots.push({
               kind: slot.kind,
               startAt: slot.start_at,
@@ -238,7 +239,7 @@ export function buildPublicAgenda(
                 ? { key: track.key, name: track.name, locationLabel: track.location_label || undefined }
                 : undefined,
               title: slot.title || undefined,
-              ...(hosts.length ? { speakers: hosts } : {}),
+              ...(participants.length ? { speakers: participants } : {}),
               summary: withoutHostCredit(slot.summary || "", hosts.map((host) => host.name)) || undefined,
             });
           }

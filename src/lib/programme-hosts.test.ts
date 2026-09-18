@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import { buildPublicAgenda, publicAgendaSession } from "~/lib/programme-public";
-import { sessionHostIds, sharedSlotHosts, withoutHostCredit } from "~/lib/programme-hosts";
+import { sessionHostIds, sharedSlotHosts, slotDjRecords, withoutHostCredit } from "~/lib/programme-hosts";
 import type { AgendaSlotRecord, AppearanceEventRecord, ConferenceDayRecord, EventProgrammeRecord, SessionRecord, SpeakerRecord } from "~/lib/pocketbase-types";
 import assignments from "../../scripts/hosts-2026.manifest.json";
+import djProfile from "../../scripts/dj-2026.manifest.json";
 
 const speakers = assignments.profiles.map(({ record }) => ({ ...record, is_mc: false, published: true, photo: `${record.slug}.jpg` }) as SpeakerRecord);
 const darko = speakers[0];
@@ -10,6 +11,38 @@ const guest = { ...darko, id: "guest", slug: "guest", display_name: "Guest", is_
 const byId = new Map([...speakers, guest].map((speaker) => [speaker.id, speaker]));
 
 describe("explicit programme hosts", () => {
+  it("lists the DJ on the existing after-party without changing its time, location or kind", () => {
+    const dj = { ...djProfile.record, published: true, photo: "dina.jpg" } as SpeakerRecord;
+    const slot = { id: "4ww9bfa5kmeeu14", programme: "programme", kind: "other", session: "", track: "", published: true,
+      start_at: "2026-09-19T15:00:00Z", end_at: "2026-09-19T16:00:00Z", title: "DJ After Party", location_label: "Stage 1",
+      summary: "Closing out the conference, the right way!" } as AgendaSlotRecord;
+    const agenda = buildPublicAgenda(
+      [{ id: "day", key: "main-day", local_date: "2026-09-19", published: true }] as ConferenceDayRecord[],
+      [{ id: assignments.event_id, name: "Conference", published: true }] as AppearanceEventRecord[],
+      [{ id: "programme", day: "day", appearance_event: assignments.event_id }] as EventProgrammeRecord[], [], [slot], [], [dj],
+    );
+    const result = agenda.days[0].programmes[0].slots[0];
+    expect(result).toMatchObject({ kind: "other", title: slot.title, summary: slot.summary, startAt: slot.start_at, endAt: slot.end_at, locationLabel: "Stage 1",
+      speakers: [{ slug: "dina-damjanovikj", name: "DinaShantina", photoUrl: expect.stringContaining("dina.jpg") }] });
+    expect(result.session).toBeUndefined();
+    expect(JSON.stringify(result)).not.toMatch(/cfp_applicant|social_handles|\"user\"/);
+  });
+
+  it("requires the exact after-party identity and a published affiliated DJ", () => {
+    const dj = { ...djProfile.record, published: true } as SpeakerRecord;
+    const slot = { id: "4ww9bfa5kmeeu14", kind: "other", session: "" } as const;
+    const map = new Map([[dj.id, dj]]);
+    expect(slotDjRecords(slot, assignments.event_id, map)).toEqual([dj]);
+    expect(slotDjRecords({ ...slot, id: "different-party" }, assignments.event_id, map)).toEqual([]);
+    expect(slotDjRecords({ ...slot, kind: "opening" }, assignments.event_id, map)).toEqual([]);
+    expect(slotDjRecords({ ...slot, session: "different-session" }, assignments.event_id, map)).toEqual([]);
+    expect(slotDjRecords(slot, "different-event", map)).toEqual([]);
+    for (const change of [{ published: false }, { is_dj: false }, { appearance_events: [] }]) {
+      expect(slotDjRecords(slot, assignments.event_id, new Map([[dj.id, { ...dj, ...change }]]))).toEqual([]);
+    }
+    expect(slotDjRecords(slot, assignments.event_id, new Map())).toEqual([]);
+  });
+
   it("projects all six approved hosts with photos, preserving participants and not treating other MCs as hosts", () => {
     for (const [id, hostId] of Object.entries(assignments.hosts)) {
       const session = { id, slug: id, title: "Fireside", speakers: [guest.id, hostId] } as SessionRecord;

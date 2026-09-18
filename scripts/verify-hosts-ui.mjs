@@ -34,6 +34,22 @@ const server = await createServer({ configFile: false, root, plugins: [solid({ s
       </main>, document.getElementById("app"));`;
   },
   configureServer(server) { server.middlewares.use(async (req, res, next) => {
+    // Proxy on the fixture server so navigation cannot invalidate a Playwright
+    // Route while its image fetch is still pending. Use the real image service.
+    if (req.url?.startsWith('/api/image?')) {
+      try {
+        const image = await fetch(`https://wts.sh${req.url}`, { signal: AbortSignal.timeout(20_000) });
+        const body = Buffer.from(await image.arrayBuffer());
+        if (!res.destroyed) {
+          res.statusCode = image.status;
+          res.setHeader('Content-Type', image.headers.get('content-type') || 'application/octet-stream');
+          res.end(body);
+        }
+      } catch {
+        if (!res.destroyed) { res.statusCode = 502; res.end('Fixture image proxy failed.'); }
+      }
+      return;
+    }
     if (req.url?.split("?")[0] !== "/") return next();
     res.setHeader("Content-Type", "text/html");
     res.end(await server.transformIndexHtml("/", `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/@fs/${root}.output/public/assets/${stylesheet}"></head><body style="background:#100d1e"><div id="app"></div><script type="module" src="/__hosts-ui-fixture.tsx"></script></body></html>`));
@@ -62,12 +78,7 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 1000 } });
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
-    // Delegate image processing to the real read-only image endpoint.
-    await page.route("**/api/image?**", async route => {
-      const response = await route.fetch({ url: `https://wts.sh${new URL(route.request().url()).pathname}${new URL(route.request().url()).search}` });
-      assert.equal(response.status(), 200, `Live portrait failed: ${new URL(route.request().url()).search}`);
-      await route.fulfill({ response });
-    });
+
     await page.goto(origin);
     const assignedMcs = [['Stage 1', 'tony-edwards'], ['Stage 2', 'stojan-ezhov'], ['Stage 3', 'dimitar-grozdanov'], ['Stage 4', 'nikola-dinevski'], ['Stage 5', 'marijana-ilovska-zlatanovska']];
     for (const [stageName, slug] of assignedMcs) {
@@ -91,6 +102,18 @@ try {
     if (width < 1024) await page.getByRole("combobox", { name: "Choose a stage" }).selectOption("stage-5");
     const list = width < 1024 ? page.locator('#host-agenda-mobile-slots > ol') : page.getByRole("list", { name: /all stages, chronological order/ });
     await expect(list).toBeVisible();
+    const party = list.locator(':scope > li').filter({ has: page.getByRole('heading', { name: 'DJ After Party', exact: true }) });
+    await expect(party).toHaveCount(1);
+    await expect(party.getByRole('link', { name: 'DinaShantina', exact: true })).toHaveAttribute('href', '/speakers/dina-damjanovikj');
+    await expect(party).toContainText('17:00');
+    await expect(party).toContainText('18:00');
+    await expect(party).toContainText('Location: Stage 1');
+    await expect(party.locator('[data-session-hosts]')).toHaveCount(0);
+    await expect(party.locator('a[href^="/sessions/"]')).toHaveCount(0);
+    await party.scrollIntoViewIfNeeded();
+    await expect.poll(() => party.locator('img').evaluateAll(images => images.length === 1 && images.every(i => i.complete && i.naturalWidth > 0))).toBe(true);
+    await expect(party.locator('img')).toHaveAttribute('sizes', '40px');
+    await party.screenshot({ path: `${evidence}/after-party-${width}.png` });
     for (const kind of ["Opening", "Closing"]) {
       const card = list.locator(':scope > li').filter({ has: page.getByRole("heading", { name: kind, exact: true }) });
       await expect(card.getByRole("link", { name: "Darko Bozhinovski" })).toBeVisible();
@@ -126,7 +149,7 @@ try {
     }
     assert.deepEqual(errors, []);
     console.log(`PASS ${width}px: all five assigned stage MCs; opening/closing photos; six separated non-MC fireside hosts; decoded images; zero overflow/page errors.`);
-    await page.unrouteAll({ behavior: "wait" });
+
     await page.close();
   }
   console.log(`Evidence: ${evidence}. Component checks only; no deployment claimed.`);

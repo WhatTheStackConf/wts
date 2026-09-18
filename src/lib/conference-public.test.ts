@@ -176,7 +176,7 @@ describe("public agenda loading", () => {
     ]);
     expect(fetchAllRecords).toHaveBeenCalledWith("speakers", {
       filter: "published = true",
-      fields: "id,slug,display_name,photo,appearance_events,published,is_mc",
+      fields: "id,slug,display_name,photo,appearance_events,published,is_mc,is_dj",
       sort: "slug,id",
     });
     expect(fetchAllRecords).toHaveBeenCalledWith("sessions", {

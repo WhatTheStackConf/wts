@@ -95,6 +95,20 @@ describe("agenda day filtering", () => {
 });
 
 describe("public agenda programme", () => {
+  it("uses the normal photo-and-name participant row for the DJ after-party", () => {
+    const html = renderProgramme({ ...programme, slots: [{ kind: "other", title: "DJ After Party", locationLabel: "Stage 1",
+      startAt: "2026-09-19T15:00:00Z", endAt: "2026-09-19T16:00:00Z",
+      speakers: [{ slug: "dina-damjanovikj", name: "DinaShantina", photoUrl: "https://pb.example/dina.jpg" }] }] });
+    expect(html).toContain("DJ After Party");
+    expect(html).toContain("17:00");
+    expect(html).toContain("18:00");
+    expect(html.match(/href="\/speakers\/dina-damjanovikj"/g)).toHaveLength(2);
+    expect(html).toContain('sizes="40px"');
+    expect(html).toContain('dina.jpg');
+    expect(html).not.toContain('data-session-hosts');
+    expect(html).not.toContain('href="/sessions/');
+  });
+
   it("shows compact linked MC portraits in stage headings, distinct from session hosts", () => {
     const tony = { slug: "tony-edwards", name: "Tony Edwards", photoUrl: "https://pb.example/tony.jpg" };
     const marijana = { slug: "marijana-ilovska-zlatanovska", name: "Marijana Ilovska Zlatanovska", photoUrl: null };
