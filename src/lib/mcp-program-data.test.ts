@@ -77,6 +77,13 @@ describe("MCP programme data", () => {
     fetchRecordById.mockReset();
   });
 
+  it("preserves the explicit DJ flag in allowlisted programme data", async () => {
+    fetchAllRecords.mockResolvedValue([{ id: "dj", slug: "dj", is_dj: true, is_mc: false, user: "PRIVATE" }]);
+    const speakers = await fetchMcpSpeakers();
+    expect(speakers).toMatchObject([{ is_dj: true, is_mc: false }]);
+    expect(JSON.stringify(speakers)).not.toContain("PRIVATE");
+  });
+
   it("exposes explicit MC status without inferring it from session availability", async () => {
     fetchAllRecords.mockResolvedValue([
       { id: "host", slug: "host", is_mc: true, cfp_applicant: "PRIVATE" },

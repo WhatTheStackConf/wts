@@ -124,6 +124,14 @@ function announcedPublishedData(): ConferenceGuidePublishedData {
 }
 
 describe("Conference Guide MC personas", () => {
+  it("preserves an explicit DJ role without inventing MC duties or sessions", async () => {
+    const data = publishedData();
+    data.speakers[0].isDj = true;
+    data.speakers[0].isMc = false;
+    data.speakers[0].sessions = [];
+    const guide = createConferenceGuide({ loadPublishedData: async () => data });
+    expect(await guide.getSpeaker("ada-example")).toMatchObject({ is_dj: true, is_mc: false, sessions: [] });
+  });
   it("includes MC status on public speaker resources without inventing sessions", async () => {
     const data = publishedData();
     data.speakers[0].isMc = true;

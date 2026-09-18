@@ -62,7 +62,8 @@ def inspect(client, state):
         agenda.require(actual['id'] == desired['id'], 'Existing profile identity collision; review instead of duplicating.')
         agenda.require(all(actual.get(k) == v for k, v in desired.items() if k != 'published')
                        and type(actual.get('published')) is bool and bool(actual.get('photo')), 'MC profile drift; refusing overwrite.')
-        allowed = set(desired) | {'photo', 'collectionId', 'collectionName', 'created', 'updated'}
+        agenda.require(actual.get('is_dj', False) is False, 'Unexpected DJ designation on imported MC.')
+        allowed = set(desired) | {'photo', 'is_dj', 'collectionId', 'collectionName', 'created', 'updated'}
         agenda.require(set(actual) <= allowed, 'Unexpected MC profile fields.')
         url = client.url + '/api/files/speakers/' + actual['id'] + '/' + urllib.parse.quote(actual['photo'], safe='')
         request = urllib.request.Request(url, headers={'Authorization': client.token})

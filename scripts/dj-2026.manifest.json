@@ -1,0 +1,33 @@
+{
+  "source_checked": "2026-09-18",
+  "sources": [
+    "Organizer-supplied name, DJ alias, WhatTheStack organising role, biography and portrait",
+    "https://womenintech.mk/about-us/",
+    "https://deved.mk/about/",
+    "https://women-in-tech.org/who-are-we/",
+    "https://www.instagram.com/dinashantina/"
+  ],
+  "original_photo_sha256": "00429b3d38c49c318108f129b71f2a5d50412c9dcb3e6599336475bba26dd496",
+  "photo_crop": [300, 280, 1380, 1360],
+  "photo_asset": "dj-2026-assets/dina-damjanovikj.jpg",
+  "photo_sha256": "27934838f5f247ef8ac918548a68fcf8358d0c784e65c6197d8e90d4491e7dd7",
+  "record": {
+    "id": "dj26dinashantin",
+    "slug": "dina-damjanovikj",
+    "display_name": "DinaShantina",
+    "affiliation": "Dina Damjanovikj · WhatTheStack organising team",
+    "bio": "<p>Dina Damjanovikj, known as DinaShantina, is part of the WhatTheStack organising team. For WTS 2026, she's also taking her place behind the decks as our DJ.</p><p>She has helped organise BeerJS events, handles logistics with DeveD, and is Logistics Director at Women in Tech Macedonia.</p><p>Her own move into tech began with Women in Tech mentoring and a frontend developer academy. At Rigilog in Skopje, her work has spanned frontend development, team leadership and business operations.</p><p>Her motto: &quot;Fall seven times, stand up eight.&quot;</p>",
+    "social_handles": [
+      "https://www.instagram.com/dinashantina/",
+      "https://www.linkedin.com/in/dina-damjanovikj/"
+    ],
+    "appearance_events": ["wts2026appevent"],
+    "is_mc": false,
+    "is_dj": true,
+    "published": false,
+    "origin": "invite",
+    "user": "",
+    "cfp_applicant": "",
+    "promo": null
+  }
+}
