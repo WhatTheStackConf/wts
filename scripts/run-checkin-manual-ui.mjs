@@ -118,7 +118,7 @@ try {
   }
   const seen = new Set();
   for (let p = 0; p < 3; p++) {
-   for (const text of await page.locator('.wts-operator-lookup li > p:first-child').allTextContents()) seen.add(text);
+   for (const text of await page.getByRole("table", { name: "Main-day attendees" }).locator("tbody tr > td:first-child strong").allTextContents()) seen.add(text);
    if (p < 2) { await button(page, "Next results").click(); await expect(page.getByText(p === 0 ? "Showing 21–40 of 43 attendees" : "Showing 41–43 of 43 attendees", { exact: true })).toBeVisible(); }
   }
   assert.equal(seen.size, roster.length); await expect(button(page, "Next results")).toHaveCount(0);
