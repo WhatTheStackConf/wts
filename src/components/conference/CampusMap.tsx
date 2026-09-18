@@ -21,6 +21,7 @@ export function CampusMap() {
       </figcaption>
       <a
         href={CAMPUS_MAP_URL}
+        rel="external"
         aria-label="Open the full-size campus map"
         class="block rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary-500"
       >

@@ -12,6 +12,7 @@ describe("homepage campus map", () => {
     expect(html.match(/href="\/static\/wts-2026-campus-map.png\?v=2026-09-18"/g)).toHaveLength(1);
     expect(html).toContain('id="venue-map"');
     expect(html).toContain('aria-label="Open the full-size campus map"');
+    expect(html).toMatch(/<a\b[^>]*href="\/static\/wts-2026-campus-map\.png\?v=2026-09-18"[^>]*rel="external"/);
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain("Campus map");
     expect(html).not.toContain("listmonk");
