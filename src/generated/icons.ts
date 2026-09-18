@@ -173,6 +173,13 @@ export const localIcons = {
     "width": 24,
     "height": 24
   },
+  "material-symbols:map-outline": {
+    "body": "<path fill=\"currentColor\" d=\"m15 21l-6-2.1l-4.65 1.8q-.5.2-.925-.112T3 19.75v-14q0-.325.188-.575T3.7 4.8L9 3l6 2.1l4.65-1.8q.5-.2.925.113T21 4.25v14q0 .325-.187.575t-.513.375zm-1-2.45V6.85l-4-1.4v11.7zm2 0l3-1V5.7l-3 1.15zM5 18.3l3-1.15V5.45l-3 1zM16 6.85v11.7zm-8-1.4v11.7z\"/>",
+    "left": 0,
+    "top": 0,
+    "width": 24,
+    "height": 24
+  },
   "material-symbols:mark-email-read-outline": {
     "body": "<path fill=\"currentColor\" d=\"m15.95 22l-4.25-4.25l1.4-1.4l2.85 2.85l5.65-5.65l1.4 1.4zM12 11l8-5H4zm0 2L4 8v10h5.15l2 2H4q-.825 0-1.412-.587T2 18V6q0-.825.588-1.412T4 4h16q.825 0 1.413.588T22 6v4.35l-2 2V8zm0 0\"/>",
     "left": 0,

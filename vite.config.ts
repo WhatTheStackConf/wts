@@ -7,6 +7,10 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   envPrefix: ["VITE_", "PUBLIC_"],
+  server: {
+    host: "0.0.0.0",
+    allowedHosts: true,
+  },
   plugins: [
     tailwindcss(),
     solid({

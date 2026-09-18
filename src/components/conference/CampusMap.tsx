@@ -1,4 +1,10 @@
-const CAMPUS_MAP_URL = "/static/wts-2026-campus-map.png";
+import {
+  CAMPUS_MAP_ALT,
+  CAMPUS_MAP_HEIGHT,
+  CAMPUS_MAP_URL,
+  CAMPUS_MAP_WIDTH,
+} from "~/lib/campus-map";
+import { CampusMapDialog } from "~/components/conference/CampusMapDialog";
 
 export function CampusMap() {
   return (
@@ -9,12 +15,9 @@ export function CampusMap() {
           All five stages, ticket validation, coffee corners, the expo and games.
           Open the full-size campus map to zoom in or save it for the day.
         </p>
-        <a
-          href={CAMPUS_MAP_URL}
-          class="link mt-4 inline-block text-lg font-black text-primary-200"
-        >
-          {`>`} Open the full-size campus map
-        </a>
+        <div class="mt-5 flex">
+          <CampusMapDialog />
+        </div>
       </figcaption>
       <a
         href={CAMPUS_MAP_URL}
@@ -23,9 +26,9 @@ export function CampusMap() {
       >
         <img
           src={CAMPUS_MAP_URL}
-          alt="WTS 2026 campus map showing Stages 1–5, the entrance, ticket validation, coffee corners, expo area and game corner."
-          width="1258"
-          height="902"
+          alt={CAMPUS_MAP_ALT}
+          width={CAMPUS_MAP_WIDTH}
+          height={CAMPUS_MAP_HEIGHT}
           loading="lazy"
           decoding="async"
           class="h-auto w-full"

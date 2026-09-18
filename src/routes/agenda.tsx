@@ -6,6 +6,7 @@ import { fetchPublicAgenda } from "~/lib/speakers-public";
 import { conferenceLocation } from "~/lib/conference-guide-content";
 import { SCHEDULE_TIME_ZONE } from "~/lib/programme";
 import { AgendaDays } from "~/components/AgendaDays";
+import { CampusMapDialog } from "~/components/conference/CampusMapDialog";
 
 export default function Agenda() {
   const [agenda, controls] = createResource(fetchPublicAgenda);
@@ -24,7 +25,10 @@ export default function Agenda() {
             <p class="mt-4 font-mono text-sm leading-relaxed text-secondary-200/85">
               All times are local to {conferenceLocation} ({SCHEDULE_TIME_ZONE}), in 24-hour format.
             </p>
-            <a href="/qa" class="btn btn-primary mt-5 min-h-12">Main-day live Q&A · Choose your stage</a>
+            <div class="mt-5 flex flex-wrap gap-3">
+              <a href="/qa" class="btn btn-primary min-h-12 w-full sm:w-auto">Main-day live Q&A · Choose your stage</a>
+              <CampusMapDialog />
+            </div>
           </header>
 
           <Show
