@@ -58,6 +58,19 @@ beforeEach(() => {
 });
 
 describe("public JSON interface", () => {
+  it("exposes DJ designation in listing and detail without private fields or invented sessions", async () => {
+    const data = records();
+    const dj = { ...data.speakers[0], is_mc: false, is_dj: true };
+    data.speakers = [dj];
+    data.sessions = [];
+    fetchAllRecords.mockImplementation(async (collection: keyof typeof data) => data[collection] || []);
+    const api = createPublicApi({ loadProgramme: loadPublicConferenceGuideProgramme });
+    const list = await (await api({ request: new Request(`${root}speakers`) })).json();
+    const detail = await (await api({ request: new Request(`${root}speakers/zoe`) })).json();
+    expect(list.data).toMatchObject([{ isDj: true, isMc: false, sessionCount: 0 }]);
+    expect(detail.data).toMatchObject({ isDj: true, isMc: false, sessions: [] });
+    expect(JSON.stringify(detail)).not.toContain('PRIVATE');
+  });
   it("publishes a valid OpenAPI document whose examples and actual responses match its schemas", async () => {
     const api = createPublicApi({ loadProgramme: loadPublicConferenceGuideProgramme });
     const response = await api({ request: new Request(`${root}openapi.json`) });

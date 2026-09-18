@@ -69,6 +69,8 @@ export interface CfpSubmissionRecord extends RecordModel {
 export interface SpeakerRecord extends RecordModel {
   /** Public MC designation, independent of any Session participation. */
   is_mc?: boolean;
+  /** Public DJ designation; not an account permission. */
+  is_dj?: boolean;
   id: string;
   slug: string;
   published: boolean;

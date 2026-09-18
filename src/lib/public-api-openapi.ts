@@ -13,6 +13,7 @@ const sessionCard = { slug: ref("Slug"), title: text(), format: text("Public ses
 const speakerSummary = {
   slug: ref("Slug"), displayName: text(), photoUrl: { type: ["string", "null"], format: "uri" } satisfies Schema,
   isMc: { type: "boolean", description: "MC designation; independent of Session participation." } satisfies Schema,
+  isDj: { type: "boolean", description: "DJ designation; independent of MC status and Sessions. Omitted when false." } satisfies Schema,
   affiliation: text(), sessionCount: { type: "integer", minimum: 0 } satisfies Schema,
   appearanceEvents: array(ref("AppearanceEvent")),
 };

@@ -91,7 +91,7 @@ export function SpeakerCard(props: SpeakerCardProps) {
           }`}
         >
           <Show when={isTeaser() && layout() === "featured"}>
-            <p class="speaker-teaser-kicker mb-3">{props.speaker.isMc ? "Featured MC" : "Featured speaker"}</p>
+            <p class="speaker-teaser-kicker mb-3">{props.speaker.isDj ? "Featured DJ" : props.speaker.isMc ? "Featured MC" : "Featured speaker"}</p>
           </Show>
           <h2
             class={`cyber-glitch-label font-star font-bold text-white leading-tight group-hover:text-primary-200 transition-colors ${
@@ -127,7 +127,10 @@ export function SpeakerCard(props: SpeakerCardProps) {
             <Show when={props.speaker.isMc}>
               <span class="speaker-session-chip" title="Master of ceremonies">MC</span>
             </Show>
-            <Show when={!props.speaker.isMc || props.speaker.sessionCount > 0}>
+            <Show when={props.speaker.isDj}>
+              <span class="speaker-session-chip" title="DJ">DJ</span>
+            </Show>
+            <Show when={(!props.speaker.isMc && !props.speaker.isDj) || props.speaker.sessionCount > 0}>
               <span class={`speaker-session-chip ${isTeaser() ? "speaker-session-chip-teaser" : ""}`}>
                 {sessionLabel(props.speaker.sessionCount)}
               </span>

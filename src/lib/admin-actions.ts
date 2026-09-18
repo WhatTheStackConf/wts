@@ -556,6 +556,7 @@ export const adminPromoteSubmissionToDraftSession = async (submissionId: string)
 
 export type InviteSpeakerInput = {
   is_mc?: boolean;
+  is_dj?: boolean;
   slug: string;
   display_name: string;
   affiliation: string;
@@ -572,6 +573,9 @@ export const adminCreateInviteSpeaker = async (input: InviteSpeakerInput) => {
 
     if (input.is_mc !== undefined && typeof input.is_mc !== "boolean") {
       return { success: false, error: "MC designation must be a boolean." };
+    }
+    if (input.is_dj !== undefined && typeof input.is_dj !== "boolean") {
+      return { success: false, error: "DJ designation must be a boolean." };
     }
     const displayName = input.display_name?.trim();
     if (!displayName) {
@@ -599,6 +603,7 @@ export const adminCreateInviteSpeaker = async (input: InviteSpeakerInput) => {
       published: false,
       origin: "invite",
       is_mc: input.is_mc ?? false,
+      is_dj: input.is_dj ?? false,
       display_name: displayName,
       affiliation: input.affiliation?.trim() || "",
       bio: input.bio?.trim() || "",

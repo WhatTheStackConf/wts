@@ -39,6 +39,8 @@ export interface PublicSpeakerSummary {
   photoUrl: string | null;
   affiliation: string;
   isMc: boolean;
+  /** Omitted for non-DJs for backwards-compatible public payloads. */
+  isDj?: boolean;
   sessionCount: number;
   appearanceEvents: PublicAppearanceEvent[];
 }
@@ -236,6 +238,7 @@ function mapSpeakerSummary(
     photoUrl: row.photo ? getPbFileUrl(row, row.photo) : null,
     affiliation: row.affiliation || "",
     isMc: row.is_mc === true,
+    ...(row.is_dj === true ? { isDj: true } : {}),
     sessionCount: 0,
     appearanceEvents,
   };

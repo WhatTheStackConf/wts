@@ -324,6 +324,7 @@ function mapSession(session: PublicSessionDetail, agenda: PublicAgenda, origin: 
         affiliation: optionalGuideText(speaker.affiliation),
         is_mc: speaker.isMc === true,
         resource_uri: slugUri("speakers", speaker.slug),
+        ...(speaker.isDj === true ? { is_dj: true } : {}),
         canonical_url: publicProfileUrl(origin, "speakers", speaker.slug),
       })),
   };
@@ -336,6 +337,7 @@ function mapSpeaker(speaker: PublicSpeakerDetail, origin: string) {
     affiliation: optionalGuideText(speaker.affiliation),
     is_mc: speaker.isMc === true,
     bio: normalizeGuideText(speaker.bio),
+    ...(speaker.isDj === true ? { is_dj: true } : {}),
     canonical_url: publicProfileUrl(origin, "speakers", speaker.slug),
     sessions: [...speaker.sessions]
       .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
@@ -718,6 +720,7 @@ function planningSession(candidate: PlanningCandidate) {
       affiliation: speaker.affiliation ? boundedPublicLabel(speaker.affiliation) : undefined,
       is_mc: speaker.is_mc,
       resource_uri: speaker.resource_uri,
+      ...(speaker.is_dj === true ? { is_dj: true } : {}),
       canonical_url: speaker.canonical_url,
     })),
     speakers_truncated: candidate.session.speakers.length > MAX_PUBLIC_SESSION_SPEAKERS,
@@ -902,6 +905,7 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
               display_name: speaker.display_name,
               is_mc: speaker.is_mc,
               resource_uri: slugUri("speakers", speaker.slug),
+              ...(speaker.is_dj === true ? { is_dj: true } : {}),
               canonical_url: speaker.canonical_url,
             })),
             partners: {

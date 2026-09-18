@@ -39,6 +39,21 @@ import {
 } from "~/lib/admin-session-promotion";
 
 describe("MC profile editing", () => {
+  it("validates DJ editing independently and preserves an omitted field", () => {
+    const base = { display_name: "DJ", slug: "dj" };
+    const omitted = normalizeSpeakerProfileUpdateInput(base);
+    if (omitted.success) expect(omitted.data.fields).not.toHaveProperty("is_dj");
+    for (const is_dj of [true, false]) {
+      const result = normalizeSpeakerProfileUpdateInput({ ...base, is_dj });
+      expect(result.success).toBe(true);
+      if (result.success) expect(buildSpeakerProfileUpdateBody(result.data.fields, { intent: "keep" })).toHaveProperty("is_dj", is_dj);
+    }
+    for (const is_dj of ["true", 1, null, [], {}]) {
+      expect(normalizeSpeakerProfileUpdateInput({ ...base, is_dj } as never)).toEqual({ success: false, error: "DJ designation must be a boolean." });
+    }
+    expect(speakerSnapshot(speaker({ is_dj: true }) as never).is_dj).toBe(true);
+    expect(speakerSnapshot(speaker() as never).is_dj).toBe(false);
+  });
   it("preserves an omitted designation and accepts explicit true and false", () => {
     const input = { display_name: "Host", slug: "host" };
     const omitted = normalizeSpeakerProfileUpdateInput(input);

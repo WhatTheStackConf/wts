@@ -74,6 +74,7 @@ function speakerDto(speaker: ExpandedSpeaker) {
     slug: speaker.slug,
     published: speaker.published,
     is_mc: speaker.is_mc === true,
+    ...(speaker.is_dj === true ? { is_dj: true } : {}),
     origin: speaker.origin,
     display_name: speakerName(speaker),
     affiliation: textOrNull(speaker.affiliation),

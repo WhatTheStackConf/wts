@@ -72,6 +72,7 @@ function speakerSummary(speaker: PublicSpeakerSummary): PublicSpeakerSummary {
     photoUrl: speaker.photoUrl,
     affiliation: speaker.affiliation,
     isMc: speaker.isMc === true,
+    ...(speaker.isDj === true ? { isDj: true } : {}),
     sessionCount: speaker.sessionCount,
     appearanceEvents: speaker.appearanceEvents,
   };

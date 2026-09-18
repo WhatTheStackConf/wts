@@ -11,6 +11,18 @@ const renderCard = (isMc: boolean, sessionCount: number, variant: "teaser" | "fu
   renderToString(() => <SpeakerCard speaker={{ ...profile, isMc, sessionCount }} variant={variant} layout="featured" />).replace(/<!--.*?-->/g, "");
 
 describe("speaker and MC cards", () => {
+  it.each(["teaser", "full"] as const)("labels a DJ without a fake talk or MC badge (%s)", (variant) => {
+    const html = renderToString(() => <SpeakerCard speaker={{ ...profile, isMc: false, isDj: true }} variant={variant} layout="featured" />).replace(/<!--.*?-->/g, "");
+    expect(html).toContain(">DJ</");
+    expect(html).not.toContain(">MC</");
+    expect(html).not.toContain("Talks not announced yet");
+    if (variant === "teaser") expect(html).toContain("Featured DJ");
+  });
+  it("retains actual sessions for a DJ who also speaks", () => {
+    const html = renderToString(() => <SpeakerCard speaker={{ ...profile, isMc: false, isDj: true, sessionCount: 1 }} />);
+    expect(html).toContain(">DJ</");
+    expect(html).toContain("1 session");
+  });
   it.each(["teaser", "full"] as const)("labels a zero-session MC without promising talks (%s)", (variant) => {
     const html = renderCard(true, 0, variant);
     expect(html).toContain(">MC</");

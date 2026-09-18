@@ -105,6 +105,7 @@ export default function AdminSpeakersHub() {
   const [pendingWarning, setPendingWarning] = createSignal<string | null>(null);
 
   const [editIsMc, setEditIsMc] = createSignal(false);
+  const [editIsDj, setEditIsDj] = createSignal(false);
   const [editName, setEditName] = createSignal("");
   const [editSlug, setEditSlug] = createSignal("");
   const [editAffiliation, setEditAffiliation] = createSignal("");
@@ -211,6 +212,7 @@ export default function AdminSpeakersHub() {
     setEditingSpeaker(null);
     setEditName("");
     setEditIsMc(false);
+    setEditIsDj(false);
     setEditSlug("");
     setEditAffiliation("");
     setEditBio("");
@@ -226,6 +228,7 @@ export default function AdminSpeakersHub() {
     setShowInviteForm(false);
     setEditingSpeaker(row);
     setEditIsMc(row.is_mc === true);
+    setEditIsDj(row.is_dj === true);
     setEditName(row.display_name || speakerLabel(row));
     setEditSlug(row.slug || "");
     setEditAffiliation(row.affiliation || "");
@@ -308,6 +311,7 @@ export default function AdminSpeakersHub() {
   };
 
   const [inviteIsMc, setInviteIsMc] = createSignal(false);
+  const [inviteIsDj, setInviteIsDj] = createSignal(false);
   const [inviteName, setInviteName] = createSignal("");
   const [inviteSlug, setInviteSlug] = createSignal("");
   const [inviteAffiliation, setInviteAffiliation] = createSignal("");
@@ -341,6 +345,7 @@ export default function AdminSpeakersHub() {
         slug: inviteSlug() || slugify(displayName),
         display_name: displayName,
         is_mc: inviteIsMc(),
+        is_dj: inviteIsDj(),
         affiliation: inviteAffiliation(),
         bio: inviteBio(),
         social_handles: handles,
@@ -352,6 +357,7 @@ export default function AdminSpeakersHub() {
       }
       setInviteName("");
       setInviteIsMc(false);
+      setInviteIsDj(false);
       setInviteSlug("");
       setInviteAffiliation("");
       setInviteBio("");
@@ -434,6 +440,7 @@ export default function AdminSpeakersHub() {
         display_name: editName(),
         slug: editSlug(),
         is_mc: editIsMc(),
+        is_dj: editIsDj(),
         affiliation: editAffiliation(),
         bio: editBio(),
         social_handles: handles,
@@ -850,6 +857,11 @@ export default function AdminSpeakersHub() {
                           checked={editIsMc()} onChange={(event) => setEditIsMc(event.currentTarget.checked)} />
                         <span>MC (master of ceremonies) — can also have sessions</span>
                       </label>
+                        <label class="flex items-center gap-3 min-h-12 lg:col-span-12" for="edit-speaker-is-dj">
+                          <input id="edit-speaker-is-dj" name="is_dj" type="checkbox" class="checkbox checkbox-primary"
+                            checked={editIsDj()} onChange={(event) => setEditIsDj(event.currentTarget.checked)} />
+                          <span>DJ — independent of MC duties or sessions</span>
+                        </label>
                       <AdminFormField id="edit-speaker-affiliation" label="Affiliation" class="lg:col-span-12">
                         <input
                           id="edit-speaker-affiliation"
@@ -1055,6 +1067,11 @@ export default function AdminSpeakersHub() {
                       checked={inviteIsMc()} onChange={(event) => setInviteIsMc(event.currentTarget.checked)} />
                     <span>MC (master of ceremonies) — can also have sessions</span>
                   </label>
+                    <label class="flex items-center gap-3 min-h-12 lg:col-span-12" for="invite-speaker-is-dj">
+                      <input id="invite-speaker-is-dj" name="is_dj" type="checkbox" class="checkbox checkbox-primary"
+                        checked={inviteIsDj()} onChange={(event) => setInviteIsDj(event.currentTarget.checked)} />
+                      <span>DJ — independent of MC duties or sessions</span>
+                    </label>
                   <AdminFormField id="invite-speaker-affiliation" label="Affiliation" class="lg:col-span-12">
                     <input
                       id="invite-speaker-affiliation"
