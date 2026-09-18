@@ -8,20 +8,20 @@ const question = z.discriminatedUnion("kind", [
   z.strictObject({ ...common, kind: z.literal("text") }),
   z.strictObject({ ...common, kind: z.literal("single_choice"), choices: z.array(z.strictObject({ id, label: z.string().trim().min(1).max(200) })).min(2).max(8) }),
 ]);
-const schema = z.strictObject({ policy: z.enum(["all_answered", "all_correct"]), questions: z.array(question).min(1).max(10) }).superRefine((value, ctx) => {
+const schema = z.strictObject({ policy: z.enum(["all_answered", "all_correct", "correct_or_half"]), questions: z.array(question).min(1).max(10) }).superRefine((value, ctx) => {
   if (new Set(value.questions.map(q => q.id)).size !== value.questions.length) ctx.addIssue({ code: "custom", message: "Question IDs must be unique." });
   for (const q of value.questions) {
-    if (value.policy === "all_correct" && !q.acceptedAnswers.length) ctx.addIssue({ code: "custom", message: "Every question needs an accepted answer." });
+    if (value.policy !== "all_answered" && !q.acceptedAnswers.length) ctx.addIssue({ code: "custom", message: "Every question needs an accepted answer." });
     if (q.kind === "single_choice" && (new Set(q.choices.map(c => c.id)).size !== q.choices.length || q.acceptedAnswers.some(a => !q.choices.some(c => c.id === a)))) ctx.addIssue({ code: "custom", message: "Choice IDs must be unique and accepted choices must exist." });
   }
 });
 export type QuestionnaireDefinition = z.infer<typeof schema>;
 export type PublicMissionQuestion = { id: string; prompt: string; kind: "text" } | { id: string; prompt: string; kind: "single_choice"; choices: Array<{ id: string; label: string }> };
 export interface MissionQuestionChallenge { challengeId: string; expiresAt: string; policy: QuestionnaireDefinition["policy"]; questions: PublicMissionQuestion[] }
-export type MissionAnswerOutcome = "passed" | "incomplete" | "incorrect" | "malformed";
+export type MissionAnswerOutcome = "passed" | "passed_half" | "incomplete" | "incorrect" | "malformed";
 export function parseQuestionnaire(value: unknown): QuestionnaireDefinition {
   const parsed = schema.safeParse(value);
-  if (!parsed.success) throw new Error("Use 1–10 unique questions, prompts up to 500 characters, and 2–8 unique choices. All-correct questions need valid accepted answers (up to 1000 characters).");
+  if (!parsed.success) throw new Error("Use 1–10 unique questions, prompts up to 500 characters, and 2–8 unique choices. Correctness-based questions need valid accepted answers (up to 1000 characters).");
   if (parsed.data.questions.some(question => [question.prompt, ...question.acceptedAnswers, ...(question.kind === "single_choice" ? question.choices.map(choice => choice.label) : [])].some(containsMissionCode))) throw new Error("Questions, choices and accepted answers must not contain Mission codes.");
   return parsed.data;
 }
@@ -38,7 +38,8 @@ export function evaluateMissionAnswers(definition: QuestionnaireDefinition, valu
   if (!validMissionAnswers(value) || Object.keys(value).some(key => !definition.questions.some(q => q.id === key))) return "malformed";
   if (definition.questions.some(q => !value[q.id]?.trim())) return "incomplete";
   if (definition.questions.some(q => q.kind === "single_choice" && !q.choices.some(c => c.id === value[q.id]))) return "malformed";
-  return definition.policy === "all_answered" || definition.questions.every(q => q.acceptedAnswers.some(a => q.kind === "text" ? normalizeMissionAnswer(a) === normalizeMissionAnswer(value[q.id]) : a === value[q.id])) ? "passed" : "incorrect";
+  if (definition.policy === "all_answered" || definition.questions.every(q => q.acceptedAnswers.some(a => q.kind === "text" ? normalizeMissionAnswer(a) === normalizeMissionAnswer(value[q.id]) : a === value[q.id]))) return "passed";
+  return definition.policy === "correct_or_half" ? "passed_half" : "incorrect";
 }
 
 export function assertMissionUser(expectedUserId: unknown, authenticatedUserId: string): void {

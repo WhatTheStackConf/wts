@@ -34,6 +34,7 @@ export function MissionQuestionForm(props: { challenge: MissionQuestionChallenge
   };
   return <form class="mt-5 space-y-4" onSubmit={submit} aria-busy={busy() ? "true" : "false"}>
     <p class="text-sm">Answer every question. This challenge expires at {new Date(props.challenge.expiresAt).toLocaleTimeString()}; the server checks the Mission window when you submit.</p>
+    <Show when={props.challenge.policy === "correct_or_half"}><p class="text-sm">All correct earns full configured XP. Any wrong answer still completes the Mission with half total and leaderboard XP, subject to caps. Missing or invalid answers earn nothing. Your first completion is final: rescanning cannot improve the award.</p></Show>
     <fieldset disabled={busy() || held()} class="space-y-4">
       <legend class="sr-only">Mission questions</legend>
       <For each={props.challenge.questions}>{q => <div>

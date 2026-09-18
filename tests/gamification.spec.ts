@@ -76,10 +76,10 @@ async function createActivity(page: Page, key: string, total: string, rank: stri
   await expect.poll(async () => (await pb.collection("gamification_score_schedule_policies").getList(1, 1, { filter: pb.filter("activity={:id}", { id: activity.id }) })).totalItems).toBe(1);
   return activity.id;
 }
-async function generateCode(page: Page, activity: string, label: string) {
+async function generateCode(page: Page, activity: string, label: string, startsAt = windowStart) {
   await page.getByRole("button", { name: "Mission codes", exact: true }).click();
   await page.locator("#gam-code-activity").selectOption(activity);
-  await fill(page, { "gam-code-label": label, "gam-code-from": windowStart, "gam-code-until": windowEnd });
+  await fill(page, { "gam-code-label": label, "gam-code-from": startsAt, "gam-code-until": windowEnd });
   const form = page.locator("form").filter({ has: page.locator("#gam-code-activity") });
   await form.locator("button[type=submit]").click();
   await expect(page.getByRole("button", { name: "Download CSV now", exact: true })).toBeVisible();
@@ -318,6 +318,85 @@ test("question rules lock after activation and a rate-limited form re-enables wi
     await expect(attendee.page.getByRole("button", { name: "Redeem code", exact: true })).toBeEnabled();
     // Browser-clock advancement proves UI recovery, not expiration of the real backend clock.
     expect(await xp("reviewer")).toEqual({ total: 0, rank: 0 });
+    expect(admin.errors.concat(attendee.errors)).toEqual([]);
+  } finally { await admin.context.close(); await attendee.context.close(); }
+});
+
+test("organizer previews and prepares all twelve named booth achievement drafts", async ({ browser }, info) => {
+  const admin = await actor(browser, "admin");
+  const page = admin.page;
+  try {
+    await page.goto("/admin/gamification");
+    await page.getByRole("button", { name: "Score schedules", exact: true }).click();
+    await fill(page, { "gam-schedule-key": "browser-booth-drafts", "gam-schedule-effective": "2026-09-18T00:00" });
+    await page.getByRole("button", { name: "Create schedule draft", exact: true }).click();
+    await expect.poll(async () => (await pb.collection("gamification_score_schedules").getList(1, 1, { filter: 'key="browser-booth-drafts"' })).totalItems).toBe(1);
+    const schedule = await record("gamification_score_schedules", "browser-booth-drafts");
+    await page.getByRole("button", { name: "2026 booth achievements", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Neon Cred", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Off-World Bound", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 3 })).toHaveCount(12);
+    await page.locator("#booth-catalogue-schedule").selectOption(schedule.id);
+    await page.getByRole("button", { name: "Prepare 12 achievement drafts", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "12 achievement, Mission, Activity and question drafts are ready" })).toBeVisible();
+    for (const collection of ["gamification_achievements", "gamification_missions", "gamification_activities"]) {
+      const rows = await pb.collection(collection).getFullList({ filter: 'key ~ "wts26.booth."' });
+      expect(rows).toHaveLength(12);
+      expect(rows.every(row => row.status === "draft")).toBe(true);
+    }
+    await page.getByRole("button", { name: "Prepare 12 achievement drafts", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "12 achievement, Mission, Activity and question drafts are ready" })).toBeVisible();
+    await page.screenshot({ path: info.outputPath("booth-achievement-catalogue-mobile.png"), fullPage: true });
+    expect(admin.errors).toEqual([]);
+  } finally { await admin.context.close(); }
+});
+
+test("three-choice half-credit question completes once and cannot be upgraded by rescanning", async ({ browser }, info) => {
+  const admin = await actor(browser, "admin");
+  const page = admin.page;
+  const attendee = await actor(browser, "mc");
+  try {
+    await page.goto("/admin/gamification");
+    await page.getByRole("button", { name: "Score schedules", exact: true }).click();
+    // A successor schedule needs a later effective instant than the first schedule.
+    const halfStart = new Date(Date.now() - 3_600_000).toISOString().slice(0, 16);
+    await fill(page, { "gam-schedule-key": "browser-half-credit", "gam-schedule-effective": halfStart });
+    await page.getByRole("button", { name: "Create schedule draft", exact: true }).click();
+    await expect.poll(async () => (await pb.collection("gamification_score_schedules").getList(1, 1, { filter: 'key="browser-half-credit"' })).totalItems).toBe(1);
+    scheduleId = (await record("gamification_score_schedules", "browser-half-credit")).id;
+    await page.getByRole("button", { name: "Catalog", exact: true }).click();
+    const activity = await createActivity(page, "browser-half-credit", "20", "20");
+    await page.getByRole("button", { name: "QR questions", exact: true }).click();
+    await page.locator("#mission-question-activity").selectOption(activity);
+    await page.locator("#mission-question-policy").selectOption("correct_or_half");
+    await page.getByRole("textbox", { name: /^Question\b/ }).fill("Which film inspired this year's WTS visual identity?");
+    await page.getByRole("combobox", { name: "Answer type", exact: true }).selectOption("single_choice");
+    await page.getByRole("textbox", { name: /^Choice labels/ }).fill("Tron\nBlade Runner\nThe Matrix");
+    await page.getByRole("textbox", { name: /^Correct option numbers/ }).fill("2");
+    await page.locator("#mission-question-reason").fill("Synthetic half-credit rehearsal");
+    await page.getByRole("button", { name: "Save questions", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Questions saved" })).toBeVisible();
+    await page.getByRole("button", { name: "Catalog", exact: true }).click();
+    await page.locator("#gam-lifecycle-reason").fill("Synthetic half-credit activation");
+    await page.locator("li").filter({ has: page.getByText("browser-half-credit", { exact: true }) }).first().getByRole("button", { name: "Activate", exact: true }).click();
+    await expect.poll(async () => (await record("gamification_activities", "browser-half-credit")).status).toBe("active");
+    await page.getByRole("button", { name: "Score schedules", exact: true }).click();
+    await page.locator("#gam-schedule-activation-reason").fill("Synthetic half-credit scoring");
+    await page.locator("li").filter({ has: page.getByText("browser-half-credit", { exact: true }) }).getByRole("button", { name: "Activate", exact: true }).click();
+    await expect.poll(async () => (await record("gamification_score_schedules", "browser-half-credit")).status).toBe("active");
+    const code = await generateCode(page, activity, "Synthetic half-credit code", halfStart);
+    const before = await xp("mc");
+    await attendee.page.goto(`/missions/redeem#code=${code}`);
+    await expect(attendee.page.getByText(/half total and leaderboard XP/).first()).toBeVisible();
+    await attendee.page.getByRole("combobox", { name: "Which film inspired this year's WTS visual identity?", exact: true }).selectOption({ label: "Tron" });
+    await attendee.page.getByRole("button", { name: "Submit answers", exact: true }).click();
+    await expect(attendee.page.getByRole("heading", { name: "Mission recorded", exact: true })).toBeVisible();
+    expect(await xp("mc")).toEqual({ total: before.total + 10, rank: before.rank + 10 });
+    await attendee.page.screenshot({ path: info.outputPath("half-credit-reward-mobile.png"), fullPage: true });
+    await attendee.page.goto(`/missions/redeem#code=${code}`);
+    await expect(attendee.page.getByRole("heading", { name: "Mission already recorded", exact: true })).toBeVisible();
+    await expect(attendee.page.getByRole("combobox", { name: "Which film inspired this year's WTS visual identity?", exact: true })).toHaveCount(0);
+    expect(await xp("mc")).toEqual({ total: before.total + 10, rank: before.rank + 10 });
     expect(admin.errors.concat(attendee.errors)).toEqual([]);
   } finally { await admin.context.close(); await attendee.context.close(); }
 });

@@ -42,6 +42,7 @@ describe('question rewards through real PocketBase and public services', () => {
     expect(fixture.version).toMatch(/0\.(30\.4|34\.0)/);
     expect(fixture.hooks).toContain('gamification_questions.pb.js');
     expect(fixture.migrations).toContain('1786000012_create_gamification_questions.js');
+    expect(fixture.migrations).toContain('1786000014_question_half_credit.js');
     actor = { id: (await fixture.user('admin')).record.id, role: 'admin' };
     store = createGamificationAccountingStore();
     operations = new GamificationOperationsService(store, pepper);
@@ -52,11 +53,13 @@ describe('question rewards through real PocketBase and public services', () => {
     schedule = (await operations.createScoreScheduleDraft({ key: 'questions-fixture', effectiveAt: from, operationId: randomUUID(), reason: 'Synthetic fixture' }, actor)).id;
     const mission = await operations.saveMissionDraft({ key: 'qr-fixture', slug: 'qr-fixture', title: 'Synthetic QR Mission', summary: 'Disposable integration test', category: 'social', visibility: 'public', startsAt: from, endsAt: until, suggested: true, sortOrder: 0, operationId: randomUUID() }, actor);
     await operations.activateDefinition('mission', { id: mission.id, confirmation: true, reason: 'Synthetic fixture', operationId: randomUUID() }, actor);
-    for (const key of ['direct', 'correct', 'answered', 'disabled', 'expired', 'cap']) {
-      const input = { key: `qr.${key}`, missionId: mission.id, kind: 'qr' as const, category: 'social' as const, outcomeKey: 'completion', evidenceMode: 'single_code' as const, perUserClaimLimit: 1, maxClaims: 100, activeFrom: from, activeUntil: until, enabled: true, reason: 'Synthetic fixture' };
+    const badge = await operations.saveAchievementDraft({ key: 'half-fixture', badgeName: 'Question completion', badgeDescription: 'Synthetic completion badge', category: 'social', rarity: 'common', visibility: 'public', unlockRule: { kind: 'activity_claim' }, activeFrom: from, activeUntil: until, sortOrder: 0, operationId: randomUUID() }, actor);
+    await operations.activateDefinition('achievement', { id: badge.id, confirmation: true, reason: 'Synthetic fixture', operationId: randomUUID() }, actor);
+    for (const key of ['direct', 'correct', 'answered', 'disabled', 'expired', 'cap', 'half', 'halfcapped', 'capseed']) {
+      const input = { key: `qr.${key}`, missionId: mission.id, ...(key === 'half' ? { achievementId: badge.id } : {}), kind: 'qr' as const, category: 'social' as const, outcomeKey: 'completion', evidenceMode: 'single_code' as const, perUserClaimLimit: 1, maxClaims: 100, activeFrom: from, activeUntil: until, enabled: true, reason: 'Synthetic fixture' };
       const activity = await operations.saveActivityDraft({ ...input, operationId: randomUUID() }, actor);
-      await operations.saveActivityDraft({ ...input, id: activity.id, operationId: randomUUID(), scorePolicy: { scheduleId: schedule, policyKey: `qr.${key}`, enabled: true, totalXp: 7, leaderboardXp: 3, capMembership: [{ dimension: 'activity', key: activity.id }, { dimension: 'category', key: 'social' }, { dimension: 'conference', key: 'conference' }] } }, actor);
-      if (key !== 'direct') await admin.save({ activityId: activity.id, expectedVersion: '', operationId: randomUUID(), reason: 'Synthetic questions', definition: { ...definition, policy: key === 'answered' ? 'all_answered' : 'all_correct' } }, actor);
+      await operations.saveActivityDraft({ ...input, id: activity.id, operationId: randomUUID(), scorePolicy: { scheduleId: schedule, policyKey: `qr.${key}`, enabled: true, totalXp: key === 'capseed' ? 5 : 7, leaderboardXp: key === 'capseed' ? 2 : 3, capMembership: [{ dimension: 'activity', key: activity.id }, { dimension: 'category', key: 'social' }, { dimension: 'conference', key: 'conference' }, ...(['halfcapped', 'capseed'].includes(key) ? [{ dimension: 'related_group' as const, key: 'half-cap' }] : [])] } }, actor);
+      if (!['direct', 'capseed'].includes(key)) await admin.save({ activityId: activity.id, expectedVersion: '', operationId: randomUUID(), reason: 'Synthetic questions', definition: { ...definition, policy: key === 'answered' ? 'all_answered' : key.startsWith('half') ? 'correct_or_half' : 'all_correct' } }, actor);
       await operations.activateDefinition('activity', { id: activity.id, confirmation: true, reason: 'Synthetic fixture', operationId: randomUUID() }, actor);
       configs[key] = { activityId: activity.id, codeId: '', rawCode: '' };
     }
@@ -109,6 +112,176 @@ describe('question rewards through real PocketBase and public services', () => {
     const user = (await fixture.user()).record;
     const gate = await scan(user, 'answered');
     expect(await submit(user, gate.questionnaire!.challengeId, { word: 'any text', choice: 'no' })).toMatchObject({ status: 'accepted', xpAwarded: 7 });
+    expect(await counts(user.id)).toEqual([1, 1, 1]);
+  });
+  it('correct_or_half records full or exact half XP in both ledgers and never upgrades on replay or correct-after-wrong', async () => {
+    for (const [value, total, leaderboard, outcome] of [[answers, 7, 3, 'passed'], [{ ...answers, word: 'wrong' }, 3.5, 1.5, 'passed_half']] as const) {
+      const user = (await fixture.user()).record;
+      const gate = await scan(user, 'half');
+      expect(gate).toMatchObject({ status: 'questions_required', questionnaire: { policy: 'correct_or_half' } });
+      expect(gate.message).toMatch(/half/i);
+      expect(JSON.stringify(gate)).not.toMatch(/acceptedAnswers|Synthetic Secret|answer_hash|code_hash/);
+      const operation = randomUUID();
+      const result = await submit(user, gate.questionnaire!.challengeId, value, operation);
+      expect(result).toMatchObject({ status: 'accepted', xpAwarded: total, leaderboardXpAwarded: leaderboard, profile: { totalXp: total } });
+      expect(result.badges).toEqual([expect.objectContaining({ name: 'Question completion' })]);
+      if (outcome === 'passed_half') expect(result.message).toMatch(/half.*final/);
+      expect(JSON.stringify(result)).not.toMatch(/acceptedAnswers|Synthetic Secret|answer_hash|code_hash/);
+      expect(await store.list(Q.attempts, { user: user.id })).toEqual([expect.objectContaining({ status: outcome })]);
+      expect(await submit(user, gate.questionnaire!.challengeId, value, operation)).toMatchObject({ status: 'already_redeemed', xpAwarded: 0 });
+      expect(await submit(user, gate.questionnaire!.challengeId, answers, randomUUID())).toMatchObject({ status: 'question_conflict' });
+      expect(await scan(user, 'half')).toMatchObject({ status: 'already_redeemed', xpAwarded: 0, profile: { totalXp: total } });
+      expect(await store.list(C.xpEvents, { user: user.id })).toEqual([expect.objectContaining({ amount: total, leaderboard_amount: leaderboard })]);
+      expect(await store.list(C.profiles, { user: user.id })).toEqual([expect.objectContaining({ total_xp: total, leaderboard_xp: leaderboard })]);
+      expect(await counts(user.id)).toEqual([1, 1, 1]);
+    }
+  });
+  it('correct_or_half rejects incomplete and malformed answers without any accounting writes', async () => {
+    for (const [value, status] of [[{ word: 'wrong' }, 'questions_incomplete'], [{ ...answers, choice: 'unoffered' }, 'questions_malformed'], [{ ...answers, word: ' ' }, 'questions_incomplete'], [{ ...answers, multiplier: 1 }, 'questions_malformed']] as const) {
+      const user = (await fixture.user()).record;
+      const gate = await scan(user, 'half');
+      expect(await submit(user, gate.questionnaire!.challengeId, value)).toMatchObject({ status });
+      expect(await counts(user.id)).toEqual([0, 0, 0]);
+    }
+  });
+  it('halves the configured award before caps rather than halving the capped remainder', async () => {
+    const user = (await fixture.user()).record;
+    expect(await scan(user, 'capseed')).toMatchObject({ status: 'accepted', xpAwarded: 5, leaderboardXpAwarded: 2 });
+    const gate = await scan(user, 'halfcapped');
+    expect(await submit(user, gate.questionnaire!.challengeId, { ...answers, word: 'wrong' })).toMatchObject({ status: 'accepted', xpAwarded: 2, leaderboardXpAwarded: 1 });
+    expect(await store.list(C.activityClaims, { user: user.id, activity: configs.halfcapped.activityId })).toEqual([expect.objectContaining({ cap_outcome: expect.objectContaining({ question_outcome: 'passed_half', awarded_total_xp: 2, awarded_leaderboard_xp: 1 }) })]);
+  });
+  it('repairs half-credit interruptions at redemption, claim and XP boundaries across restart and challenge expiry', async () => {
+    for (const boundary of [C.codeRedemptions, C.activityClaims, C.xpEvents]) {
+      const user = (await fixture.user()).record;
+      const gate = await scan(user, 'half');
+      const operation = randomUUID();
+      const value = { ...answers, word: 'wrong' };
+      const interruptedStore = { ...store, create: async <T>(collection: string, data: Record<string, unknown>): Promise<T> => {
+        if (collection === boundary) throw new Error('Synthetic interrupted half award');
+        return store.create<T>(collection, data);
+      } };
+      expect(await submit(user, gate.questionnaire!.challengeId, value, operation, new MissionCodeRedemptionService(interruptedStore, pepper))).toMatchObject({ status: 'unavailable' });
+      const [attempt] = await store.list<{ id: string }>(Q.attempts, { user: user.id, status: 'passed_half' });
+      expect(attempt).toBeDefined();
+      if (boundary !== C.codeRedemptions) expect(await store.list(C.codeRedemptions, { user: user.id })).toEqual([expect.objectContaining({ metadata: expect.objectContaining({ question_attempt: attempt.id }) })]);
+      await fixture.restart();
+      const repair = new MissionCodeRedemptionService(store, pepper, { clock: () => new Date(Date.now() + 16 * 60_000).toISOString() });
+      expect(await submit(user, gate.questionnaire!.challengeId, value, operation, repair)).toMatchObject({ status: boundary === C.codeRedemptions ? 'accepted' : 'already_redeemed', profile: { totalXp: 3.5 } });
+      expect(await submit(user, gate.questionnaire!.challengeId, answers, randomUUID(), repair)).toMatchObject({ status: 'question_conflict' });
+      expect(await store.list(C.xpEvents, { user: user.id })).toEqual([expect.objectContaining({ amount: 3.5, leaderboard_amount: 1.5 })]);
+      expect(await store.list(C.activityClaims, { user: user.id })).toEqual([expect.objectContaining({ cap_outcome: expect.objectContaining({ question_attempt: attempt.id, question_outcome: 'passed_half', awarded_total_xp: 3.5, awarded_leaderboard_xp: 1.5 }) })]);
+      expect(await counts(user.id)).toEqual([1, 1, 1]);
+    }
+  });
+  it('keeps the first half outcome after pre-redemption interruption and real challenge expiry', async () => {
+    const user = (await fixture.user()).record;
+    // Shorten only this challenge's TTL through the real adapter; PB's clock and
+    // validation hooks stay real, so expired-evidence acceptance is exercised too.
+    const interruptedStore = { ...store, create: async <T>(collection: string, data: Record<string, unknown>): Promise<T> => {
+      if (collection === C.codeRedemptions) throw new Error('Synthetic interrupted acceptance');
+      return store.create<T>(collection, collection === Q.attempts ? { ...data, expires_at: new Date(Date.now() + 3_000).toISOString() } : data);
+    } };
+    const interrupted = new MissionCodeRedemptionService(interruptedStore, pepper);
+    const gate = await scan(user, 'half', interrupted);
+    const operation = randomUUID(), value = { ...answers, word: 'wrong' };
+    expect(await submit(user, gate.questionnaire!.challengeId, value, operation, interrupted)).toMatchObject({ status: 'unavailable' });
+    const [attempt] = await store.list<{ id: string; expires_at: string }>(Q.attempts, { user: user.id, status: 'passed_half' });
+    expect(attempt).toBeDefined();
+    expect(await counts(user.id)).toEqual([0, 0, 0]);
+    await new Promise(resolve => setTimeout(resolve, Math.max(0, Date.parse(attempt.expires_at) - Date.now()) + 50));
+    await fixture.restart();
+    expect(Date.parse(attempt.expires_at)).toBeLessThan(Date.now());
+    const repair = new MissionCodeRedemptionService(store, pepper);
+    expect(await scan(user, 'half', repair)).toMatchObject({ status: 'accepted', xpAwarded: 3.5, leaderboardXpAwarded: 1.5 });
+    expect(await submit(user, gate.questionnaire!.challengeId, answers, randomUUID(), repair)).toMatchObject({ status: 'question_conflict' });
+    expect(await submit(user, gate.questionnaire!.challengeId, value, operation, repair)).toMatchObject({ status: 'already_redeemed' });
+    expect(await store.list(Q.attempts, { user: user.id })).toEqual([expect.objectContaining({ id: attempt.id, status: 'passed_half' })]);
+    expect(await store.list(C.codeRedemptions, { user: user.id })).toEqual([expect.objectContaining({ metadata: expect.objectContaining({ question_attempt: attempt.id }) })]);
+    expect(await store.list(C.activityClaims, { user: user.id })).toEqual([expect.objectContaining({ cap_outcome: expect.objectContaining({ question_attempt: attempt.id, question_outcome: 'passed_half' }) })]);
+    expect(await store.list(C.xpEvents, { user: user.id })).toEqual([expect.objectContaining({ amount: 3.5, leaderboard_amount: 1.5 })]);
+    expect(await counts(user.id)).toEqual([1, 1, 1]);
+  });
+  it.each([
+    ['passed_half', { ...answers, word: 'wrong' }, answers, 3.5, 1.5],
+    ['passed', answers, { ...answers, word: 'wrong' }, 7, 3],
+  ] as const)('binds the first %s outcome even when a later terminal attempt exists', async (outcome, firstAnswers, laterAnswers, total, leaderboard) => {
+    const user = (await fixture.user()).record;
+    let redemptionData: Record<string, unknown> = {};
+    const interruptedStore = { ...store, create: async <T>(collection: string, data: Record<string, unknown>): Promise<T> => {
+      if (collection === C.codeRedemptions) { redemptionData = data; throw new Error('Synthetic interrupted acceptance'); }
+      return store.create<T>(collection, data);
+    } };
+    const interrupted = new MissionCodeRedemptionService(interruptedStore, pepper);
+    const gate = await scan(user, 'half', interrupted);
+    expect(await submit(user, gate.questionnaire!.challengeId, firstAnswers, randomUUID(), interrupted)).toMatchObject({ status: 'unavailable' });
+    const [first] = await store.list<{ id: string; questionnaire: string; version: string }>(Q.attempts, { user: user.id });
+    // A stale privileged writer can hold another challenge. Its terminal result
+    // must not supersede the first result, in either the service or PB hook.
+    const later = await fixture.pb.collection(Q.attempts).create({
+      challenge_id: randomUUID(), user: user.id, code: configs.half.codeId, activity: configs.half.activityId,
+      questionnaire: first.questionnaire, version: first.version, status: 'pending',
+      opened_at: new Date().toISOString(), expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+    });
+    expect(await submit(user, later.challenge_id, laterAnswers, randomUUID(), interrupted)).toMatchObject({ status: 'unavailable' });
+    expect(await store.list(Q.attempts, { user: user.id })).toHaveLength(2);
+    await expect(fixture.pb.collection(C.codeRedemptions).create({ ...redemptionData, metadata: { question_attempt: later.id } })).rejects.toMatchObject({ status: 400 });
+    expect(await counts(user.id)).toEqual([0, 0, 0]);
+    expect(await scan(user, 'half')).toMatchObject({ status: 'accepted', xpAwarded: total, leaderboardXpAwarded: leaderboard });
+    expect(await store.list(C.codeRedemptions, { user: user.id })).toEqual([expect.objectContaining({ metadata: expect.objectContaining({ question_attempt: first.id }) })]);
+    expect(await store.list(C.activityClaims, { user: user.id })).toEqual([expect.objectContaining({ cap_outcome: expect.objectContaining({ question_attempt: first.id, question_outcome: outcome }) })]);
+    expect(await store.list(C.xpEvents, { user: user.id })).toEqual([expect.objectContaining({ amount: total, leaderboard_amount: leaderboard })]);
+    expect(await counts(user.id)).toEqual([1, 1, 1]);
+  });
+  it('repairs an interrupted badge after its achievement window using the accepted occurrence time', async () => {
+    const user = (await fixture.user()).record;
+    const gate = await scan(user, 'half');
+    const interruptedStore = { ...store, create: async <T>(collection: string, data: Record<string, unknown>): Promise<T> => {
+      if (collection === C.userAchievements) throw new Error('Synthetic interrupted badge');
+      return store.create<T>(collection, data);
+    } };
+    expect(await submit(user, gate.questionnaire!.challengeId, { ...answers, word: 'wrong' }, randomUUID(), new MissionCodeRedemptionService(interruptedStore, pepper))).toMatchObject({ status: 'unavailable' });
+    expect(await counts(user.id)).toEqual([1, 1, 0]);
+    expect(await store.list(C.userAchievements, { user: user.id })).toEqual([]);
+    const [claim] = await store.list<{ id: string; occurred_at: string }>(C.activityClaims, { user: user.id });
+    expect(Date.parse(claim.occurred_at)).toBeLessThan(Date.parse(until));
+    await fixture.restart();
+    const repair = new MissionCodeRedemptionService(store, pepper, { clock: () => new Date(Date.parse(until) + 1_000).toISOString() });
+    const result = await scan(user, 'half', repair);
+    expect(result).toMatchObject({ status: 'already_redeemed', profile: { totalXp: 3.5 } });
+    expect(result.badges).toEqual([expect.objectContaining({ name: 'Question completion' })]);
+    const [badge] = await store.list<{ id: string }>(C.userAchievements, { user: user.id, status: 'unlocked', source_claim: claim.id });
+    expect(badge).toBeDefined();
+    expect(await scan(user, 'half', repair)).toMatchObject({ status: 'already_redeemed' });
+    expect(await store.list(C.userAchievements, { user: user.id })).toHaveLength(1);
+    expect(await store.list(C.xpEvents, { user: user.id })).toEqual([expect.objectContaining({ amount: 3.5, leaderboard_amount: 1.5 })]);
+    expect(await counts(user.id)).toEqual([1, 1, 1]);
+    await new GamificationAccountingService(store).revokeBadge(badge.id, { actor: actor.id, actorRole: 'admin', targetUser: user.id, reason: 'Synthetic revocation', operationId: randomUUID() });
+    expect(await scan(user, 'half', repair)).toMatchObject({ status: 'already_redeemed' });
+    expect(await store.list(C.userAchievements, { user: user.id })).toEqual([expect.objectContaining({ id: badge.id, status: 'revoked' })]);
+  });
+  it('retains immutable half-credit evidence and ignores caller score metadata during accounting repair', async () => {
+    const attendee = await fixture.user(), user = attendee.record;
+    const gate = await scan(user, 'half');
+    const interruptedStore = { ...store, create: async <T>(collection: string, data: Record<string, unknown>): Promise<T> => {
+      if (collection === C.activityClaims) throw new Error('Synthetic interrupted claim');
+      return store.create<T>(collection, data);
+    } };
+    expect(await submit(user, gate.questionnaire!.challengeId, { ...answers, word: 'wrong' }, randomUUID(), new MissionCodeRedemptionService(interruptedStore, pepper))).toMatchObject({ status: 'unavailable' });
+    const [attempt] = await store.list<{ id: string; status: string }>(Q.attempts, { user: user.id });
+    const [redemption] = await store.list<{ id: string; redeemed_at: string; metadata: Record<string, unknown> }>(C.codeRedemptions, { user: user.id });
+    await expect(fixture.pb.collection(Q.attempts).update(attempt.id, { status: 'passed' })).rejects.toMatchObject({ status: 400 });
+    await expect(fixture.pb.collection(Q.attempts).delete(attempt.id)).rejects.toMatchObject({ status: 400 });
+    await expect(fixture.pb.collection(C.codeRedemptions).update(redemption.id, { metadata: { ...redemption.metadata, question_attempt: '' } })).rejects.toMatchObject({ status: 400 });
+    await expect(attendee.client.collection(Q.attempts).update(attempt.id, { status: 'passed' })).rejects.toMatchObject({ status: 403 });
+    await expect(attendee.client.collection(Q.attempts).getOne(attempt.id)).rejects.toMatchObject({ status: 403 });
+    const award = await new GamificationAccountingService(store).recordActivityAward({ claim: {
+      user: user.id, activity: configs.half.activityId, sourceType: 'code_redemption', sourceCollection: C.codeRedemptions, sourceRecordId: redemption.id,
+      outcomeKey: 'completion', occurredAt: redemption.redeemed_at, evidenceFingerprint: 'synthetic-repair', idempotencyKey: `synthetic-repair:${user.id}`,
+      metadata: { multiplier: 1, question_outcome: 'passed' }, capOutcome: { awarded_total_xp: 999, awarded_leaderboard_xp: 999 },
+    } });
+    expect(award.xpEvent).toMatchObject({ amount: 3.5, leaderboard_amount: 1.5 });
+    expect(await scan(user, 'half')).toMatchObject({ status: 'already_redeemed', profile: { totalXp: 3.5 } });
     expect(await counts(user.id)).toEqual([1, 1, 1]);
   });
   it('repairs an interruption after approval before the first accepted redemption', async () => {
@@ -204,6 +377,23 @@ describe('question rewards through real PocketBase and public services', () => {
     }
     await expect(user.client.collection(Q.definitions).getOne(row!.id)).rejects.toMatchObject({ status: 403 });
     expect(JSON.stringify(await admin.list())).not.toMatch(/acceptedAnswers|Synthetic Secret/);
+  });
+  it('does not repair an interrupted badge when the achievement has since retired', async () => {
+    const user = (await fixture.user()).record;
+    const gate = await scan(user, 'half');
+    const interruptedStore = { ...store, create: async <T>(collection: string, data: Record<string, unknown>): Promise<T> => {
+      if (collection === C.userAchievements) throw new Error('Synthetic interrupted badge');
+      return store.create<T>(collection, data);
+    } };
+    expect(await submit(user, gate.questionnaire!.challengeId, answers, randomUUID(), new MissionCodeRedemptionService(interruptedStore, pepper))).toMatchObject({ status: 'unavailable' });
+    const activity = await store.getById<{ achievement: string }>(C.activities, configs.half.activityId);
+    await operations.retireDefinition('achievement', { id: activity.achievement, confirmation: true, reason: 'Synthetic retirement', operationId: randomUUID() }, actor);
+    const repair = new MissionCodeRedemptionService(store, pepper, { clock: () => new Date(Date.parse(until) + 1_000).toISOString() });
+    const result = await scan(user, 'half', repair);
+    expect(result).toMatchObject({ status: 'already_redeemed', profile: { totalXp: 7 } });
+    expect(result.badges).toBeUndefined();
+    expect(await store.list(C.userAchievements, { user: user.id })).toEqual([]);
+    expect(await counts(user.id)).toEqual([1, 1, 1]);
   });
   it('uses actual availability counts and stops suggesting disabled code inventory', async () => {
     const user = (await fixture.user()).record;

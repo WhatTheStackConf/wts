@@ -8,6 +8,19 @@ const definition = { policy: "all_correct", questions: [
 ] };
 
 describe("question qualification contract", () => {
+  it("correct_or_half completes valid answers at full or half credit, never missing or malformed answers", () => {
+    const parsed = parseQuestionnaire({ ...definition, policy: "correct_or_half" });
+    expect(evaluateMissionAnswers(parsed, { language: "TypeScript", pick: "b" })).toBe("passed");
+    expect(evaluateMissionAnswers(parsed, { language: "wrong", pick: "b" })).toBe("passed_half");
+    expect(evaluateMissionAnswers(parsed, { language: "TypeScript", pick: "a" })).toBe("passed_half");
+    expect(evaluateMissionAnswers(parsed, { language: "wrong", pick: "a" })).toBe("passed_half");
+    expect(evaluateMissionAnswers(parsed, { language: "wrong" })).toBe("incomplete");
+    expect(evaluateMissionAnswers(parsed, { language: " ", pick: "a" })).toBe("incomplete");
+    expect(evaluateMissionAnswers(parsed, { language: "wrong", pick: "injected" })).toBe("malformed");
+    expect(evaluateMissionAnswers(parsed, { language: "wrong", pick: "a", multiplier: 1 })).toBe("malformed");
+    expect(() => parseQuestionnaire({ ...parsed, questions: [{ ...parsed.questions[0], acceptedAnswers: [] }] })).toThrow();
+    expect(JSON.stringify(publicQuestions(parsed))).not.toMatch(/acceptedAnswers|TypeScript/);
+  });
   it("rejects bearer codes in question content instead of exposing them to attendees", () => {
     const rawCode = createMissionCodeGeneration("question-tests-only").rawCode;
     expect(() => parseQuestionnaire({ ...definition, questions: [{ ...definition.questions[0], prompt: rawCode }] })).toThrow("must not contain Mission codes");

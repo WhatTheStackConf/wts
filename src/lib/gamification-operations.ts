@@ -126,6 +126,8 @@ const BOOTH_SCORE_BANDS = {
   high_score: { totalXp: 35, leaderboardXp: 25 },
 } as const;
 const BOOTH_CAP = { totalXp: 35, leaderboardXp: 25 } as const;
+/** Prevent lifecycle publication while the create-only booth catalogue is being prepared. */
+export const BOOTH_SETUP_LOCK = "configuration:wts26-booth-catalogue";
 
 type GamificationCategory = (typeof GAMIFICATION_CATEGORIES)[number];
 type ActivityKind = (typeof ACTIVITY_KINDS)[number];
@@ -2204,6 +2206,10 @@ export class GamificationOperationsService {
   }
 
   async activateDefinition(kind: GamificationDefinitionKind, input: AdminLifecycleInput, actor: AdminOperationActor): Promise<{ id: string; status: "active" }> {
+    return withGamificationLocks(this.store, [BOOTH_SETUP_LOCK], () => this.activateDefinitionNow(kind, input, actor));
+  }
+
+  private async activateDefinitionNow(kind: GamificationDefinitionKind, input: AdminLifecycleInput, actor: AdminOperationActor): Promise<{ id: string; status: "active" }> {
     this.requireConfirmation(input.confirmation, "Activation");
     const reason = requiredReason(input.reason);
     const context = await this.context();
@@ -2230,6 +2236,10 @@ export class GamificationOperationsService {
   }
 
   async retireDefinition(kind: GamificationDefinitionKind, input: AdminLifecycleInput, actor: AdminOperationActor): Promise<{ id: string; status: "retired" }> {
+    return withGamificationLocks(this.store, [BOOTH_SETUP_LOCK], () => this.retireDefinitionNow(kind, input, actor));
+  }
+
+  private async retireDefinitionNow(kind: GamificationDefinitionKind, input: AdminLifecycleInput, actor: AdminOperationActor): Promise<{ id: string; status: "retired" }> {
     this.requireConfirmation(input.confirmation, "Retirement");
     const reason = requiredReason(input.reason);
     const context = await this.context();

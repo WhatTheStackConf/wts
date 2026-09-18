@@ -9,12 +9,12 @@ onRecordValidate((e) => {
   }
   if (old.id && (old.getString("version") === r.getString("version") || old.getString("operation_id") === r.getString("operation_id"))) throw new BadRequestError("Question changes require a new version and operation.");
   const d = JSON.parse(r.getString("definition") || "null");
-  if (!d || !["all_answered", "all_correct"].includes(d.policy) || !Array.isArray(d.questions) || d.questions.length < 1 || d.questions.length > 10 || Object.keys(d).some(k => !["policy", "questions"].includes(k))) throw new BadRequestError("Invalid questionnaire.");
+  if (!d || !["all_answered", "all_correct", "correct_or_half"].includes(d.policy) || !Array.isArray(d.questions) || d.questions.length < 1 || d.questions.length > 10 || Object.keys(d).some(k => !["policy", "questions"].includes(k))) throw new BadRequestError("Invalid questionnaire.");
   const ids = {};
   for (const q of d.questions) {
     if (!q || !/^[a-z][a-z0-9_-]{0,39}$/.test(q.id) || ids[q.id] || !["text", "single_choice"].includes(q.kind) || typeof q.prompt !== "string" || !q.prompt.trim() || q.prompt.length > 500 || Object.keys(q).some(k => !["id", "kind", "prompt", "choices", "acceptedAnswers"].includes(k))) throw new BadRequestError("Invalid question.");
     ids[q.id] = true;
-    if (!Array.isArray(q.acceptedAnswers) || q.acceptedAnswers.length > 8 || q.acceptedAnswers.some(a => typeof a !== "string" || !a.trim() || a.length > 1000) || (d.policy === "all_correct" && !q.acceptedAnswers.length)) throw new BadRequestError("Invalid private accepted answers.");
+    if (!Array.isArray(q.acceptedAnswers) || q.acceptedAnswers.length > 8 || q.acceptedAnswers.some(a => typeof a !== "string" || !a.trim() || a.length > 1000) || (d.policy !== "all_answered" && !q.acceptedAnswers.length)) throw new BadRequestError("Invalid private accepted answers.");
     if (q.kind === "text" && q.choices !== undefined) throw new BadRequestError("Text questions cannot have choices.");
     if (q.kind === "single_choice") {
       if (!Array.isArray(q.choices) || q.choices.length < 2 || q.choices.length > 8) throw new BadRequestError("Invalid choices.");
@@ -51,7 +51,9 @@ onRecordValidate((e) => {
   if (!Number.isFinite(expiry) || !Number.isFinite(opened) || expiry <= opened || expiry - opened > 900000 || expiry <= Date.now()) throw new BadRequestError("Question challenge expired or exceeds 15 minutes.");
   for (const end of [code.getString("ends_at"), activity.getString("active_until")]) if (end && expiry > Date.parse(end)) throw new BadRequestError("Challenge exceeds Mission window.");
   if (!code.getBool("enabled") || code.getString("status") !== "active" || code.getString("invalidated_at") || !activity.getBool("enabled") || activity.getString("status") !== "active") throw new BadRequestError("Mission is inactive.");
-  if (r.getString("status") === "passed" && (!r.getString("passed_at") || Date.parse(r.getString("passed_at")) < opened || Date.parse(r.getString("passed_at")) >= expiry)) throw new BadRequestError("Invalid approved evidence time.");
+  const policy = JSON.parse(definition.getString("definition")).policy;
+  if (r.getString("status") === "passed_half" && policy !== "correct_or_half") throw new BadRequestError("Half credit requires the correct-or-half policy.");
+  if (["passed", "passed_half"].includes(r.getString("status")) && (!r.getString("passed_at") || Date.parse(r.getString("passed_at")) < opened || Date.parse(r.getString("passed_at")) >= expiry)) throw new BadRequestError("Invalid approved evidence time.");
   return e.next();
 }, "gamification_question_attempts");
 
@@ -61,8 +63,17 @@ onRecordValidate((e) => {
   if (r.original().id || r.getString("status") !== "accepted") return e.next();
   const definitions = e.app.findRecordsByFilter("gamification_questionnaires", "activity = {:activity}", "", 1, 0, { activity: r.getString("activity") });
   if (!definitions.length) return e.next();
-  const evidence = e.app.findRecordsByFilter("gamification_question_attempts", "user = {:user} && code = {:code} && questionnaire = {:definition} && version = {:version} && status = 'passed' && expires_at > {:now}", "", 1, 0, { user: r.getString("user"), code: r.getString("code"), definition: definitions[0].id, version: definitions[0].getString("version"), now: new Date().toISOString().replace("T", " ") });
+  const finalOutcome = JSON.parse(definitions[0].getString("definition")).policy === "correct_or_half";
+  // Match the service gate: the first correct-or-half result survives challenge
+  // expiry; legacy policies still require unexpired approved evidence.
+  const evidence = e.app.findRecordsByFilter("gamification_question_attempts", "user = {:user} && code = {:code} && questionnaire = {:definition} && version = {:version} && (status = 'passed' || status = 'passed_half')" + (finalOutcome ? "" : " && expires_at > {:now}"), finalOutcome ? "passed_at,id" : "-expires_at,id", 1, 0, { user: r.getString("user"), code: r.getString("code"), definition: definitions[0].id, version: definitions[0].getString("version"), now: new Date().toISOString().replace("T", " ") });
   if (!evidence.length) throw new BadRequestError("Approved question evidence is required.");
+  // Bind immutable accounting history to the server-selected terminal outcome.
+  // Existing accounting constraints forbid changing metadata after creation.
+  const metadata = JSON.parse(r.getString("metadata") || "{}");
+  if (metadata.question_attempt && metadata.question_attempt !== evidence[0].id) throw new BadRequestError("Question evidence does not match the approved attempt.");
+  metadata.question_attempt = evidence[0].id;
+  r.set("metadata", metadata);
   const code = e.app.findRecordById("gamification_codes", r.getString("code"));
   const activity = e.app.findRecordById("gamification_activities", r.getString("activity"));
   if (code.getString("activity") !== activity.id || !code.getBool("enabled") || code.getString("status") !== "active" || code.getString("invalidated_at") || !activity.getBool("enabled") || activity.getString("status") !== "active") throw new BadRequestError("Mission is inactive.");

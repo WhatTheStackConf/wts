@@ -34,6 +34,7 @@ import AdminCommunityPartnerMissions from "~/components/admin/gamification/Admin
 import AdminEasterEggMissions from "~/components/admin/gamification/AdminEasterEggMissions";
 import AdminMissionQuestions from "~/components/admin/gamification/AdminMissionQuestions";
 import AdminPrintedMissionCodes from "~/components/admin/gamification/AdminPrintedMissionCodes";
+import AdminBoothAchievements from "~/components/admin/gamification/AdminBoothAchievements";
 import MissionCodeQr from "~/components/admin/gamification/MissionCodeQr";
 import type {
   AdminActivityDto,
@@ -49,7 +50,7 @@ const ACTIVITY_KINDS = ["qr", "booth", "community_partner", "hievents", "admin_m
 const EVIDENCE_MODES = ["single_code", "two_code_start", "two_code_finish", "hievents_ticket", "hievents_checkin", "admin_manual", "meta_rule"];
 const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"];
 const DEDICATED_EVENT_KINDS = new Set(["workshop", "warmup", "satellite", "social"]);
-type AdminGamificationTab = "catalog" | "events" | "community" | "eggs" | "sessions" | "codes" | "printed" | "questions" | "schedule" | "hievents" | "support";
+type AdminGamificationTab = "catalog" | "events" | "community" | "eggs" | "sessions" | "codes" | "printed" | "questions" | "booths" | "schedule" | "hievents" | "support";
 
 function usesDedicatedConfiguration(kind: GamificationDefinitionKind, item: any): boolean {
   if (kind === "activity") return item.kind === "session" || item.kind === "community_partner" || item.kind === "easter_egg" || ["workshop", "warmup_event", "satellite_event", "social"].includes(item.kind);
@@ -400,6 +401,7 @@ export default function AdminGamificationHub() {
        <nav class="mb-6 flex flex-wrap gap-2" aria-label="Gamification operations">
           <button type="button" class={`btn btn-sm font-mono ${tab() === "catalog" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "catalog" ? "true" : "false"} onClick={() => selectTab("catalog")}>Catalog</button>
           <button type="button" class={`btn btn-sm font-mono ${tab() === "questions" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "questions" ? "true" : "false"} onClick={() => selectTab("questions")}>QR questions</button>
+          <button type="button" class={`btn btn-sm font-mono ${tab() === "booths" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "booths" ? "true" : "false"} onClick={() => selectTab("booths")}>2026 booth achievements</button>
           <button type="button" class={`btn btn-sm font-mono ${tab() === "printed" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "printed" ? "true" : "false"} onClick={() => selectTab("printed")}>Printed codes</button>
             <button type="button" class={`btn btn-sm font-mono ${tab() === "schedule" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "schedule" ? "true" : "false"} onClick={() => selectTab("schedule")}>Score schedules</button>
             <button type="button" class={`btn btn-sm font-mono ${tab() === "sessions" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "sessions" ? "true" : "false"} onClick={() => selectTab("sessions")}>Session Missions</button>
@@ -567,7 +569,10 @@ export default function AdminGamificationHub() {
          <AdminEasterEggMissions operations={operations} onChanged={refetch} />
        </Show>
        <Show when={tab() === "questions"}>
-         <AdminMissionQuestions operations={operations} onChanged={refetch} />
+          <AdminMissionQuestions operations={operations} onChanged={refetch} />
+       </Show>
+       <Show when={tab() === "booths"}>
+         <AdminBoothAchievements operations={operations} onChanged={refetch} />
        </Show>
        <Show when={tab() === "printed"}>
          <AdminPrintedMissionCodes operations={operations} onChanged={refetch} />

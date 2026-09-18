@@ -83,7 +83,7 @@ export default function AdminMissionQuestions(props: Props) {
     <div class="rounded-xl border border-primary-400/20 bg-primary-500/10 p-5 text-sm leading-relaxed">
       <h2 class="text-xl font-bold text-white">QR points or questions</h2>
       <p class="mt-2">In Catalog, create a QR Activity with a Mission, scoring policy and completion outcome. Leave questions unattached for immediate points, or configure them here while the Activity is a draft.</p>
-      <p class="mt-2">After activation, question rules are locked. Create a successor Activity to change a live challenge. Answers are checked on the server; no partial points and no duplicate rewards. Free-text responses are not retained for survey exports.</p>
+      <p class="mt-2">After activation, question rules are locked. Create a successor Activity to change a live challenge. Answers are checked on the server; rewards follow the selected rule and cannot be upgraded by rescanning. Free-text responses are not retained for survey exports.</p>
     </div>
     <AdminFormField id="mission-question-activity" label="QR Activity">
       <select id="mission-question-activity" class={adminSelectClass()} value={activityId()} disabled={busy() || held()} onChange={event => void load(event.currentTarget.value)}>
@@ -100,8 +100,10 @@ export default function AdminMissionQuestions(props: Props) {
             <AdminFormField id="mission-question-policy" label="Award rule">
               <select id="mission-question-policy" class={adminSelectClass()} value={policy()} onChange={event => setPolicy(event.currentTarget.value as QuestionnaireDefinition["policy"])}>
                 <option value="all_correct">All answers must be correct</option><option value="all_answered">Answer every question (participation)</option>
+                <option value="correct_or_half">All correct: full XP; any wrong: half XP</option>
               </select>
             </AdminFormField>
+            <Show when={policy() === "correct_or_half"}><p class="text-sm">Every valid, fully answered submission completes the Mission. All correct earns full configured total and leaderboard XP; any wrong answer earns exactly half, before caps (odd values can award .5 XP). Missing or malformed answers award nothing. The first completion cannot be upgraded by retrying.</p></Show>
           </AdminFormSection>
           <For each={ids()}>{id => {
             const question = () => questions().find(item => item.id === id)!;
@@ -109,7 +111,7 @@ export default function AdminMissionQuestions(props: Props) {
               <AdminFormField id={`prompt-${id}`} label="Question" required><textarea id={`prompt-${id}`} class={adminTextareaClass()} required maxlength="500" value={question().prompt} onInput={event => updateQuestion(id, { prompt: event.currentTarget.value })} /></AdminFormField>
               <AdminFormField id={`kind-${id}`} label="Answer type"><select id={`kind-${id}`} class={adminSelectClass()} value={question().kind} onChange={event => updateQuestion(id, { kind: event.currentTarget.value as QuestionDraft["kind"], accepted: "" })}><option value="text">Text answer</option><option value="single_choice">Choose one option</option></select></AdminFormField>
               <Show when={question().kind === "single_choice"}><AdminFormField id={`choices-${id}`} label="Choice labels" hint="One per line, 2–8 choices. Their option numbers start at 1." required><textarea id={`choices-${id}`} class={adminTextareaClass()} required value={question().choices} onInput={event => updateQuestion(id, { choices: event.currentTarget.value })} /></AdminFormField></Show>
-              <Show when={policy() === "all_correct"}><AdminFormField id={`accepted-${id}`} label={question().kind === "text" ? "Accepted text answers" : "Correct option numbers"} hint={question().kind === "text" ? "One accepted answer per line, up to 8. Matching ignores outer whitespace and letter case." : "One option number per line. Example: 2 accepts the second choice."} required><textarea id={`accepted-${id}`} class={adminTextareaClass()} required value={question().accepted} onInput={event => updateQuestion(id, { accepted: event.currentTarget.value })} /></AdminFormField></Show>
+              <Show when={policy() !== "all_answered"}><AdminFormField id={`accepted-${id}`} label={question().kind === "text" ? "Accepted text answers" : "Correct option numbers"} hint={question().kind === "text" ? "One accepted answer per line, up to 8. Matching ignores outer whitespace and letter case." : "One option number per line. Example: 2 accepts the second choice."} required><textarea id={`accepted-${id}`} class={adminTextareaClass()} required value={question().accepted} onInput={event => updateQuestion(id, { accepted: event.currentTarget.value })} /></AdminFormField></Show>
               <button type="button" class="btn btn-sm btn-outline min-h-12" disabled={questions().length <= 1} onClick={() => setQuestions(current => current.filter(item => item.id !== id))}>Remove question</button>
             </section>;
           }}</For>

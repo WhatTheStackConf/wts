@@ -326,7 +326,7 @@ export class MissionCodeRedemptionService {
         const code = await this.store.getById<GamificationCodeRecord>(GAMIFICATION_COLLECTIONS.codes, attempt.code);
         const activity = await this.store.getById<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, attempt.activity);
         const redemptionInput = { user: input.user, rawCode: undefined, requestFingerprint: input.requestFingerprint, sourceHint: "qr" };
-        if (attempt.status === "passed") return this.redeemMatchedCode(code, redemptionInput, currentTime);
+        if (attempt.status === "passed" || attempt.status === "passed_half") return this.redeemMatchedCode(code, redemptionInput, currentTime);
         if (attempt.status !== "pending") return this.questionResult(attempt.status);
         if (!await this.rateLimiter.consume(this.rateKeys(input.user.id, input.requestFingerprint), GENERAL_RATE_LIMIT, RATE_LIMIT_WINDOW_MS, timestamp(currentTime))) return publicResult("rate_limited");
         if (Date.parse(attempt.expires_at) <= timestamp(currentTime)) return publicResult("expired");
@@ -337,9 +337,9 @@ export class MissionCodeRedemptionService {
         const outcome = evaluateMissionAnswers(parseQuestionnaire(definition.definition), answers);
         await this.store.update<MissionQuestionAttemptRecord>(QUESTION_COLLECTIONS.attempts, attempt.id, {
           status: outcome, operation_id: input.operationId, answer_hash: hash,
-          ...(outcome === "passed" ? { passed_at: currentTime } : {}),
+          ...(outcome === "passed" || outcome === "passed_half" ? { passed_at: currentTime } : {}),
         });
-        if (outcome !== "passed") return this.questionResult(outcome);
+        if (outcome !== "passed" && outcome !== "passed_half") return this.questionResult(outcome);
         return this.redeemMatchedCode(code, redemptionInput, this.clock());
       });
     } catch (error) {
@@ -353,19 +353,22 @@ export class MissionCodeRedemptionService {
     return { status: `questions_${status}`, title: status === "incorrect" ? "Answers not yet correct" : "Check your answers", message: status === "incorrect" ? "No points awarded. Start a new attempt to try again." : "Answer every question using the offered fields. No points awarded; start a new attempt." };
   }
 
-  private async questionGate(code: GamificationCodeRecord, activity: GamificationActivityRecord, userId: string, currentTime: string): Promise<MissionCodeRedemptionResult | undefined> {
+  private async questionGate(code: GamificationCodeRecord, activity: GamificationActivityRecord, userId: string, currentTime: string): Promise<{ approved?: MissionQuestionAttemptRecord; challenge?: MissionCodeRedemptionResult }> {
     const definition = await this.store.findOne<MissionQuestionnaireRecord>(QUESTION_COLLECTIONS.definitions, { activity: activity.id });
-    if (!definition) return undefined;
-    const [approved] = await this.store.list<MissionQuestionAttemptRecord>(QUESTION_COLLECTIONS.attempts, { code: code.id, user: userId, questionnaire: definition.id, version: definition.version, status: "passed" }, { sort: "-expires_at", limit: 1 });
-    if (approved && Date.parse(approved.expires_at) > timestamp(currentTime)) return undefined;
+    if (!definition) return {};
     const parsed = parseQuestionnaire(definition.definition);
+    const finalOutcome = parsed.policy === "correct_or_half";
+    // The TTL limits answer submission, not recovery of a final half/full result.
+    // Other policies retain their existing fresh-challenge retry semantics.
+    const [approved] = await this.store.list<MissionQuestionAttemptRecord>(QUESTION_COLLECTIONS.attempts, { code: code.id, user: userId, questionnaire: definition.id, version: definition.version, status: ["passed", "passed_half"] }, { sort: finalOutcome ? "passed_at,id" : "-expires_at,id", limit: 1 });
+    if (approved && (finalOutcome || Date.parse(approved.expires_at) > timestamp(currentTime))) return { approved };
     const expires = Math.min(timestamp(currentTime) + 15 * 60_000, ...[code.ends_at, activity.active_until].filter(Boolean).map(value => Date.parse(value!)).filter(Number.isFinite));
     const [pending] = await this.store.list<MissionQuestionAttemptRecord>(QUESTION_COLLECTIONS.attempts, { code: code.id, user: userId, questionnaire: definition.id, version: definition.version, status: "pending" }, { sort: "-expires_at", limit: 1 });
     const attempt = pending && Date.parse(pending.expires_at) > timestamp(currentTime) ? pending : await this.store.create<MissionQuestionAttemptRecord>(QUESTION_COLLECTIONS.attempts, {
       challenge_id: randomUUID(), user: userId, code: code.id, activity: activity.id,
       questionnaire: definition.id, version: definition.version, expires_at: new Date(expires).toISOString(), opened_at: currentTime, status: "pending",
     });
-    return { status: "questions_required", title: "Complete the Mission questions", message: parsed.policy === "all_correct" ? "All answers must be correct to qualify. No partial points." : "Answer every question to qualify. No partial points.", questionnaire: { challengeId: attempt.challenge_id, expiresAt: attempt.expires_at, policy: parsed.policy, questions: publicQuestions(parsed) } };
+    return { challenge: { status: "questions_required", title: "Complete the Mission questions", message: parsed.policy === "correct_or_half" ? "Answer every question to complete the Mission. All correct earns full configured XP; any wrong answer earns half total and leaderboard XP, subject to caps. Your first completion is final; rescanning cannot improve it." : parsed.policy === "all_correct" ? "All answers must be correct to qualify. No partial points." : "Answer every question to qualify. No partial points.", questionnaire: { challengeId: attempt.challenge_id, expiresAt: attempt.expires_at, policy: parsed.policy, questions: publicQuestions(parsed) } } };
   }
 
   private async redeemNow(input: RedeemMissionCodeInput): Promise<MissionCodeRedemptionResult> {
@@ -431,9 +434,9 @@ export class MissionCodeRedemptionService {
     }
 
     const questions = await this.questionGate(code, activity, input.user.id, currentTime);
-    if (questions) return questions;
+    if (questions.challenge) return questions.challenge;
 
-    const accepted = await this.createAcceptedRedemption(code, activity, input, currentTime);
+    const accepted = await this.createAcceptedRedemption(code, activity, input, currentTime, questions.approved);
     if (!accepted.created) {
       const award = await this.completeAcceptedRedemption(accepted.redemption, code, activity, input.user, currentTime);
       return this.successResult("already_redeemed", activity, award);
@@ -525,6 +528,7 @@ export class MissionCodeRedemptionService {
     activity: GamificationActivityRecord,
     input: RedeemMissionCodeInput,
     currentTime: string,
+    approved?: MissionQuestionAttemptRecord,
   ): Promise<{ redemption: GamificationCodeRedemptionRecord; created: boolean }> {
     const idempotencyKey = acceptedRedemptionIdempotencyKey(input.user.id, code.id);
     try {
@@ -539,7 +543,7 @@ export class MissionCodeRedemptionService {
         request_fingerprint: input.requestFingerprint,
         lookup_prefix: code.lookup_prefix,
         hash_version: code.hash_version,
-        metadata: { evidence_role: code.evidence_role },
+        metadata: { evidence_role: code.evidence_role, ...(approved ? { question_attempt: approved.id } : {}) },
       });
       return { redemption, created: true };
     } catch (error) {
@@ -595,7 +599,7 @@ export class MissionCodeRedemptionService {
           source: "mission_code",
         },
       },
-      resolveAchievement: (claim, claimedActivity) => this.eligibleNonMetaAchievement(user.id, claim, claimedActivity, currentTime),
+      resolveAchievement: (claim, claimedActivity) => this.eligibleNonMetaAchievement(user.id, claim, claimedActivity),
     });
     if (!redemption.activity_claim) {
       await this.store.update<GamificationCodeRedemptionRecord>(GAMIFICATION_COLLECTIONS.codeRedemptions, redemption.id, {
@@ -610,7 +614,6 @@ export class MissionCodeRedemptionService {
     userId: string,
     claim: GamificationActivityClaimRecord,
     activity: GamificationActivityRecord,
-    currentTime: string,
   ): Promise<string | undefined> {
     if (!activity.achievement) return undefined;
     const achievement = await this.store.getById<GamificationAchievementRecord>(
@@ -620,8 +623,10 @@ export class MissionCodeRedemptionService {
     if (
       achievement.category === "meta" ||
       achievement.status !== "active" ||
-      isBefore(currentTime, achievement.active_from) ||
-      isAfter(currentTime, achievement.active_until)
+      // Recovery time must not disqualify an originally eligible completion.
+      // Current retirement and explicit revocation remain authoritative.
+      isBefore(claim.occurred_at, achievement.active_from) ||
+      isAfter(claim.occurred_at, achievement.active_until)
     ) {
       return undefined;
     }
@@ -691,7 +696,9 @@ export class MissionCodeRedemptionService {
       status,
       title: status === "accepted" ? "Mission recorded" : "Mission already recorded",
       message: status === "accepted"
-        ? "Your Mission completion has been recorded."
+        ? award.claim.cap_outcome?.question_outcome === "passed_half"
+          ? "Mission complete. One or more answers were incorrect, so half of the configured total and leaderboard XP applies, subject to caps. This award is final; rescanning cannot upgrade it."
+          : "Your Mission completion has been recorded."
         : "This Mission completion was already recorded for you.",
       mission,
       badges: badges.length ? badges.map((badge) => ({

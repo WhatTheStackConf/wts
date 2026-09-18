@@ -21,7 +21,7 @@ export interface MissionQuestionAttemptRecord {
   version: string;
   expires_at: string;
   opened_at: string;
-  status: "pending" | "passed" | "incorrect" | "incomplete" | "malformed";
+  status: "pending" | "passed" | "passed_half" | "incorrect" | "incomplete" | "malformed";
   operation_id: string;
   answer_hash: string;
   passed_at: string;

@@ -29,6 +29,7 @@ Before activating a **qr** Activity, open **QR questions**:
 2. Choose the award rule:
    - **All answers must be correct:** every question must match an accepted answer.
    - **Answer every question (participation):** every required answer must be present and any selected choice must be one of the offered options.
+   - **All correct: full XP; any wrong: half XP** (`correct_or_half`): every valid, fully answered submission completes the Mission and qualifies for its Badge. All answers correct earns the full configured total and leaderboard XP; any wrong answer earns exactly half of each configured amount, before existing caps. Odd configured values can award `.5` XP. Missing, blank, unknown-choice or malformed answers earn nothing. Accepted answers are required for every question.
 3. Add 1–10 questions. Each can be a text answer or single-choice question with 2–8 options.
 4. For text questions requiring correctness, enter one accepted answer per line. Matching ignores outer whitespace and letter case, with Unicode normalization; there is no AI or fuzzy judging.
 5. For single-choice questions, enter one option label per line and the accepted option numbers, starting at 1.
@@ -44,7 +45,8 @@ Question prompts are bounded to 500 characters and submitted text to 1000 charac
 - Open the QR with the phone's normal camera, or use `/missions/redeem` for manual entry.
 - The official link uses `/missions/redeem#code=…`, keeping the bearer value out of normal HTTP request URLs. Pending codes remain only in that tab's short-lived session storage.
 - Question scans create a private challenge, not an accepted redemption or XP event. Challenges last at most 15 minutes and remain constrained by code and Activity windows.
-- Wrong or incomplete answers award no points. **Try questions again** starts a fresh attempt using the still-pending code. After the pending code expires, scan again.
+- Under **All answers must be correct**, wrong answers award no points. Incomplete or malformed answers award nothing under every policy. **Try questions again** starts a fresh attempt using the still-pending code. After the pending code expires, scan again.
+- Under **correct_or_half**, a valid wrong answer completes the Mission at half credit, not as a retryable failure. The award is final: a repeat scan or correct-after-wrong submission cannot upgrade it. Both full- and half-credit completion retain one immutable server-evaluated outcome, with no browser-supplied score or multiplier. The accepted redemption binds the exact private attempt; the claim freezes the scaled, capped amounts. Interrupted accounting repairs retain that outcome and those amounts, including after restart or challenge expiry.
 - A lost answer response holds the exact command and answers for retry; do not edit it into a different command. A repeat can repair interrupted accounting but cannot award twice.
 - A different QR scanned while a request or question workflow is pending is explicitly rejected, without replacing the current code. Finish the current Mission, then scan the other QR again.
 - Code invalidation, Activity/Mission retirement, expiry and participant limits are rechecked on completion. Another User cannot submit a challenge or earn its points under a stale tab's identity.
@@ -80,6 +82,7 @@ Apply the additive migrations only through an authorized release:
 
 - `1786000012_create_gamification_questions.js`: private questionnaire/attempt collections and generic QR Activity kind.
 - `1786000013_harden_gamification_unique_keys.js`: actual unique indexes for distributed locks, catalogue keys and accounting idempotency identities. Legacy TextField `unique: true` declarations did not create these database constraints.
+- `1786000014_question_half_credit.js`: additive `passed_half` terminal attempt status. No historical awards or private definitions are rewritten. Deploy with the matching application and question hook; rollback must retain existing half-credit evidence.
 
 Both the application and `gamification_questions.pb.js` hook are required. The hook prevents live question changes, enforces challenge binding and retained evidence, and refuses an accepted question redemption without approved evidence.
 

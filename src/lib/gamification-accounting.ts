@@ -1568,6 +1568,18 @@ export class GamificationAccountingService {
     });
   }
 
+  /** Resolve only retained server evidence; never trust claim metadata or a submitted multiplier. */
+  private async questionAwardEvidence(input: ActivityClaimInput): Promise<{ question_attempt: string; question_outcome: "passed" | "passed_half" } | undefined> {
+    if (input.sourceType !== "code_redemption" || input.sourceCollection !== GAMIFICATION_COLLECTIONS.codeRedemptions || !input.sourceRecordId) return undefined;
+    const redemption = await this.store.getById<{ user: string; activity: string; code: string; status: string; metadata?: Record<string, unknown> }>(GAMIFICATION_COLLECTIONS.codeRedemptions, input.sourceRecordId);
+    const attemptId = redemption.metadata?.question_attempt;
+    if (!attemptId) return undefined; // Direct codes and pre-migration full-credit history.
+    if (typeof attemptId !== "string" || redemption.status !== "accepted" || redemption.user !== input.user || redemption.activity !== input.activity) throw new Error("Question award evidence binding mismatch.");
+    const attempt = await this.store.getById<{ user: string; activity: string; code: string; status: string }>("gamification_question_attempts", attemptId);
+    if (attempt.user !== input.user || attempt.activity !== input.activity || attempt.code !== redemption.code || (attempt.status !== "passed" && attempt.status !== "passed_half")) throw new Error("Question award requires immutable approved evidence.");
+    return { question_attempt: attemptId, question_outcome: attempt.status };
+  }
+
   private async directScoreForActivity(input: ActivityClaimInput): Promise<DirectActivityXpInput & {
     capOutcome: Record<string, unknown>;
   }> {
@@ -1603,8 +1615,11 @@ export class GamificationAccountingService {
     ]);
     const claimById = new Map(claims.map((claim) => [claim.id, claim]));
     const policyByActivity = new Map(policies.map((candidate) => [candidate.activity, candidate]));
-    let amount = Math.max(0, policy.total_xp);
-    let leaderboardAmount = Math.max(0, policy.leaderboard_xp);
+    const questionEvidence = await this.questionAwardEvidence(input);
+    const credit = questionEvidence?.question_outcome === "passed_half" ? 0.5 : 1;
+    // Scale configured awards before applying remaining caps. Preserve exact halves (including .5 XP).
+    let amount = Math.max(0, policy.total_xp) * credit;
+    let leaderboardAmount = Math.max(0, policy.leaderboard_xp) * credit;
     const appliedCaps: Array<{ key: string; totalXpRemaining: number; leaderboardXpRemaining: number }> = [];
     for (const cap of caps) {
       if (!cap.member_policy_keys.includes(policy.policy_key)) continue;
@@ -1632,6 +1647,7 @@ export class GamificationAccountingService {
       capOutcome: {
         schedule: schedule.id,
         policy: policy.policy_key,
+        ...questionEvidence,
         awarded_total_xp: amount,
         awarded_leaderboard_xp: leaderboardAmount,
         applied_caps: appliedCaps,
