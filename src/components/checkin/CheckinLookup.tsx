@@ -55,13 +55,17 @@ export function CheckinLookup(props: CheckinLookupProps) {
   let authorityEpoch = 0;
   let destroyed = false;
   let sending = false;
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
   const [previousOffsets, setPreviousOffsets] = createSignal<number[]>([]);
   let scope = "";
   let verifyingSeen = false;
   let feedback: HTMLElement | undefined;
   const bindingKey = () => props.bindingScope || (props.context ? JSON.stringify([props.context.bindingId, props.context.bindingVersion, props.context.stationId]) : "");
   const verified = () => !props.verifying && !accessDenied() && !!bindingKey() && scope === bindingKey();
-  const authorized = () => active() && props.visible !== false && verified() && !!props.context && props.ready && !props.disabled;
+  // Browsing is a read: a transient printer heartbeat must not erase the
+  // roster or cancel a name/email query. Physical readiness gates printing only.
+  const authorized = () => active() && props.visible !== false && verified() && !!props.context && !props.disabled;
+  const canPrint = () => authorized() && props.ready;
   const canReplay = () => active() && verified() && (props.verifying === false && !!props.bindingScope || !!props.context && props.ready && !props.disabled && !!command() && sameLookupContext(command()!.context, props.context));
   createEffect(() => JSON.stringify([bindingKey(), props.verifying]), () => { authorityEpoch++; });
   const currentAuthority = (generation: number, authority: string) => !destroyed && generation === authorityEpoch && !props.verifying && !accessDenied() && authority === bindingKey();
@@ -76,7 +80,7 @@ export function CheckinLookup(props: CheckinLookupProps) {
     setError(failure instanceof CheckinLookupRequestError ? failure.message : "Lookup unavailable. Retry the same request.");
   }
   // Invalidation precedes resource initialization; edits do not issue searches.
-  createEffect(() => JSON.stringify([bindingKey(), props.context, props.ready, props.disabled, props.verifying]), () => {
+  createEffect(() => JSON.stringify([bindingKey(), props.context, props.disabled, props.verifying]), () => {
     redact();
     if (props.verifying || scope && scope !== bindingKey()) setRecovery(undefined);
     if (props.verifying) verifyingSeen = true;
@@ -102,16 +106,17 @@ export function CheckinLookup(props: CheckinLookupProps) {
   });
   onCleanup(() => {
     destroyed = true; epoch++;
+    if (searchTimer) clearTimeout(searchTimer);
     // No signal/parent writes during Solid 2 disposal.
     const authority = bindingKey();
     if (!command() && !held() && !storageBlocked()) queueMicrotask(() => { if (authority === bindingKey()) props.onBusy?.(false); });
   });
   createEffect(() => props.openRequest, request => { if (request) open(); });
-  createEffect(() => JSON.stringify([props.manual, props.visible, props.context, props.ready, props.disabled, props.verifying, bindingKey(), accessDenied(), command(), held()]), () => {
+  createEffect(() => JSON.stringify([props.manual, props.visible, props.context, props.disabled, props.verifying, bindingKey(), accessDenied(), command(), held()]), () => {
     // Wait for the invalidation effect's transactional clears to commit before
     // inspecting submitted intent. Recheck live authority after the microtask.
     queueMicrotask(() => {
-      if (destroyed || !props.manual || props.visible === false || !props.context || !props.ready || props.disabled || props.verifying || accessDenied() || storageBlocked() || command() || held()) return;
+      if (destroyed || !props.manual || props.visible === false || !props.context || props.disabled || props.verifying || accessDenied() || storageBlocked() || command() || held()) return;
       scope = bindingKey(); setActive(true);
       if (!submitted()) setSubmitted({ context: structuredClone(props.context), query: "", offset: 0 });
     });
@@ -122,7 +127,7 @@ export function CheckinLookup(props: CheckinLookupProps) {
     props.onClose?.();
   }
   function open() {
-    if (!props.context || !props.ready || props.disabled || props.verifying || accessDenied() || storageBlocked() || held()) return;
+    if (!props.context || props.disabled || props.verifying || accessDenied() || storageBlocked() || held()) return;
     scope = bindingKey(); setActive(true); if (!props.manual) props.onBusy?.(true);
   }
   function edit(value: string) {
@@ -130,6 +135,11 @@ export function CheckinLookup(props: CheckinLookupProps) {
     if (props.manual) { setQuery(value); setError(""); return; }
     redact(); setQuery(value); setError("");
   }
+  createEffect(() => JSON.stringify([props.manual, query(), authorized(), results.loading, !!command(), !!held(), submitted()?.query]), () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    if (!props.manual || !authorized() || results.loading || command() || held() || query().trim() === submitted()?.query) return;
+    searchTimer = setTimeout(() => { if (!destroyed) search(0, query()); }, 350);
+  });
   function search(offset = 0, text = query(), history: number[] = []) {
     const context = props.context;
     if (!authorized() || !context || command() || held() || results.loading || !props.manual && text.trim().length < 2) return;
@@ -142,7 +152,7 @@ export function CheckinLookup(props: CheckinLookupProps) {
     setSelected(item); setError(""); focusFeedback();
   }
   async function send(frozen: CheckinLookupConfirmInput, initial = false) {
-    if (sending || pending() || !(initial ? authorized() : canReplay())) return;
+    if (sending || pending() || !(initial ? canPrint() : canReplay())) return;
     try { persistLookupHold(frozen.operationId, frozen.priorOperationId); }
     catch { setError("Could not retain operation reference. Confirmation was not sent; restore browser storage and retry."); return; }
     const generation = epoch;
@@ -233,8 +243,8 @@ export function CheckinLookup(props: CheckinLookupProps) {
   }
   return <section aria-label="Find attendee" class="min-w-0 rounded-lg border border-base-content/20 bg-base-200 p-4 space-y-4 break-words">
     <h2 class="text-xl font-bold">{props.manual ? "Attendee list" : "Find attendee without a QR"}</h2>
-    <Show when={!active() && !props.manual}><button type="button" class="btn btn-outline min-h-12" disabled={!props.context || !props.ready || props.disabled || props.verifying || accessDenied() || storageBlocked()} onClick={open}>Open attendee lookup</button></Show>
-    <Show when={props.manual && !active()}><p role="status">Verify the selected printer, event and readiness to load the attendee list.</p></Show>
+    <Show when={!active() && !props.manual}><button type="button" class="btn btn-outline min-h-12" disabled={!props.context || props.disabled || props.verifying || accessDenied() || storageBlocked()} onClick={open}>Open attendee lookup</button></Show>
+    <Show when={props.manual && !active()}><p role="status">Loading the selected event's attendee list…</p></Show>
     <Show when={active()}>
       <Show when={!props.manual}><button type="button" class="btn btn-outline min-h-12" disabled={!!command() || !!held() || pending() || storageBlocked()} onClick={exit}>{props.onClose ? "Back to scanner" : "Exit lookup and clear details"}</button></Show>
       <Show when={held()}>{reference => <p>Held lookup operation: <span class="break-all">{reference()}</span>. New intake is blocked until reconciled.</p>}</Show>
@@ -265,14 +275,22 @@ export function CheckinLookup(props: CheckinLookupProps) {
         <Show when={!results.loading && results()}>{result => <div class="space-y-3">
           <Show when={!props.manual} fallback={<p role="status">Showing {result().items.length ? (submitted()?.offset ?? 0) + 1 : 0}–{(submitted()?.offset ?? 0) + result().items.length}<Show when={result().totalCount !== undefined}> of {result().totalCount}</Show> attendees</p>}><p>Select the exact ticketed attendee. No match is selected automatically.</p></Show>
           <Show when={!result().items.length}><p role="status">No matching attendees in the active admission list.</p></Show>
-          <ul class="space-y-3"><For each={result().items}>{item => <li class="min-w-0 border border-base-content/20 rounded p-3 space-y-2">
+          <Show when={props.manual}><div class="overflow-x-auto"><table class="table w-full" aria-label="Main-day attendees">
+            <thead><tr><th>Attendee</th><th>Status</th><th>Print</th></tr></thead>
+            <tbody><For each={result().items}>{item => <tr>
+              <td class="min-w-0"><strong class="break-words">{item.name}</strong><br/><span class="text-xs break-all">{item.email}</span></td>
+              <td>{item.status === "CANCELLED" ? "Cancelled" : item.status === "AWAITING_PAYMENT" ? "Awaiting payment" : item.checkedIn ? "Checked in" : "Not checked in"}</td>
+              <td><button type="button" class="btn btn-primary min-h-12" disabled={!canPrint() || results.loading || pending() || !!command() || query().trim() !== submitted()?.query || item.status === "CANCELLED" || item.status === "AWAITING_PAYMENT"} onClick={() => confirm(item)}>{item.checkedIn ? "Reprint" : "Check in & print"}<span class="sr-only"> {item.name}</span></button></td>
+            </tr>}</For></tbody>
+          </table></div></Show>
+          <Show when={!props.manual}><ul class="space-y-3"><For each={result().items}>{item => <li class="min-w-0 border border-base-content/20 rounded p-3 space-y-2">
             <p class="font-bold break-all">{item.name}</p><p class="break-all">{item.email}</p><Show when={!props.manual}><p>Ticket {item.publicId}</p></Show>
             <Show when={props.manual} fallback={<button type="button" class="btn btn-outline min-h-12" disabled={results.loading} onClick={() => select(item)}>Select {item.name}</button>}>
               <Show when={item.status && item.status !== "ACTIVE"}><p>{item.status === "CANCELLED" ? "Cancelled ticket" : "Awaiting payment"}</p></Show>
               <Show when={item.checkedIn}><p>Already checked in</p></Show>
               <button type="button" class="btn btn-primary min-h-12" disabled={results.loading || pending() || !!command() || item.status === "CANCELLED" || item.status === "AWAITING_PAYMENT"} onClick={() => confirm(item)}>{item.checkedIn ? "Reprint" : "Check in & print"}<span class="sr-only"> {item.name}</span></button>
             </Show>
-          </li>}</For></ul>
+          </li>}</For></ul></Show>
           <nav aria-label="Attendee pages" class="flex flex-wrap gap-2">
             <Show when={props.manual && previousOffsets().length}><button type="button" class="btn btn-outline min-h-12" disabled={results.loading} onClick={() => search(previousOffsets().at(-1) ?? 0, submitted()?.query ?? "", previousOffsets().slice(0, -1))}>Previous results</button></Show>
             <Show when={result().nextOffset !== null}><button type="button" class="btn btn-outline min-h-12" disabled={results.loading} onClick={() => search(result().nextOffset ?? 0, submitted()?.query ?? query(), [...previousOffsets(), submitted()?.offset ?? 0])}>Next results</button></Show>
@@ -284,7 +302,7 @@ export function CheckinLookup(props: CheckinLookupProps) {
           <h3 class="font-bold">Confirm selected attendee</h3><p class="break-all">{person().name}</p><p class="break-all">{person().email}</p>
           <p>Event: {props.eventTitle} · Station: {props.stationLabel}</p><p>Ticket {person().publicId}</p>
           <p>Only confirmation submits this attendee to the existing check-in workflow.</p>
-          <Show when={!command()}><button type="button" class="btn btn-warning min-h-12" disabled={pending()} onClick={() => confirm()}>Confirm check-in</button></Show>
+          <Show when={!command()}><button type="button" class="btn btn-warning min-h-12" disabled={pending() || !canPrint()} onClick={() => confirm()}>Confirm check-in</button></Show>
         </div>}</Show>
         <Show when={pending() || results.loading}><p role="status">Request in progress…</p></Show>
         <Show when={error()}><p role="alert">{error()}</p></Show>
