@@ -481,7 +481,7 @@ export const loadPublicAgenda = async (signal?: AbortSignal): Promise<PublicAgen
     }),
     admin.fetchAllRecords("speakers", {
       filter: "published = true",
-      fields: "id,slug,display_name,photo,appearance_events,published,is_mc",
+      fields: "id,slug,display_name,photo,appearance_events,published,is_mc,is_dj",
       ...requestOptions,
       sort: "slug,id",
     }),
