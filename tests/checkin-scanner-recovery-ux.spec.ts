@@ -110,7 +110,12 @@ test("failed preflight stays visibly held across status and readiness polls", as
     await expect(phone.getByRole("button", { name: "Retry check", exact: true })).not.toBeVisible();
     expect(await phone.evaluate(() => Object.entries(localStorage).filter(([key]) => key.startsWith("wts:camera-held:")))).toEqual(observation.initial.held);
     expect(counts.preflight).toBe(1); expect(counts.writes).toBe(0);
-  } finally { await setup.cleanup(); }
+  } finally {
+    // Drain delayed route.fetch/fulfill handlers while their APIResponse and
+    // backing fixture still exist; context teardown otherwise disposes them.
+    await phone.unrouteAll({ behavior: "wait" });
+    await setup.cleanup();
+  }
 });
 
 test("Tools URL variants keep operational headers and exclude marketing scripts", async ({ page }) => {

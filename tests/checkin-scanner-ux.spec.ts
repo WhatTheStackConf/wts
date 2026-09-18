@@ -136,5 +136,8 @@ test("scanner-first phone flow: no document scroll, capture feedback, stable ref
     await phone.route("**/api/checkin", async route => route.request().postDataJSON()?.operation === "status" ? route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "Synthetic denial" }) }) : route.continue());
     await expect(phone.getByText("Јана Scanner UX", { exact: true })).toHaveCount(0);
     expect(await phone.evaluate(() => !!localStorage.getItem(Object.keys(localStorage).find(k => k.startsWith("wts:camera-held:"))!))).toBe(true);
-  } finally { await setup.cleanup(); }
+  } finally {
+    await phone.unrouteAll({ behavior: "wait" });
+    await setup.cleanup();
+  }
 });
