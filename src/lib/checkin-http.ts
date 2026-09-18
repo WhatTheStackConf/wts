@@ -28,6 +28,8 @@ const adminCommand = z.discriminatedUnion("operation", [
 ]);
 const command = z.discriminatedUnion("operation", [
   z.strictObject({ operation: z.literal("status") }),
+  z.strictObject({ operation: z.literal("printers") }),
+  z.strictObject({ operation: z.literal("select_printer"), confirmation, expectedActorId: z.string().regex(/^[a-z0-9]{15}$/).optional() }),
   z.strictObject({ operation: z.literal("preview"), code: opaqueToken }),
   z.strictObject({ operation: z.literal("bind"), code: opaqueToken, confirmation }),
   z.strictObject({ operation: z.literal("admin_list"), bindingPage: z.number().int().positive().max(10000).optional(), auditPage: z.number().int().positive().max(10000).optional() }),
@@ -93,6 +95,11 @@ export async function handleCheckinRequest(request: Request, deps: CheckinHttpDe
   if ((parsed.operation === "admin_list" || parsed.operation === "admin_control") && actor.role !== "admin") {
     return response({ error: "Check-in administration requires an admin." }, 403);
   }
+  // Cookies are shared across tabs; the old operator's intent must not be sent
+  // as a newly signed-in human. This is only a rejection fence, never authority.
+  if (parsed.operation === "select_printer" && parsed.expectedActorId && parsed.expectedActorId !== actor.id) {
+    return response({ error: "Operator changed. Refresh before choosing a printer." }, 403);
+  }
   const cookies = (request.headers.get("cookie") ?? "").split(";").map((part) => part.trim()).filter((part) => part.startsWith(`${CLIENT_COOKIE}=`));
   const clientToken = cookies[0]?.slice(CLIENT_COOKIE.length + 1);
   if (cookies.length > 1 || (clientToken !== undefined && !opaqueToken.safeParse(clientToken).success)) {
@@ -112,15 +119,16 @@ export async function handleCheckinRequest(request: Request, deps: CheckinHttpDe
       return response({ ...result, provisionUrl, qrDataUrl: await deps.provisioningQr(provisionUrl) });
     }
     if (parsed.operation === "status") return response(await service.status(clientToken));
-    if (parsed.operation === "preview") {
-      const preview = await service.preview(parsed.code, clientToken);
+    if (parsed.operation === "preview" || parsed.operation === "printers") {
+      const preview = parsed.operation === "printers" ? await service.printers(clientToken) : await service.preview(parsed.code, clientToken);
       // The browser serializes previews across tabs until the response arrives.
       // Establish identity before confirmation; never replace an existing cookie.
       const secure = process.env.NODE_ENV === "production" || new URL(request.url).protocol === "https:" || request.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https";
       const cookie = clientToken ? undefined : `${CLIENT_COOKIE}=${randomBytes(32).toString("hex")}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict${secure ? "; Secure" : ""}`;
       return response(preview, 200, cookie);
     }
-    if (!clientToken) return response({ error: "Review the station on this browser before confirming." }, 400);
+    if (!clientToken) return response({ error: "Load the printer list on this browser before choosing a printer." }, 400);
+    if (parsed.operation === "select_printer") return response((await service.selectPrinter(clientToken, parsed.confirmation)).status);
     const result = await service.bind(parsed.code, clientToken, parsed.confirmation);
     return response(result.status);
   } catch (error) {

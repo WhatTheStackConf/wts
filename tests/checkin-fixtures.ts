@@ -99,8 +99,17 @@ export async function openToolsDisclosure(page: Page, name: string) {
 
 export async function phoneProvisioning(page: Page) {
   await toolsView(page, "Phone");
-  await openToolsDisclosure(page, "Enter station code instead");
-  await expect(page.getByLabel("Station provisioning code", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Printer", { exact: true })).toBeVisible();
+}
+
+/** Exercise immediate printer selection and wait for authoritative reconciliation. */
+export async function selectPrinter(page: Page, stationId: string) {
+  const printer = page.getByLabel("Printer", { exact: true });
+  await expect(printer).toBeEnabled();
+  await printer.selectOption(stationId);
+  await expect(printer).toHaveValue(stationId);
+  await expect(printer).toBeEnabled();
+  await expect.poll(async () => (await status(page)).binding?.stationId).toBe(stationId);
 }
 
 export async function status(page: Page) {

@@ -83,10 +83,31 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
       for (const key in values) event.set(key, values[key]);
       app.save(event);
     }
-    if (operation === "preview" || operation === "bind") {
-      if (typeof body.codeHash !== "string" || !/^[a-f0-9]{64}$/.test(body.codeHash)) fail("invalid_code");
-      const station = find(app, "checkin_stations", "provision_code_hash = {:hash}", { hash: body.codeHash });
-      if (!station) fail("invalid_code");
+    if (operation === "printers") {
+      if (body.identityHash && !/^[a-f0-9]{64}$/.test(body.identityHash)) fail("invalid_binding");
+      const current = body.identityHash ? find(app, "checkin_bindings", "identity_hash = {:hash}", { hash: body.identityHash }) : null;
+      if (current && current.getBool("revoked")) fail("revoked_binding", 403);
+      const stations = app.findRecordsByFilter("checkin_stations", "edition = 'WTS2026'", "id", 3, 0);
+      result = { printers: stations.map((station) => ({
+        system: systemDTO(system), station: stationDTO(app, station, system),
+        confirmation: { stationId: station.id, stationVersion: station.getInt("version"), systemGeneration: system.getInt("generation"), bindingVersion: current ? current.getInt("version") : 0 },
+        canBind: system.getBool("enabled") && station.getBool("enabled"),
+      })) };
+      return;
+    }
+    if (operation === "preview" || operation === "bind" || operation === "select_printer") {
+      const selecting = operation === "select_printer";
+      let station;
+      if (selecting) {
+        const selection = body.confirmation;
+        if (!selection || !["wts2026station1", "wts2026station2", "wts2026station3"].includes(selection.stationId)) fail("invalid_input");
+        station = find(app, "checkin_stations", "id = {:id} && edition = 'WTS2026'", { id: selection.stationId });
+        if (!station) fail("invalid_input");
+      } else {
+        if (typeof body.codeHash !== "string" || !/^[a-f0-9]{64}$/.test(body.codeHash)) fail("invalid_code");
+        station = find(app, "checkin_stations", "provision_code_hash = {:hash}", { hash: body.codeHash });
+        if (!station) fail("invalid_code");
+      }
       const canBind = system.getBool("enabled") && station.getBool("enabled");
       if (operation === "preview") {
         if (body.identityHash && !/^[a-f0-9]{64}$/.test(body.identityHash)) fail("invalid_binding");
@@ -105,15 +126,27 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
       if (!Number.isInteger(confirmation.bindingVersion) || confirmation.bindingVersion < 0 || (confirmation.bindingVersion !== bindingVersion && !replay)) fail("conflict", 409);
       const before = binding ? snapshot(binding, "checkin_bindings") : null;
       const changed = !binding || binding.getString("station") !== station.id;
+      // Preserve only a still-current event choice on a printer dropdown change.
+      // Frozen submissions keep their original routing; new intake gets fresh
+      // binding and selection fences. QR re-pairing retains its legacy behavior.
+      const selectedEvent = selecting && changed && binding && binding.getInt("selected_binding_version") === bindingVersion
+        ? find(app, "checkin_events", "id = {:id} && edition = 'WTS2026'", { id: binding.getString("selected_event") }) : null;
+      const preserveEvent = selectedEvent && selectedEvent.getBool("member") && selectedEvent.getBool("enabled")
+        && selectedEvent.getString("list_id") && selectedEvent.getInt("generation") === binding.getInt("selected_event_generation");
       if (!binding) {
         binding = new Record(app.findCollectionByNameOrId("checkin_bindings"));
         binding.set("identity_hash", body.identityHash);
         binding.set("version", 1);
         binding.set("revoked", false);
       } else if (changed) binding.set("version", binding.getInt("version") + 1);
+      if (preserveEvent) {
+        binding.set("selected_binding_version", binding.getInt("version"));
+        binding.set("selection_version", binding.getInt("selection_version") + 1);
+      }
       binding.set("station", station.id);
       binding.set("last_seen_at", now.toISOString());
       app.save(binding);
+      // A dropdown selection is still an audited browser-routing change.
       if (changed) audit("bind", station.id, binding.id, before, snapshot(binding, "checkin_bindings"), null, "");
       result = statusDTO(app, system, binding, "bound");
       return;

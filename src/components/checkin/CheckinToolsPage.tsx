@@ -3,14 +3,11 @@ import { Meta, Title } from "@solidjs/meta";
 import { useAuth } from "~/lib/auth-context";
 import { useRequireCheckinOperator } from "~/lib/route-guards";
 import { createCheckinPollingResource } from "./checkin-polling-resource";
-import { listenForProvisioningFragment } from "./provisioning-fragment";
-import { bindCheckinStation, checkinStatus, previewCheckinStation } from "~/lib/checkin-client";
+import { CheckinPrinterSelector } from "./CheckinPrinterSelector";
+import { checkinStatus } from "~/lib/checkin-client";
 import { agentStatus } from "~/lib/checkin-agent-client";
-import type { CheckinPreviewDTO } from "~/lib/checkin-contract";
-import { provisioningCameraCode } from "~/lib/checkin-camera";
 import { cameraHeldReference } from "~/lib/checkin-camera-recovery";
 import { readLookupHold } from "~/lib/checkin-lookup-held";
-import { CheckinCameraScanner } from "~/components/checkin/checkin-camera-scanner";
 import { CheckinOperatorRecovery } from "~/components/checkin/CheckinRecovery";
 import { CheckinEventSelector } from "~/components/checkin/CheckinEventSelector";
 import { AgentReadiness, createAgentReadinessResource } from "~/components/checkin/AgentReadiness";
@@ -60,11 +57,11 @@ export default function CheckinToolsPage() {
   const readiness = () => {
     if (unavailable()) return statusFailed() || status.error ? "Connection lost · verify station" : "Checking station…";
     if (current()?.bindingState === "revoked") return "Phone revoked · ask an admin";
-    if (!scope()) return "Pair this phone to a station";
+    if (!scope()) return "Choose a printer";
     if (!current()?.system.enabled) return "System stopped";
     if (!current()?.station?.enabled) return "Station disabled";
     if (!agent()) return "Checking printer connection";
-    if (agent()?.readyForAuthorization) return "Connected";
+    if (agent()?.readyForAuthorization) return "Printer ready";
     if (agent()?.journal === "quarantined") return "Station needs review";
     if (agent()?.credentialState === "expired") return "Station session expired";
     if (agent()?.profile !== "approved") return "Label profile needs approval";
@@ -90,31 +87,15 @@ export default function CheckinToolsPage() {
   const [eventLabel, setEventLabel] = createSignal("Choose an event");
   const [recoveryBusy, setRecoveryBusy] = createSignal(false);
   const [eventBusy, setEventBusy] = createSignal(false);
-  const [pairBusy, setPairBusy] = createSignal(false);
+  const [printerBusy, setPrinterBusy] = createSignal(false);
   const [loggingOut, setLoggingOut] = createSignal(false);
-  const busy = () => (!!scope() && (recoveryBusy() || eventBusy())) || pairBusy() || loggingOut();
-  const [code, setCode] = createSignal("");
-  const [preview, setPreview] = createSignal<{ code: string; value: CheckinPreviewDTO }>();
+  const busy = () => (!!scope() && (recoveryBusy() || eventBusy())) || printerBusy() || loggingOut();
   const [message, setMessage] = createSignal("");
-  let disposed = false, setupEpoch = 0, setupDraftVersion = 0, setupInFlight = false, statusInFlight = false;
-  let confirmationPanel: HTMLDivElement | undefined;
-  function stageCode(value: string) { setupDraftVersion++; setupEpoch++; setCode(value); setPreview(undefined); }
-  onCleanup(() => { disposed = true; setupEpoch++; });
-  createEffect(preview, chosen => {
-    if (!chosen || typeof window === "undefined") return;
-    const frame = window.requestAnimationFrame(() => {
-      if (disposed || preview() !== chosen || !confirmationPanel?.isConnected) return;
-      confirmationPanel.focus({ preventScroll: true });
-      confirmationPanel.scrollIntoView({ block: "center" });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  });
-  createEffect(() => `${actorKey()}:${scope()}:${current()?.station?.version}:${current()?.system.generation}:${unavailable()}`, () => {
-    setupEpoch++; setPreview(undefined);
-  });
+  let disposed = false, statusInFlight = false;
+  onCleanup(() => { disposed = true; });
   let previousActor = actorKey();
   createEffect(actorKey, actor => {
-    if (previousActor !== undefined && actor !== previousActor) { stageCode(""); setMessage(""); setEventBusy(false); }
+    if (previousActor !== undefined && actor !== previousActor) { setMessage(""); setEventBusy(false); }
     previousActor = actor;
   });
   async function refreshStatus(force = false) {
@@ -124,49 +105,14 @@ export default function CheckinToolsPage() {
     finally { statusInFlight = false; if (!disposed) refreshHeldNotice(); }
   }
   onSettled(() => {
-    const stopProvisioning = listenForProvisioningFragment(value => {
-      stageCode(value ?? "");
-      // Keep held recovery/arrival panels visible and mounted. The staged code
-      // is available in Phone after the operator resolves that work.
-      if (!recoveryBusy() && !eventBusy() && !loggingOut()) setView("phone");
-      setMessage(!value ? "Invalid provisioning link. Scan the current station QR again." : recoveryBusy() || eventBusy() ? "Finish the current work, then open Phone to review the new station." : "");
-    });
     const refresh = () => { if (!document.hidden) void refreshStatus(); };
     const leave = (event: BeforeUnloadEvent) => { if (busy()) { event.preventDefault(); event.returnValue = ""; } };
     const timer = window.setInterval(refresh, 5000);
     window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);
     window.addEventListener("beforeunload", leave);
-    return () => { stopProvisioning(); window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); window.removeEventListener("beforeunload", leave); };
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); window.removeEventListener("beforeunload", leave); };
   });
   function changeView(next: View) { if (!busy()) { refreshHeldNotice(); setView(next); } }
-  async function review(value: string) {
-    if (busy() || setupInFlight || unavailable() || !actorKey()) return;
-    if (refreshHeldNotice()) return;
-    if (!/^[a-f0-9]{64}$/.test(value)) { setMessage("Use the 64-character station provisioning code."); return; }
-    const epoch = ++setupEpoch, actor = actorKey();
-    setupInFlight = true; setPairBusy(true); setPreview(undefined); setMessage("");
-    const live = () => !disposed && epoch === setupEpoch && actor === actorKey();
-    try { const result = await previewCheckinStation(value); if (live()) setPreview({ code: value, value: result }); }
-    catch { if (live()) setMessage("Couldn't read that station. Check the code and try again."); }
-    finally { setupInFlight = false; if (!disposed) setPairBusy(false); }
-  }
-  async function confirm() {
-    const chosen = preview();
-    if (!chosen || chosen.code !== code() || !chosen.value.canBind || busy() || setupInFlight || unavailable() || !actorKey()) return;
-    if (refreshHeldNotice()) return;
-    const epoch = setupEpoch, draft = setupDraftVersion, actor = actorKey();
-    const live = () => !disposed && epoch === setupEpoch && actor === actorKey();
-    setupInFlight = true; setPairBusy(true); setMessage("");
-    try {
-      await bindCheckinStation(chosen.code, chosen.value.confirmation);
-      if (!disposed && draft === setupDraftVersion && actor === actorKey()) { setPreview(undefined); setCode(""); }
-    } catch {
-      if (live()) { setPreview(undefined); setMessage("Binding not confirmed. Refresh station status, then review the station again."); }
-    } finally {
-      if (!disposed && actor === actorKey()) await refreshStatus(true);
-      setupInFlight = false; if (!disposed) setPairBusy(false);
-    }
-  }
   async function logout() {
     if (busy()) return;
     setLoggingOut(true);
@@ -176,37 +122,25 @@ export default function CheckinToolsPage() {
   return <div class="wts-tools-screen">
     <Title>Tools | WTS Check-in</Title><Meta name="robots" content="noindex,nofollow" /><Meta name="referrer" content="no-referrer" />
     <header class="wts-tools-header"><h1>Tools</h1><a role="link" href={busy() ? undefined : "/checkin"} target="_self" class="btn btn-ghost" aria-disabled={busy() ? "true" : "false"} tabindex={busy() ? -1 : 0} onClick={event => { if (busy()) event.preventDefault(); }}>Back to scanner</a></header>
-    <div class="wts-tools-context"><strong>{!unavailable() ? current()?.station?.label || "No station paired" : "Station unverified"}</strong><span>{!unavailable() && scope() ? eventLabel() : "Event unverified"}</span></div>
+    <div class="wts-tools-context"><strong>{!unavailable() ? current()?.station?.label || "No printer selected" : "Station unverified"}</strong><span>{!unavailable() && scope() ? eventLabel() : "Event unverified"}</span></div>
     <div class="wts-tools-status" role="status"><span>{readiness()}</span><Show when={unavailable()}><button type="button" class="btn btn-ghost" disabled={status.loading} onClick={() => void refreshStatus()}>Refresh station status</button></Show><Show when={!unavailable() && scope() && !agent()?.readyForAuthorization}><button type="button" class="btn btn-ghost" disabled={busy()} onClick={() => changeView("diagnostics")}>Details</button></Show></div>
     <nav class="wts-tools-views" aria-label="Tools views"><For each={views}>{item => <button type="button" aria-label={item.label} aria-pressed={view() === item.id ? "true" : "false"} aria-controls={`tools-${item.id}`} disabled={busy() || (item.id === "arrivals" && !scope())} onClick={() => changeView(item.id)}><Show when={item.id === "recent"} fallback={item.label}>Work</Show></button>}</For></nav>
     <main class="wts-tools-main">
       <Show when={!guard.authorized()}><p role="status">Checking sign-in…</p></Show>
-      <Show when={message()}><p class="wts-tools-notice" role="alert">{message()}</p><button type="button" class="btn btn-ghost" disabled={pairBusy()} onClick={() => setMessage("")}>Dismiss message</button></Show>
+      <Show when={message()}><p class="wts-tools-notice" role="alert">{message()}</p><button type="button" class="btn btn-ghost" disabled={printerBusy()} onClick={() => setMessage("")}>Dismiss message</button></Show>
       <Show when={recoveryBusy()}><p role="status" class="wts-tools-notice">Finish or retry the current recovery before leaving this view.</p></Show>
       <section id="tools-recent" hidden={view() !== "recent"} aria-label="Recent work">
         <Show when={!unavailable() && heldNotice()}><div class="wts-tools-held"><p>Review or finish your previous scan.</p><button type="button" class="btn btn-outline" disabled={busy()} onClick={() => changeView("arrivals")}>Review held scan</button></div></Show>
-        <Show when={!scope()}><h2>Recent work</h2><p>Pair this phone to view station work.</p><button type="button" class="btn btn-outline" disabled={busy()} onClick={() => changeView("phone")}>Set up phone</button></Show>
+        <Show when={!scope()}><h2>Recent work</h2><p>Choose a printer to view its work.</p><button type="button" class="btn btn-outline" disabled={busy()} onClick={() => changeView("phone")}>Choose printer</button></Show>
         <CheckinOperatorRecovery compact scopeKey={scope()} unavailable={unavailable()} onBusyChange={value => { setRecoveryBusy(value); }} />
       </section>
       <div hidden={view() !== "phone" && view() !== "arrivals"}>
-        <For each={actorKey() ? [actorKey()!] : []}>{actor => <CheckinEventSelector compact view={view() === "phone" ? "phone" : "arrivals"} status={current()} authorityKey={actor} verifying={unavailable()} disabled={recoveryBusy() || pairBusy() || loggingOut()} arrivalsActive={view() === "arrivals"} onEventLabelChange={value => { if (actor === actorKey()) setEventLabel(value); }} onBusyChange={value => { if (actor === actorKey()) setEventBusy(value); }} />}</For>
+        <For each={actorKey() ? [actorKey()!] : []}>{actor => <CheckinEventSelector compact view={view() === "phone" ? "phone" : "arrivals"} status={current()} authorityKey={actor} verifying={unavailable()} disabled={recoveryBusy() || printerBusy() || loggingOut()} arrivalsActive={view() === "arrivals"} onEventLabelChange={value => { if (actor === actorKey()) setEventLabel(value); }} onBusyChange={value => { if (actor === actorKey()) setEventBusy(value); }} />}</For>
       </div>
-      <section id="tools-phone" hidden={view() !== "phone"} aria-label="Pair this phone" class="wts-tools-pair">
-        <h2>Pair this phone</h2><p>Scan a station QR, not an attendee ticket. Review the station before confirming.</p>
-        <Show when={!unavailable() && heldNotice()}><p role="status">Finish or recover the held work before changing stations.</p><button type="button" class="btn btn-outline" disabled={busy()} onClick={() => changeView("arrivals")}>Review held scan</button></Show>
-        <Show when={current()?.bindingState === "revoked"}><p role="alert">This browser binding was revoked. Ask an admin for help; logging in again does not restore it.</p></Show>
-        <CheckinCameraScanner compact purpose="station" enabled={view() === "phone" && !busy() && !unavailable() && !heldNotice() && current()?.bindingState !== "revoked"} held={!!preview() || pairBusy()} scope={!unavailable() ? `${actorKey()}:${scope() ?? "unbound"}` : undefined} onDecode={value => {
-          const provision = provisioningCameraCode(value, window.location.origin);
-          if (!provision) { setMessage("Not a station provisioning QR for this site. Attendee QRs cannot bind a phone."); return false; }
-          stageCode(provision); void review(provision);
-        }} />
-        <details open={!!code()}><summary>Enter station code instead</summary><form onSubmit={event => { event.preventDefault(); void review(code()); }}>
-          <label for="station-code">Station provisioning code<span aria-hidden="true"> *</span></label>
-          <p id="station-code-help">64 characters: 0–9 and a–f, from the current station QR.</p>
-          <input id="station-code" name="code" aria-label="Station provisioning code" class="input input-bordered" value={code()} disabled={busy() || unavailable() || heldNotice()} onInput={event => stageCode(event.currentTarget.value)} required pattern="[a-f0-9]{64}" maxlength={64} autocomplete="off" spellcheck={false} aria-describedby="station-code-help" />
-          <button type="submit" class="btn btn-primary" disabled={busy() || unavailable() || heldNotice()}>Review station</button>
-        </form></details>
-        <Show when={preview()}>{chosen => <div ref={element => { confirmationPanel = element; }} role="region" tabindex="-1" class="wts-tools-confirm" aria-label="Confirm station"><h3>{chosen().value.station.label}</h3><p>{chosen().value.station.location || "Location not configured"} · Printer: {chosen().value.station.printerRef || "Not configured"}</p><p>Confirming replaces this phone's binding. Existing work stays at its original station.</p><button type="button" class="btn btn-primary" disabled={busy() || unavailable() || heldNotice() || !chosen().value.canBind} onClick={() => void confirm()}>Confirm station binding</button><button type="button" class="btn btn-ghost" disabled={busy()} onClick={() => stageCode("")}>Cancel</button></div>}</Show>
+      <section id="tools-phone" hidden={view() !== "phone"} aria-label="Printer selection" class="wts-tools-pair">
+        <h2>Printer</h2>
+        <CheckinPrinterSelector actorKey={actorKey()} status={!unavailable() ? current() : undefined} disabled={recoveryBusy() || eventBusy() || loggingOut()} onBusyChange={value => { setPrinterBusy(value); }} refreshStatus={() => statusActions.refetch()} />
+        <Show when={!unavailable() && heldNotice()}><button type="button" class="btn btn-outline" disabled={busy()} onClick={() => changeView("arrivals")}>Review held scan</button></Show>
       </section>
       <section id="tools-diagnostics" hidden={view() !== "diagnostics"} aria-label="Diagnostics">
         <h2>Diagnostics</h2><p>Connection alone does not verify printer or media readiness.</p>

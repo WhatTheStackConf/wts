@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Page } from "@playwright/test";
-import { test, expect, login, status, phoneProvisioning, toolsView, openToolsDisclosure, sessionCookieHeader } from "./checkin-fixtures";
+import { test, expect, login, status, phoneProvisioning, selectPrinter, toolsView, openToolsDisclosure, sessionCookieHeader } from "./checkin-fixtures";
 import type { CheckinAdminDTO } from "~/lib/checkin-contract";
 import type { CheckinLabelCatalogue } from "~/lib/checkin-label-client";
 import type { CheckinLabelProfileResult } from "~/lib/checkin-label-profile-contract";
@@ -122,17 +122,10 @@ test("actual agent issuance and revocation remain audited, secret-free in reads,
   const machineAsHuman = await page.request.post(endpoint, { headers: { Origin: state.baseURL, Authorization: `Bearer ${credential}`, Cookie: "" }, data: { operation: "admin_list" } });
   expect(machineAsHuman.status()).toBe(403);
 
-  // Bind operator through the actual provisioning form; QR is never machine auth.
-  const stations = await command<CheckinAdminDTO>(page, "/api/checkin", { operation: "admin_list" });
-  const target = stations.stations.find((station) => station.id === fixture.stationId)!;
-  const qr = await command<{ provisionCode: string }>(page, "/api/checkin", { operation: "admin_control", command: {
-    operation: "rotate_provision_code", operationId: crypto.randomUUID(), expectedVersion: target.version, stationId: target.id, reason: "configuration", note: "Synthetic browser binding only",
-  } });
+  // Human printer selection is separate from machine authentication.
   await operator.goto("/checkin-tools");
   await phoneProvisioning(operator);
-  await operator.getByLabel("Station provisioning code", { exact: true }).fill(qr.provisionCode);
-  await operator.getByRole("button", { name: "Review station", exact: true }).click();
-  await operator.getByRole("button", { name: "Confirm station binding", exact: true }).click();
+  await selectPrinter(operator, fixture.stationId);
   await toolsView(operator, "Diagnostics");
   await openToolsDisclosure(operator, "Agent details");
   const readiness = operator.getByRole("region", { name: "Diagnostics", exact: true });

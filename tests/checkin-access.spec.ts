@@ -2,7 +2,7 @@ import { test, expect, login, status, phoneProvisioning, sessionCookieHeader } f
 
 test("unauthenticated and ordinary users cannot operate Check-in or administer stations", async ({ page, state, db }) => {
   const before = await db.collection("admin_actions").getList(1, 1);
-  for (const operation of ["status", "admin_list"]) {
+  for (const operation of ["status", "printers", "admin_list"]) {
     const response = await page.request.post("/api/checkin", {
       headers: { Origin: state.baseURL }, data: { operation },
     });
@@ -12,7 +12,7 @@ test("unauthenticated and ordinary users cannot operate Check-in or administer s
   await expect(page).toHaveURL(/\/login/);
   await login(page, state.users.ordinary);
   await page.goto("/checkin-tools");
-  await expect(page.getByLabel("Station provisioning code")).toHaveCount(0);
+  await expect(page.getByLabel("Printer", { exact: true })).toHaveCount(0);
   await expect(page).not.toHaveURL(/\/checkin$/);
   const denied = await page.request.post("/api/checkin", {
     headers: { Origin: state.baseURL, Cookie: await sessionCookieHeader(page) }, data: { operation: "status" },
@@ -27,8 +27,8 @@ test("operator real login exposes the truthful unbound shell", async ({ page, st
   await login(page, state.users.operator);
   await page.goto("/checkin-tools");
   await phoneProvisioning(page);
-  await expect(page.getByLabel("Station provisioning code")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Review station", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Printer", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Printer", { exact: true })).toHaveValue("");
   expect((await status(page)).operationsEnabled).toBe(false);
   await expect(page.getByRole("button", { name: "Arrivals", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Validate arrival", exact: true })).not.toBeVisible();
@@ -40,36 +40,40 @@ test("checkin document excludes telemetry and lost status fails closed with retr
   const response = await page.goto("/checkin-tools");
   expect(response?.headers()["content-security-policy"]).toContain("connect-src 'self'");
   expect(await response!.text()).not.toMatch(/umami\.foundry\.mk|connect\.facebook\.net|facebook\.com\/tr/);
-  await expect(page.getByText("Pair this phone to a station", { exact: true })).toBeVisible();
+  await expect(page.getByText("No printer selected", { exact: true })).toBeVisible();
   await phoneProvisioning(page);
-  await page.getByLabel("Station provisioning code").click();
+  await expect(page.getByLabel("Printer", { exact: true })).toBeEnabled();
   expect(await page.locator("script").evaluateAll((scripts) => scripts.map((s) => s.getAttribute("src") + s.textContent).join("\n"))).not.toMatch(/umami\.foundry\.mk|connect\.facebook\.net/);
   await page.route("**/api/checkin", async (route) => {
     if (route.request().postDataJSON()?.operation === "status") return route.abort("failed");
     await route.fallback();
   });
   await expect(page.getByText("Connection lost · verify station", { exact: true })).toBeVisible({ timeout: 12_000 });
-  await expect(page.getByText("Pair this phone to a station", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("No printer selected", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Printer", { exact: true })).toBeDisabled();
   await page.unroute("**/api/checkin");
   await page.getByRole("button", { name: "Refresh station status", exact: true }).click();
-  await expect(page.getByText("Pair this phone to a station", { exact: true })).toBeVisible();
+  await expect(page.getByText("No printer selected", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Printer", { exact: true })).toBeEnabled();
   expect((await status(page)).operationsEnabled).toBe(false);
   await expect(page.getByRole("button", { name: "Arrivals", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Validate arrival", exact: true })).not.toBeVisible();
 });
 
-test("provisioning fails closed when cross-tab locking is unavailable", async ({ page, state }) => {
-  await login(page, state.users.operator); await page.goto("/checkin-tools");
-  await phoneProvisioning(page);
-  await expect(page.getByLabel("Station provisioning code")).toBeVisible();
-  await page.evaluate(() => Object.defineProperty(navigator, "locks", { value: undefined, configurable: true }));
-  let previews = 0;
+test("printer selection fails closed when cross-tab locking is unavailable", async ({ page, state }) => {
+  await login(page, state.users.operator);
+  await page.addInitScript(() => Object.defineProperty(navigator, "locks", { value: undefined, configurable: true }));
+  let printerRequests = 0;
   page.on("request", (request) => {
-    if (request.url().endsWith("/api/checkin") && request.postDataJSON()?.operation === "preview") previews++;
+    if (request.url().endsWith("/api/checkin") && ["printers", "select_printer"].includes(request.postDataJSON()?.operation)) printerRequests++;
   });
-  await page.getByLabel("Station provisioning code").fill("f".repeat(64));
-  await page.getByRole("button", { name: "Review station", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Couldn't read that station. Check the code and try again.");
-  await expect(page.getByRole("button", { name: "Confirm station binding", exact: true })).toHaveCount(0);
-  expect(previews).toBe(0);
+  await page.goto("/checkin-tools");
+  await phoneProvisioning(page);
+  await expect(page.getByRole("alert")).toHaveText("Couldn't load printers.");
+  await expect(page.getByLabel("Printer", { exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Refresh printers", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Couldn't load printers.");
+  await expect(page.getByLabel("Printer", { exact: true })).toBeDisabled();
+  expect(printerRequests).toBe(0);
+  expect((await status(page)).binding).toBeNull();
 });

@@ -5,6 +5,69 @@ import { CHECKIN_STATION_IDS } from "~/lib/checkin-contract";
 import { startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
 
 describe("durable authenticated Check-in Stations", () => {
+  it("lets an operator select and switch enabled printers without provisioning codes", { timeout: 60_000 }, async () => {
+    const test = await startCheckinPocketBase();
+    try {
+      const admin = new CheckinService(test.pb, (await test.user("admin")).actor);
+      const operator = await test.user("checkin_operator");
+      const phone = new CheckinService(test.pb, operator.actor);
+      const base = () => ({ operationId: crypto.randomUUID(), expectedVersion: 1, reason: "configuration" as const });
+      await admin.adminControl({ ...base(), operation: "set_system_enabled", enabled: true });
+      for (const stationId of CHECKIN_STATION_IDS.slice(0, 2)) await admin.adminControl({ ...base(), operation: "set_station_enabled", stationId, enabled: true });
+      const token = "d".repeat(64);
+      const catalogue = await phone.printers(token);
+      expect(catalogue.printers.map(p => [p.station.id, p.canBind])).toEqual([
+        [CHECKIN_STATION_IDS[0], true], [CHECKIN_STATION_IDS[1], true], [CHECKIN_STATION_IDS[2], false],
+      ]);
+      expect(catalogue.printers.every(p => !p.station.provisionCodeIssued)).toBe(true);
+      expect((await admin.adminList()).bindings.items).toHaveLength(0);
+      const first = await phone.selectPrinter(token, catalogue.printers[0].confirmation);
+      expect(first.status).toMatchObject({ bindingState: "bound", station: { id: CHECKIN_STATION_IDS[0] } });
+      const fresh = await phone.printers(token);
+      const second = await phone.selectPrinter(token, fresh.printers[1].confirmation);
+      expect(second.status.binding).toMatchObject({ id: first.status.binding!.id, stationId: CHECKIN_STATION_IDS[1], version: 2 });
+      expect((await phone.selectPrinter(token, fresh.printers[1].confirmation)).status.binding).toMatchObject({ id: first.status.binding!.id, stationId: CHECKIN_STATION_IDS[1], version: 2 });
+      await expect(phone.selectPrinter(token, catalogue.printers[0].confirmation)).rejects.toMatchObject({ code: "conflict" });
+      await expect(phone.selectPrinter(token, (await phone.printers(token)).printers[2].confirmation)).rejects.toMatchObject({ code: "disabled" });
+      const overview = await admin.adminList();
+      expect(overview.audit.items.filter(e => e.operation === "bind")).toHaveLength(2);
+      expect(JSON.stringify(await phone.printers(token))).not.toMatch(/identity_hash|provision_code_hash|credential/);
+      await test.pb.collection("users").update(operator.record.id, { role: "user" });
+      await expect(phone.printers(token)).rejects.toMatchObject({ code: "forbidden" });
+      await expect(phone.selectPrinter(token, fresh.printers[0].confirmation)).rejects.toMatchObject({ code: "forbidden" });
+    } finally { await test.cleanup(); }
+  });
+  it("fences code-free selections against concurrent tabs, stopped printers, revocation and audit failure", { timeout: 60_000 }, async () => {
+    const test = await startCheckinPocketBase();
+    try {
+      const admin = new CheckinService(test.pb, (await test.user("admin")).actor);
+      const base = () => ({ operationId: crypto.randomUUID(), expectedVersion: 1, reason: "configuration" as const });
+      await admin.adminControl({ ...base(), operation: "set_system_enabled", enabled: true });
+      for (const stationId of CHECKIN_STATION_IDS.slice(0, 2)) await admin.adminControl({ ...base(), operation: "set_station_enabled", stationId, enabled: true });
+      const token = "c".repeat(64);
+      const choices = (await admin.printers(token)).printers;
+      await expect(admin.selectPrinter(null, choices[0].confirmation)).rejects.toMatchObject({ code: "invalid_binding" });
+      const raced = await Promise.allSettled(choices.slice(0, 2).map(p => admin.selectPrinter(token, p.confirmation)));
+      expect(raced.filter(r => r.status === "fulfilled")).toHaveLength(1);
+      expect(raced.find(r => r.status === "rejected")).toMatchObject({ reason: { code: "conflict" } });
+      const before = await admin.status(token);
+      const other = (await admin.printers(token)).printers.find(p => p.station.id !== before.station!.id && p.canBind)!;
+      const schema = await test.pb.collections.getOne("checkin_audit_events");
+      await test.pb.collections.update(schema.id, { fields: schema.fields.map(f => f.name === "actor_name" ? { ...f, max: 1 } : f) });
+      await expect(admin.selectPrinter(token, other.confirmation)).rejects.toMatchObject({ code: "unavailable" });
+      expect((await admin.status(token)).binding).toMatchObject({ stationId: before.station!.id, version: 1 });
+      await test.pb.collections.update(schema.id, { fields: schema.fields });
+      await admin.adminControl({ ...base(), expectedVersion: 2, operation: "set_station_enabled", stationId: other.station.id, enabled: false });
+      await expect(admin.selectPrinter(token, other.confirmation)).rejects.toMatchObject({ code: "disabled" });
+      await admin.adminControl({ ...base(), expectedVersion: 3, operation: "set_station_enabled", stationId: other.station.id, enabled: true });
+      await expect(admin.selectPrinter(token, other.confirmation)).rejects.toMatchObject({ code: "conflict" });
+      const fresh = (await admin.printers(token)).printers.find(p => p.station.id === other.station.id)!;
+      await admin.adminControl({ ...base(), operation: "revoke_binding", bindingId: before.binding!.id });
+      await expect(admin.printers(token)).rejects.toMatchObject({ code: "revoked_binding" });
+      await expect(admin.selectPrinter(token, fresh.confirmation)).rejects.toMatchObject({ code: "revoked_binding" });
+      expect((await admin.adminList()).audit.items.filter(e => e.operation === "bind")).toHaveLength(1);
+    } finally { await test.cleanup(); }
+  });
   it("previews without binding and confirms a durable browser identity", { timeout: 60_000 }, async () => {
     const test = await startCheckinPocketBase();
     try {

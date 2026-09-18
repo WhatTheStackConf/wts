@@ -3,7 +3,7 @@ import type PocketBase from "pocketbase";
 import type {
   CheckinActor, CheckinAdminCommand, CheckinAdminDTO, CheckinAdminResult,
   CheckinBindResult, CheckinConfirmation, CheckinErrorCode, CheckinPreviewDTO,
-  CheckinServiceContract, CheckinStatusDTO,
+  CheckinServiceContract, CheckinStatusDTO, CheckinPrinterCatalogueDTO,
 } from "~/lib/checkin-contract";
 
 const messages: Record<CheckinErrorCode, string> = {
@@ -47,6 +47,14 @@ export class CheckinService implements CheckinServiceContract {
   }
   status(bindingToken?: string | null): Promise<CheckinStatusDTO> {
     return this.request("status", { identityHash: bindingToken ? digest(bindingToken, "binding") : "" });
+  }
+  printers(bindingToken?: string | null): Promise<CheckinPrinterCatalogueDTO> {
+    return this.request("printers", { identityHash: bindingToken ? digest(bindingToken, "binding") : "" });
+  }
+  async selectPrinter(bindingToken: string | null | undefined, confirmation: CheckinConfirmation): Promise<CheckinBindResult> {
+    if (!bindingToken) throw new CheckinError("invalid_binding", 400);
+    const status = await this.request<CheckinStatusDTO>("select_printer", { identityHash: digest(bindingToken, "binding"), confirmation });
+    return { status, bindingToken };
   }
   preview(code: string, bindingToken?: string): Promise<CheckinPreviewDTO> {
     return this.request("preview", { codeHash: digest(code, "provision"), identityHash: bindingToken ? digest(bindingToken, "binding") : "" });
