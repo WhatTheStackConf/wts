@@ -1,0 +1,67 @@
+import { test, expect, login, selectPrinter } from "./checkin-fixtures";
+import { arrivalPrerequisites } from "./checkin-arrival-fixture";
+import { acceptQueuedAdmission, settleQueuedPrint } from "./checkin-print-fixture";
+import { checkinArrivalResultSchema } from "~/lib/checkin-arrival-client";
+
+test("manual roster prints once, then reprints on another printer with no duplicate admission", async ({ page, state, db, actorPage }, info) => {
+  test.setTimeout(120000);
+  await login(page, state.users.admin);
+  const setup = await arrivalPrerequisites(page, db, ["wts2026station1", "wts2026station2"]);
+  const phone = await actorPage(state.users.operator);
+  try {
+    await phone.setViewportSize({ width: 390, height: 844 });
+    await phone.goto("/checkin");
+    await selectPrinter(phone, "wts2026station1");
+    await phone.getByLabel("Event", { exact: true }).selectOption(setup.events[0].id);
+    await phone.getByRole("button", { name: "Use event", exact: true }).click();
+    await phone.getByRole("button", { name: "Manual", exact: true }).click();
+    await expect(phone.getByRole("button", { name: "Check in & print Manual Primary", exact: true })).toBeEnabled();
+    await expect(phone.getByRole("button", { name: "Check in & print Synthetic Cancelled", exact: true })).toBeDisabled();
+    await expect(phone.getByRole("button", { name: "Reprint Manual Existing", exact: true })).toBeEnabled();
+    expect(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await phone.getByLabel("Attendee name or email", { exact: true }).fill("Manual Primary");
+    await phone.getByRole("button", { name: "Search attendees", exact: true }).click();
+    await expect(phone.getByRole("button", { name: "Reprint Manual Existing", exact: true })).toHaveCount(0);
+    const confirmed = phone.waitForResponse(r => r.url().endsWith("/api/checkin-lookup") && r.request().postDataJSON()?.operation === "confirm");
+    await phone.getByRole("button", { name: "Check in & print Manual Primary", exact: true }).click();
+    const first = checkinArrivalResultSchema.parse(await (await confirmed).json());
+    expect(first.state).toBe("reserved");
+    if (!("workflow" in first)) throw new Error("Missing reserved work");
+    await expect(phone.getByRole("button", { name: "Scan", exact: true })).toBeDisabled();
+    await acceptQueuedAdmission(db, first.workflow.id);
+    await expect(phone.getByRole("heading", { name: "Label queued…", exact: true })).toBeVisible();
+    await phone.reload();
+    await expect(phone.getByRole("button", { name: "Manual", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(phone.getByRole("heading", { name: "Label queued…", exact: true })).toBeVisible();
+    const initialPrint = await settleQueuedPrint(db, first.workflow.id, "wts2026station1");
+    await expect(phone.getByRole("heading", { name: "Done", exact: true })).toBeVisible();
+    await phone.getByRole("button", { name: "Back to attendee list", exact: true }).click();
+    await selectPrinter(phone, "wts2026station2");
+    await expect(phone.getByRole("button", { name: "Manual", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const requests: any[] = [];
+    await phone.route("**/api/checkin-lookup", async route => {
+      if (route.request().postDataJSON()?.operation !== "confirm") return route.continue();
+      requests.push(route.request().postDataJSON().input);
+      const response = await route.fetch(); expect(response.status()).toBe(200);
+      if (requests.length === 1) return route.abort("failed");
+      return route.fulfill({ response });
+    });
+    await phone.getByRole("button", { name: "Check in & print Manual Primary", exact: true }).click();
+    await expect(phone.getByRole("button", { name: "Retry same confirmation", exact: true })).toBeEnabled();
+    const repeatedReply = phone.waitForResponse(r => r.url().endsWith("/api/checkin-lookup") && r.request().postDataJSON()?.operation === "confirm" && r.ok());
+    await phone.getByRole("button", { name: "Retry same confirmation", exact: true }).click();
+    const repeated = checkinArrivalResultSchema.parse(await (await repeatedReply).json());
+    expect(repeated).toMatchObject({ state: "accepted", replayed: true, workflow: { id: first.workflow.id, stationId: "wts2026station1", printState: "queued" }, requestedPrint: { stationId: "wts2026station2", purpose: "replacement", state: "queued" } });
+    expect(requests).toHaveLength(2); expect(requests[1]).toEqual(requests[0]);
+    const replacementPrint = await settleQueuedPrint(db, first.workflow.id, "wts2026station2");
+    expect(replacementPrint).not.toBe(initialPrint);
+    await expect(phone.getByRole("heading", { name: "Reprinted", exact: true })).toBeVisible();
+    expect(await db.collection("checkin_arrival_attempts").getFullList({ filter: db.filter("workflow_id = {:id}", { id: first.workflow.id }) })).toHaveLength(1);
+    expect(await db.collection("checkin_print_attempts").getFullList({ filter: db.filter("workflow_id = {:id}", { id: first.workflow.id }) })).toHaveLength(2);
+    await phone.getByRole("button", { name: "Back to attendee list", exact: true }).click();
+    await expect(phone.getByLabel("Attendee name or email", { exact: true })).toBeVisible();
+    await info.attach("manual-registration-mobile", { body: await phone.screenshot(), contentType: "image/png" });
+    await phone.getByRole("button", { name: "Scan", exact: true }).click();
+    await expect(phone.getByRole("button", { name: "Start scanning", exact: true })).toBeEnabled();
+  } finally { await phone.unrouteAll({ behavior: "wait" }); await setup.cleanup(); }
+});

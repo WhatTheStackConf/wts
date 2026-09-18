@@ -65,7 +65,7 @@ async function context(t: Awaited<ReturnType<typeof setup>>, token = t.token): P
   return (await t.catalogue.select(token, { ...current.fence, eventId: t.configuration.configuration.id, eventGeneration: 1 })).context!;
 }
 
-it("reopens the immutable snapshot after mapping changes and dependency loss without upstream reads", { timeout: 60_000 }, async () => {
+it("preserves immutable pending work and blocks fresh print requests after mapping or station changes", { timeout: 60_000 }, async () => {
   const t = await setup(); const runtime = await ready(t); await runtime.coordinator.listen();
   try {
     await runtime.heartbeat();
@@ -82,7 +82,7 @@ it("reopens the immutable snapshot after mapping changes and dependency loss wit
     let reads = 0;
     const unavailable = new CheckinArrivalService(t.pb, t.operator.actor, { sourceKey: events.sourceKey, resolve: async () => { reads++; return { state: "unavailable" }; }, affiliation: async () => { reads++; return { state: "unavailable" }; } });
     const repeated = await unavailable.preflight(t.token, { ...command, operationId: crypto.randomUUID(), context: selected.context! });
-    expect(repeated).toMatchObject({ state: "existing", workflow: first.workflow, operationsEnabled: false });
+    expect(repeated).toMatchObject({ state: "print_blocked", reason: "in_progress", operationsEnabled: false });
     expect(reads).toBe(0);
     // Rebinding the same phone never transfers the original work or exposes it.
     const stationId = "wts2026station2";
@@ -91,7 +91,7 @@ it("reopens the immutable snapshot after mapping changes and dependency loss wit
     await t.control.bind(code, t.token, (await t.control.preview(code, t.token)).confirmation);
     const rebound = await t.catalogue.catalogue(t.token);
     const foreign = await t.catalogue.select(t.token, { ...rebound.fence, eventId: command.context.eventId, eventGeneration: 2 });
-    expect(await unavailable.preflight(t.token, { ...command, operationId: crypto.randomUUID(), context: foreign.context! })).toMatchObject({ state: "already_handled", operationsEnabled: false });
+    expect(await unavailable.preflight(t.token, { ...command, operationId: crypto.randomUUID(), context: foreign.context! })).toMatchObject({ state: "print_blocked", reason: "in_progress", operationsEnabled: false });
     expect(reads).toBe(0);
     await t.restart();
     expect(await t.pb.collection("checkin_arrival_workflows").getOne(first.workflow.id)).toEqual(before);
@@ -415,7 +415,7 @@ it("races independent actors and stations into one immutable not-submitted workf
     const pb2 = new PocketBase(t.baseUrl); pb2.authStore.save(t.pb.authStore.token, t.pb.authStore.record);
     const other = new CheckinArrivalService(pb2, t.admin.actor, t.source);
     const results = await Promise.all([t.service.preflight(t.token, a), other.preflight(otherToken, b)]);
-    expect(results.map((r) => r.state).sort()).toEqual(["already_handled", "reserved"]);
+    expect(results.map((r) => r.state).sort()).toEqual(["print_blocked", "reserved"]);
     const saved = results.find((r) => r.state === "reserved")!;
     if (saved.state !== "reserved") throw new Error("Expected reservation");
     expect(saved.workflow).toMatchObject({ state: "not_submitted", name: "Тест Attendee", affiliation: "Test organisation" });

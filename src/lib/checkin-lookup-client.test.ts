@@ -5,6 +5,18 @@ const input = (): CheckinLookupConfirmInput => ({ operationId: "11111111-1111-41
 const result = () => ({ state: "already_handled", operationId: input().operationId, operationsEnabled: false, replayed: false });
 afterEach(() => vi.unstubAllGlobals());
 describe("lookup browser client", () => {
+ it.each(["", "a", "person@example.test"])("browses and searches privately with query %s, full count and exact-list status", async query => {
+  const payload = { state: "complete", context: input().context, items: Array.from({ length: 20 }, (_, n) => ({ attendeeId: String(1001 + n), publicId: `A-${String(1001 + n).padStart(7, "0")}`, name: "Person", email: "person@example.test", checkedIn: true })), nextOffset: 1020, totalCount: 10000 };
+  const fetcher = vi.fn().mockResolvedValue(Response.json(payload)); vi.stubGlobal("fetch", fetcher);
+  expect(await searchCheckinLookup({ context: input().context, query, offset: 1000 })).toEqual(payload);
+  expect(fetcher.mock.calls[0][0]).toBe("/api/checkin-lookup");
+  expect(fetcher.mock.calls[0][1]).toMatchObject({ method: "POST", cache: "no-store", referrerPolicy: "no-referrer" });
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ operation: "search", input: { context: input().context, query, offset: 1000 } });
+ });
+ it("rejects a roster page that silently omits rows from its declared total", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ state: "complete", context: input().context, items: [], totalCount: 100, nextOffset: 20 })));
+  await expect(searchCheckinLookup({ context: input().context, query: "" })).rejects.toMatchObject({ kind: "invalid", ambiguous: false });
+ });
  it.each([400, 401, 403, 408, 409, 422, 429, 500, 503])("treats confirmation HTTP %s as ambiguous even on the first response", async status => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
   await expect(confirmCheckinLookup(input())).rejects.toMatchObject({ ambiguous: true, status, kind: status === 401 || status === 403 ? "access" : status === 409 ? "context" : "transport" });

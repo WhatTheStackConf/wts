@@ -16,7 +16,7 @@ test("mounted recovery redacts denied commands and late PNGs, reverifies, and re
   phone.on("pageerror", error => errors.push(error.message));
   try {
     await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[0].id);
-    await phone.getByLabel("Attendee QR identity", { exact: true }).fill("A-TEST001");
+    await phone.getByLabel("Attendee QR identity", { exact: true }).fill("A-REC0001");
     const preflightResponse = phone.waitForResponse(response => response.url().endsWith("/api/checkin-arrivals") && response.request().postDataJSON()?.operation === "preflight");
     await phone.getByRole("button", { name: "Validate arrival", exact: true }).click();
     const received = await preflightResponse;

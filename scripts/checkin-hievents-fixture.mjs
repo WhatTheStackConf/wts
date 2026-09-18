@@ -35,10 +35,15 @@ const attendees = [
   { id: 915, public_id: "A-LOOK005", first_name: "Synthetic", last_name: "Lookup affiliation", status: "ACTIVE" },
   { id: 921, public_id: "A-CAM0001", first_name: "Ана", last_name: "O’Neill", status: "ACTIVE" },
   { id: 922, public_id: "A-CAM0002", first_name: "Synthetic", last_name: "Camera missing affiliation", status: "ACTIVE" },
+  { id: 923, public_id: "A-CAM0003", first_name: "Ана", last_name: "O’Neill", status: "ACTIVE" },
   { id: 925, public_id: "A-CAM0005", first_name: "Synthetic", last_name: "Camera delayed affiliation", status: "ACTIVE" },
   { id: 926, public_id: "A-CAM0006", first_name: "Synthetic", last_name: "Camera response loss", status: "ACTIVE" },
   { id: 931, public_id: "A-UXS0001", first_name: "Јана", last_name: "Scanner UX", status: "ACTIVE" },
   { id: 941, public_id: "A-TOOLS01", first_name: "Јана", last_name: "Tools dashboard", status: "ACTIVE" },
+  { id: 951, public_id: "A-MAN0001", first_name: "Manual", last_name: "Primary", status: "ACTIVE" },
+  { id: 952, public_id: "A-MAN0002", first_name: "Manual", last_name: "Existing", status: "ACTIVE" },
+  { id: 961, public_id: "A-REB0001", first_name: "Ана", last_name: "O’Neill", status: "ACTIVE" },
+  { id: 971, public_id: "A-REC0001", first_name: "Ана", last_name: "O’Neill", status: "ACTIVE" },
 ].map((row) => ({ ...row, product_id: 601, product_price_id: 611, order_id: 1001, locale: "en" }));
 function page(path, rows, current) {
   // Keep discovery at two rows for its partial-page test. The separate attendee
@@ -77,7 +82,7 @@ const server = createServer({ key: readFileSync(`${root}/upstream-key.pem`), cer
     arrivalReads++;
     if (mode === "arrival_unavailable") return send(503, { error: "Synthetic arrival outage" });
     const query = url.searchParams.get("query");
-    const rows = attendees.filter((row) => query === null || row.public_id === query).map((row) => row.id === 907 ? { ...row, check_in: { id: 1101, short_id: "synthetic-checkin-capability", check_in_list_id: 701, attendee_id: row.id, order_id: row.order_id, checked_in_at: "2026-09-09T08:00:00Z" } } : row);
+    const rows = attendees.filter((row) => query === null || row.public_id === query).map((row) => [907, 952].includes(row.id) ? { ...row, check_in: { id: 1101, short_id: "synthetic-checkin-capability", check_in_list_id: 701, attendee_id: row.id, order_id: row.order_id, checked_in_at: "2026-09-09T08:00:00Z" } } : row);
     const path = `${origin}${url.pathname}`;
     // Pinned Hi.Events list attendees use Laravel simplePaginate, not totals.
     return send(200, { data: rows, links: { first: `${path}?page=1`, last: null, prev: null, next: null }, meta: { path, current_page: 1, per_page: 25, from: rows.length ? 1 : null, to: rows.length || null } });
@@ -92,7 +97,7 @@ const server = createServer({ key: readFileSync(`${root}/upstream-key.pem`), cer
     if (url.searchParams.has("query")) return send(400, { error: "Private queries must never reach upstream URLs" });
     return send(200, page(url.pathname, attendees.map(row => ({ ...row, event_id: Number(attendeeList[1]), email: "private-arrival@example.test" })), current));
   }
-  const detail = /^\/api\/events\/(501|502)\/attendees\/(90[1-7]|911|915|921|922|925|926|931|941)$/.exec(url.pathname);
+  const detail = /^\/api\/events\/(501|502)\/attendees\/(90[1-7]|911|915|921|922|923|925|926|931|941|951|952|961|971)$/.exec(url.pathname);
   if (detail) {
     affiliationReads++;
     if (mode === "affiliation_failure") return send(503, { error: "Synthetic answer fetch failure, never missing data" });

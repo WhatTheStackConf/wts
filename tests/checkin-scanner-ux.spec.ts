@@ -2,8 +2,7 @@ import { test, expect, login, selectPrinter } from "./checkin-fixtures";
 import { arrivalPrerequisites } from "./checkin-arrival-fixture";
 import { installSyntheticCamera, showSyntheticQr } from "./checkin-camera-fixture";
 import { checkinArrivalResultSchema } from "~/lib/checkin-arrival-client";
-import { DatabaseSync } from "node:sqlite";
-import { join } from "node:path";
+import { settleQueuedPrint } from "./checkin-print-fixture";
 
 test.use({ channel: "chromium", launchOptions: { args: ["--use-fake-device-for-media-stream"] } });
 declare global { interface Window { __uxBeeps: number; __uxVibrations: number; } }
@@ -104,11 +103,8 @@ test("scanner-first phone flow: no document scroll, capture feedback, stable ref
     await machine("machine_admission_result", { attemptId: job.attemptId, outcome: { state: "newly_checked_in", fingerprint: "f".repeat(64) } });
     await expect(phone.getByText("Label queued…", { exact: true })).toBeVisible();
     const print = await db.collection("checkin_print_attempts").getFirstListItem(db.filter("workflow_id = {:id}", { id: outcome.workflow.id }));
-    // Printer completion is fixture state, not an operator API capability.
-    // The real API correctly forbids fabricating this transition.
-    const fixtureDB = new DatabaseSync(join(state.root, "pb_data", "data.db"));
-    try { fixtureDB.prepare("UPDATE checkin_print_attempts SET state='completed', fulfillment_completed_at=? WHERE id=?").run(new Date().toISOString(), print.id); }
-    finally { fixtureDB.close(); }
+    // Complete the real authorization/start/report flow with simulated output.
+    expect(await settleQueuedPrint(db, outcome.workflow.id, setup.stations[0].stationId)).toBe(print.id);
     await expect(phone.getByRole("heading", { name: "Done", exact: true })).toBeVisible();
     await expect.poll(() => phone.evaluate(() => window.__uxBeeps)).toBe(cues.beeps + 2);
     await expect.poll(() => phone.evaluate(() => window.__uxVibrations)).toBe(cues.vibrations + 1);
@@ -129,9 +125,13 @@ test("scanner-first phone flow: no document scroll, capture feedback, stable ref
     await expect.poll(() => phone.locator("video").first().evaluate((video: HTMLVideoElement) => video.currentTime)).toBeGreaterThan(clearFrom + 1);
     const replay = phone.waitForResponse(r => r.url().endsWith("/api/checkin-arrivals") && r.request().postDataJSON()?.operation === "preflight");
     await showSyntheticQr(phone, "A-UXS0001");
-    expect(await (await replay).json()).toMatchObject({ operationId: outcome.operationId, replayed: true });
-    await expect(phone.getByRole("heading", { name: "Done", exact: true })).toBeVisible();
-    expect((await db.collection("checkin_print_attempts").getList(1, 1)).totalItems).toBe(initialPrints + 1);
+    const repeated=checkinArrivalResultSchema.parse(await (await replay).json());
+    expect(repeated.operationId).not.toBe(outcome.operationId);
+    expect(repeated).toMatchObject({ state:"accepted", replayed:false, requestedPrint:{purpose:"replacement",state:"queued"} });
+    await settleQueuedPrint(db,outcome.workflow.id,setup.stations[0].stationId);
+    await expect(phone.getByRole("heading", { name: "Reprinted", exact: true })).toBeVisible();
+    expect((await db.collection("checkin_print_attempts").getList(1, 1)).totalItems).toBe(initialPrints + 2);
+    expect((await db.collection("checkin_arrival_attempts").getFullList({filter:db.filter("workflow_id = {:id}",{id:outcome.workflow.id})}))).toHaveLength(1);
     await phone.unroute("**/api/checkin");
     await phone.route("**/api/checkin", async route => route.request().postDataJSON()?.operation === "status" ? route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "Synthetic denial" }) }) : route.continue());
     await expect(phone.getByText("Јана Scanner UX", { exact: true })).toHaveCount(0);

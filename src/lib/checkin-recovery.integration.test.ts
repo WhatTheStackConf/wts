@@ -160,6 +160,9 @@ it("HTTP/client paginate over 1000 multibyte legal history rows and continue rep
   seedCopies(f,"checkin_print_attempts",print,1001,i=>({id:pid(i),purpose:"replacement",name:"Ж".repeat(200),affiliation:"界".repeat(200),predecessor_attempt_id:i?pid(i-1):print.id,created:"2020-01-02 00:00:00.000Z"}));
   seedCopies(f,"checkin_agent_attempts",agent,1,()=>({id:"historyagent001",print_attempt_id:pid(1000)}));
   seedCopies(f,"checkin_agent_authorizations",auth,1,()=>({id:"historyauth0001",attempt_id:"historyagent001",authorization_hash:"9".repeat(64)}));
+  // Seed the authoritative projection alongside the synthetic successor chain.
+  const projectionDb=new DatabaseSync(join(f.t.root,"pb_data/data.db"));
+  try {projectionDb.prepare("UPDATE checkin_recovery_workflows SET latest_print_id=? WHERE workflow_id=?").run(pid(1000),f.workflowId);} finally {projectionDb.close();}
   const { handleCheckinRecoveryRequest }=await import("./checkin-recovery-http");
   const { getRecovery, commandRecovery, recoveryAttemptHistory }=await import("./checkin-recovery-client");
   const originalFetch=globalThis.fetch;

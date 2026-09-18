@@ -5,6 +5,21 @@ import type { CheckinArrivalInput } from "~/lib/checkin-arrival-contract";
 const input = (): CheckinArrivalInput => ({ operationId: "11111111-1111-4111-8111-111111111111", qrIdentity: "EXACT_QR_1", affiliationChoice: "fetch", context: { protocolVersion: 1, edition: "WTS2026", eventId: "aaaaaaaaaaaaaaa", eventGeneration: 1, bindingId: "bbbbbbbbbbbbbbb", bindingVersion: 1, selectionVersion: 1, stationId: "wts2026station1", stationGeneration: 1, systemGeneration: 1 } });
 afterEach(() => vi.unstubAllGlobals());
 describe("arrival browser transport", () => {
+  it("validates a replacement destination separately from the immutable admission station", async () => {
+    const command = input();
+    const body = { operationId: command.operationId, replayed: false, operationsEnabled: false, state: "accepted", printIntentId: "ppppppppppppppp",
+      workflow: { id: "wwwwwwwwwwwwwww", stationId: "wts2026station2", eventId: command.context.eventId, eventTitle: "Event", state: "accepted", printState: "queued", name: "Test attendee", affiliation: "", profileId: "fffffffffffffff", createdAt: "2026-09-19T12:00:00Z" },
+      requestedPrint: { id: "ppppppppppppppp", stationId: "wts2026station1", profileId: "ggggggggggggggg", purpose: "replacement", state: "queued" } };
+    const fetcher = vi.fn().mockResolvedValueOnce(Response.json(body)).mockResolvedValueOnce(Response.json({ ...body, requestedPrint: { ...body.requestedPrint, stationId: "wts2026station3" } }));
+    vi.stubGlobal("fetch", fetcher);
+    expect(await preflightCheckinArrival(command)).toEqual(body);
+    await expect(preflightCheckinArrival(command)).rejects.toMatchObject({ ambiguous: true });
+  });
+  it("accepts a blocked reprint without pretending an older print completed this command", async () => {
+    const body = { operationId: input().operationId, replayed: false, operationsEnabled: false, state: "print_blocked", reason: "in_progress" };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(body)));
+    expect(await preflightCheckinArrival(input())).toEqual(body);
+  });
   it("status sends only its UUID and validates the returned identity without treating absence as no-send",async()=>{
     const body={operationId:input().operationId,result:null,operationsEnabled:false};
     const fetcher=vi.fn().mockResolvedValueOnce(Response.json(body)).mockResolvedValueOnce(Response.json({...body,operationId:crypto.randomUUID()}));

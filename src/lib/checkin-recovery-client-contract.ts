@@ -12,11 +12,11 @@ const optionalUpstream = z.union([z.literal(""), upstream]);
 const readState = z.enum(["absent", "existing", "malformed", "unavailable"]);
 const readFields = { id: recoveryId, state: readState, checkinId: optionalUpstream };
 export const recoveryReadSchema = z.strictObject(readFields).refine(v => (v.state === "existing") === !!v.checkinId);
-export const recoveryAttemptSchema = z.strictObject({ id: recoveryId, purpose: z.enum(["initial", "replacement"]), state: z.enum(["queued", "dispatched", "completed", "uncertain", "cancelled"]), name: safeText, affiliation: safeText, predecessorId: z.union([recoveryId, z.literal("")]), observation: z.enum(["printed", "not_printed"]).nullable(), cancellation: z.enum(["pending", "acknowledged"]).nullable() });
+export const recoveryAttemptSchema = z.strictObject({ id: recoveryId, stationId: z.enum(CHECKIN_STATION_IDS).optional(), profileId: recoveryId.optional(), purpose: z.enum(["initial", "replacement"]), state: z.enum(["queued", "dispatched", "completed", "uncertain", "cancelled"]), name: safeText, affiliation: safeText, predecessorId: z.union([recoveryId, z.literal("")]), observation: z.enum(["printed", "not_printed"]).nullable(), cancellation: z.enum(["pending", "acknowledged"]).nullable() });
 export const recoveryAttemptHistorySchema = z.strictObject({ workflowId: recoveryId, items: z.array(recoveryAttemptSchema).max(25), nextOffset: z.number().int().nonnegative().nullable() }).refine(v => new Set(v.items.map(a => a.id)).size === v.items.length && (v.nextOffset === null || v.items.length === 25));
 export type RecoveryAttemptHistory = z.infer<typeof recoveryAttemptHistorySchema>;
 export const recoveryWorkflowSchema = z.strictObject({
-  workflowId: recoveryId, stationId: z.enum(CHECKIN_STATION_IDS), eventId: recoveryId, eventTitle: safeText,
+  workflowId: recoveryId, stationId: z.enum(CHECKIN_STATION_IDS), admissionStationId: z.enum(CHECKIN_STATION_IDS).optional(), printerOperationsAllowed: z.boolean().optional(), eventId: recoveryId, eventTitle: safeText,
   admissionState: z.enum(["not_submitted", "admission_pending", "accepted", "existing_unattributed", "rejected", "admission_uncertain"]),
   admissionReadRetryEligible: z.boolean(),
   version: z.number().int().nonnegative(), name: safeText, affiliation: safeText, decision: state, fulfillment: state,

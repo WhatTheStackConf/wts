@@ -67,7 +67,7 @@ test("manual QR polls actual bounded worker status from reservation through acce
     await expect(result.getByText("Accepted by Hi.Events",{exact:true})).toHaveCount(0);
     await expect(result.getByText("Ана O’Neill",{exact:true})).toHaveCount(0);
     expect((await db.collection("checkin_arrival_commands").getFullList()).filter(c=>c.operation_id===operationId)).toHaveLength(1);
-    expect(await db.collection("checkin_print_attempts").getFullList()).toHaveLength(1);
+    expect(await db.collection("checkin_print_attempts").getFullList({filter:db.filter("workflow_id={:id}",{id:actual.workflow.id})})).toHaveLength(1);
   } finally {await setup.cleanup();}
 });
 const held = (page: Page) => page.getByRole("region", { name: "Held camera arrival", exact: true });
@@ -92,7 +92,7 @@ test("camera synthetic media: real permission, decode, immediate hold, repeated 
     await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[0].id);
     await phone.setViewportSize({ width: 320, height: 740 });
     await start(phone);
-    await showSyntheticQr(phone, "A-CAM0001");
+    await showSyntheticQr(phone, "A-CAM0003");
     await expect(held(phone).getByText("Ана O’Neill", { exact: true })).toBeVisible();
     await expect(held(phone)).toBeFocused();
     await expect(camera(phone).getByText("Camera paused — attendee held", { exact: true })).toBeVisible();
@@ -108,7 +108,7 @@ test("camera synthetic media: real permission, decode, immediate hold, repeated 
     expect(stored).toHaveLength(1);
     expect(stored[0][1]).toBe(inputs[0].operationId);
     expect(JSON.stringify(stored)).not.toMatch(/A-CAM|Ана|O’Neill|qrIdentity/);
-    await showSyntheticQr(phone, "A-CAM0001");
+    await showSyntheticQr(phone, "A-CAM0003");
     await held(phone).getByRole("button", { name: "Park exception and scan unrelated attendee", exact: true }).click();
     await expect(camera(phone).getByText("Camera scanning. Show one QR at a time.", { exact: true })).toBeVisible();
     await expect(phone.getByRole("region", { name: "Last camera result", exact: true })).toContainText("Ана O’Neill");
@@ -116,7 +116,7 @@ test("camera synthetic media: real permission, decode, immediate hold, repeated 
     await expect.poll(() => inputs.length).toBe(2);
     await expect(held(phone).getByText("Arrival reserved", { exact: true })).toBeVisible();
     await held(phone).getByRole("button", { name: "Park exception and scan unrelated attendee", exact: true }).click();
-    await showSyntheticQr(phone, "A-CAM0001");
+    await showSyntheticQr(phone, "A-CAM0003");
     await expect.poll(() => inputs.length).toBe(3);
     expect(inputs[2]).toEqual(inputs[0]);
     await expect(held(phone).getByText("Ана O’Neill", { exact: true })).toBeVisible();

@@ -23,10 +23,18 @@ export interface CheckinArrivalWorkflow {
   profileId: string;
   createdAt: string;
 }
+export interface CheckinRequestedPrint {
+  id: string;
+  stationId: CheckinStationId;
+  profileId: string;
+  purpose: "initial" | "replacement";
+  state: "queued" | "dispatched" | "completed" | "uncertain" | "cancelled";
+}
 export type CheckinArrivalDecision =
-  | { state: "reserved" | "existing"; workflow: CheckinArrivalWorkflow }
-  | { state: "accepted"; workflow: CheckinArrivalWorkflow; printIntentId: string | null; /** Required exactly when intent is null; enforced by the public validator. */ printSuppression?: "lifecycle" }
-  | { state: "admission_pending" | "admission_uncertain" | "existing_unattributed"; workflow: CheckinArrivalWorkflow }
+  | { state: "reserved" | "existing"; workflow: CheckinArrivalWorkflow; requestedPrint?: CheckinRequestedPrint }
+  | { state: "accepted"; workflow: CheckinArrivalWorkflow; requestedPrint?: CheckinRequestedPrint; printIntentId: string | null; /** Required exactly when intent is null; enforced by the public validator. */ printSuppression?: "lifecycle" }
+  | { state: "admission_pending" | "admission_uncertain" | "existing_unattributed"; workflow: CheckinArrivalWorkflow; requestedPrint?: CheckinRequestedPrint }
+  | { state: "print_blocked"; reason: "in_progress" | "uncertain" | "needs_review" }
   | { state: "already_handled" }
   | { state: "rejected"; reason: CheckinArrivalRejection }
   | { state: "dependency_unavailable" }

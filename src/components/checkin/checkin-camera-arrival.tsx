@@ -16,6 +16,9 @@ import { getCheckinArrivalResume, resumeCheckinArrival, type CheckinArrivalResum
 
 interface CheckinCameraArrivalProps {
   compact?: boolean;
+  nextLabel?: string;
+  onNext?: () => void;
+  onRestoreHeld?: () => void;
   resumeRequest?: { operationId: string; scope: string };
   context: CheckinEventContext | null;
   bindingScope?: string;
@@ -74,6 +77,7 @@ export function CheckinCameraArrival(props: CheckinCameraArrivalProps) {
   // Exact commands remain in memory across explicit parking. A presented retry
   // is never a new UUID. Reload recovery uses history, not persisted QR text.
   const retained = new Map<string, CheckinArrivalInput>();
+  const retainedIntentKeys = new Map<string, string>();
   let feedback: HTMLElement | undefined;
   let timer: number | undefined;
   let releaseTimer: number | undefined;
@@ -92,7 +96,7 @@ export function CheckinCameraArrival(props: CheckinCameraArrivalProps) {
     && !readiness.error && !readiness.loading && readiness()?.scope === props.bindingScope
     && readiness()?.station?.stationId === props.context?.stationId && !!readiness()?.station?.readyForAuthorization;
   const focus = () => requestAnimationFrame(() => { if (!disposed && visible()) feedback?.focus({ preventScroll: true }); });
-  const identityKey = (input: CheckinArrivalInput) => `${input.context.bindingId}:${input.context.bindingVersion}:${input.context.eventId}:${input.qrIdentity}`;
+  const identityKey = (input: Pick<CheckinArrivalInput, "context" | "qrIdentity">) => `${input.context.bindingId}:${input.context.bindingVersion}:${input.context.eventId}:${input.qrIdentity}`;
   function cancelRelease() { if (releaseTimer !== undefined) window.clearTimeout(releaseTimer); releaseTimer = undefined; }
   const recoveryAvailable = () => visible() && storageReady() && !pending() && !reading() && resume()?.recovery === "available" && !!resume()?.actions.length;
   function release() {
@@ -100,8 +104,23 @@ export function CheckinCameraArrival(props: CheckinCameraArrivalProps) {
     if (!current || !visible() || pending()) return;
     try { cameraHeldReference(localStorage, current.scope).clear(current.operationId); }
     catch { setError("Cannot save release of held work. Keep this attendee here and restore browser storage."); return; }
+    if (!error() && cameraDecisionSettled(decision())) {
+      // Explicitly finishing a known result ends this operator intent. A later
+      // scan is a replacement request, while parked/unknown commands retain UUIDs.
+      const key = retainedIntentKeys.get(current.operationId);
+      if (key) {
+        retained.delete(key);
+        for (const [operationId, value] of retainedIntentKeys) if (value === key) retainedIntentKeys.delete(operationId);
+      }
+      for (const [key, input] of retained) {
+        if (input.operationId === current.operationId) retained.delete(key);
+      }
+      retainedResume.delete(current.operationId);
+    }
     setLastFeedback({ scope: current.scope, decision: decision(), error: error() });
+
     cancelRelease(); setHeld(undefined); setCommand(undefined); setResume(undefined); setResumeCommand(undefined); setRecoveryQr(""); setReacquiring(false); setDecision(undefined); setError("");
+    props.onNext?.();
   }
   function update(outcome: CheckinArrivalDecision) {
     const changed = JSON.stringify(outcome) !== JSON.stringify(decision());
@@ -157,12 +176,12 @@ export function CheckinCameraArrival(props: CheckinCameraArrivalProps) {
   }
   createEffect(() => ({ scope: props.bindingScope, verifying: props.verifying }), ({ scope, verifying }) => {
     if (verifying || !scope || scope === loadedScope) return;
-    loadedScope = scope; cancelRelease(); retained.clear(); retainedResume.clear(); setResume(undefined); setResumeCommand(undefined); setRecoveryQr(""); setReacquiring(false); setLastFeedback(undefined); setDecision(undefined); setCommand(undefined); setError(""); setHeld(undefined); setStorageReady(false);
+    loadedScope = scope; cancelRelease(); retained.clear(); retainedIntentKeys.clear(); retainedResume.clear(); setResume(undefined); setResumeCommand(undefined); setRecoveryQr(""); setReacquiring(false); setLastFeedback(undefined); setDecision(undefined); setCommand(undefined); setError(""); setHeld(undefined); setStorageReady(false);
     setAccessDenied(false);
     try {
       const operationId = cameraHeldReference(localStorage, scope).read();
       setStorageReady(true);
-      if (operationId) { setHeld({ scope, operationId }); void refreshHeld(); }
+      if (operationId) { setHeld({ scope, operationId }); props.onRestoreHeld?.(); void refreshHeld(); }
     } catch { setError("Browser storage is unavailable or held work is unreadable. All new intake is blocked. Restore storage and reload; consult station history before using a fallback."); }
   });
   createEffect(() => props.resumeRequest, (request) => {
@@ -202,6 +221,7 @@ export function CheckinCameraArrival(props: CheckinCameraArrivalProps) {
     try { cameraHeldReference(localStorage, scope).hold(frozen.operationId); }
     catch { setError("Could not retain this operation before sending. No arrival was submitted. Restore browser storage first."); setStorageReady(false); return; }
     const current = { scope, operationId: frozen.operationId };
+    retainedIntentKeys.set(frozen.operationId, identityKey(frozen));
     setHeld(current); setCommand(frozen); setResume(undefined); setResumeCommand(undefined); setRecoveryQr(""); setReacquiring(false); setPending(true); setDecision(undefined); setError("");
     retained.set(identityKey(frozen), frozen);
     // Hold is durable before the cue; the cue precedes the asynchronous POST.
@@ -209,7 +229,7 @@ export function CheckinCameraArrival(props: CheckinCameraArrivalProps) {
     try {
       const outcome = await preflightCheckinArrival(frozen);
       if (disposed || epoch !== authorityEpoch || props.verifying || current !== held() || scope !== props.bindingScope) return;
-      if ("workflow" in outcome && (outcome.workflow.stationId !== frozen.context.stationId || outcome.workflow.eventId !== frozen.context.eventId)) throw new Error("Mismatched origin");
+      if ("workflow" in outcome && ((outcome.requestedPrint?.stationId ?? outcome.workflow.stationId) !== frozen.context.stationId || outcome.workflow.eventId !== frozen.context.eventId)) throw new Error("Mismatched origin");
       update(outcome);
     } catch (failure) {
       if (!disposed && epoch === authorityEpoch && !props.verifying && current === held() && scope === props.bindingScope) {
@@ -240,7 +260,9 @@ export function CheckinCameraArrival(props: CheckinCameraArrivalProps) {
     const current = held(); const epoch = authorityEpoch;
     if (!current || !visible() || pending() || !storageReady() || resume()?.recovery === "context_changed" || resume()?.recovery === "read_only") return;
     const frozen = Object.freeze(structuredClone(input));
+    const originatingContext = command()?.context ?? resume()?.context;
     const nextId = frozen.action === "replay" ? frozen.operationId : frozen.nextOperationId;
+    if (originatingContext) retainedIntentKeys.set(nextId, identityKey({ context: originatingContext, qrIdentity: frozen.qrIdentity }));
     try { cameraHeldReference(localStorage, current.scope).hold(nextId); }
     catch { setStorageReady(false); setError("Cannot retain recovery operation. Nothing was submitted."); return; }
     const next = { ...current, operationId: nextId };
@@ -345,7 +367,7 @@ export function CheckinCameraArrival(props: CheckinCameraArrivalProps) {
                   <p>Keep this attendee with a colleague. Their admission and label remain unresolved; this only frees your scanner.</p>
                 </details>
               </>}>
-                <button type="button" class="btn btn-primary" onClick={() => { if (safeNext()) release(); }}>Scan next attendee</button>
+                <button type="button" class="btn btn-primary" onClick={() => { if (safeNext()) release(); }}>{props.nextLabel ?? "Scan next attendee"}</button>
               </Show>
             </Show>
             <Show when={!held() && !!error()}><a class="btn btn-outline" href="/checkin-tools">Open Tools</a></Show>

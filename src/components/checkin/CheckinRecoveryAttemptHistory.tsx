@@ -29,7 +29,7 @@ export function CheckinRecoveryAttemptHistory(props: { workflowId: string; onDen
     <Show when={error()}><p role="alert">{error()}</p></Show>
     <Show when={page()}>{data => <>
       <p>Attempt page starting at {offset() + 1}. {data().nextOffset === null ? "End of history at this read." : "More attempts available."}</p>
-      <ol start={offset() + 1}><For each={data().items}>{a => <li class="py-2">{a.id} · {a.purpose} · {a.state} · {a.name} / {a.affiliation || "blank affiliation"} · {a.observation || "no observation"} · predecessor {a.predecessorId || "none"}</li>}</For></ol>
+      <ol start={offset() + 1}><For each={data().items}>{a => <li class="py-2">{a.id} · {a.purpose} · {a.stationId || "Printer not recorded"} · {a.state} · {a.name} / {a.affiliation || "blank affiliation"} · {a.observation || "no observation"} · predecessor {a.predecessorId || "none"}</li>}</For></ol>
       <Show when={!data().items.length}><p>No attempts on this page.</p></Show>
       <button class="btn min-h-12" disabled={loading() || offset() === 0} onClick={() => void load(Math.max(0, offset() - 25))}>Previous attempt page</button>
       <button class="btn min-h-12" disabled={loading() || data().nextOffset === null} onClick={() => void load(data().nextOffset!)}>Next attempt page</button>

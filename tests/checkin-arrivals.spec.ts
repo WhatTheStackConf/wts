@@ -43,6 +43,7 @@ test("arrival preflight reserves exact list members, isolates stations and prese
   const setup = await arrivalPrerequisites(page, db, ["wts2026station1", "wts2026station2"]);
   const phone = await actorPage(state.users.operator);
   const foreign = await actorPage(state.users.handoff);
+  const initialAgentAttempts=(await db.collection("checkin_agent_attempts").getList(1,1)).totalItems;
   const errors: string[] = [];
   phone.on("pageerror", (error) => errors.push(error.message));
   try {
@@ -64,18 +65,22 @@ test("arrival preflight reserves exact list members, isolates stations and prese
     expect(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await preflight(phone).screenshot({ path: info.outputPath("arrival-reserved-320.png") });
     const again = await submit(phone, "A-TEST001");
-    expect(again).toMatchObject({ state: "existing", workflow: { id: first.workflow.id } });
+    expect(again).toMatchObject({ state: "print_blocked", reason: "in_progress" });
     await bindArrivalPhone(foreign, setup.stations[1].provisionCode, setup.events[0].id);
     const handled = await submit(foreign, "A-TEST001");
-    expect(handled.state).toBe("already_handled");
+    expect(handled).toMatchObject({ state: "print_blocked", reason: "in_progress" });
     expect(JSON.stringify(handled)).not.toMatch(/Ана|O’Neill|Synthetic organisation|profileId|workflow|history/);
     await expect(result(foreign)).not.toContainText("Ана");
     expect(await submit(foreign, "A-NOTHERE")).toMatchObject({ state: "rejected", reason: "not_in_list" });
     const missing = await submit(phone, "A-TEST002");
     expect(missing).toMatchObject({ state: "reserved", workflow: { affiliation: "" } });
-    for (const [identity, reason] of [["A-TEST003", "cancelled"], ["A-TEST004", "awaiting_payment"], ["A-NOTHERE", "not_in_list"], ["A-TEST007", "already_checked_in"]]) {
+    for (const [identity, reason] of [["A-TEST003", "cancelled"], ["A-TEST004", "awaiting_payment"], ["A-NOTHERE", "not_in_list"]]) {
       expect(await submit(phone, identity)).toMatchObject({ state: "rejected", reason });
     }
+    const previouslyAdmitted=await submit(phone,"A-TEST007");
+    expect(previouslyAdmitted).toMatchObject({state:"accepted",requestedPrint:{purpose:"initial",state:"queued"}});
+    if(previouslyAdmitted.state!=="accepted")throw new Error("Expected print-only accepted workflow");
+    expect(await db.collection("checkin_arrival_attempts").getFullList({filter:db.filter("workflow_id={:id}",{id:previouslyAdmitted.workflow.id})})).toHaveLength(0);
     await changeEvent(phone, setup.events[1].id);
     const secondEvent = await submit(phone, "A-TEST001");
     expect(secondEvent).toMatchObject({ state: "reserved", workflow: { eventId: setup.events[1].id } });
@@ -91,7 +96,7 @@ test("arrival preflight reserves exact list members, isolates stations and prese
     expect(all.items.some((item) => item.stationId === setup.stations[1].stationId)).toBe(true);
     for (const wire of [first, history, all]) expect(JSON.stringify(wire)).not.toMatch(/A-TEST|private-arrival@|synthetic-list-capability|synthetic-checkin-capability|upstreamAttendeeId|sourceKey|qrIdentity/);
     expect((await status(phone)).operationsEnabled).toBe(false);
-    expect(await db.collection("checkin_agent_attempts").getList(1, 1)).toMatchObject({ totalItems: 0 });
+    expect(await db.collection("checkin_agent_attempts").getList(1, 1)).toMatchObject({ totalItems: initialAgentAttempts });
     expect(errors).toEqual([]);
   } finally { await setup.cleanup(); }
 });
@@ -224,7 +229,7 @@ test("arrival rebinding hides prior and delayed foreign-station results without 
   let release: (() => void) | undefined;
   try {
     await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[0].id);
-    expect(["reserved", "existing"]).toContain((await submit(phone, "A-TEST001")).state);
+    expect((await submit(phone, "A-REB0001")).state).toBe("reserved");
     await expect(result(phone).getByText("Ана O’Neill", { exact: true })).toBeVisible();
     await rebind(1);
     await expect(result(phone).getByText(/^This frozen preflight belongs to another station binding\./)).toBeVisible();
@@ -245,7 +250,7 @@ test("arrival rebinding hides prior and delayed foreign-station results without 
       await held;
       await route.fulfill({ response });
     });
-    await preflight(phone).getByLabel("Attendee QR identity", { exact: true }).fill("A-TEST001");
+    await preflight(phone).getByLabel("Attendee QR identity", { exact: true }).fill("A-REB0001");
     await preflight(phone).getByRole("button", { name: "Validate arrival", exact: true }).click();
     await fetchedResponse;
     await expect(phone.getByRole("button", { name: "Phone", exact: true })).toBeDisabled();

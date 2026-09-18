@@ -9,6 +9,7 @@ import { checkinEventCatalogue, selectCheckinEvent } from "~/lib/checkin-event-c
 import { agentStatus } from "~/lib/checkin-agent-client";
 import type { CheckinArrivalResult } from "~/lib/checkin-arrival-contract";
 import { cameraHeldReference } from "~/lib/checkin-camera-recovery";
+import { readLookupHold } from "~/lib/checkin-lookup-held";
 import { CheckinCameraArrival } from "~/components/checkin/checkin-camera-arrival";
 import { CheckinLookup } from "~/components/checkin/CheckinLookup";
 import { CheckinCompactResult } from "~/components/checkin/CheckinCompactResult";
@@ -26,6 +27,7 @@ export default function CheckinScannerPage() {
   const [events, eventActions] = createCheckinPollingResource(eventSource, checkinEventCatalogue);
   const [machine, machineActions] = createCheckinPollingResource(scope, async binding => ({ binding, ...(await agentStatus()) }));
   const [pane, setPane] = createSignal<"scan" | "event" | "lookup" | "lookup-result">("scan");
+  const [mode, setMode] = createSignal<"scan" | "manual">("scan");
   const [printerBusy, setPrinterBusy] = createSignal(false);
   const [eventBusy, setEventBusy] = createSignal(false);
   const [choice, setChoice] = createSignal("");
@@ -42,6 +44,34 @@ export default function CheckinScannerPage() {
   let menuButton: HTMLButtonElement | undefined;
   let disposed = false;
   const workHeld = () => cameraBusy() || lookupBusy() || eventBusy();
+  // Only a mode preference is stored per opaque authenticated actor ID. Never
+  // persist the roster, search, attendee identities or print payloads.
+  const modeKey = () => `wts.checkin.mode:${guard.user()?.id}`;
+  createEffect(actorKey, actor => {
+    if (!actor || typeof localStorage === "undefined") return;
+    let preference: "scan" | "manual" = "scan";
+    try { if (localStorage.getItem(modeKey()) === "manual") preference = "manual"; } catch { /* preference is optional */ }
+    setMode(preference);
+    if (!cameraBusy() && !lookupBusy()) setPane(preference === "manual" ? "lookup" : "scan");
+  });
+  function switchMode(next: "scan" | "manual") {
+    if (!guard.authorized() || workHeld() || printerBusy() || loggingOut()) return;
+    try {
+      if (readLookupHold() || scope() && cameraHeldReference(localStorage, scope()!).read()) return;
+    } catch { setMessage("Restore held-operation storage before changing modes."); return; }
+    setMode(next); setPane(next === "manual" ? "lookup" : "scan");
+    try { localStorage.setItem(modeKey(), next); } catch { /* preference is optional */ }
+  }
+  function returnToIntake() { setLookupOutcome(undefined); setPane(mode() === "manual" ? "lookup" : "scan"); }
+  function cameraHeldChanged(value: boolean) {
+    if (disposed) return;
+    setCameraBusy(value);
+  }
+  function restoreHeldPanel() {
+    // A persisted manual operation is recovered by the shared result panel.
+    // Its acknowledgement/retry controls must win over the preferred intake mode.
+    if (!disposed) setPane("scan");
+  }
   // A routine status refresh is not a new user/permission boundary. Keep the
   // verified surface stable until its response changes a fence or denies access.
   // Every mutation remains server-authorized; actor changes still invalidate now.
@@ -93,7 +123,7 @@ export default function CheckinScannerPage() {
         try {
           const current = await eventActions.refetch();
           if (!disposed && actor === actorKey() && binding === scope()) {
-            if (current?.selected?.id === target.id && current.selected.generation === target.generation) { setChoice(""); setMessage(""); setPane("scan"); }
+            if (current?.selected?.id === target.id && current.selected.generation === target.generation) { setChoice(""); setMessage(""); returnToIntake(); }
             else setMessage("Event wasn't changed. Review the selection and try again.");
           }
         } catch { if (!disposed && actor === actorKey() && binding === scope()) setMessage("Cannot verify the selected event. Refresh before scanning."); }
@@ -108,11 +138,12 @@ export default function CheckinScannerPage() {
       const reference = cameraHeldReference(localStorage, binding), existing = reference.read();
       if (existing && existing !== result.operationId) throw new Error("Another arrival is held");
       reference.hold(result.operationId); queuedResume = { operationId: result.operationId, scope: binding };
-    } else if (result.state === "rejected" || result.state === "already_handled") {
+    } else if (result.state === "rejected" || result.state === "already_handled" || result.state === "print_blocked") {
       setLookupOutcome({ result, scope: binding, actor: actorKey() }); setPane("lookup-result");
     } else throw new Error("This lookup still needs an explicit recovery action");
   }
   function lookupChanged(busy: boolean) {
+    if (disposed) return;
     setLookupBusy(busy);
     if (busy) setPane("lookup");
     if (!busy && queuedResume) { setResumeRequest(queuedResume); queuedResume = undefined; setPane("scan"); }
@@ -124,7 +155,7 @@ export default function CheckinScannerPage() {
     catch { setMessage("Couldn't log out. Try again."); setLoggingOut(false); }
   }
   return <div class="wts-operator-screen">
-    <Title>Scan attendees | WTS 2026</Title><Meta name="robots" content="noindex,nofollow" /><Meta name="referrer" content="no-referrer" />
+    <Title>Attendee check-in | WTS 2026</Title><Meta name="robots" content="noindex,nofollow" /><Meta name="referrer" content="no-referrer" />
     <header class="wts-operator-header"><h1>WTS <span>Check-in</span></h1><button ref={element => { menuButton = element; }} type="button" class="btn btn-ghost" aria-haspopup="dialog" onClick={() => { setMenuOpen(true); dialog?.showModal(); }}>Tools</button></header>
     <Show when={guard.authorized()} fallback={<main class="wts-operator-step"><p role="status">Checking sign-in…</p></main>}>
       <div class="wts-operator-context"><strong title={stationLabel()}>{stationLabel()}</strong><span title={eventLabel()}>{eventLabel()}</span></div>
@@ -132,21 +163,25 @@ export default function CheckinScannerPage() {
       <main class="wts-operator-main">
         <section class="wts-operator-printer" aria-label="Printer selection">
           <CheckinPrinterSelector compact actorKey={actorKey()} status={!status.error && status()?.verifiedFor === actorKey() ? status() : undefined} disabled={workHeld() || loggingOut()} onBusyChange={value => { setPrinterBusy(value); }} refreshStatus={() => statusActions.refetch()} />
+          <div class="wts-operator-modes" role="group" aria-label="Registration mode">
+            <button type="button" class="btn" aria-pressed={mode() === "scan" ? "true" : "false"} disabled={workHeld() || printerBusy() || loggingOut()} onClick={() => switchMode("scan")}>Scan</button>
+            <button type="button" class="btn" aria-pressed={mode() === "manual" ? "true" : "false"} disabled={workHeld() || printerBusy() || loggingOut()} onClick={() => switchMode("manual")}>Manual</button>
+          </div>
         </section>
         {/* Keep arrival/lookup mounted while a printer selection is checked. */}
         <Show when={bound()}>
           <div class="wts-operator-content">
-          <section class="wts-operator-step" hidden={!eventPicker()} aria-label="Choose event"><h2>Which event?</h2><p>This choice applies to this phone.</p><form onSubmit={e => void chooseEvent(e)}><label for="scan-event">Event</label><select id="scan-event" class="select select-bordered" value={choice()} required disabled={verifying() || cameraBusy() || lookupBusy()} onChange={e => setChoice(e.currentTarget.value)}><option value="">Choose an event</option><For each={events()?.events}>{event => <option value={event.id} disabled={event.availability !== "available"}>{event.title}<Show when={event.availability !== "available"}> · Unavailable</Show></option>}</For></select><button class="btn btn-primary" type="submit" disabled={!choice() || verifying() || cameraBusy() || lookupBusy()}>Use event</button></form><Show when={events()?.selected}><button class="btn btn-ghost" type="button" onClick={() => setPane("scan")}>Back to scanner</button></Show></section>
-          <div class="wts-operator-workspace" hidden={eventPicker() || pane() !== "scan"}><CheckinCameraArrival compact context={context()} bindingScope={scope()} verifying={verifying()} eventTitle={eventLabel()} stationLabel={stationLabel()} resumeRequest={resumeRequest()} manualHeld={printerBusy() || lookupBusy() || menuOpen() || pane() !== "scan" || eventPicker()} onHeld={value => { setCameraBusy(value); }} /></div>
+          <section class="wts-operator-step" hidden={!eventPicker()} aria-label="Choose event"><h2>Which event?</h2><p>This choice applies to this phone.</p><form onSubmit={e => void chooseEvent(e)}><label for="scan-event">Event</label><select id="scan-event" class="select select-bordered" value={choice()} required disabled={verifying() || cameraBusy() || lookupBusy()} onChange={e => setChoice(e.currentTarget.value)}><option value="">Choose an event</option><For each={events()?.events}>{event => <option value={event.id} disabled={event.availability !== "available"}>{event.title}<Show when={event.availability !== "available"}> · Unavailable</Show></option>}</For></select><button class="btn btn-primary" type="submit" disabled={!choice() || verifying() || cameraBusy() || lookupBusy()}>Use event</button></form><Show when={events()?.selected}><button class="btn btn-ghost" type="button" onClick={returnToIntake}>{mode() === "manual" ? "Back to attendee list" : "Back to scanner"}</button></Show></section>
+          <div class="wts-operator-workspace" hidden={eventPicker() || pane() !== "scan"}><CheckinCameraArrival compact nextLabel={mode() === "manual" ? "Back to attendee list" : undefined} onNext={returnToIntake} onRestoreHeld={restoreHeldPanel} context={context()} bindingScope={scope()} verifying={verifying()} eventTitle={eventLabel()} stationLabel={stationLabel()} resumeRequest={resumeRequest()} manualHeld={printerBusy() || lookupBusy() || menuOpen() || pane() !== "scan" || eventPicker()} onHeld={cameraHeldChanged} /></div>
           <section class="checkin-compact-held wts-operator-workspace" hidden={pane() !== "lookup-result"} aria-label="Lookup result">
             <CheckinCompactResult decision={lookupOutcome()?.result} redacted={verifying() || lookupOutcome()?.scope !== scope() || lookupOutcome()?.actor !== actorKey()} />
-            <button class="btn btn-primary min-h-12" type="button" onClick={() => { setLookupOutcome(undefined); setPane("scan"); }}>Back to scanner</button>
+            <button class="btn btn-primary min-h-12" type="button" onClick={returnToIntake}>{mode() === "manual" ? "Back to attendee list" : "Back to scanner"}</button>
           </section>
-          <section class="wts-operator-lookup" hidden={pane() !== "lookup"} aria-label="Attendee lookup"><CheckinLookup openRequest={openLookup()} context={context()} eventTitle={eventLabel()} stationLabel={stationLabel()} bindingScope={scope()} verifying={verifying()} ready={machineReady()} disabled={(printerBusy() || cameraBusy()) && !lookupBusy()} onClose={() => setPane("scan")} onBusy={lookupChanged} onDecision={lookupDecision} /></section>
+          <section class="wts-operator-lookup" hidden={pane() !== "lookup"} aria-label="Attendee lookup"><CheckinLookup manual={mode() === "manual"} visible={pane() === "lookup"} openRequest={openLookup()} context={context()} eventTitle={eventLabel()} stationLabel={stationLabel()} bindingScope={scope() ? `${actorKey()}:${scope()}` : undefined} verifying={verifying()} ready={machineReady()} disabled={(printerBusy() || cameraBusy()) && !lookupBusy()} onClose={returnToIntake} onBusy={lookupChanged} onDecision={lookupDecision} /></section>
           </div>
         </Show>
       </main>
-      <footer class="wts-operator-footer"><Show when={message()}><p role="alert">{message()}</p></Show><Show when={bound() && !eventPicker() && pane() === "scan" && !cameraBusy()}><button type="button" class="btn btn-outline" disabled={verifying() || !machineReady()} onClick={() => { setPane("lookup"); setOpenLookup(value => value + 1); }}>Find attendee</button></Show></footer>
+      <footer class="wts-operator-footer"><Show when={message()}><p role="alert">{message()}</p></Show><Show when={bound() && !eventPicker() && mode() === "scan" && pane() === "scan" && !cameraBusy()}><button type="button" class="btn btn-outline" disabled={verifying() || !machineReady()} onClick={() => { setPane("lookup"); setOpenLookup(value => value + 1); }}>Find attendee</button></Show></footer>
     </Show>
     <dialog ref={element => { dialog = element; }} class="wts-operator-menu" aria-labelledby="scanner-tools-title" onClose={() => setMenuOpen(false)}><h2 id="scanner-tools-title">Station tools</h2><button class="btn btn-ghost" type="button" onClick={closeMenu}>Close</button><a href="/checkin-tools" target="_self" class="btn btn-outline">History & recovery</a><button class="btn btn-outline" type="button" disabled={!bound() || printerBusy() || cameraBusy() || lookupBusy()} onClick={() => { closeMenu(); setPane("event"); }}>Change event</button><a href="/checkin-tools" target="_self" class="btn btn-ghost">Station setup & diagnostics</a><Show when={guard.user()?.role === "admin"}><a class="btn btn-ghost" href="/admin/checkin" target="_self">Administration</a></Show><button class="btn btn-ghost" type="button" disabled={loggingOut() || printerBusy()} onClick={() => void logout()}>Log out</button></dialog>
   </div>;

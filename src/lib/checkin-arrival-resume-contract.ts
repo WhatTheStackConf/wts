@@ -11,7 +11,7 @@ export const checkinArrivalResumeSchema = z.strictObject({
   operationId: checkinArrivalResumeOperationIdSchema,
   context: checkinEventContextSchema,
   status: z.enum(["pending", "final"]),
-  state: z.enum(["pending", "reserved", "existing", "accepted", "admission_pending", "admission_uncertain", "existing_unattributed", "already_handled", "rejected", "dependency_unavailable", "needs_affiliation_choice"]),
+  state: z.enum(["pending", "reserved", "existing", "accepted", "admission_pending", "admission_uncertain", "existing_unattributed", "already_handled", "rejected", "dependency_unavailable", "needs_affiliation_choice", "print_blocked"]),
   affiliationChoice: z.enum(["fetch", "blank"]),
   priorOperationId: checkinArrivalResumeOperationIdSchema.optional(),
   recovery: z.enum(["available", "context_changed", "read_only"]),

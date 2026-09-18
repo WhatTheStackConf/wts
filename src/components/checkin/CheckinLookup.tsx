@@ -10,6 +10,9 @@ import type { CheckinLookupRecovery, CheckinLookupRecoverInput } from "~/lib/che
 
 type Attendee = CheckinLookupSearchResult["items"][number];
 export interface CheckinLookupProps {
+  /** Primary manual mode: browse the roster and submit directly from a row. */
+  manual?: boolean;
+  visible?: boolean;
   /** An explicit parent action opens lookup without a second activation tap. */
   openRequest?: number;
   onClose?: () => void;
@@ -51,17 +54,19 @@ export function CheckinLookup(props: CheckinLookupProps) {
   let epoch = 0;
   let authorityEpoch = 0;
   let destroyed = false;
+  let sending = false;
+  const [previousOffsets, setPreviousOffsets] = createSignal<number[]>([]);
   let scope = "";
   let verifyingSeen = false;
   let feedback: HTMLElement | undefined;
   const bindingKey = () => props.bindingScope || (props.context ? JSON.stringify([props.context.bindingId, props.context.bindingVersion, props.context.stationId]) : "");
   const verified = () => !props.verifying && !accessDenied() && !!bindingKey() && scope === bindingKey();
-  const authorized = () => active() && verified() && !!props.context && props.ready && !props.disabled;
+  const authorized = () => active() && props.visible !== false && verified() && !!props.context && props.ready && !props.disabled;
   const canReplay = () => active() && verified() && (props.verifying === false && !!props.bindingScope || !!props.context && props.ready && !props.disabled && !!command() && sameLookupContext(command()!.context, props.context));
   createEffect(() => JSON.stringify([bindingKey(), props.verifying]), () => { authorityEpoch++; });
   const currentAuthority = (generation: number, authority: string) => !destroyed && generation === authorityEpoch && !props.verifying && !accessDenied() && authority === bindingKey();
   const focusFeedback = () => { if (typeof requestAnimationFrame !== "undefined") requestAnimationFrame(() => { if (!destroyed) feedback?.focus(); }); };
-  function clearPrivate() { setQuery(""); setSubmitted(undefined); setSelected(undefined); }
+  function clearPrivate() { setQuery(""); setSubmitted(undefined); setSelected(undefined); setPreviousOffsets([]); }
   function redact() { epoch++; clearPrivate(); }
   function classify(failure: unknown) {
     if (failure instanceof CheckinLookupRequestError && (failure.kind === "access" || failure.kind === "context")) {
@@ -84,7 +89,7 @@ export function CheckinLookup(props: CheckinLookupProps) {
       const outcome = await searchCheckinLookup(input);
       if (generation !== epoch || destroyed) return undefined;
       if (outcome.state !== "complete") throw new CheckinLookupRequestError("Lookup is incomplete or unavailable. No results can be selected. Retry your search.", false, "transport");
-      focusFeedback();
+      if (!props.manual) focusFeedback();
       return outcome;
     } catch (failure) {
       if (generation === epoch && !destroyed) { classify(failure); focusFeedback(); }
@@ -95,8 +100,22 @@ export function CheckinLookup(props: CheckinLookupProps) {
     try { const reference = readLookupHold(); if (reference) { setHeld(reference); setActive(true); props.onBusy?.(true); } }
     catch { setStorageBlocked(true); setActive(true); props.onBusy?.(true); setError("Held-operation storage is unavailable. Restore it before starting lookup."); }
   });
-  onCleanup(() => { destroyed = true; epoch++; clearPrivate(); if (!command() && !held() && !storageBlocked()) props.onBusy?.(false); });
+  onCleanup(() => {
+    destroyed = true; epoch++;
+    // No signal/parent writes during Solid 2 disposal.
+    const authority = bindingKey();
+    if (!command() && !held() && !storageBlocked()) queueMicrotask(() => { if (authority === bindingKey()) props.onBusy?.(false); });
+  });
   createEffect(() => props.openRequest, request => { if (request) open(); });
+  createEffect(() => JSON.stringify([props.manual, props.visible, props.context, props.ready, props.disabled, props.verifying, bindingKey(), accessDenied(), command(), held()]), () => {
+    // Wait for the invalidation effect's transactional clears to commit before
+    // inspecting submitted intent. Recheck live authority after the microtask.
+    queueMicrotask(() => {
+      if (destroyed || !props.manual || props.visible === false || !props.context || !props.ready || props.disabled || props.verifying || accessDenied() || storageBlocked() || command() || held()) return;
+      scope = bindingKey(); setActive(true);
+      if (!submitted()) setSubmitted({ context: structuredClone(props.context), query: "", offset: 0 });
+    });
+  });
   function exit() {
     if (command() || held() || pending() || storageBlocked()) return;
     redact(); setError(""); setActive(false); props.onBusy?.(false);
@@ -104,27 +123,30 @@ export function CheckinLookup(props: CheckinLookupProps) {
   }
   function open() {
     if (!props.context || !props.ready || props.disabled || props.verifying || accessDenied() || storageBlocked() || held()) return;
-    scope = bindingKey(); setActive(true); props.onBusy?.(true);
+    scope = bindingKey(); setActive(true); if (!props.manual) props.onBusy?.(true);
   }
   function edit(value: string) {
     if (command() || held()) return;
+    if (props.manual) { setQuery(value); setError(""); return; }
     redact(); setQuery(value); setError("");
   }
-  function search(offset = 0) {
+  function search(offset = 0, text = query(), history: number[] = []) {
     const context = props.context;
-    if (!authorized() || !context || command() || held() || results.loading || query().trim().length < 2) return;
+    if (!authorized() || !context || command() || held() || results.loading || !props.manual && text.trim().length < 2) return;
     epoch++; setSelected(undefined); setError("");
-    setSubmitted({ context: structuredClone(context), query: query(), offset });
+    setPreviousOffsets(history);
+    setSubmitted({ context: structuredClone(context), query: text, offset });
   }
   function select(item: Attendee) {
     if (!authorized() || results.loading || command() || !results()?.items.includes(item)) return;
     setSelected(item); setError(""); focusFeedback();
   }
   async function send(frozen: CheckinLookupConfirmInput, initial = false) {
-    if (pending() || !(initial ? authorized() : canReplay())) return;
+    if (sending || pending() || !(initial ? authorized() : canReplay())) return;
     try { persistLookupHold(frozen.operationId, frozen.priorOperationId); }
     catch { setError("Could not retain operation reference. Confirmation was not sent; restore browser storage and retry."); return; }
     const generation = epoch;
+    sending = true; props.onBusy?.(true);
     setHeld(frozen.operationId); setCommand(frozen); setPending(true); setUnknown(true); setReadState(undefined); setError("");
     try {
       const outcome = await confirmCheckinLookup(frozen);
@@ -143,11 +165,11 @@ export function CheckinLookup(props: CheckinLookupProps) {
       // is ambiguous; a later rejection cannot disprove an earlier commit.
       setUnknown(true);
       if (scope === bindingKey()) classify(failure);
-    } finally { if (!destroyed) { setPending(false); focusFeedback(); } }
+    } finally { sending = false; if (!destroyed) { setPending(false); focusFeedback(); } }
   }
-  function confirm() {
-    const person = selected(); const context = props.context;
-    if (!authorized() || !person || !context || pending() || command() || held()) return;
+  function confirm(person = selected()) {
+    const context = props.context;
+    if (!authorized() || !person || !context || sending || pending() || results.loading || command() || held() || !results()?.items.includes(person) || person.status === "CANCELLED" || person.status === "AWAITING_PAYMENT") return;
     const frozen = { operationId: crypto.randomUUID(), context: Object.freeze(structuredClone(context)), attendeeId: person.attendeeId, qrIdentity: person.publicId, affiliationChoice: "fetch" as const };
     void send(Object.freeze(frozen), true);
   }
@@ -210,10 +232,11 @@ export function CheckinLookup(props: CheckinLookupProps) {
     void sendRecovery(Object.freeze({ input: Object.freeze(input), context: Object.freeze(structuredClone(descriptor.context)) }));
   }
   return <section aria-label="Find attendee" class="min-w-0 rounded-lg border border-base-content/20 bg-base-200 p-4 space-y-4 break-words">
-    <h2 class="text-xl font-bold">Find attendee without a QR</h2>
-    <Show when={!active()}><button type="button" class="btn btn-outline min-h-12" disabled={!props.context || !props.ready || props.disabled || props.verifying || accessDenied() || storageBlocked()} onClick={open}>Open attendee lookup</button></Show>
+    <h2 class="text-xl font-bold">{props.manual ? "Attendee list" : "Find attendee without a QR"}</h2>
+    <Show when={!active() && !props.manual}><button type="button" class="btn btn-outline min-h-12" disabled={!props.context || !props.ready || props.disabled || props.verifying || accessDenied() || storageBlocked()} onClick={open}>Open attendee lookup</button></Show>
+    <Show when={props.manual && !active()}><p role="status">Verify the selected printer, event and readiness to load the attendee list.</p></Show>
     <Show when={active()}>
-      <button type="button" class="btn btn-outline min-h-12" disabled={!!command() || !!held() || pending() || storageBlocked()} onClick={exit}>{props.onClose ? "Back to scanner" : "Exit lookup and clear details"}</button>
+      <Show when={!props.manual}><button type="button" class="btn btn-outline min-h-12" disabled={!!command() || !!held() || pending() || storageBlocked()} onClick={exit}>{props.onClose ? "Back to scanner" : "Exit lookup and clear details"}</button></Show>
       <Show when={held()}>{reference => <p>Held lookup operation: <span class="break-all">{reference()}</span>. New intake is blocked until reconciled.</p>}</Show>
       <Show when={held() && !command()}>
         <p>Only the opaque reference survived reload. Read authenticated server recovery; no attendee details are stored here.</p>
@@ -226,21 +249,34 @@ export function CheckinLookup(props: CheckinLookupProps) {
       </div>}</Show>
       <Show when={recoveryCommand()}><button type="button" class="btn btn-warning min-h-12" disabled={pending() || !verified()} onClick={() => { const frozen = recoveryCommand(); if (frozen) void sendRecovery(frozen); }}>Retry same recovery</button></Show>
       <Show when={authorized() && !held()} fallback={<Show when={!authorized()}><p role="status">Lookup paused. Verify the current station, event and readiness. Any submitted command retains its original identity.</p></Show>}>
-        <p>Current event: {props.eventTitle} · Station: {props.stationLabel}</p>
+        <Show when={!props.manual}><p>Current event: {props.eventTitle} · Station: {props.stationLabel}</p></Show>
         <form method="post" action="/api/checkin-lookup" class="space-y-3" onSubmit={event => { event.preventDefault(); search(); }}>
           <label for="lookup-query" class="block font-medium">Attendee name or email</label>
           <input id="lookup-query" class="input input-bordered min-h-12 w-full min-w-0" type="text" autocomplete="off" autocapitalize="off" spellcheck={false} maxlength={254} value={query()} onInput={event => edit(event.currentTarget.value)} />
-          <p class="text-sm">Search is private and temporary. Searching and selecting do not check anyone in.</p>
-          <button type="submit" class="btn btn-primary min-h-12" disabled={results.loading || query().trim().length < 2}>Search attendees</button>
+          <Show when={!props.manual}><p class="text-sm">Search is private and temporary. Searching and selecting do not check anyone in.</p></Show>
+          <div class="flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-primary min-h-12" disabled={results.loading || !props.manual && query().trim().length < 2}>Search attendees</button>
+            <Show when={props.manual}>
+              <Show when={query() || submitted()?.query || submitted()?.offset}><button type="button" class="btn btn-outline min-h-12" disabled={results.loading} onClick={() => { setQuery(""); search(0, ""); }}>Show all attendees</button></Show>
+              <button type="button" class="btn btn-outline min-h-12" disabled={results.loading} onClick={() => search(submitted()?.offset ?? 0, submitted()?.query ?? "", previousOffsets())}>Refresh list</button>
+            </Show>
+          </div>
         </form>
         <Show when={!results.loading && results()}>{result => <div class="space-y-3">
-          <p>Select the exact ticketed attendee. No match is selected automatically.</p>
+          <Show when={!props.manual} fallback={<p role="status">Showing {result().items.length ? (submitted()?.offset ?? 0) + 1 : 0}–{(submitted()?.offset ?? 0) + result().items.length}<Show when={result().totalCount !== undefined}> of {result().totalCount}</Show> attendees</p>}><p>Select the exact ticketed attendee. No match is selected automatically.</p></Show>
           <Show when={!result().items.length}><p role="status">No matching attendees in the active admission list.</p></Show>
           <ul class="space-y-3"><For each={result().items}>{item => <li class="min-w-0 border border-base-content/20 rounded p-3 space-y-2">
-            <p class="font-bold break-all">{item.name}</p><p class="break-all">{item.email}</p><p>Ticket {item.publicId}</p>
-            <button type="button" class="btn btn-outline min-h-12" disabled={results.loading} onClick={() => select(item)}>Select {item.name}</button>
+            <p class="font-bold break-all">{item.name}</p><p class="break-all">{item.email}</p><Show when={!props.manual}><p>Ticket {item.publicId}</p></Show>
+            <Show when={props.manual} fallback={<button type="button" class="btn btn-outline min-h-12" disabled={results.loading} onClick={() => select(item)}>Select {item.name}</button>}>
+              <Show when={item.status && item.status !== "ACTIVE"}><p>{item.status === "CANCELLED" ? "Cancelled ticket" : "Awaiting payment"}</p></Show>
+              <Show when={item.checkedIn}><p>Already checked in</p></Show>
+              <button type="button" class="btn btn-primary min-h-12" disabled={results.loading || pending() || !!command() || item.status === "CANCELLED" || item.status === "AWAITING_PAYMENT"} onClick={() => confirm(item)}>{item.checkedIn ? "Reprint" : "Check in & print"}<span class="sr-only"> {item.name}</span></button>
+            </Show>
           </li>}</For></ul>
-          <Show when={result().nextOffset !== null}><button type="button" class="btn btn-outline min-h-12" disabled={results.loading} onClick={() => search(result().nextOffset ?? 0)}>Next results</button></Show>
+          <nav aria-label="Attendee pages" class="flex flex-wrap gap-2">
+            <Show when={props.manual && previousOffsets().length}><button type="button" class="btn btn-outline min-h-12" disabled={results.loading} onClick={() => search(previousOffsets().at(-1) ?? 0, submitted()?.query ?? "", previousOffsets().slice(0, -1))}>Previous results</button></Show>
+            <Show when={result().nextOffset !== null}><button type="button" class="btn btn-outline min-h-12" disabled={results.loading} onClick={() => search(result().nextOffset ?? 0, submitted()?.query ?? query(), [...previousOffsets(), submitted()?.offset ?? 0])}>Next results</button></Show>
+          </nav>
         </div>}</Show>
       </Show>
       <section ref={element => { feedback = element; }} tabindex="-1" aria-label="Lookup confirmation" aria-live="polite" class="space-y-3 min-w-0">
@@ -248,7 +284,7 @@ export function CheckinLookup(props: CheckinLookupProps) {
           <h3 class="font-bold">Confirm selected attendee</h3><p class="break-all">{person().name}</p><p class="break-all">{person().email}</p>
           <p>Event: {props.eventTitle} · Station: {props.stationLabel}</p><p>Ticket {person().publicId}</p>
           <p>Only confirmation submits this attendee to the existing check-in workflow.</p>
-          <Show when={!command()}><button type="button" class="btn btn-warning min-h-12" disabled={pending()} onClick={confirm}>Confirm check-in</button></Show>
+          <Show when={!command()}><button type="button" class="btn btn-warning min-h-12" disabled={pending()} onClick={() => confirm()}>Confirm check-in</button></Show>
         </div>}</Show>
         <Show when={pending() || results.loading}><p role="status">Request in progress…</p></Show>
         <Show when={error()}><p role="alert">{error()}</p></Show>

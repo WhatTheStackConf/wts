@@ -30,13 +30,21 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
       const october = new Date(Date.UTC(year, 9, 31, 1)); october.setUTCDate(31 - october.getUTCDay());
       return new Date(time + (time >= march.getTime() && time < october.getTime() ? 2 : 1) * 3600000).toISOString().slice(0, 10);
     }
-    function latestPrint(w) {
-      const recovery = find(app, "checkin_recovery_workflows", "workflow_id = {:id}", { id: w.id });
-      const latest = recovery && recovery.getString("latest_print_id");
-      return (latest && find(app, "checkin_print_attempts", "id = {:id} && workflow_id = {:workflow} && station_id = {:station}", { id: latest, workflow: w.id, station: w.getString("station_id") }))
-        || find(app, "checkin_print_attempts", "workflow_id = {:workflow} && station_id = {:station}", { workflow: w.id, station: w.getString("station_id") }, "-created,-id");
+    const R = require(__hooks + "/checkin-recovery.js");
+    const P = require(__hooks + "/checkin-print-intent.js");
+    function latestPrint(w) { return R.latestPrint(app, w); }
+    function requestedPrint(command, w) {
+      // Migrated duplicates refer only to the original local initial intent.
+      const id = command.getString("requested_print_id") || (w.getString("station_id") === command.getString("station_id") ? w.getString("print_intent_id") : "");
+      return id && find(app, "checkin_print_attempts", "id = {:id} && workflow_id = {:workflow} && station_id = {:station}", { id, workflow: w.id, station: command.getString("station_id") });
     }
-    function workflowDTO(w) { const print = latestPrint(w); return { id: w.id, stationId: w.getString("station_id"), eventId: w.getString("event_id"), eventTitle: w.getString("event_title"), state: w.getString("state"), printState: print ? print.getString("state") : null, name: w.getString("name"), affiliation: w.getString("affiliation"), profileId: w.getString("profile_id"), createdAt: w.getString("created") }; }
+    function printDTO(p) { return { id: p.id, stationId: p.getString("station_id"), profileId: p.getString("profile_id"), purpose: p.getString("purpose"), state: p.getString("state") }; }
+    function workflowDTO(w, requested) { const print = requested === undefined ? latestPrint(w) : requested; return { id: w.id, stationId: w.getString("station_id"), eventId: w.getString("event_id"), eventTitle: w.getString("event_title"), state: w.getString("state"), printState: print ? print.getString("state") : null, name: w.getString("name"), affiliation: w.getString("affiliation"), profileId: w.getString("profile_id"), createdAt: w.getString("created") }; }
+    function projectPrint(w, p) {
+      let r = R.projection(app, w);
+      if (!r) { r = new Record(app.findCollectionByNameOrId("checkin_recovery_workflows")); set(r, { workflow_id: w.id, name: w.getString("name"), affiliation: w.getString("affiliation") }); }
+      set(r, { latest_print_id: p.id, fulfillment: "queued", completed_day: "", version: r.getInt("version") + 1, updated_at: iso }); app.save(r);
+    }
     if (machine) {
       const runtime = app.findRecordById("checkin_coordinator", "wts2026coord000");
       const lifecycle = require(__hooks + "/checkin-lifecycle.js");
@@ -172,15 +180,10 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
           set(attempt, { state: outcome.state === "newly_checked_in" ? "accepted" : "existing_unattributed", completed_at: iso, result_fingerprint: outcome.fingerprint });
           set(workflow, { state, admission_completed_at: iso, admission_completed_day: localDay(now) });
           if (state === "accepted" && canPrint) {
-            const print = new Record(app.findCollectionByNameOrId("checkin_print_attempts"));
-            const profileConfig = json(workflow, "profile_config");
-            const profileSnapshot = json(workflow, "profile_snapshot");
-            const payload = { purpose: "initial", text: { name: workflow.getString("name"), affiliation: workflow.getString("affiliation") }, profile: profileSnapshot, rendererVersion: profileSnapshot.config.rendererVersion, fontVersion: profileSnapshot.config.fontVersion };
-            const payloadHash = $security.sha256(canonical({ profileId: workflow.getString("profile_id"), payload }));
-            set(print, { workflow_id: workflow.id, station_id: workflow.getString("station_id"), purpose: "initial", state: "queued", profile_id: workflow.getString("profile_id"), profile_config: profileConfig, profile_snapshot: profileSnapshot, name: workflow.getString("name"), affiliation: workflow.getString("affiliation"), payload_hash: payloadHash, predecessor_attempt_id: "" });
-            app.save(print);
+            const print = P.create(app, workflow, { stationId: workflow.getString("station_id"), profile: json(workflow, "profile_snapshot"), purpose: "initial", name: workflow.getString("name"), affiliation: workflow.getString("affiliation") });
             set(workflow, { print_intent_id: print.id });
-            decision = { state: "accepted", workflow: workflowDTO(workflow), printIntentId: print.id };
+            command.set("requested_print_id", print.id);
+            decision = { state: "accepted", workflow: workflowDTO(workflow, print), printIntentId: print.id, requestedPrint: printDTO(print) };
           } else decision = state === "accepted" ? { state, workflow: workflowDTO(workflow), printIntentId: null, printSuppression: "lifecycle" } : { state, workflow: workflowDTO(workflow) };
         } else if (outcome.state === "rejected") {
           if (!["not_in_list", "cancelled", "awaiting_payment", "unknown_eligibility"].includes(outcome.reason)) fail("invalid_input");
@@ -214,12 +217,15 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
       const saved = json(command, "result") || { state: "dependency_unavailable" };
       if (!saved.workflow || !command.getString("workflow_id")) return saved;
       const w = app.findRecordById("checkin_arrival_workflows", command.getString("workflow_id"));
-      if (!all && w.getString("station_id") !== station.id) return { state: "already_handled" };
-      // Live projection only: never mutate the original result or label text.
-      const projected = { ...saved, workflow: workflowDTO(w) };
+      const requested = requestedPrint(command, w);
+      if (!command.getString("requested_print_id") && w.getString("station_id") !== command.getString("station_id")) return { state: "already_handled" };
+      if ((command.getString("requested_print_id") || w.getString("print_intent_id")) && !requested) return { state: "print_blocked", reason: "needs_review" };
+      // Live projection is scoped to THIS command, never a newer/older label.
+      const projected = { ...saved, workflow: workflowDTO(w, requested || null) };
+      if (requested) projected.requestedPrint = printDTO(requested);
       if (w.getString("state") === "accepted") {
-        const intent = w.getString("print_intent_id");
-        return intent ? { state: "accepted", workflow: projected.workflow, printIntentId: intent }
+        const intent = requested ? requested.id : "";
+        return intent ? { ...projected, state: "accepted", printIntentId: intent }
           : { state: "accepted", workflow: projected.workflow, printIntentId: null, printSuppression: "lifecycle" };
       }
       if (w.getString("state") === "rejected") {
@@ -268,17 +274,23 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
       const candidates = new DynamicModel({ rows: "" });
       app.db().newQuery(`WITH projected AS (
         SELECT c.id, c.created,
-          CASE WHEN r.completed_day != '' AND r.fulfillment IN ('handwritten','printed','cancelled','denied') THEN r.updated_at
-            WHEN p.id IS NOT NULL THEN CASE WHEN p.state IN ('completed','cancelled') THEN p.fulfillment_completed_at ELSE '' END
-            WHEN w.state = 'accepted' THEN ''
+          CASE WHEN o.created != '' THEN o.created
+            WHEN p.state IN ('completed','cancelled') AND p.fulfillment_completed_at != '' THEN p.fulfillment_completed_at
+            WHEN k.acknowledged_at != '' THEN k.acknowledged_at
+            WHEN r.latest_print_id = p.id AND r.completed_day != '' AND r.fulfillment IN ('handwritten','printed','cancelled','denied','reset') THEN r.updated_at
+            WHEN c.requested_print_id = '' AND w.print_intent_id = '' AND r.latest_print_id = '' AND r.completed_day != '' AND r.fulfillment IN ('handwritten','printed','cancelled','denied','reset') THEN r.updated_at
+            WHEN p.id IS NOT NULL OR w.state = 'accepted' THEN ''
             ELSE c.completed_at END AS completed,
-          CASE WHEN r.completed_day != '' AND r.fulfillment IN ('handwritten','printed','cancelled','denied') THEN r.completed_day ELSE '' END AS recovery_day
+          CASE WHEN o.created != '' OR (p.state IN ('completed','cancelled') AND p.fulfillment_completed_at != '') OR k.acknowledged_at != '' THEN ''
+            WHEN (r.latest_print_id = p.id OR (c.requested_print_id = '' AND w.print_intent_id = '' AND r.latest_print_id = '')) AND r.completed_day != '' AND r.fulfillment IN ('handwritten','printed','cancelled','denied','reset') THEN r.completed_day ELSE '' END AS recovery_day
         FROM checkin_arrival_commands c
         LEFT JOIN checkin_arrival_workflows w ON w.id = c.workflow_id
         LEFT JOIN checkin_recovery_workflows r ON r.workflow_id = w.id
-        LEFT JOIN checkin_print_attempts p ON p.id = COALESCE(
-          (SELECT rp.id FROM checkin_print_attempts rp WHERE rp.id = r.latest_print_id AND rp.workflow_id = w.id AND rp.station_id = w.station_id),
-          (SELECT lp.id FROM checkin_print_attempts lp WHERE lp.workflow_id = w.id AND lp.station_id = w.station_id ORDER BY lp.created DESC,lp.id DESC LIMIT 1))
+        LEFT JOIN checkin_print_attempts p ON p.workflow_id = w.id AND p.station_id = c.station_id
+          AND p.id = CASE WHEN c.requested_print_id != '' THEN c.requested_print_id
+            WHEN w.station_id = c.station_id THEN w.print_intent_id ELSE '' END
+        LEFT JOIN checkin_recovery_observations o ON o.print_id = p.id AND o.workflow_id = w.id AND o.outcome = 'printed'
+        LEFT JOIN checkin_recovery_cancellations k ON k.print_id = p.id AND k.workflow_id = w.id AND k.state = 'acknowledged'
         WHERE c.history_visible = true ${scope}
       ) SELECT COALESCE(json_group_array(json_object('id',id,'completed',completed,'recoveryDay',recovery_day)), '[]') AS rows
         FROM (SELECT * FROM projected WHERE completed = '' OR completed IS NULL OR recovery_day = {:day}
@@ -335,7 +347,7 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
     if (event.getString("edition") !== "WTS2026" || event.getString("source_key") !== b.sourceKey || find(app, "checkin_events", "edition = 'WTS2026' && source_key != {:key}", { key: b.sourceKey })) fail("unavailable", 503);
     if (c.priorOperationId) {
       const prior = find(app, "checkin_arrival_commands", "operation_id = {:id}", { id: c.priorOperationId });
-      if (!prior || prior.getString("status") !== "final" || prior.getString("qr_hash") !== c.qrHash || prior.getString("source_key") !== b.sourceKey || canonical(json(prior, "context")) !== canonical(c.context) || !["needs_affiliation_choice", "dependency_unavailable"].includes((json(prior, "result") || {}).state) || (c.affiliationChoice === "blank" && json(prior, "result").state !== "needs_affiliation_choice")) fail("conflict", 409);
+      if (!prior || prior.getString("status") !== "final" || prior.getString("workflow_id") || prior.getString("admission_attempt_id") || prior.getString("requested_print_id") || prior.getString("qr_hash") !== c.qrHash || prior.getString("source_key") !== b.sourceKey || canonical(json(prior, "context")) !== canonical(c.context) || !["needs_affiliation_choice", "dependency_unavailable"].includes((json(prior, "result") || {}).state) || (c.affiliationChoice === "blank" && json(prior, "result").state !== "needs_affiliation_choice")) fail("conflict", 409);
     } else if (c.affiliationChoice === "blank") fail("invalid_input");
     function audit(operation, state) {
       const a = new Record(app.findCollectionByNameOrId("checkin_audit_events"));
@@ -350,8 +362,8 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
       command = app.findRecordById("checkin_arrival_commands", command.id);
     }
     function finish(value, workflow) {
-      set(command, { status: "final", result: value, workflow_id: workflow ? workflow.id : "", history_visible: !["existing", "already_handled"].includes(value.state) });
-      if (value.state === "rejected") {
+      set(command, { status: "final", result: value, workflow_id: workflow ? workflow.id : "", history_visible: !["existing", "already_handled", "print_blocked"].includes(value.state) });
+      if (["rejected", "print_blocked"].includes(value.state)) {
         set(command, { completed_at: iso, completed_day: localDay(now) });
       }
       app.save(command); audit("arrival_result", value.state);
@@ -373,18 +385,29 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
       if (unresolved.present || require(__hooks + "/checkin-recovery.js").isolated(app, station.id)) return null;
       return { profile, approval: "approved", fence: { agentId: agent.id, profileId: profile.id, coordinatorGeneration: runtime.getInt("generation") } };
     }
-    // Reopening immutable work needs authority, not live upstream/printer reads.
-    const priorResolved = find(app, "checkin_arrival_commands", "source_key = {:source} && event_id = {:event} && qr_hash = {:qr} && workflow_id != ''", { source: b.sourceKey, event: event.id, qr: c.qrHash });
-    if (priorResolved) {
-      const existing = app.findRecordById("checkin_arrival_workflows", priorResolved.getString("workflow_id"));
-      if (existing.getString("edition") !== "WTS2026" || existing.getString("upstream_event_id") !== event.getString("upstream_event_id") || existing.getString("source_key") !== b.sourceKey) fail("conflict", 409);
-      if (existing.getString("station_id") !== station.id) { finish({ state: "already_handled" }, existing); return; }
-      const previous = json(priorResolved, "result");
-      if (previous && ["accepted", "admission_pending", "admission_uncertain", "existing_unattributed", "rejected"].includes(previous.state)) {
-        finish({ ...previous, workflow: workflowDTO(existing) }, existing); return;
-      }
-      finish({ state: "existing", workflow: workflowDTO(existing) }, existing); return;
+    function selectedProfile(ready) { return { id: ready.profile.id, stationId: station.id, version: ready.profile.getInt("version"), approval: ready.approval, config: json(ready.profile, "config") }; }
+    // Both QR and attendee identity converge here. A new action is NOT a replay:
+    // settled work still needs a fresh exact-list eligibility read before output.
+    function resolveExisting(w, ready, attendee) {
+      let reason = null;
+      if (w.getString("edition") !== "WTS2026" || w.getString("upstream_event_id") !== event.getString("upstream_event_id") || w.getString("event_id") !== event.id || w.getString("source_key") !== b.sourceKey || w.getString("list_id") !== event.getString("list_id") || attendee && w.getString("upstream_attendee_id") !== attendee.upstreamAttendeeId) reason = "needs_review";
+      else if (["not_submitted", "admission_pending"].includes(w.getString("state"))) reason = "in_progress";
+      else if (["admission_uncertain", "existing_unattributed"].includes(w.getString("state"))) reason = "uncertain";
+      else if (w.getString("state") !== "accepted") reason = "needs_review";
+      const previous = latestPrint(w);
+      const replacement = reason || P.replacementState(app, w, previous);
+      if (replacement !== "ready") { finish({ state: "print_blocked", reason: replacement }); return true; }
+      if (!attendee) return false;
+      const recovery = R.projection(app, w);
+      const print = P.create(app, w, { stationId: station.id, profile: selectedProfile(ready), purpose: "replacement", name: recovery ? recovery.getString("name") : w.getString("name"), affiliation: recovery ? recovery.getString("affiliation") : w.getString("affiliation"), predecessorId: previous.id });
+      command.set("requested_print_id", print.id);
+      projectPrint(w, print);
+      finish({ state: "accepted", workflow: workflowDTO(w, print), requestedPrint: printDTO(print), printIntentId: print.id }, w);
+      return true;
     }
+    const priorResolved = find(app, "checkin_arrival_commands", "source_key = {:source} && event_id = {:event} && qr_hash = {:qr} && workflow_id != ''", { source: b.sourceKey, event: event.id, qr: c.qrHash });
+    const priorWorkflow = priorResolved && app.findRecordById("checkin_arrival_workflows", priorResolved.getString("workflow_id"));
+    if (priorWorkflow && resolveExisting(priorWorkflow, null, null)) return;
     const ready = readiness();
     if (b.operation === "begin") {
       if (b.invalidIdentity === true) { finish({ state: "rejected", reason: "invalid_identity" }); return; }
@@ -400,17 +423,25 @@ routerAdd("POST", "/api/wts/checkin-arrivals", (e) => {
     if (!attendee || !upstream(attendee.upstreamAttendeeId) || !upstream(attendee.productId) || !safeText(attendee.name, 200, true) || typeof attendee.alreadyCheckedIn !== "boolean") { finish({ state: "rejected", reason: "unknown_eligibility" }); return; }
     // The stable workflow wins over a subsequent read's already-checked-in flag.
     const existing = find(app, "checkin_arrival_workflows", "edition = 'WTS2026' && upstream_event_id = {:event} && upstream_attendee_id = {:attendee}", { event: event.getString("upstream_event_id"), attendee: attendee.upstreamAttendeeId });
-    if (existing) { finish(existing.getString("station_id") === station.id ? { state: "existing", workflow: workflowDTO(existing) } : { state: "already_handled" }, existing); return; }
-    if (attendee.alreadyCheckedIn) { finish({ state: "rejected", reason: "already_checked_in" }); return; }
+    if (priorWorkflow && resolveExisting(priorWorkflow, ready, attendee)) return;
+    if (existing && resolveExisting(existing, ready, attendee)) return;
     const affiliation = b.affiliation;
     if (!affiliation || !["present", "missing", "unavailable"].includes(affiliation.state)) fail("invalid_input");
     if (c.affiliationChoice === "fetch" && affiliation.state === "unavailable") { finish({ state: "needs_affiliation_choice" }); return; }
     const text = c.affiliationChoice === "blank" || affiliation.state === "missing" ? "" : affiliation.text;
     if (!safeText(text, 200, false)) { finish({ state: "needs_affiliation_choice" }); return; }
     const w = new Record(app.findCollectionByNameOrId("checkin_arrival_workflows"));
-    const profileSnapshot = { id: ready.profile.id, stationId: station.id, version: ready.profile.getInt("version"), approval: ready.approval, config: json(ready.profile, "config") };
-    set(w, { edition: "WTS2026", upstream_event_id: event.getString("upstream_event_id"), upstream_attendee_id: attendee.upstreamAttendeeId, station_id: station.id, event_id: event.id, event_title: event.getString("title"), list_id: event.getString("list_id"), context: currentContext, source_key: b.sourceKey, profile_id: ready.profile.id, profile_config: json(ready.profile, "config"), profile_snapshot: profileSnapshot, affiliation_mapping: json(event, "affiliation"), name: attendee.name, affiliation: text, state: "not_submitted", operation_id: c.operationId }); app.save(w);
-    finish({ state: "reserved", workflow: workflowDTO(w) }, w);
+    const profileSnapshot = selectedProfile(ready);
+    set(w, { edition: "WTS2026", upstream_event_id: event.getString("upstream_event_id"), upstream_attendee_id: attendee.upstreamAttendeeId, station_id: station.id, event_id: event.id, event_title: event.getString("title"), list_id: event.getString("list_id"), context: currentContext, source_key: b.sourceKey, profile_id: ready.profile.id, profile_config: json(ready.profile, "config"), profile_snapshot: profileSnapshot, affiliation_mapping: json(event, "affiliation"), name: attendee.name, affiliation: text, state: attendee.alreadyCheckedIn ? "accepted" : "not_submitted", admission_basis: attendee.alreadyCheckedIn ? "upstream_existing" : "local", operation_id: c.operationId });
+    if (attendee.alreadyCheckedIn) {
+      // Preallocate identity so the immutable admission snapshot is saved once.
+      // Both rows and their command pointer commit atomically, with no POST job.
+      w.set("id", $security.randomStringWithAlphabet(15, "abcdefghijklmnopqrstuvwxyz0123456789"));
+      const print = P.create(app, w, { stationId: station.id, profile: profileSnapshot, purpose: "initial", name: attendee.name, affiliation: text });
+      set(w, { print_intent_id: print.id, admission_completed_at: iso, admission_completed_day: localDay(now) }); app.save(w);
+      command.set("requested_print_id", print.id);
+      finish({ state: "accepted", workflow: workflowDTO(w, print), requestedPrint: printDTO(print), printIntentId: print.id }, w);
+    } else { app.save(w); finish({ state: "reserved", workflow: workflowDTO(w) }, w); }
   });
   return e.json(200, result);
 }, $apis.requireSuperuserAuth());
@@ -419,6 +450,12 @@ onRecordCreateRequest(() => { throw new ForbiddenError("Use arrival commands.");
 onRecordUpdateRequest(() => { throw new ForbiddenError("Use arrival commands."); }, "checkin_arrival_commands", "checkin_arrival_workflows");
 onRecordUpdate((e) => {
   const original = e.record.original();
+  if (original.getString("requested_print_id") && e.record.getString("requested_print_id") !== original.getString("requested_print_id")) throw new ForbiddenError("Requested print identity is immutable.");
+  const requested = e.record.getString("requested_print_id");
+  if (requested && !original.getString("requested_print_id")) {
+    const p = e.app.findRecordById("checkin_print_attempts", requested);
+    if (p.getString("workflow_id") !== e.record.getString("workflow_id") || p.getString("station_id") !== e.record.getString("station_id")) throw new ForbiddenError("Requested print route must belong to command.");
+  }
   const identity = ["operation_id", "payload_hash", "qr_hash", "context", "source_key", "affiliation_choice", "prior_operation_id", "actor_user_id", "station_id", "event_id", "created"];
   for (const field of identity) if (e.record.getString(field) !== original.getString(field)) throw new ForbiddenError("Arrival command identity is immutable.");
   if (original.getString("status") === "pending" && e.record.getString("status") === "final") return e.next();
@@ -433,7 +470,7 @@ onRecordUpdate((e) => {
   const allowed = (original.getString("state") === "not_submitted" && ["not_submitted", "admission_pending", "rejected"].includes(e.record.getString("state")))
     || (original.getString("state") === "admission_pending" && ["accepted", "existing_unattributed", "rejected", "admission_uncertain"].includes(e.record.getString("state")));
   if (!allowed) throw new ForbiddenError("Reserved workflow snapshots are immutable.");
-  for (const field of ["edition", "upstream_event_id", "upstream_attendee_id", "station_id", "event_id", "event_title", "list_id", "context", "source_key", "profile_id", "profile_config", "profile_snapshot", "affiliation_mapping", "name", "affiliation", "operation_id", "created"]) if (e.record.getString(field) !== original.getString(field)) throw new ForbiddenError("Reserved workflow snapshots are immutable.");
+  for (const field of ["admission_basis", "edition", "upstream_event_id", "upstream_attendee_id", "station_id", "event_id", "event_title", "list_id", "context", "source_key", "profile_id", "profile_config", "profile_snapshot", "affiliation_mapping", "name", "affiliation", "operation_id", "created"]) if (e.record.getString(field) !== original.getString(field)) throw new ForbiddenError("Reserved workflow snapshots are immutable.");
   e.next();
 }, "checkin_arrival_workflows");
 // Freeze first terminal print time, including outcome replay. Admission time is

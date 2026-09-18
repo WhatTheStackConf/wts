@@ -42,6 +42,17 @@ function setup(...bodies: unknown[]) {
   return { adapter, snapshot, calls };
 }
 const options = () => [page("events/101/check-in-lists", [list]), { data: [] }, page("events/101/products", [product])];
+it("browses every list member with ticket eligibility and exact-list authenticated check-in status", async () => {
+  const people = [row, { ...row, id: 502, public_id: "A-ABC1235", status: "CANCELLED" }, { ...row, id: 503, public_id: "A-ABC1236", status: "AWAITING_PAYMENT" }];
+  const checkin = { id: 901, attendee_id: 501, check_in_list_id: 201, product_id: 401, event_id: 101, created_at: "2026-09-19T09:00:00Z" };
+  const details = people.map((person, n) => ({ ...person, check_ins: n === 0 ? [checkin] : n === 1 ? [{ ...checkin, attendee_id: person.id, check_in_list_id: 202 }] : [] }));
+  const t = setup(...options(), page(attendeePath, people, 1, 3, 25, true), page("events/101/attendees", details));
+  expect(await t.adapter.search(t.snapshot, "")).toEqual({ state: "complete", attendees: [
+    { attendeeId: "501", publicId: row.public_id, name: "Ана Test", email: row.email, status: "ACTIVE", checkedIn: true },
+    { attendeeId: "502", publicId: "A-ABC1235", name: "Ана Test", email: row.email, status: "CANCELLED", checkedIn: false },
+    { attendeeId: "503", publicId: "A-ABC1236", name: "Ана Test", email: row.email, status: "AWAITING_PAYMENT", checkedIn: false },
+  ] });
+});
 it("accepts observed single-page membership without event_id or check_in", async () => {
   const member = { id: row.id, email: row.email, first_name: row.first_name, last_name: row.last_name, public_id: row.public_id, product_id: row.product_id, product_price_id: 1401, status: "ACTIVE", locale: "en", order_id: row.order_id };
   const t = setup(...options(), stripped(page(attendeePath, [member], 1, 1, 25, true)), { data: row });
@@ -56,11 +67,11 @@ it("rejects duplicate IDs and public identities across stripped pages", async ()
 });
 it("accepts stripped public and authenticated multi-page metadata without following URLs", async () => {
   const other = { ...row, id: 502, public_id: "A-ABC1235", email: "other@example.test" };
-  const t = setup(...options(), ...[page(attendeePath, [row], 1, 2, 1, true), page(attendeePath, [other], 2, 2, 1, true), page("events/101/attendees", [other], 1, 2, 1), page("events/101/attendees", [row], 2, 2, 1)].map(stripped));
+  const t = setup(...options(), ...[page(attendeePath, [row], 1, 2, 1, true), page(attendeePath, [other], 2, 2, 1, true), page("events/101/attendees", [row], 1, 2, 1), page("events/101/attendees", [other], 2, 2, 1)].map(stripped));
   const result = await t.adapter.search(t.snapshot, row.email);
   expect(result).toMatchObject({ state: "complete", attendees: [{ attendeeId: "501" }] });
   expect(JSON.stringify(result)).not.toContain(list.short_id);
-  expect(t.calls.slice(3)).toEqual([`${base}/${attendeePath}?page=1&per_page=25`, `${base}/${attendeePath}?page=2&per_page=25`, `${base}/events/101/attendees?page=1&per_page=25`, `${base}/events/101/attendees?page=2&per_page=25`]);
+  expect(t.calls.slice(3)).toEqual([`${base}/${attendeePath}?page=1&per_page=100`, `${base}/${attendeePath}?page=2&per_page=100`, `${base}/events/101/attendees?page=1&per_page=100&sort_by=id&sort_direction=asc`, `${base}/events/101/attendees?page=2&per_page=100&sort_by=id&sort_direction=asc`]);
 });
 it.each(["origin", "capability", "query", "changed query", "duplicate query", "duplicate", "credentials", "fragment", "count", "wrong mount"])("rejects stripped %s in both paginator kinds", async kind => {
   for (const simple of [true, false]) for (const field of ["path", "current_page_url", "first", "next"]) {
@@ -74,8 +85,8 @@ it.each(["origin", "capability", "query", "changed query", "duplicate query", "d
 });
 it("searches email privately after complete list membership and authenticated event pagination", async () => {
   const other = { ...row, id: 502, public_id: "A-ABC1235", email: "other@example.test" };
-  const t = setup(...options(), page(attendeePath, [row], 1, 2, 1, true), page(attendeePath, [other], 2, 2, 1, true), page("events/101/attendees", [other], 1, 2, 1), page("events/101/attendees", [row], 2, 2, 1));
-  expect(await t.adapter.search(t.snapshot, "ANA@EXAMPLE.TEST")).toEqual({ state: "complete", attendees: [{ attendeeId: "501", publicId: "A-ABC1234", name: "Ана Test", email: "ana@example.test" }] });
+  const t = setup(...options(), page(attendeePath, [row], 1, 2, 1, true), page(attendeePath, [other], 2, 2, 1, true), page("events/101/attendees", [row], 1, 2, 1), page("events/101/attendees", [other], 2, 2, 1));
+  expect(await t.adapter.search(t.snapshot, "ANA@EXAMPLE.TEST")).toEqual({ state: "complete", attendees: [{ attendeeId: "501", publicId: "A-ABC1234", name: "Ана Test", email: "ana@example.test", status: "ACTIVE" }] });
   expect(t.calls).toHaveLength(7);
   expect(t.calls.every((url) => !/query=|email|ana|%40|@/i.test(url))).toBe(true);
 });
@@ -83,10 +94,10 @@ it("searches email privately after complete list membership and authenticated ev
 it("keeps ambiguous Unicode name matches distinct and omits event attendees outside the list", async () => {
   const other = { ...row, id: 502, public_id: "A-ABC1235", email: "second@example.test" };
   const foreign = { ...row, id: 503, public_id: "A-ABC1236", email: "foreign@example.test" };
-  const t = setup(...options(), page(attendeePath, [row, other], 1, 2, 25, true), page("events/101/attendees", [foreign, other, row]));
+  const t = setup(...options(), page(attendeePath, [row, other], 1, 2, 25, true), page("events/101/attendees", [row, other, foreign]));
   expect(await t.adapter.search(t.snapshot, "АНА")).toEqual({ state: "complete", attendees: [
-    { attendeeId: "501", publicId: row.public_id, name: "Ана Test", email: row.email },
-    { attendeeId: "502", publicId: other.public_id, name: "Ана Test", email: other.email },
+    { attendeeId: "501", publicId: row.public_id, name: "Ана Test", email: row.email, status: "ACTIVE" },
+    { attendeeId: "502", publicId: other.public_id, name: "Ана Test", email: other.email, status: "ACTIVE" },
   ] });
 });
 
@@ -120,9 +131,92 @@ it("verifies selected IDs against actual list membership before a detail read", 
   expect(await exact.adapter.identity(exact.snapshot, "501")).toMatchObject({ state: "complete", attendees: [{ attendeeId: "501", publicId: row.public_id }] });
 });
 
-it("stops at the 40-page source cap instead of returning a misleading partial match", async () => {
-  const pages = Array.from({ length: 40 }, (_, n) => page(attendeePath, [{ ...row, id: n + 1, public_id: `A-${String(n).padStart(7, "0")}` }], n + 1, 41, 1, true));
+it("reads all 10000 event attendees before filtering and requests deterministic authenticated pages", async () => {
+  const people = Array.from({ length: 10000 }, (_, n) => ({ ...row, id: n + 1, public_id: `A-${String(n).padStart(7, "0")}`, product_id: n === 9999 ? 401 : 402 }));
+  const pages = Array.from({ length: 100 }, (_, n) => page("events/101/attendees", people.slice(n * 100, (n + 1) * 100), n + 1, 10000, 100));
+  const t = setup(...options(), page(attendeePath, people.slice(-1), 1, 1, 100, true), ...pages);
+  expect(await t.adapter.search(t.snapshot, "")).toMatchObject({ state: "complete", attendees: [{ attendeeId: "10000", status: "ACTIVE" }] });
+  expect(t.calls).toHaveLength(104);
+  expect(t.calls[3]).toBe(`${base}/${attendeePath}?page=1&per_page=100`);
+  expect(t.calls[103]).toBe(`${base}/events/101/attendees?page=100&per_page=100&sort_by=id&sort_direction=asc`);
+});
+
+it("accepts unordered public membership but rejects nonmonotonic authenticated IDs", async () => {
+  const other = { ...row, id: 502, public_id: "A-ABC1235" };
+  const members = [page(attendeePath, [other], 1, 2, 1, true), page(attendeePath, [row], 2, 2, 1, true)];
+  const ordered = setup(...options(), ...members, page("events/101/attendees", [row, other]));
+  expect(await ordered.adapter.search(ordered.snapshot, "")).toMatchObject({ state: "complete", attendees: [{ attendeeId: "501" }, { attendeeId: "502" }] });
+  const unordered = setup(...options(), ...members, page("events/101/attendees", [other], 1, 2, 1), page("events/101/attendees", [row], 2, 2, 1));
+  expect(await unordered.adapter.search(unordered.snapshot, "")).toEqual({ state: "partial" });
+});
+
+it("validates fixed sort/page-size metadata without following supplied links", async () => {
+  for (const suffix of ["&per_page=100&sort_by=id&sort_direction=asc", "&per_page=1&sort_by=id&sort_direction=asc", "&sort_by=email", "&sort_direction=desc", "&sort_by=id&sort_by=id", "&sort_direction=asc&sort_direction=asc", "&per_page=101", "&per_page=100&per_page=100"]) {
+    const body = page("events/101/attendees", [row], 1, 1, 1);
+    body.links.first += suffix;
+    const t = setup(...options(), page(attendeePath, [row], 1, 1, 100, true), body);
+    expect((await t.adapter.search(t.snapshot, "")).state).toBe(suffix.startsWith("&per_page=100&sort_by=id&sort_direction=asc") || suffix.startsWith("&per_page=1&sort_by=id&sort_direction=asc") ? "complete" : "partial");
+    expect(t.calls).toHaveLength(5);
+  }
+});
+
+it("retains all 10000 list members at the bound without bypassing upstream rate budgets", async () => {
+  const people = Array.from({ length: 10000 }, (_, n) => ({ ...row, id: n + 1, public_id: `A-${String(n).padStart(7, "0")}` }));
+  const pages = [true, false].flatMap(simple => Array.from({ length: 100 }, (_, n) => page(simple ? attendeePath : "events/101/attendees", people.slice(n * 100, (n + 1) * 100), n + 1, 10000, 100, simple)));
+  // An explicitly advertised larger budget permits the bounded two-source read.
+  const permitted = setup(...options().map(body => Response.json(body, { headers: { "X-RateLimit-Limit": "500" } })), ...pages);
+  const result = await permitted.adapter.search(permitted.snapshot, "");
+  expect(result.state).toBe("complete");
+  if (result.state === "complete") { expect(result.attendees).toHaveLength(10000); expect(result.attendees[9999].attendeeId).toBe("10000"); }
+  expect(permitted.calls).toHaveLength(203);
+  const limited = setup(...options(), ...pages);
+  expect(await limited.adapter.search(limited.snapshot, "")).toEqual({ state: "partial" });
+  expect(limited.calls).toHaveLength(175);
+});
+
+it("rejects oversize totals, drifting counts/page sizes, and interrupted authenticated pagination", async () => {
+  const other = { ...row, id: 502, public_id: "A-ABC1235" };
+  const publicPage = page(attendeePath, [row], 1, 1, 100, true);
+  const oversize = setup(...options(), publicPage, page("events/101/attendees", [row], 1, 10001, 100));
+  expect(await oversize.adapter.search(oversize.snapshot, "")).toEqual({ state: "partial" });
+  for (const final of [page("events/101/attendees", [other], 2, 3, 1), page("events/101/attendees", [other], 2, 2, 2), new Response(null, { status: 401 })]) {
+    const t = setup(...options(), publicPage, page("events/101/attendees", [row], 1, 2, 1), final);
+    expect(await t.adapter.search(t.snapshot, "")).toEqual({ state: "partial" });
+  }
+});
+
+it("uses validated public check-in evidence only when authenticated status is absent", async () => {
+  const checkin = { id: 901, attendee_id: row.id, check_in_list_id: 201, order_id: row.order_id, checked_in_at: "2026-09-19T09:00:00Z" };
+  for (const [member, checkedIn] of [[{ ...row, check_in: checkin }, true], [{ ...row, check_in: null }, false], [row, undefined]] as const) {
+    const t = setup(...options(), page(attendeePath, [member], 1, 1, 100, true), page("events/101/attendees", [row]));
+    const result = await t.adapter.search(t.snapshot, "");
+    expect(result.state).toBe("complete");
+    if (result.state === "complete") {
+      expect(result.attendees[0].checkedIn).toBe(checkedIn);
+      if (checkedIn === undefined) expect(result.attendees[0]).not.toHaveProperty("checkedIn");
+    }
+  }
+});
+
+it("redacts results for malformed, foreign or contradictory check-in and eligibility evidence", async () => {
+  const checkin = { id: 901, attendee_id: row.id, check_in_list_id: 201, order_id: row.order_id, checked_in_at: "2026-09-19T09:00:00Z" };
+  const authenticated = { id: 901, attendee_id: row.id, check_in_list_id: 201, product_id: row.product_id, event_id: row.event_id, created_at: "2026-09-19T09:00:00Z" };
+  const invalid = [
+    ...[{ attendee_id: 999 }, { check_in_list_id: 999 }, { order_id: 999 }, { id: 0 }, { checked_in_at: "bad" }].map(fields => [{ ...row, check_in: { ...checkin, ...fields } }, row]),
+    ...[{ attendee_id: 999 }, { check_in_list_id: 0 }, { product_id: 999 }, { event_id: 999 }, { created_at: "bad" }, { deleted_at: "2026-09-19" }].map(fields => [row, { ...row, check_ins: [{ ...authenticated, ...fields }] }]),
+    [row, { ...row, check_ins: null }], [row, { ...row, check_ins: [authenticated, authenticated] }],
+    [{ ...row, check_in: checkin }, { ...row, check_ins: [] }],
+    [row, { ...row, status: "CANCELLED" }], [row, { ...row, status: "OTHER" }],
+  ];
+  for (const [member, detail] of invalid) {
+    const t = setup(...options(), page(attendeePath, [member], 1, 1, 100, true), page("events/101/attendees", [detail]));
+    expect(await t.adapter.search(t.snapshot, "")).toEqual({ state: "partial" });
+  }
+});
+
+it("stops at the 100-page source cap instead of returning a misleading partial match", async () => {
+  const pages = Array.from({ length: 100 }, (_, n) => page(attendeePath, [{ ...row, id: n + 1, public_id: `A-${String(n).padStart(7, "0")}` }], n + 1, 101, 1, true));
   const t = setup(...options(), ...pages);
   expect(await t.adapter.search(t.snapshot, "Ана")).toEqual({ state: "partial" });
-  expect(t.calls).toHaveLength(43);
+  expect(t.calls).toHaveLength(103);
 });

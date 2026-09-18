@@ -39,7 +39,7 @@ export function provisioningCameraCode(value: string, origin: string): string | 
 
 export function cameraDecisionSettled(decision: CheckinArrivalDecision | undefined): boolean {
   if (!decision) return false;
-  if (decision.state === "already_handled" || decision.state === "rejected") return true;
+  if (decision.state === "already_handled" || decision.state === "rejected" || decision.state === "print_blocked") return true;
   return "workflow" in decision && decision.workflow.state === "accepted" && decision.workflow.printState === "completed";
 }
 

@@ -8,7 +8,7 @@ const recoverySchema = z.strictObject({
   operationId: checkinLookupRecoveryOperationIdSchema,
   context: checkinEventContextSchema,
   attendeeId: checkinLookupAttendeeSchema.shape.attendeeId,
-  state: z.enum(["pending", "reserved", "existing", "accepted", "admission_pending", "admission_uncertain", "existing_unattributed", "already_handled", "rejected", "dependency_unavailable", "needs_affiliation_choice"]),
+  state: z.enum(["pending", "reserved", "existing", "accepted", "admission_pending", "admission_uncertain", "existing_unattributed", "already_handled", "rejected", "dependency_unavailable", "needs_affiliation_choice", "print_blocked"]),
   recovery: z.enum(["available", "context_changed", "read_only"]),
   actions: z.array(z.enum(["replay", "retry", "blank"])).max(3),
   result: checkinArrivalResultSchema.optional(),
@@ -22,6 +22,6 @@ export function parseCheckinLookupRecovery(value: unknown, operationId: string):
   if (result.actions.includes("retry") && !["needs_affiliation_choice", "dependency_unavailable"].includes(result.state)) throw new Error("Invalid read continuation");
   const outcome = result.result;
   if (outcome && (outcome.operationId !== operationId || outcome.state !== result.state)) throw new Error("Mismatched recovered outcome");
-  if (outcome && "workflow" in outcome && (outcome.workflow.stationId !== result.context.stationId || outcome.workflow.eventId !== result.context.eventId)) throw new Error("Mismatched recovered origin");
+  if (outcome && "workflow" in outcome && ((outcome.requestedPrint?.stationId ?? outcome.workflow.stationId) !== result.context.stationId || outcome.workflow.eventId !== result.context.eventId)) throw new Error("Mismatched recovered origin");
   return result;
 }

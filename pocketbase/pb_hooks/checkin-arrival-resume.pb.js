@@ -29,7 +29,8 @@ routerAdd("POST", "/api/wts/checkin-arrival-resume", (e) => {
     const unchanged = event && canonical(context) === canonical(current) && binding.getString("selected_event") === event.id && binding.getInt("selected_event_generation") === event.getInt("generation") && binding.getInt("selected_binding_version") === binding.getInt("version") && command.getString("source_key") === b.sourceKey && event.getString("source_key") === b.sourceKey && event.getString("edition") === "WTS2026" && event.getBool("member") && event.getBool("enabled") && !!event.getString("list_id") && station.getBool("enabled") && system.getBool("enabled");
     const status = command.getString("status");
     const state = status === "pending" ? "pending" : (json(command, "result") || {}).state;
-    const hasWork = !!command.getString("workflow_id") || !!command.getString("admission_attempt_id") || !!find(app, "checkin_arrival_commands", "source_key = {:source} && event_id = {:event} && qr_hash = {:qr} && workflow_id != ''", { source: command.getString("source_key"), event: context.eventId, qr: command.getString("qr_hash") });
+    // Historical same-QR work belongs to an earlier command, not this preflight.
+    const hasWork = !!command.getString("workflow_id") || !!command.getString("admission_attempt_id") || !!command.getString("requested_print_id");
     const child = find(app, "checkin_arrival_commands", "prior_operation_id = {:id}", { id: b.operationId });
     let actions = [];
     if (unchanged && !hasWork && !child) {

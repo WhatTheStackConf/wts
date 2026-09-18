@@ -82,14 +82,14 @@ it("projects live completed history and replay without rewriting the accepted co
     expect(await t.service.preflight(t.token, command)).toMatchObject({ state: "reserved" });
     expect(await t.service.status(t.token, command.operationId)).toMatchObject({operationId:command.operationId,result:{state:"reserved"},operationsEnabled:false});
     const cachedCommand = {...command, operationId:crypto.randomUUID()};
-    expect(await t.service.preflight(t.token,cachedCommand)).toMatchObject({state:"existing"});
+    expect(await t.service.preflight(t.token,cachedCommand)).toMatchObject({state:"print_blocked",reason:"in_progress"});
     const hidden = await t.pb.collection("checkin_arrival_commands").getFirstListItem(`operation_id='${cachedCommand.operationId}'`);
     expect(hidden.history_visible).toBe(false);
     expect(await runtime.coordinator.processAdmissions({
       attendee: async (job) => ({ upstreamAttendeeId: job.upstreamAttendeeId, publicId: qrIdentity, productId: "401", alreadyCheckedIn: false }),
       admit: async () => {
         expect(await t.service.status(t.token, command.operationId)).toMatchObject({result:{state:"admission_pending"}});
-        expect(await t.service.status(t.token, cachedCommand.operationId)).toMatchObject({result:{state:"admission_pending"}});
+        expect(await t.service.status(t.token, cachedCommand.operationId)).toMatchObject({result:{state:"print_blocked",reason:"in_progress"}});
         return { state: "newly_checked_in", fingerprint: "a".repeat(64) };
       },
     })).toBe(1);
@@ -103,7 +103,7 @@ it("projects live completed history and replay without rewriting the accepted co
     await expect(agent.process(work.attempts[0], printer)).resolves.toBe("protocol_complete");
     expect(printer.printed).toHaveLength(1);
     expect(await t.service.status(t.token, command.operationId)).toMatchObject({result:{state:"accepted",workflow:{printState:"completed"}}});
-    expect(await t.service.status(t.token, cachedCommand.operationId)).toMatchObject({operationId:cachedCommand.operationId,result:{state:"accepted",workflow:{printState:"completed"}}});
+    expect(await t.service.status(t.token, cachedCommand.operationId)).toMatchObject({operationId:cachedCommand.operationId,result:{state:"print_blocked",reason:"in_progress"}});
     expect((await t.pb.collection("checkin_arrival_commands").getOne(hidden.id)).result).toEqual(hidden.result);
     const currentDay = (await t.service.history(t.token)).day;
     const historyDay = (day: string, token = t.token, cursor?: string) => t.pb.send<any>("/api/wts/checkin-arrivals", {method:"POST", body:{operation:"history",actorUserId:t.operator.actor.userId,identityHash:checkinEventBindingHash(token),day,query:{scope:"station",limit:1,cursor}},requestKey:null});
@@ -113,9 +113,10 @@ it("projects live completed history and replay without rewriting the accepted co
     const recovery = async (command: object) => t.pb.send<any>("/api/wts/checkin-recovery",{method:"POST",body:{operation:"command",actorUserId:t.operator.actor.userId,identityHash:checkinEventBindingHash(t.token),command:{operationId:crypto.randomUUID(),workflowId:accepted.workflow.id,...command}},requestKey:null});
     const projection = await t.pb.collection("checkin_recovery_workflows").getFirstListItem(`workflow_id = '${accepted.workflow.id}'`);
     const corrected = await recovery({operation:"correct",expectedVersion:projection.version,name:"Corrected Label",affiliation:"New Label Affiliation"});
-    await recovery({operation:"replace",expectedVersion:corrected.workflow.version,printId:accepted.printIntentId});
-    expect(await t.service.preflight(t.token,command)).toMatchObject({state:"accepted",workflow:{printState:"queued",name:"Тест Attendee",affiliation:"Test organisation"}});
-    expect(await t.service.status(t.token,cachedCommand.operationId)).toMatchObject({result:{state:"accepted",workflow:{printState:"queued",name:"Тест Attendee"}}});
+    const replacementCommand={...command,operationId:crypto.randomUUID()};
+    expect(await t.service.preflight(t.token,replacementCommand)).toMatchObject({state:"accepted",requestedPrint:{purpose:"replacement",state:"queued"}});
+    expect(await t.service.preflight(t.token,command)).toMatchObject({state:"accepted",workflow:{printState:"completed",name:"Тест Attendee",affiliation:"Test organisation"}});
+    expect(await t.service.status(t.token,cachedCommand.operationId)).toMatchObject({result:{state:"print_blocked",reason:"in_progress"}});
     expect((await historyDay("2099-01-01")).items).toMatchObject([{completedAt:null,result:{workflow:{printState:"queued"}}}]);
     const replacement = await t.pb.collection("checkin_print_attempts").getFirstListItem("purpose='replacement'");
     expect(replacement).toMatchObject({name:"Corrected Label",affiliation:"New Label Affiliation"});
@@ -129,7 +130,7 @@ it("projects live completed history and replay without rewriting the accepted co
     }
     const restore = new DatabaseSync(join(t.root,"pb_data","data.db"));
     restore.prepare("UPDATE checkin_print_attempts SET state='queued' WHERE id=?").run(replacement.id); restore.close();
-    expect((await t.service.history(t.token)).items).toMatchObject([{completedAt:null,result:{workflow:{printState:"queued"}}}]);
+    expect((await t.service.history(t.token)).items.find(item=>item.operationId===replacementCommand.operationId)).toMatchObject({completedAt:null,result:{workflow:{printState:"queued"}}});
     const second = await ready(t,"wts2026station2",runtime.coordinator);
     const otherToken = "d".repeat(64);
     await t.control.bind(second.code,otherToken,(await t.control.preview(second.code)).confirmation);
@@ -144,7 +145,9 @@ it("projects live completed history and replay without rewriting the accepted co
     await agent.process(next.attempts[0],printer);
 
     expect(await t.service.preflight(t.token, command)).toMatchObject({state:"accepted", workflow:{printState:"completed"}});
-    expect((await t.service.history(t.token)).items).toMatchObject([{completedAt: expect.any(String), result:{state:"accepted",workflow:{printState:"completed"}}}]);
+    const completed=(await t.service.history(t.token)).items;
+    expect(completed.find(item=>item.operationId===command.operationId)).toMatchObject({completedAt:expect.any(String),result:{state:"accepted",workflow:{printState:"completed"}}});
+    expect(completed.find(item=>item.operationId===replacementCommand.operationId)).toMatchObject({completedAt:expect.any(String),result:{state:"accepted",requestedPrint:{state:"completed"}}});
     expect((await t.pb.collection("checkin_arrival_commands").getOne(frozen.id)).result).toEqual(frozen.result);
     expect((await t.pb.collection("checkin_print_attempts").getFullList()).every(p => p.state === "completed")).toBe(true);
     expect((await t.pb.collection("checkin_agent_authorizations").getFullList()).every(a => a.outcome === "protocol_complete")).toBe(true);

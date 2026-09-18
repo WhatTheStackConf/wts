@@ -42,6 +42,8 @@ jobs:
       - if: matrix.gate == 'test'
         run: pnpm test --no-file-parallelism
       - if: matrix.gate == 'test'
+        run: pnpm test:checkin-reprints
+      - if: matrix.gate == 'test'
         run: pnpm test:mcs
       - if: matrix.gate == 'test'
         run: pnpm test:usability

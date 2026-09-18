@@ -18,12 +18,18 @@ export function parseCheckinLookupSearchResult(value: unknown, input: CheckinLoo
   const result = checkinLookupSearchResultSchema.parse(value);
   if (!sameLookupContext(result.context, input.context) || (result.nextOffset !== null && result.nextOffset <= (input.offset ?? 0))) throw new Error("Mismatched lookup context or pagination");
   if (new Set(result.items.map(item => item.attendeeId)).size !== result.items.length || new Set(result.items.map(item => item.publicId)).size !== result.items.length) throw new Error("Duplicate lookup identity");
+  if (result.state === "complete" && result.totalCount !== undefined) {
+    const offset = input.offset ?? 0;
+    const length = Math.min(20, Math.max(0, result.totalCount - offset));
+    const next = offset + length < result.totalCount ? offset + length : null;
+    if (result.items.length !== length || result.nextOffset !== next) throw new Error("Incomplete roster page");
+  }
   return result;
 }
 export function parseCheckinLookupConfirmResult(value: unknown, input: Pick<CheckinLookupConfirmInput, "operationId" | "context">): CheckinArrivalResult {
   const result = checkinArrivalResultSchema.parse(value);
   if (result.operationId !== input.operationId) throw new Error("Mismatched operation");
-  if ("workflow" in result && (result.workflow.eventId !== input.context.eventId || result.workflow.stationId !== input.context.stationId)) throw new Error("Mismatched originating context");
+  if ("workflow" in result && (result.workflow.eventId !== input.context.eventId || (result.requestedPrint?.stationId ?? result.workflow.stationId) !== input.context.stationId)) throw new Error("Mismatched originating context");
   return result;
 }
 async function request<T>(operation: "search" | "confirm" | "recovery_get" | "recover", input: object, parse: (value: unknown) => T): Promise<T> {

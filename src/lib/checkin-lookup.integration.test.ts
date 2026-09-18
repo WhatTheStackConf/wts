@@ -47,9 +47,27 @@ it("returns transient search results with the exact context and no durable searc
   try {
     const before = await t.pb.collection("checkin_audit_events").getFullList();
     const service = new CheckinLookupService(t.pb, t.operator.actor, lookup(), t.source);
-    expect(await service.search(t.token, { context: t.command().context, query: person.email })).toEqual({ state: "complete", context: t.command().context, items: [person], nextOffset: null });
+    expect(await service.search(t.token, { context: t.command().context, query: person.email })).toEqual({ state: "complete", context: t.command().context, items: [person], nextOffset: null, totalCount: 1 });
     expect(await t.pb.collection("checkin_audit_events").getFullList()).toEqual(before);
     for (const name of ["checkin_arrival_commands", "checkin_arrival_workflows", "checkin_agent_attempts", "checkin_agent_authorizations"]) expect(await t.pb.collection(name).getFullList()).toEqual([]);
+  } finally { await t.cleanup(); }
+});
+
+it("browses the full bounded roster with filtered totals, status and twenty-row pages", { timeout: 60_000 }, async () => {
+  const t = await setup();
+  try {
+    const people = Array.from({ length: 10000 }, (_, n) => ({ ...person, attendeeId: String(n + 1), publicId: `A-${String(n).padStart(7, "0")}`, checkedIn: n === 9999 }));
+    const source = lookup(); const queries: string[] = [];
+    source.search = async (_snapshot, query) => { queries.push(query); return { state: "complete", attendees: query ? people.slice(-1) : people }; };
+    const service = new CheckinLookupService(t.pb, t.operator.actor, source, t.source);
+    const input = { context: t.command().context, query: "" };
+    expect(await service.search(t.token, input)).toEqual({ state: "complete", context: input.context, items: people.slice(0, 20), nextOffset: 20, totalCount: 10000 });
+    expect(await service.search(t.token, { ...input, offset: 9980 })).toEqual({ state: "complete", context: input.context, items: people.slice(9980), nextOffset: null, totalCount: 10000 });
+    expect(await service.search(t.token, { ...input, query: " a " })).toEqual({ state: "complete", context: input.context, items: people.slice(-1), nextOffset: null, totalCount: 1 });
+    expect(queries).toEqual(["", "", "a"]);
+    source.search = async () => ({ state: "complete", attendees: [...people, { ...person, attendeeId: "10001", publicId: "A-XYZ1234" }] });
+    expect(await service.search(t.token, input)).toEqual({ state: "unavailable", context: input.context, items: [], nextOffset: null });
+    await noEffects(t);
   } finally { await t.cleanup(); }
 });
 
@@ -118,9 +136,9 @@ it("deduplicates explicit confirmation with QR intake, survives restart and upst
     const first = await service.confirm(t.token, command);
     expect(first.state).toBe("reserved");
     expect(await service.confirm(t.token, command)).toEqual({ ...first, replayed: true });
-    expect(await service.confirm(t.token, { ...command, operationId: crypto.randomUUID() })).toMatchObject({ state: "existing" });
+    expect(await service.confirm(t.token, { ...command, operationId: crypto.randomUUID() })).toMatchObject({ state: "print_blocked", reason: "in_progress" });
     const { attendeeId: _selected, ...qrCommand } = command;
-    expect(await t.service.preflight(t.token, { ...qrCommand, operationId: crypto.randomUUID() })).toMatchObject({ state: "existing" });
+    expect(await t.service.preflight(t.token, { ...qrCommand, operationId: crypto.randomUUID() })).toMatchObject({ state: "print_blocked", reason: "in_progress" });
     await expect(service.confirm(t.token, { ...command, attendeeId: "999" })).rejects.toMatchObject({ code: "conflict" });
     expect(await t.pb.collection("checkin_arrival_workflows").getFullList()).toHaveLength(1);
     for (const name of ["checkin_agent_attempts", "checkin_agent_authorizations"]) expect(await t.pb.collection(name).getFullList()).toEqual([]);

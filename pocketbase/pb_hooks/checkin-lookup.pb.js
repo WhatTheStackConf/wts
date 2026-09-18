@@ -42,14 +42,15 @@ routerAdd("POST", "/api/wts/checkin-lookup-commands", e => {
       if (c.priorOperationId) {
         const prior = find(app, "checkin_lookup_commands", "operation_id = {:id}", { id: c.priorOperationId });
         const previous = base(c.priorOperationId);
-        if (!prior || prior.getString("attendee_id") !== c.attendeeId || prior.getString("qr_hash") !== c.qrHash || prior.getString("source_key") !== b.sourceKey || canonical(json(prior, "context")) !== canonical(context) || !previous || previous.getString("status") !== "final" || previous.getString("workflow_id") || !["dependency_unavailable", "needs_affiliation_choice"].includes((json(previous, "result") || {}).state) || (c.affiliationChoice === "blank" && json(previous, "result").state !== "needs_affiliation_choice") || find(app, "checkin_lookup_commands", "prior_operation_id = {:id}", { id: c.priorOperationId })) fail("conflict");
+        if (!prior || prior.getString("attendee_id") !== c.attendeeId || prior.getString("qr_hash") !== c.qrHash || prior.getString("source_key") !== b.sourceKey || canonical(json(prior, "context")) !== canonical(context) || !previous || previous.getString("status") !== "final" || previous.getString("workflow_id") || previous.getString("admission_attempt_id") || previous.getString("requested_print_id") || !["dependency_unavailable", "needs_affiliation_choice"].includes((json(previous, "result") || {}).state) || (c.affiliationChoice === "blank" && json(previous, "result").state !== "needs_affiliation_choice") || find(app, "checkin_lookup_commands", "prior_operation_id = {:id}", { id: c.priorOperationId })) fail("conflict");
       } else if (c.affiliationChoice === "blank") fail("invalid_input", 400);
       row = save(c, { context, sourceKey: b.sourceKey, upstreamEventId: event.getString("upstream_event_id"), upstreamListId: event.getString("list_id"), affiliation: json(event, "affiliation"), actor: { userId: actor.id, role: actor.getString("role") } });
     }
     const arrival = base(c.operationId);
     const final = arrival && arrival.getString("status") === "final";
     const state = final ? (json(arrival, "result") || {}).state : "pending";
-    const hasWork = arrival && (arrival.getString("workflow_id") || arrival.getString("admission_attempt_id")) || find(app, "checkin_arrival_commands", "source_key = {:source} && event_id = {:event} && qr_hash = {:qr} && workflow_id != ''", { source: b.sourceKey, event: context.eventId, qr: c.qrHash });
+    // A historical workflow must not fence a fresh reprint preflight.
+    const hasWork = arrival && (arrival.getString("workflow_id") || arrival.getString("admission_attempt_id") || arrival.getString("requested_print_id"));
     const child = find(app, "checkin_lookup_commands", "prior_operation_id = {:id}", { id: c.operationId }) || find(app, "checkin_arrival_commands", "prior_operation_id = {:id}", { id: c.operationId });
     let actions = unchanged ? ["replay"] : [];
     if (unchanged && final && !hasWork && !child) {

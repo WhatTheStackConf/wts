@@ -40,7 +40,7 @@ export class CheckinArrivalService implements CheckinArrivalServiceContract {
     // Every network boundary is fenced before another read or durable acceptance.
     await this.request("fence", args);
     let affiliation: ArrivalAffiliation = { state: "missing" };
-    if (resolution.state === "eligible" && !resolution.attendee.alreadyCheckedIn && command.affiliationChoice === "fetch") {
+    if (resolution.state === "eligible" && command.affiliationChoice === "fetch") {
       try { affiliation = await this.source.affiliation(start.snapshot, resolution.attendee); } catch { affiliation = { state: "unavailable" }; }
     }
     return this.request("finish", { ...args, readiness: start.readiness, resolution, affiliation });

@@ -46,9 +46,9 @@ export class CheckinLookupService {
     try { read = await this.source.search(snapshot, query); } catch { read = { state: "unavailable" }; }
     await this.context(bindingToken, context);
     if (read.state !== "complete") return { state: read.state, context, items: [], nextOffset: null };
-    const attendees = checkinLookupAttendeeSchema.array().max(1000).safeParse(read.attendees);
+    const attendees = checkinLookupAttendeeSchema.array().max(10000).safeParse(read.attendees);
     if (!attendees.success || new Set(attendees.data.map(row => row.attendeeId)).size !== attendees.data.length || new Set(attendees.data.map(row => row.publicId)).size !== attendees.data.length) return { state: "unavailable", context, items: [], nextOffset: null };
-    return { state: "complete", context, items: attendees.data.slice(offset, offset + 20), nextOffset: offset + 20 < attendees.data.length ? offset + 20 : null };
+    return { state: "complete", context, items: attendees.data.slice(offset, offset + 20), nextOffset: offset + 20 < attendees.data.length ? offset + 20 : null, totalCount: attendees.data.length };
   }
 
   private async confirmBinding(bindingToken: string | undefined, context: CheckinEventContext) {
@@ -123,6 +123,17 @@ export class CheckinLookupService {
     // Fresh arrivals remain fully fenced by the ledger. Exact finalized replay
     // needs current human/binding authority, not mutable catalogue availability.
     await this.confirmBinding(bindingToken, command.context);
+    // A known QR may now create a replacement immediately. Bind the selected
+    // attendee to its immutable identity BEFORE any such side effect, not only
+    // after the arrival command returns. New identities are checked by resolve.
+    const known = await this.pb.collection("checkin_arrival_commands").getList(1, 1, {
+      filter: this.pb.filter("source_key = {:source} && event_id = {:event} && qr_hash = {:qr} && workflow_id != ''", { source: this.source.sourceKey, event: command.context.eventId, qr: qrHash(command.qrIdentity) }),
+      fields: "workflow_id", requestKey: null,
+    });
+    if (known.items[0]?.workflow_id) {
+      const workflow = await this.pb.collection("checkin_arrival_workflows").getOne(known.items[0].workflow_id, { requestKey: null, fields: "upstream_attendee_id" });
+      if (workflow.upstream_attendee_id !== attendeeId) throw new CheckinError("conflict", 409);
+    }
     const { qrIdentity, ...opaque } = parsed.data;
     await this.lookupCommand(bindingToken, { operation: "bind", operationId: command.operationId, command: { ...opaque, qrHash: qrHash(qrIdentity), priorOperationId: opaque.priorOperationId ?? "" } });
     const source: CheckinArrivalSource = {

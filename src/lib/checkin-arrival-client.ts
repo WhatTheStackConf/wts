@@ -5,17 +5,20 @@ import type { CheckinArrivalHistory, CheckinArrivalHistoryQuery, CheckinArrivalI
 
 const localId = z.string().regex(/^[a-z0-9]{15}$/);
 const timestamp = z.string().min(1).max(40);
+const requestedPrint = z.strictObject({ id: localId, stationId: z.enum(CHECKIN_STATION_IDS), profileId: localId, purpose: z.enum(["initial", "replacement"]), state: z.enum(["queued", "dispatched", "completed", "uncertain", "cancelled"]) });
 const workflow = z.strictObject({ id: localId, stationId: z.enum(CHECKIN_STATION_IDS), eventId: localId, eventTitle: z.string().max(300), state: z.enum(["not_submitted", "admission_pending", "accepted", "existing_unattributed", "rejected", "admission_uncertain"]), printState: z.enum(["queued", "dispatched", "completed", "uncertain", "cancelled"]).nullable().optional(), name: z.string().max(300), affiliation: z.string().max(300), profileId: z.string().min(1).max(100), createdAt: timestamp });
 const variants = [
-  z.strictObject({ state: z.enum(["reserved", "existing"]), workflow }),
-  z.strictObject({ state: z.literal("accepted"), workflow, printIntentId: localId.nullable(), printSuppression: z.literal("lifecycle").optional() }),
-  z.strictObject({ state: z.enum(["admission_pending", "admission_uncertain", "existing_unattributed"]), workflow }),
+  z.strictObject({ state: z.enum(["reserved", "existing"]), workflow, requestedPrint: requestedPrint.optional() }),
+  z.strictObject({ state: z.literal("accepted"), workflow, requestedPrint: requestedPrint.optional(), printIntentId: localId.nullable(), printSuppression: z.literal("lifecycle").optional() }),
+  z.strictObject({ state: z.enum(["admission_pending", "admission_uncertain", "existing_unattributed"]), workflow, requestedPrint: requestedPrint.optional() }),
   z.strictObject({ state: z.literal("already_handled") }),
   z.strictObject({ state: z.literal("rejected"), reason: z.enum(["invalid_identity", "not_in_list", "cancelled", "awaiting_payment", "unknown_eligibility", "already_checked_in"]) }),
   z.strictObject({ state: z.literal("dependency_unavailable") }),
   z.strictObject({ state: z.literal("needs_affiliation_choice") }),
+  z.strictObject({ state: z.literal("print_blocked"), reason: z.enum(["in_progress", "uncertain", "needs_review"]) }),
 ] as const;
-function validPrint(value: { state: string; printIntentId?: string | null; printSuppression?: string; workflow?: {state: string; printState?: string | null} }) {
+function validPrint(value: { state: string; printIntentId?: string | null; printSuppression?: string; requestedPrint?: { id: string; state: string }; workflow?: {state: string; printState?: string | null} }) {
+  if (value.requestedPrint && (value.workflow?.printState !== value.requestedPrint.state || value.state === "accepted" && value.printIntentId !== value.requestedPrint.id)) return false;
   return value.state !== "accepted" || (value.workflow?.state === "accepted" && (value.printIntentId === null
     ? value.printSuppression === "lifecycle" && value.workflow.printState === null
     : !!value.printIntentId && !value.printSuppression && !!value.workflow.printState));
@@ -24,7 +27,7 @@ const decision = z.discriminatedUnion("state", variants).refine(validPrint, "Inc
 const envelope = { operationId: z.uuid(), replayed: z.boolean(), operationsEnabled: z.literal(false) };
 export const checkinArrivalResultSchema = z.discriminatedUnion("state", [
   variants[0].extend(envelope), variants[1].extend(envelope), variants[2].extend(envelope),
-  variants[3].extend(envelope), variants[4].extend(envelope), variants[5].extend(envelope), variants[6].extend(envelope),
+  variants[3].extend(envelope), variants[4].extend(envelope), variants[5].extend(envelope), variants[6].extend(envelope), variants[7].extend(envelope),
 ]).refine(validPrint, "Inconsistent accepted print evidence");
 const historySchema = z.strictObject({
   items: z.array(z.strictObject({ id: localId, operationId: z.uuid(), stationId: z.enum(CHECKIN_STATION_IDS), eventId: localId, createdAt: timestamp, completedAt: timestamp.nullable(), resolvedByOperationId: z.uuid().optional(), result: decision })).max(100),
@@ -56,7 +59,7 @@ export function preflightCheckinArrival(command: CheckinArrivalInput): Promise<C
   return request({ operation: "preflight", command: submitted }, (value) => {
     const result = checkinArrivalResultSchema.parse(value);
     if (result.operationId !== submitted.operationId) throw new Error("Mismatched operation");
-    if (("workflow" in result) && (result.workflow.eventId !== submitted.context.eventId || result.workflow.stationId !== submitted.context.stationId)) throw new Error("Mismatched originating context");
+    if (("workflow" in result) && (result.workflow.eventId !== submitted.context.eventId || (result.requestedPrint?.stationId ?? result.workflow.stationId) !== submitted.context.stationId)) throw new Error("Mismatched originating context");
     return result;
   });
 }
@@ -74,7 +77,7 @@ export function checkinArrivalHistory(query: CheckinArrivalHistoryQuery = {}): P
     const result = historySchema.parse(value);
     for (const item of result.items) {
       if (item.resolvedByOperationId && (!item.completedAt || !["needs_affiliation_choice", "dependency_unavailable"].includes(item.result.state))) throw new Error("Invalid exception resolution");
-      if (("workflow" in item.result) && (item.result.workflow.stationId !== item.stationId || item.result.workflow.eventId !== item.eventId)) throw new Error("Mismatched history context");
+      if (("workflow" in item.result) && ((item.result.requestedPrint?.stationId ?? item.result.workflow.stationId) !== item.stationId || item.result.workflow.eventId !== item.eventId)) throw new Error("Mismatched history context");
     }
     return result;
   });

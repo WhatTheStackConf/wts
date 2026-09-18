@@ -12,6 +12,25 @@ function deps(role = "checkin_operator") {
  return { target, authenticate: vi.fn().mockResolvedValue({ id: "human", role }), service: vi.fn().mockResolvedValue(target) };
 }
 describe("authenticated private lookup HTTP", () => {
+ it.each(["", "a", "Person", "person@example.test"])("serves roster query %s only through a private POST with totals and row state", async query => {
+  const d = deps();
+  const payload = { state: "complete", context, items: Array.from({ length: 20 }, (_, n) => ({ attendeeId: String(9981 + n), publicId: `A-${String(9981 + n).padStart(7, "0")}`, name: "Person", email: "person@example.test", status: "CANCELLED", checkedIn: false })), nextOffset: null, totalCount: 10000 };
+  d.target.search.mockResolvedValue(payload);
+  const response = await handleCheckinLookupRequest(request({ operation: "search", input: { context, query, offset: 9980 } }), d);
+  expect(response.status).toBe(200); expect(await response.json()).toEqual(payload);
+  expect(d.target.search).toHaveBeenCalledWith("a".repeat(64), { context, query, offset: 9980 });
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(d.target.confirm).not.toHaveBeenCalled();
+ });
+ it.each([{ query: "x".repeat(255) }, { query: "a\u0000b" }, { offset: 10001 }, { offset: -1 }])("rejects out-of-bounds roster inputs before service construction", async invalid => {
+  const d = deps();
+  expect((await handleCheckinLookupRequest(request({ operation: "search", input: { ...input, ...invalid } }), d)).status).toBe(400);
+  expect(d.service).not.toHaveBeenCalled();
+ });
+ it.each([{ totalCount: 10001 }, { totalCount: -1 }, { totalCount: 1.5 }])("refuses malformed roster totals", async extra => {
+  const d = deps(); d.target.search.mockResolvedValue({ state: "complete", context, items: [], nextOffset: null, ...extra });
+  expect((await handleCheckinLookupRequest(request(), d)).status).toBe(503);
+ });
  it("dispatches validated opaque recovery without exposing raw identities", async () => {
   const d = deps(); const operationId = crypto.randomUUID();
   const descriptor = { operationId, context, attendeeId: "21", state: "dependency_unavailable", recovery: "available", actions: ["retry"] };

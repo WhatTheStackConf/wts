@@ -15,10 +15,15 @@ interface CheckinCompactResultProps {
 export function compactArrivalPresentation(decision?: CheckinArrivalDecision) {
   const result = (tone: "success" | "error" | "waiting", title: string, detail: string) => ({ tone, title, detail });
   if (!decision) return result("waiting", "QR captured", "Checking this attendee…");
+  if (decision.state === "print_blocked") {
+    if (decision.reason === "in_progress") return result("waiting", "Label already in progress", "No extra label was queued. Wait for the current print before requesting another.");
+    if (decision.reason === "uncertain") return result("error", "Check printer output", "The previous label's outcome is uncertain. Resolve it in Tools before reprinting.");
+    return result("error", "Label needs review", "No extra check-in or label was requested. Review the existing work in Tools.");
+  }
   if ("workflow" in decision) {
     const work = decision.workflow;
     if (work.state === "accepted") {
-      if (cameraDecisionSettled(decision)) return result("success", "Done", "Checked in. Collect the label.");
+      if (cameraDecisionSettled(decision)) return result("success", decision.requestedPrint?.purpose === "replacement" ? "Reprinted" : "Done", decision.requestedPrint?.purpose === "replacement" ? "Collect the replacement label. No additional check-in." : "Checked in. Collect the label.");
       if (work.printState === "uncertain") return result("error", "Check printer output", "Admission recorded. Do not reprint; ask an admin.");
       if (work.printState === "cancelled" || !work.printState) return result("error", "Admission recorded · no label", "Do not check in again. Resolve the label in Tools.");
       return result("waiting", work.printState === "dispatched" ? "Printing label…" : "Label queued…", "Admission recorded. Keep this attendee here.");

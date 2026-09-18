@@ -21,9 +21,10 @@ export type RecoveryRead={state:"absent"|"malformed"|"unavailable"}|{state:"exis
 export interface RecoveryReadResult {id:string;state:RecoveryRead["state"];checkinId:string}
 export interface RecoverySource {reconcile(target:RecoveryTarget):Promise<RecoveryRead>}
 export interface RecoveryWorkflow {
- workflowId:string;stationId:string;eventId:string;eventTitle:string;admissionState:string;version:number;name:string;affiliation:string;decision:string;fulfillment:string;parked:boolean;completedDay:string;isolated:boolean;profile:LabelProfile;
+ /** stationId/profile describe latest output; admissionStationId is immutable origin. */
+ workflowId:string;stationId:string;admissionStationId?:string;printerOperationsAllowed?:boolean;eventId:string;eventTitle:string;admissionState:string;version:number;name:string;affiliation:string;decision:string;fulfillment:string;parked:boolean;completedDay:string;isolated:boolean;profile:LabelProfile;
  attemptsTruncated?:boolean;
- attempts:{id:string;purpose:string;state:string;name:string;affiliation:string;predecessorId:string;observation:string|null;cancellation:string|null}[];
+ attempts:{id:string;stationId?:string;profileId?:string;purpose:string;state:string;name:string;affiliation:string;predecessorId:string;observation:string|null;cancellation:string|null}[];
  reads:{id:string;state:string;checkinId:string;createdAt:string}[];
  admissionAttempts:{id:string;state:string;listId:string;attendeeId:string;sendBoundaryAt:string;completedAt:string;fingerprint:string}[];
  resets:{id:string;state:string;checkinId:string;sendBoundaryAt:string}[];

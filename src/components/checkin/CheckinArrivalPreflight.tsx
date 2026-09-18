@@ -35,6 +35,7 @@ export function ArrivalDecision(props: { decision: CheckinArrivalDecision }) {
     already_handled: "Already handled at another station",
     dependency_unavailable: "Dependency unavailable",
     needs_affiliation_choice: "Affiliation choice required",
+    print_blocked: "Label needs attention",
   }[props.decision.state] ?? "Arrival result");
   return <div class="space-y-2 wts-name-label-text">
     <Show when={work()}>{(workflow) => <>
@@ -44,20 +45,21 @@ export function ArrivalDecision(props: { decision: CheckinArrivalDecision }) {
       <Show when={props.decision.state === "admission_pending"}><p>Admission is in progress in the supervised coordinator. Do not rescan or submit another admission.</p></Show>
       <Show when={accepted()}>{(admission) => <>
         <Show when={admission().printIntentId !== null} fallback={<p>Admission recorded. No Name Label was queued: edition closure or restore reconciliation suppresses printing. Do not check this attendee in again.</p>}>
-          <p>Admission accepted. Exactly one initial Name Label intent belongs to this station.</p>
+          <Show when={admission().requestedPrint?.purpose === "replacement"} fallback={<p>Admission recorded. One Name Label intent was queued.</p>}><p>Replacement Name Label queued on the selected printer. No additional admission was submitted.</p></Show>
           <Show when={printStatus()}>{(status) => <p role="status">{status()}</p>}</Show>
           <p>Print intent: <span class="break-all">{admission().printIntentId}</span></p>
         </Show>
       </>}</Show>
       <Show when={props.decision.state === "existing_unattributed"}><p>Hi.Events reports an existing check-in, but WTS cannot attribute it to this admission. An admin must decide; no label was authorized.</p></Show>
       <Show when={props.decision.state === "admission_uncertain"}><p>The admission outcome is uncertain. An admin must reconcile it; no label was authorized and no automatic retry will be made.</p></Show>
-      <p>Owning station: {workflow().stationId} · Originating event: {workflow().eventTitle} · Event ID {workflow().eventId}</p>
+      <p>Admission station: {workflow().stationId} · Originating event: {workflow().eventTitle} · Event ID {workflow().eventId}</p>
       <p class="text-lg font-bold">{workflow().name}</p>
       <p>Affiliation: {workflow().affiliation || "Blank"}</p>
       <p class="text-sm">Work <span class="break-all">{workflow().id}</span></p>
       <p class="text-sm">Created <time datetime={workflow().createdAt}>{workflow().createdAt}</time></p>
     </>}</Show>
     <Show when={props.decision.state === "already_handled"}><p class="font-bold">Already handled at another station. No attendee details or history are available here. Work cannot be transferred.</p></Show>
+    <Show when={props.decision.state === "print_blocked"}><p class="font-bold">The existing label must finish or be recovered before another print. No duplicate was queued.</p></Show>
     <Show when={reason()}><p class="font-bold">Arrival rejected. {reason()}</p></Show>
     <Show when={props.decision.state === "dependency_unavailable"}><p class="font-bold">Dependency unavailable. Validation could not be completed; this is not a missing attendee result.</p></Show>
     <Show when={props.decision.state === "needs_affiliation_choice"}><p class="font-bold">Affiliation read failed. Retry the read or explicitly choose a blank affiliation. Missing data has not been assumed.</p></Show>

@@ -106,10 +106,17 @@ async function scenario(name, mode, run) {
       else if (url.pathname === "/api/checkin-recovery") { assert.equal(body.operation, "history"); json = { items: [], nextOffset: null }; }
       else if (url.pathname === "/api/checkin-arrivals") {
         if (body.operation === "preflight") { state.arrival = body.command; json = { state: "dependency_unavailable", operationId: body.command.operationId, replayed: false, operationsEnabled: false }; if (state.holdArrival) { held.push({ route, json, operation: body.operation }); return; } }
-        else if (body.operation === "status") json = { operationId: body.operationId, result: { state: "dependency_unavailable" }, operationsEnabled: false };
+        else if (body.operation === "status") json = { operationId: body.operationId, result: state.linkedCommand?.nextOperationId === body.operationId ? { state: state.linkedReturn, reason: state.linkedReturn === "rejected" ? "cancelled" : "in_progress" } : { state: "dependency_unavailable" }, operationsEnabled: false };
         else if (body.operation === "history") json = { items: [], nextCursor: null, day: "2026-09-17", operationsEnabled: false };
         else throw Error(`Unexpected arrivals operation ${body.operation}`);
       } else if (url.pathname === "/api/checkin-arrival-resume") {
+        if (state.linkedReturn) {
+          if (body.operation === "resume") {
+            state.linkedCommand = body.command;
+            return route.fulfill({ json: { state: state.linkedReturn, reason: state.linkedReturn === "rejected" ? "cancelled" : "in_progress", operationId: body.command.nextOperationId, replayed: false, operationsEnabled: false } });
+          }
+          return route.fulfill({ json: { operationId: body.operationId, context: state.arrival.context, status: "final", state: state.linkedCommand?.nextOperationId === body.operationId ? state.linkedReturn : "dependency_unavailable", affiliationChoice: "fetch", recovery: state.linkedCommand?.nextOperationId === body.operationId ? "read_only" : "available", actions: state.linkedCommand?.nextOperationId === body.operationId ? [] : ["retry"], operationsEnabled: false } });
+        }
         assert.equal(body.operation, "get"); return route.fulfill({ status: 404, json: { error: "Synthetic held work requires recovery" } });
       } else if (url.pathname === "/api/checkin-lookup") {
         if (body.operation === "recovery_get") return route.fulfill({ status: 404, json: { error: "Synthetic held work requires recovery" } });
@@ -270,6 +277,23 @@ try {
       await expect(picker).toBeDisabled(); await expect(page.getByText("Couldn't load printers.", { exact: true })).toBeVisible();
     });
   }
+  for (const outcome of ["rejected", "print_blocked"]) await scenario(`released linked ${outcome} starts a fresh scan intent`, "scanner", async ({ page, open, picker, state, count, calls }) => {
+    state.linkedReturn = outcome;
+    await syntheticCamera(page); await open(); await expect(picker).toBeEnabled();
+    await button(page, "Start scanning").click(); await showQr(page, "A-REPAIR1");
+    await expect(button(page, "Retry check")).toBeEnabled();
+    const original = calls.find(c => c.operation === "preflight").command.operationId;
+    await button(page, "Retry check").click();
+    await expect(page.getByRole("heading", { name: outcome === "rejected" ? "Ticket not accepted" : "Label already in progress", exact: true })).toBeVisible();
+    const linked = calls.find(c => c.operation === "resume").command.nextOperationId;
+    await page.evaluate(() => { const c=window.syntheticCanvas; c.getContext("2d").fillStyle="white"; c.getContext("2d").fillRect(0,0,c.width,c.height); });
+    await button(page, "Scan next attendee").click();
+    const time=await page.locator("video").evaluate(v=>v.currentTime);
+    await expect.poll(()=>page.locator("video").evaluate(v=>v.currentTime)).toBeGreaterThan(time+1);
+    await showQr(page, "A-REPAIR1"); await expect.poll(()=>count("preflight")).toBe(2);
+    const next=calls.filter(c=>c.operation==="preflight")[1].command.operationId;
+    assert.notEqual(next,original); assert.notEqual(next,linked);
+  });
   await scenario("pending camera arrival remains mounted and blocks switching after ambiguous reply", "scanner", async ({ page, open, picker, state, held, count }) => {
     await syntheticCamera(page); await open(); await expect(picker).toBeEnabled();
     await expect(button(page, "Start scanning")).toBeEnabled(); state.holdArrival = true;
