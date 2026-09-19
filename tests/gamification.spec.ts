@@ -162,6 +162,13 @@ test("QR login resumes questions; wrong answers give nothing; lost correct respo
     const answer = page.getByRole("textbox", { name: "Which language adds types to JavaScript?", exact: true });
     await expect(answer).toBeVisible();
     await expect(answer).toBeFocused();
+    await expect(page.locator("#mission-code")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Redeem code", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Complete the Mission questions", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "View achievements", exact: true })).toHaveCount(0);
+    await expect(page.locator("details")).not.toHaveAttribute("open", "");
+    await expect(page.getByText(/Answer before/)).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Submit answers", exact: true })).toBeInViewport();
     expect(await xp("user")).toEqual({ total: 0, rank: 0 });
     expect(await recordCount("gamification_code_redemptions", state.users.user.id)).toBe(0);
     await answer.fill("JavaScript");
@@ -191,7 +198,7 @@ test("QR login resumes questions; wrong answers give nothing; lost correct respo
     expect(commands[1]).toEqual(commands[0]);
     expect(await xp("user")).toEqual({ total: 25, rank: 10 });
     for (const collection of ["gamification_activity_claims", "gamification_code_redemptions", "gamification_xp_events", "gamification_user_achievements"]) expect(await recordCount(collection, state.users.user.id)).toBe(1);
-    expect(await page.locator("#mission-code").inputValue()).toBe("");
+    await expect(page.locator("#mission-code")).toHaveCount(0);
     await page.screenshot({ path: info.outputPath("question-reward-mobile.png"), fullPage: true });
     expect(attendee.errors).toEqual([]);
   } finally { await page.unrouteAll({ behavior: "wait" }); await attendee.context.close(); }
@@ -204,6 +211,7 @@ test("direct points stay immediate and idempotent; shared question QR rewards a 
     await first.page.goto(`/missions/redeem#code=${directCode}`);
     await expect(first.page.getByRole("heading", { name: "Mission recorded", exact: true })).toBeVisible();
     expect(await xp("user")).toEqual({ total: 35, rank: 15 });
+    await first.page.getByRole("button", { name: "Enter a different code", exact: true }).click();
     await first.page.locator("#mission-code").fill(directCode);
     await first.page.getByRole("button", { name: "Redeem code", exact: true }).click();
     await expect(first.page.getByRole("heading", { name: "Mission already recorded", exact: true })).toBeVisible();
@@ -387,16 +395,83 @@ test("three-choice half-credit question completes once and cannot be upgraded by
     const code = await generateCode(page, activity, "Synthetic half-credit code", halfStart);
     const before = await xp("mc");
     await attendee.page.goto(`/missions/redeem#code=${code}`);
-    await expect(attendee.page.getByText(/half total and leaderboard XP/).first()).toBeVisible();
-    await attendee.page.getByRole("combobox", { name: "Which film inspired this year's WTS visual identity?", exact: true }).selectOption({ label: "Tron" });
+    const choices = attendee.page.getByRole("radio");
+    await expect(choices).toHaveCount(3);
+    await expect(attendee.page.locator('input[type="radio"]:checked')).toHaveCount(0);
+    await expect(attendee.page.locator("#mission-code")).toHaveCount(0);
+    await expect(attendee.page.getByRole("heading", { name: "Complete the Mission questions", exact: true })).toHaveCount(0);
+    await expect(attendee.page.getByText(/Correct answers earn full XP/)).not.toBeVisible();
+    await expect(attendee.page.getByRole("button", { name: "Submit answers", exact: true })).toBeInViewport();
+    await expect(attendee.page.getByRole("radio", { name: "The Matrix", exact: true })).toBeInViewport();
+    expect(await attendee.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await attendee.page.screenshot({ path: info.outputPath("question-first-mobile.png") });
+    await attendee.page.setViewportSize({ width: 320, height: 812 });
+    await expect(attendee.page.getByRole("radio", { name: "The Matrix", exact: true })).toBeInViewport();
+    await expect(attendee.page.getByRole("button", { name: "Submit answers", exact: true })).toBeInViewport();
+    expect(await attendee.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await attendee.page.screenshot({ path: info.outputPath("question-first-narrow.png") });
+    await attendee.page.setViewportSize({ width: 390, height: 844 });
+    await attendee.page.getByRole("radio", { name: "Tron", exact: true }).check();
+    await attendee.page.getByText("How it works", { exact: true }).click();
+    await expect(attendee.page.getByText(/Correct answers earn full XP/)).toBeVisible();
+    await expect(attendee.page.getByRole("radio", { name: "Tron", exact: true })).toBeChecked();
+    await attendee.page.getByText("How it works", { exact: true }).click();
     await attendee.page.getByRole("button", { name: "Submit answers", exact: true }).click();
     await expect(attendee.page.getByRole("heading", { name: "Mission recorded", exact: true })).toBeVisible();
     expect(await xp("mc")).toEqual({ total: before.total + 10, rank: before.rank + 10 });
     await attendee.page.screenshot({ path: info.outputPath("half-credit-reward-mobile.png"), fullPage: true });
     await attendee.page.goto(`/missions/redeem#code=${code}`);
     await expect(attendee.page.getByRole("heading", { name: "Mission already recorded", exact: true })).toBeVisible();
-    await expect(attendee.page.getByRole("combobox", { name: "Which film inspired this year's WTS visual identity?", exact: true })).toHaveCount(0);
+    await expect(attendee.page.getByRole("radio")).toHaveCount(0);
     expect(await xp("mc")).toEqual({ total: before.total + 10, rank: before.rank + 10 });
+    const correct = await actor(browser, "checkin_operator");
+    try {
+      await correct.page.setViewportSize({ width: 1280, height: 900 });
+      await correct.page.goto(`/missions/redeem#code=${code}`);
+      await expect(correct.page.getByRole("radio")).toHaveCount(3);
+      await correct.page.screenshot({ path: info.outputPath("question-first-desktop.png") });
+      await correct.page.getByRole("radio", { name: "Blade Runner", exact: true }).check();
+      await correct.page.getByRole("button", { name: "Submit answers", exact: true }).click();
+      await expect(correct.page.getByRole("heading", { name: "Mission recorded", exact: true })).toBeVisible();
+      expect(await xp("checkin_operator")).toEqual({ total: 20, rank: 20 });
+      expect(correct.errors).toEqual([]);
+    } finally { await correct.context.close(); }
     expect(admin.errors.concat(attendee.errors)).toEqual([]);
   } finally { await admin.context.close(); await attendee.context.close(); }
+});
+
+test("a delayed or lost scan response never exposes the entry form and retries the same challenge", async ({ browser }) => {
+  const record = await pb.collection("users").create({ email: "question-first@example.test", name: "Question-first rehearsal", password: state.password, passwordConfirm: state.password, verified: true, role: "user" });
+  state.users.question_first = { id: record.id, email: record.email, password: state.password };
+  const attendee = await actor(browser, "question_first");
+  let release!: () => void;
+  const barrier = new Promise<void>(resolve => { release = resolve; });
+  let lost = false;
+  await attendee.page.route("**/_server", async route => {
+    const request = route.request();
+    const args = request.headers()["content-type"]?.includes("application/json") ? request.postDataJSON() : null;
+    if (!lost && Array.isArray(args) && args[0] === questionCode) {
+      lost = true;
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      await barrier;
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+  try {
+    await attendee.page.goto(`/missions/redeem#code=${questionCode}`);
+    await expect(attendee.page.getByRole("status").filter({ hasText: "Opening mission" })).toBeVisible();
+    await expect(attendee.page.locator("#mission-code")).toHaveCount(0);
+    await expect.poll(() => recordCount("gamification_question_attempts", record.id)).toBe(1);
+    release();
+    await expect(attendee.page.getByRole("button", { name: "Retry scan", exact: true })).toBeEnabled();
+    await attendee.page.getByRole("button", { name: "Retry scan", exact: true }).click();
+    await expect(attendee.page.getByRole("textbox", { name: "Which language adds types to JavaScript?", exact: true })).toBeVisible();
+    await expect(attendee.page.locator("#mission-code")).toHaveCount(0);
+    expect(await recordCount("gamification_question_attempts", record.id)).toBe(1);
+    expect(await recordCount("gamification_code_redemptions", record.id)).toBe(0);
+    expect(attendee.errors).toEqual([]);
+  } finally { release(); await attendee.page.unrouteAll({ behavior: "wait" }); await attendee.context.close(); }
 });

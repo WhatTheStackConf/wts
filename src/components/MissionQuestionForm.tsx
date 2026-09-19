@@ -32,23 +32,36 @@ export function MissionQuestionForm(props: { challenge: MissionQuestionChallenge
       queueMicrotask(() => errorRegion?.focus());
     } finally { setBusy(false); }
   };
-  return <form class="mt-5 space-y-4" onSubmit={submit} aria-busy={busy() ? "true" : "false"}>
-    <p class="text-sm">Answer every question. This challenge expires at {new Date(props.challenge.expiresAt).toLocaleTimeString()}; the server checks the Mission window when you submit.</p>
-    <Show when={props.challenge.policy === "correct_or_half"}><p class="text-sm">All correct earns full configured XP. Any wrong answer still completes the Mission with half total and leaderboard XP, subject to caps. Missing or invalid answers earn nothing. Your first completion is final: rescanning cannot improve the award.</p></Show>
-    <fieldset disabled={busy() || held()} class="space-y-4">
+  return <form class="space-y-6" onSubmit={submit} aria-busy={busy() ? "true" : "false"}>
+    <fieldset disabled={busy() || held()} class="space-y-8">
       <legend class="sr-only">Mission questions</legend>
       <For each={props.challenge.questions}>{q => <div>
-        <label for={`question-${q.id}`} class="label block whitespace-normal break-words">{q.prompt}</label>
-        <Show when={q.kind === "single_choice"} fallback={<textarea id={`question-${q.id}`} name={q.id} required maxlength={1000} class="textarea textarea-bordered w-full" autocomplete="off" />}>
-          <select id={`question-${q.id}`} name={q.id} required class="select select-bordered w-full">
-            <option value="">Choose an answer</option>
-            <For each={q.kind === "single_choice" ? q.choices : []}>{c => <option value={c.id}>{c.label}</option>}</For>
-          </select>
+        <Show when={q.kind === "single_choice"} fallback={<>
+          <label for={`question-${q.id}`} class="mb-5 block text-xl font-semibold leading-snug text-white">{q.prompt}</label>
+          <textarea id={`question-${q.id}`} name={q.id} required maxlength={1000} class="textarea textarea-bordered min-h-28 w-full" autocomplete="off" />
+        </>}>
+          <fieldset>
+            <legend class="mb-5 text-xl font-semibold leading-snug text-white">{q.prompt}</legend>
+            <div class="space-y-3">
+              <For each={q.kind === "single_choice" ? q.choices : []}>{(c, index) => <label class="flex min-h-14 cursor-pointer items-center gap-3 rounded-lg border border-white/25 p-4 text-base text-white has-checked:border-primary-400 has-checked:bg-primary-500/15 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary-400">
+                <input id={index() === 0 ? `question-${q.id}` : `question-${q.id}-${c.id}`} type="radio" name={q.id} value={c.id} required class="radio radio-primary shrink-0" />
+                <span>{c.label}</span>
+              </label>}</For>
+            </div>
+          </fieldset>
         </Show>
       </div>}</For>
     </fieldset>
-    <Show when={held()}><p class="text-sm">Answers are held for exact retry until the server confirms the outcome.</p></Show>
     <Show when={error()}><p ref={element => { errorRegion = element; }} role="alert" tabindex="-1" class="text-error">{error()}</p></Show>
     <button type="submit" class="btn btn-primary w-full min-h-12" disabled={busy() || props.retrySeconds > 0}>{busy() ? "Checking answers…" : props.retrySeconds > 0 ? `Retry in ${props.retrySeconds}s` : held() ? "Retry saved answers" : "Submit answers"}</button>
+    <details class="text-sm leading-relaxed text-secondary-100">
+      <summary class="link link-primary min-h-11 cursor-pointer py-3">How it works</summary>
+      <div class="space-y-3 pt-2">
+        <Show when={props.challenge.policy === "correct_or_half"} fallback={<p>Answer every question. The configured Mission rules determine whether participation or correct answers earn points.</p>}>
+          <p>Correct answers earn full XP; a wrong answer earns half. Each Mission rewards you once, subject to its scoring limits.</p>
+        </Show>
+        <p>Answer before {new Date(props.challenge.expiresAt).toLocaleTimeString()}. Your first completion is final. If a response is lost, retry the saved answers without scanning again.</p>
+      </div>
+    </details>
   </form>;
 }

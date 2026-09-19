@@ -96,7 +96,7 @@ describe("account route presentation contracts", () => {
   it("keeps code privacy and retry feedback while moving secondary help into details", () => {
     expect(redeem).toContain("Do not share a scanned code in messages or screenshots.");
     expect(redeem).toContain("Your scanned code stays only in this tab");
-    expect(redeem).toMatch(/<summary[^>]+>Code help<\/summary>/);
+    expect(redeem).toMatch(/<summary[^>]+>How it works<\/summary>/);
     expect(redeem).toContain('id="mission-code-error"');
     expect(redeem).toContain('["rate_limited", "unavailable", "questions_incorrect"');
     expect(redeem).toContain('retrySeconds() > 0');

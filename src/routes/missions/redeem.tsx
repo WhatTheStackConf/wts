@@ -23,6 +23,8 @@ const RedeemMissionPage = () => {
   const [isRedeeming, setIsRedeeming] = createSignal(false);
   const [result, setResult] = createSignal<MissionCodeRedemptionResult>();
   const [challenge, setChallenge] = createSignal<{ value: MissionQuestionChallenge; userId: string; sourceCode: string }>();
+  // A scanned/login-resumed code opens the task, not the manual-entry screen.
+  const [scanFlow, setScanFlow] = createSignal(typeof window !== "undefined" && Boolean(missionCodeFromFragment(window.location.hash) || readPendingMissionCode(window.sessionStorage)));
   const [retryAt, setRetryAt] = createSignal(0);
   const [tick, setTick] = createSignal(Date.now());
   const retrySeconds = () => missionRetrySeconds(retryAt(), tick());
@@ -54,7 +56,7 @@ const RedeemMissionPage = () => {
       setTick(now);
       setRetryAt(now + (redemption.retryAfterSeconds || 60) * 1000);
     }
-    if (redemption.questionnaire) { setChallenge({ value: redemption.questionnaire, userId, sourceCode }); setCode(""); }
+    if (redemption.questionnaire) { setScanFlow(true); setChallenge({ value: redemption.questionnaire, userId, sourceCode }); setCode(""); }
     else if (redemption.status !== "rate_limited" && redemption.status !== "unavailable") setChallenge(undefined);
     if (pendingCode() === sourceCode && !["rate_limited", "unavailable", "questions_required", "questions_incorrect", "questions_incomplete", "questions_malformed", "question_conflict"].includes(redemption.status)) {
       clearPendingMissionCode(window.sessionStorage);
@@ -142,6 +144,7 @@ const RedeemMissionPage = () => {
       return;
     }
     if (fragmentCode) {
+      setScanFlow(true);
       automaticallySubmittedCode = undefined;
       setCode("");
       savePendingMissionCode(window.sessionStorage, fragmentCode);
@@ -180,22 +183,20 @@ const RedeemMissionPage = () => {
 
   return (
     <Layout title="Redeem code // WhatTheStack" description="Redeem a WhatTheStack mission code.">
-      <div class="min-h-screen px-4 pb-20 pt-24">
-        <section class="mx-auto max-w-xl rounded-2xl border border-primary-500/25 bg-base-200/80 p-6 shadow-xl backdrop-blur-sm md:p-8" aria-labelledby="mission-redeem-heading">
-          <h1 id="mission-redeem-heading" class="text-3xl font-star text-white md:text-4xl">Redeem code</h1>
-          <p class="mt-3 text-sm leading-relaxed text-secondary-200/85">
-            Mission progress is saved to your signed-in profile.
-          </p>
+      <div class="w-full px-4 pb-12 pt-4">
+        <section class="mx-auto max-w-xl rounded-xl bg-base-200 p-5 md:p-8" aria-labelledby="mission-redeem-heading">
+          <h1 id="mission-redeem-heading" class={scanFlow() ? "sr-only" : "text-3xl font-star text-white md:text-4xl"}><Show when={!scanFlow()} fallback="Mission questions">Redeem code</Show></h1>
 
-          <Show when={!auth.isLoading() && !auth.isAuthenticated()}>
+          <Show when={!scanFlow() && !auth.isLoading() && !auth.isAuthenticated()}>
             <div class="mt-6 rounded-xl border border-secondary-400/25 bg-secondary-500/10 p-4" role="status">
-              <p class="text-sm text-secondary-100">Log in to redeem. Your scanned code stays only in this tab while you log in.</p>
+              <p class="text-sm text-secondary-100">Sign in to save your achievement.</p>
               <button type="button" class="btn btn-secondary btn-sm mt-3" onClick={() => redirectToLogin(code() || pendingCode() || "") } disabled={!code() && !pendingCode()}>
                 Log in to redeem
               </button>
             </div>
           </Show>
 
+          <Show when={!scanFlow() && !challenge()}>
           <form class="mt-6 space-y-4" onSubmit={handleSubmit} aria-busy={isRedeeming() ? "true" : "false"}>
             <div class="form-control">
               <label class="label" for="mission-code">
@@ -230,7 +231,9 @@ const RedeemMissionPage = () => {
               </Show>
             </button>
           </form>
+          </Show>
 
+          <Show when={scanFlow() && !challenge() && !result() && !requestError()}><p class="py-4 text-sm" role="status">Opening mission…</p></Show>
           <Show when={retrySeconds() > 0}><p class="mt-3 text-sm" role="status">Retry available in {retrySeconds()} seconds. No automatic retries.</p></Show>
           <Show when={challenge()?.userId === auth.user?.id ? challenge() : undefined} keyed>{current => <MissionQuestionForm challenge={current.value} userId={current.userId} retrySeconds={retrySeconds()} onResult={value => applyResult(value, current.userId, current.sourceCode)} />}</Show>
           <Show when={["questions_incorrect", "questions_incomplete", "questions_malformed", "question_conflict"].includes(result()?.status || "")}>
@@ -247,8 +250,11 @@ const RedeemMissionPage = () => {
               <span>{requestError()}</span>
             </div>
           </Show>
+          <Show when={scanFlow() && requestError() && !challenge() && !result()}>
+            <button type="button" class="btn btn-primary mt-4 min-h-12 w-full" disabled={isRedeeming() || retrySeconds() > 0} onClick={() => void submitCode(pendingCode() || "", "link")}>Retry scan</button>
+          </Show>
 
-          <Show when={result()}>
+          <Show when={result()?.status !== "questions_required" ? result() : undefined}>
             {(current) => (
               <div
                 ref={resultRegion}
@@ -341,11 +347,15 @@ const RedeemMissionPage = () => {
             )}
           </Show>
 
-          <a href="/user/profile#gamification" class="link link-primary mt-4 inline-block min-h-12 py-3 text-sm">View achievements</a>
+          <Show when={!challenge() && !isRedeeming()}>
+          <Show when={scanFlow() && (result() || requestError())}><button type="button" class="link link-primary mt-4 block min-h-12 py-3 text-sm" onClick={() => setScanFlow(false)}>Enter a different code</button></Show>
+          <Show when={result()?.status === "accepted" || result()?.status === "already_redeemed"}><a href="/user/profile#gamification" class="link link-primary mt-4 inline-block min-h-12 py-3 text-sm">View achievements</a></Show>
           <details class="mt-2 border-t border-white/10 pt-2 text-xs leading-relaxed text-secondary-300/75">
-            <summary class="cursor-pointer min-h-12 py-3 text-sm">Code help</summary>
+            <summary class="link link-primary cursor-pointer min-h-12 py-3 text-sm">How it works</summary>
+            <p class="pb-3">Your scanned code stays only in this tab while you sign in.</p>
             <p class="pb-3">Scan a WTS mission link or enter its code. For help, contact event support with your signed-in profile. Support will not ask you to share a code online.</p>
           </details>
+          </Show>
         </section>
       </div>
     </Layout>
