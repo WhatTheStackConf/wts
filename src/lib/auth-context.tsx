@@ -14,6 +14,7 @@ import {
 } from "~/lib/session-policy";
 import { createAuthRequestQueue } from "~/lib/auth-request-queue";
 import { AuthFlowError, unwrapAuthResult } from "~/lib/auth-errors";
+import { startOAuthLogin } from "~/lib/oauth-login";
 
 interface AuthContextType {
   isAuthenticated: () => boolean;
@@ -115,22 +116,21 @@ export const AuthProvider = (props: { children: JSX.Element }) => {
     });
   };
 
-  const oauthLogin = async (
+  const oauthLogin = (
     authenticate: () => Promise<{ token: string }>,
   ): Promise<SessionUser> => {
-    return enqueueAuthRequest(async () => {
-      setLoading(true);
-      try {
-        const authData = await authenticate();
+    return startOAuthLogin({
+      authenticate,
+      enqueueSession: enqueueAuthRequest,
+      establishSession: async (authData) => {
         pb.authStore.clear();
         const user = unwrapAuthResult(await serverLoginWithToken(authData.token));
         setRecord(user);
         removeLegacyBrowserAuth();
         return user;
-      } finally {
-        pb.authStore.clear();
-        setLoading(false);
-      }
+      },
+      setLoading,
+      cleanup: () => pb.authStore.clear(),
     });
   };
 
