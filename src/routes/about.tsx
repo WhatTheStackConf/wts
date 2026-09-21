@@ -73,7 +73,7 @@ export default function About() {
             <div class="text-center mt-16 fade-in-delay-4 flex justify-center">
               <HologramButton
                 href="/tickets"
-                text="Grab your tickets"
+                text="Registration closed"
                 class="px-8 py-3 text-xl h-auto"
               />
             </div>

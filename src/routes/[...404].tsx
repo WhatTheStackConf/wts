@@ -39,7 +39,7 @@ export default function NotFound() {
               href="/tickets"
               class="btn-hologram px-8 py-3 rounded font-star tracking-widest uppercase text-sm"
             >
-              <span class="text-content" data-text="&gt; Grab a Ticket">&gt; Grab a Ticket</span>
+              <span class="text-content" data-text="Registration closed">Registration closed</span>
               <span class="scan-line"></span>
             </a>
           </div>

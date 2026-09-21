@@ -355,7 +355,7 @@ export default function TripCost() {
                 <div class="mt-6">
                   <HologramButton
                     href="/tickets"
-                    text="Get your tickets"
+                    text="Registration closed"
                     class="w-full py-3 text-lg h-auto"
                   />
                 </div>

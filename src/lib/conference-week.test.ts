@@ -72,8 +72,8 @@ describe("untimed weekday agendas", () => {
       { slug: "fundamentals-of-native-ios-development", title: "iOS", format: undefined, schedule: expect.objectContaining({ startAt: "2026-09-15T18:00:00+02:00", endAt: undefined, locationLabel: "Netaville, Skopje" }), speakers: [{ slug: "mia", name: "Mia", photoUrl: null }] },
     ]);
     expect(JSON.stringify(result)).not.toMatch(/private|cfp_submission|Saturday only|"DDD"/);
-    expect(result.days[1].programmes[0].untimed?.access).toBe("Free entry. 50 seats; reserve your ticket.");
-    expect(result.days[1].programmes[0].untimed?.cta?.label).toBe("Reserve a free ticket");
+    expect(result.days[1].programmes[0].untimed?.access).toBe("Free entry. 50 seats; registration closed.");
+    expect(result.days[1].programmes[0].untimed?.cta?.label).toBe("Registration closed");
     expect(untimedWeekProgrammes.flatMap((definition) => [...definition.sessions])).toHaveLength(18);
   });
 
@@ -105,7 +105,7 @@ describe("untimed weekday agendas", () => {
     ]);
     expect(programme.untimed?.title).toBe("Pre-DevFest Days: Day Zero x WhatThe(Google)Stack");
     expect(programme.untimed?.locationLabel).toContain("FINKI");
-    expect(programme.untimed?.cta?.href).toContain("gdg.community.dev/events/");
+    expect(programme.untimed?.cta?.href).toBe("/tickets");
     expect(JSON.stringify(programme)).not.toContain("private");
     expect(JSON.stringify(programme)).not.toContain("Another event speaker");
     const withoutSessions = addAnnouncedWeekProgrammes({ days: [] }, input.events, [], input.speakers).days[0].programmes[0];
@@ -177,7 +177,7 @@ describe("untimed weekday agendas", () => {
       "Block 1", "Block 1", "Block 1", "Block 2", "Block 2", "Block 2",
     ]);
     expect(programme.details?.unassignedSpeakers).toEqual([]);
-    expect(programme.details?.cta?.label).toBe("Reserve a free ticket");
+    expect(programme.details?.cta?.label).toBe("Registration closed");
     for (const slot of programme.slots) {
       expect(slot.locationLabel).toBe("Small FINKI amphitheater, Technical Campus, Skopje");
       expect(slot.startAt).toMatch(/^2026-09-18T.*\+02:00$/);
@@ -319,7 +319,7 @@ describe("Conference week copy", () => {
     }
   });
 
-  it("gives every pre-conference day a booking action", () => {
+  it("routes every former pre-conference booking action to the closure notice", () => {
     const withCta = conferenceWeekTracks.filter((track) => track.cta);
 
     expect(withCta.map((track) => track.name)).toEqual([
@@ -331,11 +331,8 @@ describe("Conference week copy", () => {
       "Angular Day",
     ]);
     for (const track of withCta) {
-      expect(track.cta!.label.trim()).not.toBe("");
-      expect(
-        track.cta!.href.startsWith("https://") ||
-          track.cta!.href === conferenceWeekCta.href,
-      ).toBe(true);
+      expect(track.cta!.label).toBe("Registration closed");
+      expect(track.cta!.href).toBe("/tickets");
 
     }
   });
@@ -348,23 +345,23 @@ describe("Conference week copy", () => {
     expect(tuesday?.summary).toContain("Fundamentals of Native iOS Development at 18:00");
     expect(tuesday?.summary).not.toContain("Base42");
     expect(tuesday?.locationLabel).toBe("Netaville, Skopje");
-    expect(tuesday?.access).toBe("Free entry. 50 seats; reserve your ticket.");
-    expect(tuesday?.cta?.label).toBe("Reserve a free ticket");
+    expect(tuesday?.access).toBe("Free entry. 50 seats; registration closed.");
+    expect(tuesday?.cta?.label).toBe("Registration closed");
   });
 
   it("links all cards and identifies the three free tickets in the real event checkout", () => {
     for (const track of conferenceWeekTracks) expect(track.href).toBeTruthy();
     const free = conferenceWeekTracks.filter((track) => ["InfoSec Monday", "Workshop Tuesday: iOS + AI", "Angular Day"].includes(track.name));
     expect(free.map((track) => track.access)).toEqual([
-      "Free entry. 20 seats; one ticket covers InfoSec Monday and its workshop.",
-      "Free entry. 50 seats; reserve your ticket.",
-      "Free entry. 50 seats; reserve your ticket.",
+      "Free entry. 20 seats; registration closed.",
+      "Free entry. 50 seats; registration closed.",
+      "Free entry. 50 seats; registration closed.",
     ]);
     expect(free.map((track) => track.freeTicketProductId)).toEqual([15, 16, 17]);
     for (const track of free) {
       expect(track.href).toBe(`/agenda?day=${track.date}`);
-      expect(track.cta?.href).toBe("https://hievents.foundry.mk/event/5/whatthestack-2026");
-      expect(track.cta?.label).toBe("Reserve a free ticket");
+      expect(track.cta?.href).toBe("/tickets");
+      expect(track.cta?.label).toBe("Registration closed");
     }
     expect(JSON.stringify(conferenceWeekTracks)).not.toMatch(/registration opens|No ticket required|Included with your WTS ticket/);
   });

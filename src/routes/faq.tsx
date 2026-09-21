@@ -58,7 +58,7 @@ const faqSections: FAQSection[] = [
     items: [
       {
         question: "How do I get a ticket?",
-        answer: `Head over to our <a href="/tickets" class="text-primary-400 hover:text-primary-300 underline">tickets page</a> and pick the option that works best for you. We offer regular conference entry, workshop add-ons, and student tickets.`,
+        answer: `WhatTheStack 2026 has ended. Ticket bookings and new account registrations are closed. Existing tickets and accounts are unaffected.`,
       },
       {
         question: "Do you offer any discounts?",
@@ -189,7 +189,7 @@ export default function FAQ() {
             </p>
             <HologramButton
               href="/tickets"
-              text="Get your tickets"
+              text="Registration closed"
               class="px-8 py-3 text-xl h-auto"
             />
           </div>

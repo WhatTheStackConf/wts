@@ -304,7 +304,7 @@ export const Hero = () => {
           <div class="flex items-center gap-4 sm:gap-6 xl:gap-8">
             <HologramButton
               href="/tickets"
-              text="GRAB A TICKET"
+              text="REGISTRATION CLOSED"
               class="rounded-none px-8 py-3 sm:px-12 sm:text-xl xl:px-16 xl:py-4 h-auto min-h-0 text-lg xl:text-2xl transition-transform"
             />
             <div

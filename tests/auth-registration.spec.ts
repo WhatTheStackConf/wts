@@ -52,24 +52,21 @@ test("unverified email offers resend and does not claim success when sending fai
   await expect(page.getByRole("button", { name: "Email Sent!" })).toHaveCount(0);
 });
 
-test("registration handles duplicate email and mail failure without telling users to register again", async ({ page }) => {
+test("registration is closed in the page and direct API while login stays available", async ({ page, request }) => {
   await page.goto("/register");
-  await page.getByLabel("Full Name", { exact: true }).fill("Disposable Registration");
-  await page.getByLabel("Email", { exact: true }).fill(state.users.user.email);
-  await page.getByLabel("Password", { exact: true }).fill(state.password);
-  await page.getByLabel("Confirm Password", { exact: true }).fill(state.password);
-  await page.getByRole("button", { name: "Create Account", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("Forgot Password");
-  await page.route("**/request-verification", route => route.fulfill({ status: 503, contentType: "application/json", body: "{}" }));
-  await page.getByLabel("Email", { exact: true }).fill("auth-new-email@example.test");
-  await page.getByRole("button", { name: "Create Account", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("You do not need to register again");
-  await expect(page.getByText("Redirecting to login in 3 seconds...")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Registration closed", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create Account", exact: true })).toHaveCount(0);
+  const response = await request.post(`${state.pbUrl}/api/collections/users/records`, { data: {
+    email: "auth-new-email@example.test", password: state.password, passwordConfirm: state.password,
+  } });
+  expect(response.status()).toBe(403);
   const pb = await rootClient();
-  expect((await pb.collection("users").getFirstListItem('email = "auth-new-email@example.test"')).role).toBe("user");
+  expect((await pb.collection("users").getList(1, 1, { filter: 'email = "auth-new-email@example.test"' })).totalItems).toBe(0);
+  await page.getByRole("main").getByRole("link", { name: "Log in", exact: true }).click();
+  await expect(page).toHaveURL(`${state.baseURL}/login`);
 });
 
-test("new Google signup completes the popup, real OAuth exchange and HttpOnly session", async ({ page, context }) => {
+test("new Google signup is denied but an existing account completes OAuth and HttpOnly session", async ({ page, context }) => {
   const pb = await rootClient();
   const provider = createServer((request, response) => {
     const url = new URL(request.url!, "http://127.0.0.1");
@@ -96,6 +93,11 @@ test("new Google signup completes the popup, real OAuth exchange and HttpOnly se
       authURL: `${url}/authorize`, tokenURL: `${url}/token`, userInfoURL: `${url}/userinfo`,
     }] } });
     await page.goto("/login");
+    await page.getByRole("button", { name: "Log in with Google", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("registration is closed");
+    expect((await pb.collection("users").getList(1, 1, { filter: 'email = "auth-google@example.test"' })).totalItems).toBe(0);
+    expect((await context.cookies()).some(cookie => cookie.name === "pb_auth")).toBe(false);
+    await pb.collection("users").create({ email: "auth-google@example.test", password: state.password, passwordConfirm: state.password, role: "user", verified: true });
     await page.getByRole("button", { name: "Log in with Google", exact: true }).click();
     await expect(page).toHaveURL(`${state.baseURL}/`);
     const user = await pb.collection("users").getFirstListItem('email = "auth-google@example.test"');

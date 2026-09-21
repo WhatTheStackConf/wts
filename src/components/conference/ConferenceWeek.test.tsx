@@ -42,7 +42,7 @@ describe("homepage conference week cards", () => {
   });
 
   it.each([undefined, [], [speaker("unrelated", "Unrelated Speaker", ["Another Event"])]] as const)(
-    "keeps static events, confirmed times and ticket CTAs visible without matching roster data (%j)",
+    "keeps static events, confirmed times and registration closure visible without matching roster data (%j)",
     (roster) => {
       const html = renderWeek(roster ? [...roster] : undefined);
       expect(cards(html)).toHaveLength(7);
@@ -51,7 +51,10 @@ describe("homepage conference week cards", () => {
       expect(html).toContain("14:00–18:00");
       expect(html).toContain("Starts at 16:00");
       expect(html).toContain("On the agenda");
-      expect(html).toContain("Reserve a free ticket");
+      expect(html).toContain("Registration closed");
+      expect(html).not.toContain("Reserve a free ticket");
+      expect(html).not.toContain("hievents.foundry.mk");
+      expect(html).not.toContain("eventbrite.nl");
       expect(html).toContain('href="/tickets"');
       expect(html).not.toContain('/speakers/');
       expect(html).not.toContain("Unrelated Speaker");
@@ -98,16 +101,16 @@ describe("homepage conference week cards", () => {
     expect(links[1]).toMatch(/↗|&#8599;/);
   });
 
-  it("keeps each free event's entry details and reservation in one bottom region", () => {
+  it("keeps each free event's historical entry details and closure in one bottom region", () => {
     const renderedCards = cards(renderWeek());
     for (const name of ["InfoSec Monday", "Workshop Tuesday: iOS + AI", "Angular Day"]) {
       const card = renderedCards.find((card) => card.includes(name))!;
       expect(card).toContain("Free entry.");
-      expect(card).toContain("Reserve a free ticket");
+      expect(card).toContain("Registration closed");
       const bottomRegions = card.match(/<div[^>]*class="[^"]*mt-auto[^"]*"[^>]*>[\s\S]*?<\/div>/g) ?? [];
       expect(bottomRegions).toHaveLength(1);
       expect(bottomRegions[0]).toContain("Free entry.");
-      expect(bottomRegions[0]).toContain("Reserve a free ticket");
+      expect(bottomRegions[0]).toContain("Registration closed");
     }
   });
 

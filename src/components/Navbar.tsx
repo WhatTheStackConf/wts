@@ -157,7 +157,7 @@ export const Navbar = () => {
               </Show>
 
               <li>
-                <a href="/tickets">Grab a ticket!</a>
+                <a href="/tickets">Registration closed</a>
               </li>
 
               {/* Conference dropdown */}
@@ -363,7 +363,7 @@ export const Navbar = () => {
 
             <li>
               <a href="/tickets" onClick={closeDrawer}>
-                Grab a ticket!
+                Registration closed
               </a>
             </li>
 

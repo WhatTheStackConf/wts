@@ -36,7 +36,7 @@ export const ComingSoon = (props: ComingSoonProps) => {
               href="/tickets"
               class="btn-hologram cyber-hologram-surface px-8 py-3 rounded font-star tracking-widest uppercase text-sm"
             >
-              <span class="text-content" data-text="&gt; Grab a Ticket">&gt; Grab a Ticket</span>
+              <span class="text-content" data-text="Registration closed">Registration closed</span>
               <span class="scan-line cyber-scan-line"></span>
             </a>
           </div>

@@ -197,10 +197,7 @@ const LoginPage = () => {
 
           <div class="mt-6 text-center">
             <p class="text-sm text-base-content/70">
-              Don't have an account?{" "}
-              <a href="/register" class="link link-primary">
-                Register
-              </a>
+              New account registration is closed. Existing users can still log in, including with Google or GitHub.
             </p>
           </div>
         </div>

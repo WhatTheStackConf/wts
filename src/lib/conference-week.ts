@@ -11,10 +11,10 @@ export const conferenceWeekRange = "14-19 September 2026";
 
 export const conferenceWeekEyebrow = "WhatTheStack, Monday to Saturday";
 
-export const conferenceWeekHeadline = "Saturday's the main event. We start Monday.";
+export const conferenceWeekHeadline = "Thanks for a week of WhatTheStack.";
 
 export const conferenceWeekIntro =
-  "Smaller events and workshops run through the week before everyone meets at the main conference on Saturday. InfoSec Monday, Workshop Tuesday, and Angular Day are free, with limited seats: reserve a ticket for each event you want to attend. DevFest, MAUI Day, and Thursday's workshop have their own registration.";
+  "WhatTheStack 2026 has ended. Registrations are closed for the main conference and all pre-conference events. Explore the week's programme and speakers below.";
 
 export interface ConferenceWeekTrack {
   /** Matches the `name` of the corresponding published appearance event. */
@@ -51,8 +51,8 @@ export interface ConferenceWeekTrack {
 
 export const farisWorkshopTime = { startTime: "16:30", endTime: "20:00" } as const;
 
-// This Hi.Events deployment supports event checkout, not product query links.
-export const conferenceWeekBookingUrl = "https://hievents.foundry.mk/event/5/whatthestack-2026";
+// Keep old booking entry points on the local closure notice, not external checkout.
+export const conferenceWeekBookingUrl = "/tickets";
 
 export const conferenceWeekVenues = {
   base42: "Base42 Hackerspace, Rimska 25, 1000 Skopje",
@@ -70,9 +70,9 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     endTime: "18:00",
     summary:
       "Requests, Lies, and Stack Traces: a four-hour, hands-on API security workshop. Break and fix vulnerabilities, including the mistakes that keep appearing in AI-generated code.",
-    access: "Free entry. 20 seats; one ticket covers InfoSec Monday and its workshop.",
+    access: "Free entry. 20 seats; registration closed.",
     freeTicketProductId: 15,
-    cta: { label: "Reserve a free ticket", href: conferenceWeekBookingUrl },
+    cta: { label: "Registration closed", href: conferenceWeekBookingUrl },
     href: "/agenda?day=2026-09-14",
   },
   {
@@ -82,9 +82,9 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     startTime: "16:00",
     summary:
       "DDD for AI-Assisted Development at 16:00, followed by Fundamentals of Native iOS Development at 18:00. One ticket covers the whole evening.",
-    access: "Free entry. 50 seats; reserve your ticket.",
+    access: "Free entry. 50 seats; registration closed.",
     freeTicketProductId: 16,
-    cta: { label: "Reserve a free ticket", href: conferenceWeekBookingUrl },
+    cta: { label: "Registration closed", href: conferenceWeekBookingUrl },
     href: "/agenda?day=2026-09-15",
   },
   {
@@ -97,8 +97,8 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
       "GDG Skopje takes Wednesday: practical AI, accessibility, and agentic systems at Pre-DevFest Days: Day Zero x WhatThe(Google)Stack.",
 
     cta: {
-      label: "Grab a GDG ticket",
-      href: "https://gdg.community.dev/events/details/google-gdg-skopje-presents-pre-devfest-days-day-zero-x-whatthegooglestack-2/",
+      label: "Registration closed",
+      href: conferenceWeekBookingUrl,
     },
     href: "https://gdg.community.dev/events/details/google-gdg-skopje-presents-pre-devfest-days-day-zero-x-whatthegooglestack-2/",
   },
@@ -110,8 +110,8 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     summary:
       "A full day of .NET MAUI: build your first app, explore offline AI agents, improve reliability, and get into XAML, hot reload, and how MAUI pages work.",
     cta: {
-      label: "Register for MAUI Day",
-      href: "https://www.eventbrite.nl/e/net-maui-day-skopje-2026-tickets-1992309951697",
+      label: "Registration closed",
+      href: conferenceWeekBookingUrl,
     },
     href: "https://mauiday.net/skopje",
   },
@@ -123,7 +123,7 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     summary:
       `Faris Aziz's Payments and Monetization at Scale for Frontend Engineers workshop runs ${farisWorkshopTime.startTime}–${farisWorkshopTime.endTime} (3.5 hours, Skopje time). Work through checkout, subscriptions, and payment failures with React, Next.js, and Stripe.`,
     cta: {
-      label: "Get a workshop ticket",
+      label: "Registration closed",
       href: conferenceWeekBookingUrl,
     },
     href: "/sessions/workshop-payments-and-monetization-at-scale-for-frontend-engineers",
@@ -136,9 +136,9 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
     endTime: "14:00",
     summary:
       "Doors open at 10:00; talks start at 10:30. Two blocks of three 30-minute presentations, each followed by a 15-minute break, finish at 14:00. Angular and frontend engineering with Angular Macedonia and the international community: AI-powered applications, offline-first development, and monorepo architecture.",
-    access: "Free entry. 50 seats; reserve your ticket.",
+    access: "Free entry. 50 seats; registration closed.",
     freeTicketProductId: 17,
-    cta: { label: "Reserve a free ticket", href: conferenceWeekBookingUrl },
+    cta: { label: "Registration closed", href: conferenceWeekBookingUrl },
     href: "/agenda?day=2026-09-18",
   },
   {
@@ -163,7 +163,7 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
 ];
 
 export const conferenceWeekCta = {
-  text: "GRAB A TICKET",
+  text: "REGISTRATION CLOSED",
   href: "/tickets",
 } as const;
 

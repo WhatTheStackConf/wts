@@ -10,7 +10,7 @@ import PocketBase from 'pocketbase';
 
 /** Synthetic loopback-only DB. Relevant real migrations/hooks are copied unchanged.
  * Never reads .env or existing pb_data; excludes mail, cron and outbound hooks. */
-export async function startLiveQaPocketBase(options: { workspace?: boolean; binary?: string } = {}) {
+export async function startLiveQaPocketBase(options: { workspace?: boolean; binary?: string; registrationClosed?: boolean } = {}) {
   // All default slots in this disposable programme share an anchor, even if
   // setup or a restart crosses local midnight while the test is running.
   const fixtureInstant = new Date().toISOString();
@@ -32,6 +32,7 @@ export async function startLiveQaPocketBase(options: { workspace?: boolean; bina
     '1787000009_backfill_empty_user_roles.js', '1788000003_create_appearance_events.js',
     '1788000004_create_event_programmes.js', '1790000000_add_checkin_operator_role.js',
     ...readdirSync(join(source, 'pb_migrations')).filter(name => name.endsWith('_create_live_qa.js')),
+    ...(options.registrationClosed ? ['1791000000_close_public_registration.js'] : []),
     ...(options.workspace ? [
       '1767175796_updated_cfp_applicants.js', '1767175834_updated_cfp_submissions.js',
       '1767297280_updated_cfp_submissions.js',

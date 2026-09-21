@@ -28,6 +28,9 @@ export function authFailure(error: unknown, operation: AuthOperation): AuthFailu
   const status = Number(details.status);
   if (details.isAbort === true) return { code: "cancelled", message: "Sign-in was cancelled. Please try again and keep the sign-in window open." };
   if (status === 429) return { code: "rate_limit", message: "Too many attempts. Please wait a few minutes before trying again." };
+  if (status === 403 && (operation === "register" || operation === "oauth")) {
+    return { code: "validation", message: "New account registration is closed. If you already have an account, use your original sign-in method." };
+  }
   if (status === 0) return { code: "network", message: "Could not reach the sign-in service. Check your connection and try again." };
   if (error instanceof Error && error.message === "Please verify your email address before logging in.") {
     return { code: "verification", message: error.message };
