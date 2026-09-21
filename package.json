@@ -15,6 +15,7 @@
     "test:auth": "vp test run src/lib/auth-registration.integration.test.ts src/lib/server-auth.test.ts src/lib/session-policy.test.ts src/lib/auth-request-queue.test.ts src/lib/oauth-login.test.ts src/lib/reviewer-pocketbase.integration.test.ts",
     "test:auth-browser": "node --experimental-strip-types scripts/run-live-qa-browser.mjs --config=playwright.auth.config.ts",
     "test:live-qa": "vp test run src/lib/live-qa-http.test.ts src/lib/live-qa.integration.test.ts",
+    "test:crew-raffle": "vp test run src/lib/crew-raffle.test.ts src/lib/pocketbase-admin-timeout.test.ts",
     "test:gamification": "vp test run --exclude '**/.hermes/**' --maxWorkers=4 src/lib/gamification.test.ts src/lib/mission-questions.test.ts src/lib/mission-questions.integration.test.ts src/lib/wts-2026-booth-achievements.integration.test.ts src/lib/mission-code-import.test.ts src/lib/mission-catalogue.test.ts src/lib/persisted-json.test.ts src/lib/server-function-transport.test.ts && node --test tests/server-function-transport.browser.test.mjs",
     "test:booth-achievements": "vp test run --exclude '**/.hermes/**' src/lib/wts-2026-booth-achievements.integration.test.ts",
     "test:gamification-browser": "node --experimental-strip-types scripts/run-live-qa-browser.mjs --gamification",

@@ -2,6 +2,8 @@ import { createAPIHandler } from "filesystem-routing/api";
 import routes from "virtual:file-routes";
 import { getRequestEvent } from "@solidjs/web";
 import { Router } from "~/router";
+import { crewRaffleResponse, isCrewRafflePath } from "~/lib/crew-raffle";
+import { loadCrewRaffleRows } from "~/lib/crew-raffle-store";
 import { isCheckinPath, protectCheckinResponse } from "~/lib/checkin-privacy";
 import {
   hasValidSpeakerGuidePassword,
@@ -71,4 +73,12 @@ async function protectLiveQa(request: Request, next: (request?: Request) => Prom
   return response;
 }
 
-export default [preserveDeclaredStatus, protectSpeakerGuide, protectCheckin, protectLiveQa, createAPIHandler(routes)];
+async function crewRaffle(request: Request, next: (request?: Request) => Promise<Response>) {
+  if (!isCrewRafflePath(new URL(request.url).pathname)) return next();
+  return crewRaffleResponse(request, loadCrewRaffleRows, {
+    tokenSha256: process.env.RAFFLE_SHARE_TOKEN_SHA256,
+    expiresAt: process.env.RAFFLE_SHARE_EXPIRES_AT,
+  });
+}
+
+export default [crewRaffle, preserveDeclaredStatus, protectSpeakerGuide, protectCheckin, protectLiveQa, createAPIHandler(routes)];

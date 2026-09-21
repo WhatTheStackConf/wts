@@ -61,10 +61,14 @@ class PocketBaseAdminService {
         }
 
         // Authenticate as superuser (PB 0.23+ uses _superusers; keep admins fallback)
+        // One deadline for both paths; a stalled shared login must release its
+        // promise so the next request can recover after PocketBase returns.
+        const signal = AbortSignal.timeout(10_000);
         try {
-          await this.pb.collection("_superusers").authWithPassword(email, password);
+          await this.pb.collection("_superusers").authWithPassword(email, password, { signal });
         } catch {
-          await this.pb.admins.authWithPassword(email, password);
+          signal.throwIfAborted();
+          await this.pb.admins.authWithPassword(email, password, { signal });
         }
         this.initialized = true;
       } catch (error) {
