@@ -280,7 +280,7 @@ try {
   for (const outcome of ["rejected", "print_blocked"]) await scenario(`released linked ${outcome} starts a fresh scan intent`, "scanner", async ({ page, open, picker, state, count, calls }) => {
     state.linkedReturn = outcome;
     await syntheticCamera(page); await open(); await expect(picker).toBeEnabled();
-    await button(page, "Start scanning").click(); await showQr(page, "A-REPAIR1");
+    await button(page, "Start scanning").click(); await expect(page.locator("video")).toBeVisible(); await showQr(page, "A-REPAIR1");
     await expect(button(page, "Retry check")).toBeEnabled();
     const original = calls.find(c => c.operation === "preflight").command.operationId;
     await button(page, "Retry check").click();
