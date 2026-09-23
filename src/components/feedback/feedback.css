@@ -41,11 +41,16 @@
 .feedback-page textarea { resize: vertical; min-height: 7rem; }
 .feedback-page textarea[aria-invalid="true"], .feedback-page input[aria-invalid="true"] { border-color: var(--color-error); }
 .feedback-more-options { margin-block: .75rem; }
-.feedback-sessions { padding-block: .75rem !important; }
-.feedback-sessions > summary { font-size: 1.125rem; font-weight: 600; }
-.feedback-session-content { display: grid; gap: 1rem; padding-block: .75rem 1rem; }
-.feedback-session-review { display: grid; gap: 1.5rem; border-top: 1px solid var(--color-neutral) !important; margin-top: 1.5rem !important; padding-top: 1rem !important; }
-.feedback-session-review > legend { padding-right: .5rem; overflow-wrap: anywhere; }
+.feedback-session-content { display: grid; gap: 1rem; padding-top: 1rem; }
+.feedback-session-list { list-style: none; margin: 0; padding: 0; }
+.feedback-session-review { display: grid; gap: .75rem; border-top: 1px solid var(--color-neutral); padding-block: 1.5rem; }
+.feedback-session-review h3 { margin: 0; font-size: 1.125rem; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.feedback-session-summary { color: var(--color-light-300); font-size: .9375rem; display: grid; gap: .5rem; }
+.feedback-session-comment { white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.feedback-session-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+.feedback-session-editor { display: grid; gap: 1.5rem; padding-top: .75rem; }
+.feedback-session-editor[hidden] { display: none; }
+.feedback-page .feedback-sessions button:disabled { cursor: default; }
 .feedback-submit { display: grid; justify-items: start; gap: 1rem; border-top: 1px solid var(--color-neutral); padding-top: 2rem; }
 .feedback-primary, .feedback-secondary { display: inline-flex; justify-content: center; align-items: center; min-height: 3rem; padding: .75rem 1.5rem; font: inherit; font-weight: 600; border-radius: var(--radius-field); cursor: pointer; border: 1px solid transparent; }
 .feedback-primary { background: var(--color-primary-700); color: var(--color-primary-content); }

@@ -17,14 +17,24 @@ describe("feedback form rendering", () => {
     expect(html).toMatch(/<button type="submit" class="feedback-primary">Submit feedback<\/button>/);
     expect(html).not.toContain('aria-invalid="true"');
   });
-  it("keeps session detail collapsed, offers actual session titles, and never renders the bearer token", () => {
+  it("exposes optional multi-session feedback, actual session titles, and never renders the bearer token", () => {
     const html = render();
-    expect(html).toMatch(/<details class="feedback-section feedback-sessions">/);
-    expect(html).toContain("Feedback on a particular session");
+    expect(html).toContain('<section class="feedback-section feedback-sessions" aria-labelledby="feedback-sessions-heading">');
+    expect(html).not.toContain('<details');
+    expect(html).toContain('Session feedback <span class="feedback-optional">(optional)</span>');
+    expect(html).toContain("You can review more than one session. Edit or remove any review before submitting.");
+    expect(html).toContain("Session reviews are only sent when you choose Submit feedback below.");
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Add session<\/button>/);
     expect(html).toContain('value="real-session"');
     expect(html).toContain("An actual session title");
     expect(html).not.toContain(token);
     expect(html).not.toContain('name="moreOther"');
+  });
+  it("keeps an empty session catalogue optional without a picker", () => {
+    const html = renderToString(() => <FeedbackForm token={token} survey={{ ...survey, sessions: [] }} onComplete={() => {}} />);
+    expect(html).toContain("There aren't any sessions listed here.");
+    expect(html).not.toContain('<select');
+    expect(html).toContain("Submit feedback");
   });
   it("renders optional N/A independently for each part and explicit text limits", () => {
     const html = render();

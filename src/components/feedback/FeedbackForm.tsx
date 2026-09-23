@@ -34,6 +34,41 @@ function TextAnswer(props: { name: string; label: string; max?: number; error?: 
   </div>;
 }
 
+function SessionReview(props: { id: string; title: string; errors: FeedbackErrors; onRemove: () => void }) {
+  const [editing, setEditing] = createSignal(true);
+  const [rating, setRating] = createSignal("");
+  const [comment, setComment] = createSignal("");
+  let editor!: HTMLDivElement;
+  let toggle!: HTMLButtonElement;
+  const editorId = () => `session:${props.id}:editor`;
+  function toggleEditing() {
+    const opening = !editing();
+    setEditing(opening);
+    queueMicrotask(() => opening ? (editor.querySelector<HTMLInputElement>("input:checked") ?? editor.querySelector<HTMLInputElement>("input"))?.focus() : toggle.focus());
+  }
+  return <li class="feedback-session-review" aria-labelledby={`session:${props.id}:title`} onInput={event => {
+    const target = event.target;
+    if (target instanceof HTMLTextAreaElement) setComment(target.value);
+    if (target instanceof HTMLInputElement && target.type === "radio") setRating(target.value);
+  }}>
+    <h3 id={`session:${props.id}:title`}>{props.title}</h3>
+    <div class="feedback-session-summary">
+      <p>{rating() ? `Usefulness: ${rating()} / 5 — ${usefulnessScale[Number(rating()) - 1]}` : "No rating yet"}</p>
+      <p class="feedback-session-comment">{comment().trim() || "No comment yet"}</p>
+    </div>
+    <div class="feedback-session-actions">
+      <button ref={toggle} type="button" class="feedback-secondary" aria-expanded={editing() ? "true" : "false"} aria-controls={editorId()} aria-label={`${editing() ? "Done editing" : "Edit"}: ${props.title}`} onClick={toggleEditing}>{editing() ? "Done editing" : "Edit"}</button>
+      <button type="button" class="feedback-secondary" aria-label={`Remove: ${props.title}`} onClick={props.onRemove}>Remove</button>
+    </div>
+    <input type="hidden" name="sessionId" value={props.id} />
+    {/* Keep native inputs mounted when collapsed: FormData owns the draft. */}
+    <div ref={editor} id={editorId()} class="feedback-session-editor" data-session-editor hidden={!editing()}>
+      <RatingField name={`session:${props.id}:usefulness`} label="How useful was this session to you?" usefulness error={props.errors[`session:${props.id}:usefulness`]} />
+      <TextAnswer name={`session:${props.id}:comment`} label="Anything you'd like to share about this session?" error={props.errors[`session:${props.id}:comment`]} />
+    </div>
+  </li>;
+}
+
 export function FeedbackForm(props: { token: string; survey: FeedbackSurvey; onComplete: (result: FeedbackResult) => void }) {
   const submission = createFeedbackSubmission(props.token, props.survey.version);
   const [errors, setErrors] = createSignal<FeedbackErrors>({});
@@ -42,6 +77,7 @@ export function FeedbackForm(props: { token: string; survey: FeedbackSurvey; onC
   const [message, setMessage] = createSignal("");
   const [more, setMore] = createSignal<string[]>([]);
   const [reviews, setReviews] = createSignal<string[]>([]);
+  const [selectedSession, setSelectedSession] = createSignal("");
   let form!: HTMLFormElement;
   let sessionPicker!: HTMLSelectElement;
   let alive = true;
@@ -67,6 +103,8 @@ export function FeedbackForm(props: { token: string; survey: FeedbackSurvey; onC
         if (target instanceof HTMLElement) {
           const details = target.closest("details");
           if (details) details.open = true;
+          const editor = target.closest<HTMLElement>("[data-session-editor]");
+          if (editor?.hidden) editor.parentElement?.querySelector<HTMLButtonElement>("button[aria-expanded]")?.click();
           target.focus();
         }
       });
@@ -122,31 +160,42 @@ export function FeedbackForm(props: { token: string; survey: FeedbackSurvey; onC
           <Show when={more().includes("other")}><TextAnswer name="moreOther" label="What else would you like more of?" max={500} error={errors().moreOther} /></Show>
         </fieldset>
       </section>
-      <details class="feedback-section feedback-sessions">
-        <summary>Feedback on a particular session <span class="feedback-optional">(optional)</span></summary>
+      <section class="feedback-section feedback-sessions" aria-labelledby="feedback-sessions-heading">
+        <h2 id="feedback-sessions-heading">Session feedback <span class="feedback-optional">(optional)</span></h2>
+        <p class="feedback-hint" id="feedback-sessions-hint">You can review more than one session. Edit or remove any review before submitting.</p>
         <div class="feedback-session-content">
-          <p class="feedback-hint">Pick a session you went to and leave a rating, a comment, or both.</p>
+          <p class="feedback-hint">Leave a rating, a comment, or both. Session reviews are only sent when you choose Submit feedback below.</p>
+          <Show when={reviews().length}>
+            <ul class="feedback-session-list" aria-label="Your session reviews">
+              <For each={reviews()} keyed={id => id}>{id => <SessionReview id={id()} title={props.survey.sessions.find(session => session.id === id())?.title ?? "Session"} errors={errors()} onRemove={() => {
+                setReviews(previous => previous.filter(value => value !== id()));
+                clearErrors();
+                queueMicrotask(() => sessionPicker?.focus());
+              }} />}</For>
+            </ul>
+          </Show>
           <Show when={props.survey.sessions.length} fallback={<p>There aren't any sessions listed here.</p>}>
             <label for="feedback-session-picker">Choose a session to review</label>
-            <select id="feedback-session-picker" ref={sessionPicker} onChange={event => {
-              const id = event.currentTarget.value;
-              if (id && props.survey.sessions.some(session => session.id === id)) setReviews(previous => previous.includes(id) ? previous : [...previous, id]);
-              event.currentTarget.value = "";
-            }}>
+            <select id="feedback-session-picker" ref={sessionPicker} value={selectedSession()} aria-describedby="feedback-sessions-hint" disabled={reviews().length === props.survey.sessions.length} onChange={event => setSelectedSession(event.currentTarget.value)}>
               <option value="">Select a session…</option>
               <For each={props.survey.sessions} keyed={session => session.id}>{session => <option value={session().id} disabled={reviews().includes(session().id)}>{session().title}</option>}</For>
             </select>
+            <button type="button" class="feedback-secondary" disabled={!selectedSession() || reviews().includes(selectedSession())} onClick={() => {
+              const id = selectedSession();
+              if (sending() || locked() || !id || reviews().includes(id) || !props.survey.sessions.some(session => session.id === id)) return;
+              setReviews(previous => [...previous, id]);
+              setSelectedSession("");
+              sessionPicker.value = "";
+              queueMicrotask(() => {
+                const input = form.elements.namedItem(`session:${id}:usefulness`);
+                if (input instanceof RadioNodeList) (input.item(0) as HTMLInputElement)?.focus();
+              });
+            }}>{reviews().length ? "Add another session" : "Add session"}</button>
+            <Show when={reviews().length === props.survey.sessions.length}><p class="feedback-hint">All listed sessions have been added. You can still edit or remove any review above.</p></Show>
           </Show>
           <Show when={errors().sessions}><p class="feedback-error">{errors().sessions}</p></Show>
-          <For each={reviews()} keyed={id => id}>{id => <fieldset class="feedback-session-review">
-            <legend>{props.survey.sessions.find(session => session.id === id())?.title}</legend>
-            <input type="hidden" name="sessionId" value={id()} />
-            <RatingField name={`session:${id()}:usefulness`} label="How useful was this session to you?" usefulness error={errors()[`session:${id()}:usefulness`]} />
-            <TextAnswer name={`session:${id()}:comment`} label="Anything you'd like to share about this session?" error={errors()[`session:${id()}:comment`]} />
-            <button type="button" class="feedback-secondary" onClick={() => { setReviews(previous => previous.filter(value => value !== id())); queueMicrotask(() => sessionPicker?.focus()); }}>Remove session review</button>
-          </fieldset>}</For>
         </div>
-      </details>
+      </section>
     </fieldset>
     <div class="feedback-submit">
       <Show when={message()}><p role="alert" class="feedback-notice">{message()}</p></Show>

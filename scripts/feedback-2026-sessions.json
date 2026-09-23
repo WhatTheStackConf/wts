@@ -1,0 +1,136 @@
+{
+  "kind": "feedback-session-catalogue",
+  "source": "https://wts.sh/api/public/v1/agenda",
+  "mainDay": "2026-09-19",
+  "scope": "Published main-day session slots, including fireside chats; excludes breaks, meals, opening/closing and party.",
+  "sessions": [
+    {
+      "id": "unified-toolchain",
+      "title": "(When) Do We Finally Have a Unified Toolchain?"
+    },
+    {
+      "id": "software-engineer-at-microsoft-dont-write-code",
+      "title": "I’m a Software Engineer at Microsoft. I Don’t Write Code."
+    },
+    {
+      "id": "inside-the-gpts",
+      "title": "Inside GPTs: Understanding Large Language Models"
+    },
+    {
+      "id": "legacy-in-it-breaking-stereotypes-understanding-reality-and-embracing-the-uncool",
+      "title": "Legacy in IT: Breaking Stereotypes, Understanding Reality, and Embracing the Uncool"
+    },
+    {
+      "id": "fireside-being-a-good-developer",
+      "title": "What does being a good developer mean now?"
+    },
+    {
+      "id": "how-tanstack-ai-made-the-hidden-complexity-of-ai-simple",
+      "title": "How TanStack AI made the hidden complexity of AI simple for you"
+    },
+    {
+      "id": "a-brief-history-of-code-review",
+      "title": "A Brief History of Code Review (And What's Next)"
+    },
+    {
+      "id": "context-is-their-reality",
+      "title": "Context Is Their Reality: How AI Agents Perceive the World"
+    },
+    {
+      "id": "thinking-in-qubits-using-code",
+      "title": "Thinking in qubits, using code"
+    },
+    {
+      "id": "fireside-building-our-own-products",
+      "title": "Why don’t we build more of our own products?"
+    },
+    {
+      "id": "angular-apps-with-ai",
+      "title": "Building Angular Apps With AI"
+    },
+    {
+      "id": "artful-defense-let-s-sketch-web-security",
+      "title": "Artful Defense: Let's Sketch Web Security"
+    },
+    {
+      "id": "from-portable-ai-lab-to-frontier-research",
+      "title": "From Portable AI Lab to Frontier Research"
+    },
+    {
+      "id": "reverse-engineering-seniority",
+      "title": "Reverse-Engineering Seniority, From Bootcamp Grad to Staff Engineer in Four Years"
+    },
+    {
+      "id": "fireside-who-owes-open-source-what",
+      "title": "Who owes open source what?"
+    },
+    {
+      "id": "cleaner-angular-applications-signals",
+      "title": "Building Cleaner Angular Applications with Signal Forms"
+    },
+    {
+      "id": "i-stopped-throwing-errors-and-my-code-finally-works",
+      "title": "I Stopped Throwing Errors and My Code Finally Works"
+    },
+    {
+      "id": "what-do-you-do-when-nvidia-gpus-aren-t-available-for-inference",
+      "title": "What Do You Do When NVIDIA GPUs Aren't Available for Inference?"
+    },
+    {
+      "id": "stop-engineering-features",
+      "title": "Stop Engineering Features. Start Learning Graphs."
+    },
+    {
+      "id": "fireside-choosing-frameworks-with-ai",
+      "title": "Would you choose a different framework if AI wrote most of the code?"
+    },
+    {
+      "id": "performant-typescript-shaders-breaking-down-the-jelly-slider",
+      "title": "Performant TypeScript shaders: breaking down the Jelly Slider"
+    },
+    {
+      "id": "a-bouncer-gang-in-the-vibe-coding-party",
+      "title": "A Bouncer Gang in the (Vibe) Coding Party"
+    },
+    {
+      "id": "harnessing-the-model",
+      "title": "Harnessing the Model: What Coding Agents Are Really Made Of"
+    },
+    {
+      "id": "how-to-not-use-ai-or-staying-sane-in-a-frenzied-world",
+      "title": "How to not use AI. Or staying sane in a frenzied world"
+    },
+    {
+      "id": "fireside-software-development-complexity",
+      "title": "Have we made software development too complicated?"
+    },
+    {
+      "id": "javascript-doesn-t-support-operator-overloading-right",
+      "title": "JavaScript Doesn't Support Operator Overloading... Right?"
+    },
+    {
+      "id": "scaling-observability-as-a-product",
+      "title": "Building for the Unknown: Scaling Observability as a Product"
+    },
+    {
+      "id": "ai-in-a-hospital",
+      "title": "What makes AI work in a hospital, and what makes it harder"
+    },
+    {
+      "id": "friendly-borders-graph-algorithms-reveal-eurovision-voting-patterns",
+      "title": "Friendly Borders: Graph algorithms reveal Eurovision voting patterns"
+    },
+    {
+      "id": "fireside-the-way-into-the-industry",
+      "title": "Is the way into this industry broken?"
+    },
+    {
+      "id": "one-project-three-ways-kotlin",
+      "title": "One Project, Three Ways I Changed How I Write Kotlin"
+    },
+    {
+      "id": "my-30-years-of-javascript",
+      "title": "My 30 Years of JavaScript: How I Learned to Stop Worrying and Love JavaScript"
+    }
+  ]
+}
