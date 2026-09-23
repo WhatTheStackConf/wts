@@ -1,10 +1,11 @@
 import { Show, type ParentProps } from "solid-js";
 import { HydrationScript, getRequestEvent } from "@solidjs/web";
 import { isCheckinPath } from "~/lib/checkin-privacy";
+import { isFeedbackPath } from "~/lib/feedback-privacy";
 
 export default function Document(props: ParentProps) {
   const request = getRequestEvent()?.request;
-  const operational = request ? isCheckinPath(new URL(request.url).pathname) : false;
+  const operational = request ? isCheckinPath(new URL(request.url).pathname) || isFeedbackPath(new URL(request.url).pathname) : false;
   return (
     <html lang="en" data-theme="night">
       <head>
@@ -28,7 +29,7 @@ export default function Document(props: ParentProps) {
         <HydrationScript />
         <Show when={!operational}><script>
           {`window.addEventListener('load',function(){var started=false,timer;
-function start(){if(started)return;started=true;clearTimeout(timer);['pointerdown','keydown','scroll'].forEach(function(event){window.removeEventListener(event,start)});var run=function(){if(/^\\/(?:admin\\/|api\\/)?checkin(?:\\/|$)/.test(location.pathname))return;var s=document.createElement('script');s.async=true;s.fetchPriority='low';s.src='https://umami.foundry.mk/script.js';s.dataset.websiteId='7eac874e-f8d2-4d48-8b71-aa34d1b2cd78';document.head.appendChild(s);
+function start(){if(started)return;started=true;clearTimeout(timer);['pointerdown','keydown','scroll'].forEach(function(event){window.removeEventListener(event,start)});var run=function(){if(/^\\/(?:admin\\/|api\\/)?checkin(?:\\/|$)/.test(location.pathname)||/^\\/(?:api\\/)?feedback\\/*$/i.test(decodeURIComponent(location.pathname)))return;var s=document.createElement('script');s.async=true;s.fetchPriority='low';s.src='https://umami.foundry.mk/script.js';s.dataset.websiteId='7eac874e-f8d2-4d48-8b71-aa34d1b2cd78';document.head.appendChild(s);
 !function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 n.callMethod.apply(n,arguments):n.queue.push(arguments)};

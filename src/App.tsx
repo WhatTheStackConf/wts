@@ -1,9 +1,11 @@
-import { Loading, createSignal, onSettled } from "solid-js";
+import { Loading, Show, createSignal, onSettled, type ParentProps } from "solid-js";
+import { useLocation } from "@solidjs/router";
 import { isServer } from "@solidjs/web";
 import { AuthProvider } from "~/lib/auth-context";
 import { initPocketBase } from "~/lib/pocketbase-utils";
 import { initializeServerFunctionTransport } from "~/lib/server-function-transport";
 import { Router } from "~/router";
+import { isFeedbackPath } from "~/lib/feedback-privacy";
 // Client-only protected routes still call these server references after
 // hydration. Preload the modules in the SSR graph so the dev server registers
 // their implementations before an RPC arrives.
@@ -78,19 +80,24 @@ function DeferredBackground() {
   );
 }
 
+function ApplicationShell(props: ParentProps) {
+  const location = useLocation();
+  return <Show when={isFeedbackPath(location.pathname)} fallback={
+    <AuthProvider>
+      <div class="view-transition-container isolate relative min-h-screen">
+        <DeferredBackground />
+        <div class="relative z-10"><Loading fallback={<div>Loading...</div>}>{props.children}</Loading></div>
+      </div>
+    </AuthProvider>
+  }>
+    <Loading fallback={<div role="status">Loading feedback...</div>}>{props.children}</Loading>
+  </Show>;
+}
+
 export default function App() {
   return (
     <Router>
-      {(props) => (
-        <AuthProvider>
-          <div class="view-transition-container isolate relative min-h-screen">
-            <DeferredBackground />
-            <div class="relative z-10">
-              <Loading fallback={<div>Loading...</div>}>{props.children}</Loading>
-            </div>
-          </div>
-        </AuthProvider>
-      )}
+      {(props) => <ApplicationShell>{props.children}</ApplicationShell>}
     </Router>
   );
 }

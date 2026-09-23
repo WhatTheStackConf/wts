@@ -2,6 +2,7 @@ import { createAPIHandler } from "filesystem-routing/api";
 import routes from "virtual:file-routes";
 import { getRequestEvent } from "@solidjs/web";
 import { Router } from "~/router";
+import { isFeedbackPath, protectFeedbackResponse } from "~/lib/feedback-privacy";
 import { crewRaffleResponse, isCrewRafflePath } from "~/lib/crew-raffle";
 import { loadCrewRaffleRows } from "~/lib/crew-raffle-store";
 import { isCheckinPath, protectCheckinResponse } from "~/lib/checkin-privacy";
@@ -81,4 +82,12 @@ async function crewRaffle(request: Request, next: (request?: Request) => Promise
   });
 }
 
-export default [crewRaffle, preserveDeclaredStatus, protectSpeakerGuide, protectCheckin, protectLiveQa, createAPIHandler(routes)];
+async function protectFeedback(request: Request, next: (request?: Request) => Promise<Response>) {
+  if (!isFeedbackPath(new URL(request.url).pathname)) return next();
+  // Nitro supplies a lazy request facade, not an Undici-branded Request.
+  request.headers.delete("cookie");
+  request.headers.delete("authorization");
+  return protectFeedbackResponse(await next());
+}
+
+export default [protectFeedback, crewRaffle, preserveDeclaredStatus, protectSpeakerGuide, protectCheckin, protectLiveQa, createAPIHandler(routes)];

@@ -87,6 +87,12 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/feedback";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/feedback")>;
+      $$route?: undefined;
+    },
+    {
       path: "/forgot-password";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/forgot-password")>;
@@ -306,6 +312,18 @@ declare module "virtual:file-routes" {
       path: "/api/checkin";
       page: false;
       $POST: FileRouteLazyRef<typeof import("./src/routes/api/checkin")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/api/feedback";
+      page: false;
+      $HEAD: FileRouteLazyRef<typeof import("./src/routes/api/feedback")>;
+      $GET: FileRouteLazyRef<typeof import("./src/routes/api/feedback")>;
+      $POST: FileRouteLazyRef<typeof import("./src/routes/api/feedback")>;
+      $PUT: FileRouteLazyRef<typeof import("./src/routes/api/feedback")>;
+      $DELETE: FileRouteLazyRef<typeof import("./src/routes/api/feedback")>;
+      $PATCH: FileRouteLazyRef<typeof import("./src/routes/api/feedback")>;
+      $OPTIONS: FileRouteLazyRef<typeof import("./src/routes/api/feedback")>;
       $$route?: undefined;
     },
     {
@@ -680,6 +698,14 @@ declare module "virtual:file-routes" {
       id: "/tickets";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/tickets")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/feedback";
+      id: "/feedback";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/feedback")>;
       $$route?: undefined;
       children?: undefined;
     },
