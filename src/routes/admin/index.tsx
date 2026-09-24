@@ -22,6 +22,7 @@ const destinations = [
     { href: "/admin/checkin", label: "Check-in stations" },
     { href: "/admin/tickets", label: "Tickets" },
     { href: "/admin/gamification", label: "Gamification" },
+    { href: "/admin/feedback", label: "Feedback results" },
     { href: "/mc", label: "MC · live Q&A" },
   ] },
   { title: "Access", links: [
@@ -74,7 +75,7 @@ export const AdminDashboard = () => {
                   <For each={group.links}>
                     {(link) => (
                       <li>
-                        <a href={link.href} class="flex min-h-12 items-center justify-between gap-3 py-3 text-base-content/85 hover:text-primary-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                        <a href={link.href} onClick={(event) => { if (link.href === "/admin/feedback") { event.preventDefault(); window.location.assign(link.href); } }} class="flex min-h-12 items-center justify-between gap-3 py-3 text-base-content/85 hover:text-primary-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
                           <span>{link.label}</span><span aria-hidden="true">→</span>
                         </a>
                       </li>

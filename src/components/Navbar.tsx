@@ -9,7 +9,7 @@ import { authenticated, checkinOperatorAuthorized, mcAuthorized } from "~/lib/ro
 
 const LoginMenu = clientOnly(() => import("./LoginMenu"));
 
-export const Navbar = () => {
+export const Navbar = (props: { compact?: boolean } = {}) => {
   const auth = useAuth();
   const [mounted, setMounted] = createSignal(false);
   const [isDrawerOpen, setIsDrawerOpen] = createSignal(false);
@@ -77,7 +77,7 @@ export const Navbar = () => {
         <div class="navbar bg-base-200 border-b border-primary-700 shadow-xl relative">
           <div class="navbar-start flex items-center justify-start">
             {/* Mobile Hamburger (Drawer Toggle) */}
-            <div class="flex-none lg:hidden">
+            <div class={props.compact ? "flex-none" : "flex-none lg:hidden"}>
               <button
                 id="mobile-navigation-open"
                 type="button"
@@ -119,7 +119,7 @@ export const Navbar = () => {
           </div>
 
           {/* Desktop Menu */}
-          <div class="navbar-center hidden lg:flex">
+          <div class={props.compact ? "hidden" : "navbar-center hidden lg:flex"}>
             <ul class="menu menu-lg menu-horizontal px-1 font-black uppercase text-primary-200">
               {/* Admin Link */}
               {mounted() && auth?.user?.role === "admin" && (

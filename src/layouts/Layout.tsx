@@ -1,3 +1,5 @@
+import { useLocation } from "@solidjs/router";
+import { isFeedbackAdminPath } from "~/lib/feedback-admin-privacy";
 import type { JSX } from "@solidjs/web";
 import { Title, Meta, Link } from "@solidjs/meta";
 import { Navbar } from "~/components/Navbar";
@@ -22,6 +24,8 @@ interface LayoutProps {
 }
 
 export const Layout = (props: LayoutProps) => {
+  const location = useLocation();
+  const feedbackAdmin = () => isFeedbackAdminPath(location.pathname);
   const title = () => props.title || conferenceName;
   const description = () =>
     props.description || conferenceDefaultDescription;
@@ -36,7 +40,7 @@ export const Layout = (props: LayoutProps) => {
       >
         Skip to main content
       </a>
-      <Navbar />
+      <Navbar compact={feedbackAdmin()} />
       <Title>{title()}</Title>
       <Link rel="icon" href="/favicon.svg" />
       <Meta name="description" content={description()} />

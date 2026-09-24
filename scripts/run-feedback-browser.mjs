@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { seedFeedbackAdmin } from "./feedback-admin-fixture.mjs";
 import { startFeedbackPocketBase } from "../src/lib/feedback-pocketbase-test-helper.ts";
 
 // Always build a disposable copy with an allowlisted environment. Never load a
@@ -42,6 +43,8 @@ async function run(command, args, options) {
 }
 try {
   fixture = await startFeedbackPocketBase();
+  const adminMode = process.argv.includes("--admin");
+  const adminFixture = adminMode ? await seedFeedbackAdmin(fixture) : undefined;
   await mkdir(appDir);
   for (const name of ["src", "public", "content", "scripts", "runtime"]) {
     await cp(join(repo, name), join(appDir, name), { recursive: true, filter: path => !path.split(/[\\/]/).some(part => part.startsWith(".env")) });
@@ -64,6 +67,7 @@ try {
     HIEVENTS_API_URL: `${fixture.baseUrl}/unused-synthetic`, HIEVENTS_API_KEY: "", HIEVENTS_EMAIL: "", HIEVENTS_PASSWORD: "",
     VITE_TURNSTILE_SITE_KEY: "", VITE_LISTMONK_LIST_ID: "",
   });
+  if (adminFixture) Object.assign(env, { POCKETBASE_SUPERUSER_EMAIL: adminFixture.server.email, POCKETBASE_SUPERUSER_PASSWORD: adminFixture.server.password });
   await run("pnpm", ["build"]);
   const app = start(process.execPath, ["--import", join(repo, "scripts/checkin-browser-egress.mjs"), join(appDir, ".output/server/index.mjs")]);
   let ready = false;
@@ -74,12 +78,15 @@ try {
   }
   if (!ready) throw new Error("Built feedback server did not become ready");
   const statePath = join(root, "fixture.json");
-  await writeFile(statePath, JSON.stringify({ disposable: true, baseURL, pbUrl: fixture.baseUrl, rootToken: fixture.pb.authStore.token }), { mode: 0o600 });
+  await writeFile(statePath, JSON.stringify({ disposable: true, baseURL, pbUrl: fixture.baseUrl, rootToken: fixture.pb.authStore.token, ...(adminFixture ? { accounts: adminFixture.accounts, surveys: adminFixture.surveys } : {}) }), { mode: 0o600 });
+  if (adminMode) {
+    await run(join(repo, "node_modules/.bin/playwright"), ["test", "--config=playwright.feedback-admin.config.ts"], { cwd: repo, env: { ...env, WTS_FEEDBACK_BROWSER_STATE: statePath } });
+  }
   if (process.argv.includes("--inspect")) {
     console.log(`Disposable feedback inspection ready: ${baseURL}\nFixture: ${statePath}\nStop runner ${process.pid} with SIGTERM to remove disposable services and data.`);
     await new Promise(() => {});
   }
-  await run(join(repo, "node_modules/.bin/playwright"), ["test", "--config=playwright.feedback.config.ts", ...process.argv.slice(2)], { cwd: repo, env: { ...env, WTS_FEEDBACK_BROWSER_STATE: statePath } });
+  if (!adminMode) await run(join(repo, "node_modules/.bin/playwright"), ["test", "--config=playwright.feedback.config.ts", ...process.argv.slice(2)], { cwd: repo, env: { ...env, WTS_FEEDBACK_BROWSER_STATE: statePath } });
 } catch (error) {
   console.error(error instanceof Error ? error.message : "Feedback browser verification failed.");
   process.exitCode = 1;

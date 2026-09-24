@@ -2,6 +2,7 @@ import { createAPIHandler } from "filesystem-routing/api";
 import routes from "virtual:file-routes";
 import { getRequestEvent } from "@solidjs/web";
 import { Router } from "~/router";
+import { isFeedbackAdminPath } from "~/lib/feedback-admin-privacy";
 import { isFeedbackPath, protectFeedbackResponse } from "~/lib/feedback-privacy";
 import { crewRaffleResponse, isCrewRafflePath } from "~/lib/crew-raffle";
 import { loadCrewRaffleRows } from "~/lib/crew-raffle-store";
@@ -90,4 +91,9 @@ async function protectFeedback(request: Request, next: (request?: Request) => Pr
   return protectFeedbackResponse(await next());
 }
 
-export default [protectFeedback, crewRaffle, preserveDeclaredStatus, protectSpeakerGuide, protectCheckin, protectLiveQa, createAPIHandler(routes)];
+async function protectFeedbackAdmin(request: Request, next: (request?: Request) => Promise<Response>) {
+  const response = await next();
+  return isFeedbackAdminPath(new URL(request.url).pathname) ? protectCheckinResponse(response) : response;
+}
+
+export default [protectFeedbackAdmin, protectFeedback, crewRaffle, preserveDeclaredStatus, protectSpeakerGuide, protectCheckin, protectLiveQa, createAPIHandler(routes)];

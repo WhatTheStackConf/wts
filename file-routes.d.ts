@@ -195,6 +195,12 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/admin/feedback";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/admin/feedback")>;
+      $$route?: undefined;
+    },
+    {
       path: "/admin/gamification";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/admin/gamification")>;
@@ -520,6 +526,18 @@ declare module "virtual:file-routes" {
       path: "/user/profile";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/user/profile")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/api/admin/feedback";
+      page: false;
+      $HEAD: FileRouteLazyRef<typeof import("./src/routes/api/admin/feedback")>;
+      $GET: FileRouteLazyRef<typeof import("./src/routes/api/admin/feedback")>;
+      $POST: FileRouteLazyRef<typeof import("./src/routes/api/admin/feedback")>;
+      $PUT: FileRouteLazyRef<typeof import("./src/routes/api/admin/feedback")>;
+      $DELETE: FileRouteLazyRef<typeof import("./src/routes/api/admin/feedback")>;
+      $PATCH: FileRouteLazyRef<typeof import("./src/routes/api/admin/feedback")>;
+      $OPTIONS: FileRouteLazyRef<typeof import("./src/routes/api/admin/feedback")>;
       $$route?: undefined;
     },
     {
@@ -906,6 +924,14 @@ declare module "virtual:file-routes" {
       id: "/admin/weights";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/admin/weights")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/admin/feedback";
+      id: "/admin/feedback";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/admin/feedback")>;
       $$route?: undefined;
       children?: undefined;
     },
