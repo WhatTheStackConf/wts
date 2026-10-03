@@ -1,0 +1,21 @@
+# Root-context builds use the repository-root .dockerignore.
+# Keep private state excluded if this directory is used as a context.
+node_modules
+dist
+.astro
+.emdash
+.cache
+.pnpm-store
+.env
+.env.*
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+uploads
+sessions
+screenshots
+*screenshot*
+*Screenshot*

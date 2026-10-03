@@ -53,7 +53,7 @@ export async function packageRuntime(source, destination) {
     sourceRevision: revision.status === 0 ? revision.stdout.trim() : null,
     sourceDirty: status.status === 0 ? status.stdout.trim().length > 0 : null,
     artifactDigest: sha256(JSON.stringify(files)),
-    recommendedNode: "22.23.2", minimumNode: pkg.engines?.node,
+    recommendedNode: "24.15.0", minimumNode: pkg.engines?.node,
     packageManager: pkg.packageManager,
     nativeDependenciesIncluded: false,
     installInstruction: "Install production dependencies on the matching target architecture/libc with pnpm install --prod --frozen-lockfile, then node scripts/verify-checkin-runtime.mjs. Do not start a service until explicitly provisioned.",

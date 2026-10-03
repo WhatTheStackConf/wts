@@ -1,0 +1,43 @@
+{
+  "name": "@wts/auth",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "engines": { "node": ">=24.15.0" },
+  "files": [
+    "dist",
+    "migrations",
+    "public",
+    "scripts/provision-runtime.mjs"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js",
+    "migrate": "node dist/cli.js migrate",
+    "client": "node dist/cli.js client",
+    "import": "node dist/cli.js import",
+    "export-pocketbase": "node dist/cli.js export-pocketbase",
+    "acceptance": "node acceptance/run.mjs"
+  },
+  "dependencies": {
+    "@better-auth/oauth-provider": "1.7.7",
+    "@hono/node-server": "2.1.3",
+    "bcryptjs": "3.0.3",
+    "better-auth": "1.7.7",
+    "hono": "4.13.12",
+    "nodemailer": "10.0.13",
+    "pg": "8.23.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.0",
+    "@types/nodemailer": "8.0.2",
+    "@types/pg": "8.23.1",
+    "openid-client": "6.8.8",
+    "playwright": "1.63.0",
+    "smtp-server": "3.17.1",
+    "typescript": "7.0.2"
+  }
+}

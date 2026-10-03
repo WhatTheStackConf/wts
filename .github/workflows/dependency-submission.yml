@@ -7,6 +7,10 @@ on:
       - master
     paths:
       - package.json
+      - auth/package.json
+      - blog/package.json
+      - site/package.json
+      - cfp/package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
 

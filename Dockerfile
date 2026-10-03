@@ -1,8 +1,8 @@
 # Stage 1: Base
-FROM node:22-alpine AS base
+FROM node:24.15.0-alpine AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+RUN npm install --global pnpm@11.24.0
 
 # Stage 2: Build
 FROM base AS build
@@ -11,7 +11,11 @@ RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --dangerously-allow-all-builds
+COPY auth/package.json ./auth/package.json
+COPY blog/package.json ./blog/package.json
+COPY site/package.json ./site/package.json
+COPY cfp/package.json ./cfp/package.json
+RUN pnpm --filter what-the-stack install --frozen-lockfile
 
 COPY . .
 
@@ -27,7 +31,8 @@ ENV VITE_LISTMONK_LIST_ID=${VITE_LISTMONK_LIST_ID}
 ENV VITE_TURNSTILE_SITE_KEY=${VITE_TURNSTILE_SITE_KEY}
 ENV PUBLIC_SITE_URL=${PUBLIC_SITE_URL}
 
-RUN npm_config_fsevents=false pnpm build
+RUN npm_config_fsevents=false pnpm --filter what-the-stack build
+RUN pnpm --filter what-the-stack deploy --prod /production
 
 # Stage 3: Runner
 FROM base AS runner
@@ -38,8 +43,9 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 solidjs
 
 # Copy only necessary files from build
-COPY --from=build --chown=solidjs:nodejs /app/.output ./.output
-COPY --from=build --chown=solidjs:nodejs /app/package.json ./package.json
+COPY --from=build --chown=solidjs:nodejs /production/.output ./.output
+COPY --from=build --chown=solidjs:nodejs /production/node_modules ./node_modules
+COPY --from=build --chown=solidjs:nodejs /production/package.json ./package.json
 
 # Switch to non-root user
 USER solidjs

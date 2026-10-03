@@ -1,0 +1,20 @@
+# WhatTheStack 2027
+
+WhatTheStack is a community for people who build software. The initial 2027 public site shares evergreen information, confirmed announcements as they become available, legal information, and ways to receive occasional community updates. Conference date, location, time zone, venue, programme, speakers, partners, and ticket prices have not been announced.
+
+## Public information
+
+- [Home](https://wts.sh/): WhatTheStack 2027 public landing page and community introduction.
+- [Terms](https://wts.sh/terms): Terms of service.
+- [Privacy](https://wts.sh/privacy): Privacy information.
+- [Code of Conduct](https://wts.sh/code-of-conduct): Community conduct expectations.
+
+## Past editions
+
+- [2026 edition](https://2026.wts.sh): Historical edition site.
+- [2025 edition](https://2025.wts.sh): Historical edition site.
+- [2024 edition](https://2024.wts.sh): Historical edition site.
+
+## Contact
+
+- what@wts.sh

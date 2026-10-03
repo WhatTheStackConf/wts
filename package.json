@@ -35,7 +35,17 @@
     "test:checkin-components": "node --test tests/checkin-lifecycle-component.test.mjs && node scripts/run-checkin-lookup-ui.mjs && node scripts/run-checkin-recovery-history-ui.mjs && node tests/checkin-recovery-compact.test.mjs && node scripts/run-checkin-admission-retry-ui.mjs",
     "test:checkin-lifecycle-browser": "pnpm exec tsc --project tsconfig.checkin-browser.json && node scripts/run-checkin-browser.mjs --config=playwright.lifecycle.config.ts",
     "test:usability": "vp test run --maxWorkers=2 src/components/account-usability.test.tsx src/components/admin/admin-usability.test.tsx src/components/reviewer/reviewer-usability.test.tsx",
-    "test:workspace-browser": "node --experimental-strip-types scripts/run-live-qa-browser.mjs --workspace"
+    "test:workspace-browser": "node --experimental-strip-types scripts/run-live-qa-browser.mjs --workspace",
+    "build:all": "pnpm --recursive --include-workspace-root run build",
+    "typecheck:all": "pnpm --recursive --include-workspace-root run typecheck",
+    "dev:site": "pnpm --filter @wts/site dev",
+    "build:site": "pnpm --filter @wts/site build",
+    "typecheck:site": "pnpm --filter @wts/site typecheck",
+    "test:site": "pnpm --filter @wts/site test",
+    "dev:cfp": "pnpm --filter @wts/cfp dev",
+    "build:cfp": "pnpm --filter @wts/cfp build",
+    "typecheck:cfp": "pnpm --filter @wts/cfp typecheck",
+    "test:cfp": "pnpm --filter @wts/cfp test"
   },
   "dependencies": {
     "@mdx-js/mdx": "^3.1.1",
@@ -67,10 +77,11 @@
     "solid-js": "^2.0.0-rc.3",
     "spark-md5": "^3.0.2",
     "zod": "^4.4.3",
-    "jsqr": "1.4.0"
+    "jsqr": "1.4.0",
+    "harfbuzzjs": "0.10.0"
   },
   "engines": {
-    "node": ">=22.22.2"
+    "node": ">=24.15.0"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "^13.0.0",
@@ -101,5 +112,9 @@
     "velite": "^0.4.0",
     "vite": "catalog:",
     "vite-plus": "catalog:"
-  }
+  },
+  "private": true,
+  "files": [
+    ".output"
+  ]
 }

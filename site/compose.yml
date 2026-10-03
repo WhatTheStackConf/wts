@@ -1,0 +1,34 @@
+x-site: &site
+  image: wts-site:local
+  build:
+    context: ..
+    dockerfile: site/Dockerfile
+    args:
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://wts.sh}
+      VITE_LISTMONK_LIST_ID: ${VITE_LISTMONK_LIST_ID:-}
+      VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
+  env_file: .env
+  environment:
+    SITE_DATA_DIR: /app/data
+    SITE_PUBLIC_DIR: /app/public
+  volumes:
+    - site-data:/app/data
+
+services:
+  migrate:
+    <<: *site
+    command: [node, --experimental-strip-types, scripts/site-data.ts, migrate]
+    restart: "no"
+    healthcheck:
+      disable: true
+  site:
+    <<: *site
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - 127.0.0.1:3308:3000
+    restart: unless-stopped
+
+volumes:
+  site-data:

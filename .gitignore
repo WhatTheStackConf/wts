@@ -12,7 +12,7 @@ app.config.timestamp_*.js
 !.env.example
 
 # dependencies
-/node_modules
+node_modules/
 
 # IDEs and editors
 /.idea
@@ -43,3 +43,19 @@ pb_data
 # Disposable Check-in browser artifacts (test-only sessions/codes)
 /playwright-report/
 /test-results/
+
+# Workspace runtime state and generated files
+.astro/
+.audit/
+blog/data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+site/.data/
+site/.backups/
+cfp/.data/
+cfp/.backups/
+cfp/acceptance/artifacts/

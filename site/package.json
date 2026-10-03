@@ -1,0 +1,72 @@
+{
+  "name": "@wts/site",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "files": [
+    ".output",
+    "migrations",
+    "scripts/site-data.ts",
+    "src/server/storage.ts",
+    "src/server/public-content.ts",
+    "src/server/public-assets.ts",
+    "src/lib/public-contract.ts",
+    "src/lib/publication-schema.ts",
+    "src/lib/public-slug.ts"
+  ],
+  "scripts": {
+    "dev": "vp dev --port 3308",
+    "build": "vp build && node ../scripts/check-server-bundle.mjs .output/server",
+    "typecheck": "tsc --noEmit",
+    "check": "vp check",
+    "test": "pnpm test:storage && pnpm test:accounts && vp test run --maxWorkers=4",
+    "start": "node .output/server/index.mjs",
+    "data": "node --experimental-strip-types scripts/site-data.ts",
+    "test:oidc": "node --experimental-strip-types tests/site-oidc.acceptance.mjs",
+    "test:storage": "node --experimental-strip-types --test src/server/storage.test.ts src/server/recovery.test.ts",
+    "test:accounts": "node --experimental-strip-types --test src/server/site-sessions.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@solidjs/meta": "^1.0.0-next.2",
+    "@solidjs/router": "^2.0.0-next.18",
+    "@solidjs/web": "^2.0.0-rc.3",
+    "entities": "^8.0.0",
+    "fontkit": "2.0.4",
+    "harfbuzzjs": "0.10.0",
+    "lottie-web": "^5.13.0",
+    "nitro": "^3.0.260610-beta",
+    "sanitize-html": "^2.17.7",
+    "satori": "^0.33.4",
+    "satori-html": "^0.3.2",
+    "sharp": "^0.35.4",
+    "solid-js": "^2.0.0-rc.3",
+    "zod": "^4.4.3",
+    "openid-client": "6.8.8"
+  },
+  "devDependencies": {
+    "@mdx-js/mdx": "^3.1.1",
+    "@solidjs/vite-plugin": "^3.0.0-next.34",
+    "@tailwindcss/typography": "^0.5.20",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/fontkit": "2.0.9",
+    "@types/node": "^26.4.0",
+    "@types/sanitize-html": "^2.16.1",
+    "daisyui": "^5.7.22",
+    "filesystem-routing": "0.2.1",
+    "gray-matter": "^4.0.3",
+    "remark-gfm": "^4.0.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "openapi-types": "^12.1.3",
+    "@apidevtools/swagger-parser": "^13.0.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
+  }
+}

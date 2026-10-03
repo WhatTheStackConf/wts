@@ -1,0 +1,73 @@
+services:
+  blog:
+    image: wts-blog:${WTS_BLOG_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: blog/Dockerfile
+    pull_policy: never
+    restart: unless-stopped
+    expose:
+      - "4321"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: coolify
+      traefik.http.routers.wts-blog.rule: Host(`blog.wts.sh`)
+      traefik.http.routers.wts-blog.entrypoints: https
+      traefik.http.routers.wts-blog.tls: "true"
+      traefik.http.routers.wts-blog.tls.certresolver: letsencrypt
+      traefik.http.routers.wts-blog.priority: "100"
+      traefik.http.routers.wts-blog.service: wts-blog
+      traefik.http.services.wts-blog.loadbalancer.server.port: "4321"
+      traefik.http.routers.wts-blog-http.rule: Host(`blog.wts.sh`)
+      traefik.http.routers.wts-blog-http.entrypoints: http
+      traefik.http.routers.wts-blog-http.service: wts-blog
+      traefik.http.routers.wts-blog-http.middlewares: wts-blog-https
+      traefik.http.middlewares.wts-blog-https.redirectscheme.scheme: https
+      traefik.http.middlewares.wts-blog-https.redirectscheme.permanent: "true"
+      traefik.http.routers.wts-blog-setup.rule: Host(`blog.wts.sh`) && PathPrefix(`/_emdash/api/setup`) && !Path(`/_emdash/api/setup/status`)
+      traefik.http.routers.wts-blog-setup.entrypoints: https
+      traefik.http.routers.wts-blog-setup.tls: "true"
+      traefik.http.routers.wts-blog-setup.tls.certresolver: letsencrypt
+      traefik.http.routers.wts-blog-setup.priority: "1000"
+      traefik.http.routers.wts-blog-setup.service: wts-blog-setup
+      traefik.http.routers.wts-blog-setup.middlewares: wts-blog-setup-allowed
+      traefik.http.services.wts-blog-setup.loadbalancer.server.port: "4321"
+      # Replace this loopback-only default with the setup owner's public IP CIDR.
+      traefik.http.middlewares.wts-blog-setup-allowed.ipwhitelist.sourcerange: 127.0.0.1/32
+    environment:
+      HOST: 0.0.0.0
+      PORT: "4321"
+      DATABASE_PATH: /app/data/data.db
+      UPLOADS_DIRECTORY: /app/data/uploads
+      EMDASH_SITE_URL: https://blog.wts.sh
+      EMDASH_ENCRYPTION_KEY: ${EMDASH_ENCRYPTION_KEY:?Set EMDASH_ENCRYPTION_KEY in the runtime environment}
+    volumes:
+      - blog-data:/app/data
+    networks:
+      - proxy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - --input-type=module
+        - -e
+        - >-
+          try {
+            const response = await fetch('http://localhost:4321/', { signal: AbortSignal.timeout(5000) });
+            await response.body?.cancel();
+            process.exit(response.ok ? 0 : 1);
+          } catch {
+            process.exit(1);
+          }
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+volumes:
+  blog-data:
+
+networks:
+  proxy:
+    external: true
+    name: coolify

@@ -1,0 +1,22 @@
+.mcp-guide {
+  --color-base-content: var(--color-orbit-ink);
+  --color-base-200: var(--color-orbit-surface);
+  --color-accent-300: var(--color-orbit-accent);
+  --color-accent-400: var(--color-orbit-accent);
+}
+
+.mcp-guide [class*="bg-black/"] {
+  background: var(--color-orbit-surface);
+}
+
+.mcp-guide pre {
+  color: var(--color-orbit-ink);
+  caret-color: var(--color-orbit-accent);
+  scrollbar-color: var(--color-orbit-muted) var(--color-orbit-surface);
+}
+
+.mcp-guide .speaker-kicker {
+  color: var(--color-orbit-muted);
+  font-size: .8125rem;
+  font-weight: 600;
+}

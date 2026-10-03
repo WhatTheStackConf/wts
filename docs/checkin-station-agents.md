@@ -4,7 +4,14 @@ The supervised protocol now includes admission, reset, journal recovery, monitor
 
 ## Build and smoke
 
-Use Node 22.23.2 (native experimental `node:sqlite`, no native npm journal dependency) and the repository's pinned pnpm. `pnpm build` compiles the runtime after the web build, which can replace `.output`; use `pnpm build:checkin-runtime` for a standalone rebuild. Deploy the entire `.output/checkin-runtime/` tree (both `runtime/checkin/` and `src/lib/`), the root ESM package manifest, lockfile/workspace build policy, and target-native production dependencies together under `/opt/wts`. The web Docker image alone does not supply root runtime dependencies. See [deployment readiness](checkin-deployment-readiness.md) for migration ordering, artifact boundaries, station permissions and outstanding host/configuration blockers.
+Use Node.js 24.15.0 or newer and the repository's pinned pnpm.
+The journal uses the native `node:sqlite` module without a native npm journal dependency.
+`pnpm build` compiles the runtime after the web build, which can replace `.output`.
+Use `pnpm build:checkin-runtime` for a standalone rebuild.
+Deploy the entire `.output/checkin-runtime/` tree, including `runtime/checkin/` and `src/lib/`.
+Keep the root ESM manifest, shared lockfile, workspace build policy, and target-native production dependencies together under `/opt/wts`.
+The web Docker image alone does not supply root runtime dependencies.
+See [deployment readiness](checkin-deployment-readiness.md) for migration ordering, station permissions, and outstanding host/configuration blockers.
 
 Run the tracked disposable smoke and focused tests:
 

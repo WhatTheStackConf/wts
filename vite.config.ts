@@ -24,6 +24,7 @@ export default defineConfig({
     // Nitro's second Rolldown pass can emit an undefined namespace export when
     // splitting the Solid SSR/API graph. Keep server imports together until the
     // upstream chunk-linking bug is fixed; client route splitting is unchanged.
+    traceDeps: ["harfbuzzjs", "harfbuzzjs*"],
     inlineDynamicImports: true,
     routeRules: {
       "/assets/**": {
@@ -72,9 +73,19 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    include: ["src/**/*.test.{ts,tsx}", "runtime/**/*.test.ts"],
   },
   lint: {
     ignorePatterns: [
+      "auth/**",
+      "blog/**",
+      ".audit/**",
+      ".hermes/**",
+      ".hallmark/**",
+      ".impeccable/**",
+      ".planning/**",
+      ".playwright-mcp/**",
+      ".vinxi/**",
       ".nitro/**",
       ".output/**",
       ".scratch/**",
@@ -97,7 +108,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ["fsevents", "../pkg"],
+      external: ["fsevents", "../pkg", "harfbuzzjs"],
     },
   },
   ssr: {

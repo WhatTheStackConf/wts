@@ -1,3 +1,172 @@
+# WTS monorepo
+
+This pnpm workspace contains the preserved conference application, the 2027 site, shared identity, the CFP app, and the blog.
+The preserved application remains at the repository root.
+Its PocketBase, CFP, reviewer, and admin workflows remain intact.
+Open Event Platform stays in its separate repository.
+
+| Package | Directory | Documentation |
+| --- | --- | --- |
+| `what-the-stack` | Repository root | This README |
+| `@wts/auth` | `auth/` | [Auth operations](auth/README.md) |
+| `@wts/blog` | `blog/` | [Blog operations](blog/README.md) |
+| `@wts/site` | `site/` | [2027 SQLite site operations](site/README.md) |
+| `@wts/cfp` | `cfp/` | [Independent CFP app](#independent-cfp-app) |
+
+Use Node.js `>=24.15.0` and pnpm `11.24.0`.
+Run `pnpm install --frozen-lockfile` at the root to install every package.
+The root `pnpm-lock.yaml` and `pnpm-workspace.yaml` control dependency versions and install policies for all packages.
+Do not create nested lockfiles or workspace configurations.
+The workspace disables automatic peer installation and cross-app peer resolution.
+The site keeps its Vite Plus dependency without overriding the blog's Vite dependency.
+
+Each app has its own build, runtime configuration, deployment, and database ownership.
+The workspace does not merge databases or change the 2026 site's PocketBase authentication.
+Local databases, uploads, environment files, and private verification artifacts stay outside Git.
+The imported blog excludes the original local directory's accounts and data.
+
+## Workspace commands
+
+| Command | Result |
+| --- | --- |
+| `pnpm build:all` | Build all five applications |
+| `pnpm typecheck:all` | Check TypeScript for every app |
+| `pnpm dev:site` | Start the independent 2027 site after explicit SQLite initialization |
+| `pnpm build:site` | Build the 2027 site only |
+| `pnpm test:site` | Check disposable SQLite, recovery, account boundaries, and public contracts |
+| `pnpm dev:cfp` | Start the independent CFP app after explicit SQLite initialization |
+| `pnpm build:cfp` | Build the CFP app only |
+| `pnpm test:cfp` | Check applicant transitions, ownership, sessions, storage, and recovery |
+| `pnpm --filter @wts/cfp test:oidc` | Exercise the CFP OIDC boundary with isolated synthetic services |
+| `pnpm --filter @wts/auth build` | Build auth only |
+| `pnpm --filter @wts/auth acceptance` | Exercise auth with isolated synthetic services |
+| `pnpm --filter @wts/blog dev` | Start the blog development server |
+| `pnpm --filter @wts/blog build` | Build the blog only |
+| `pnpm --filter what-the-stack build` | Build the conference site only |
+
+Existing root commands such as `pnpm dev`, `pnpm build`, and `pnpm test` still target the preserved conference application.
+Use the repository root as the Docker build context for each app.
+Select `Dockerfile`, `site/Dockerfile`, `cfp/Dockerfile`, `auth/Dockerfile`, or `blog/Dockerfile` for the app you want to build.
+The container builds use `pnpm deploy` to package each app with its production dependencies.
+Do not change production deployment settings without a separate approved deployment.
+
+## Independent 2027 site
+
+`site/` uses server-owned SQLite and central OIDC without PocketBase.
+It retains the public landing, legal pages, newsletter, anonymous JSON API, public MCP, owned media, OG images, and central profile access.
+It owns its local sessions, edition permissions, migrations, persistent data, and backups.
+It does not include the legacy operational workflows or import historical records automatically.
+Read [site/README.md](site/README.md) for explicit initialization, reviewed imports, account setup, and container replacement.
+No production deployment, client registration, or historical content cutover accompanies this implementation.
+
+## Independent CFP app
+
+`cfp/` implements the stepped applicant workflow for `cfp.wts.sh`.
+It stores one reusable speaker profile and general settings per WTS user.
+A fresh application starts with blank presentation fields.
+Later applications skip completed speaker entry and show saved settings with an edit link.
+Profile and settings changes apply to all owned applications.
+Pending edits remain private drafts until confirmation.
+Finalized applications can supply an independent reuse draft.
+Email remains read-only central identity data.
+
+The app owns its SQLite database, migrations, backups, OIDC client, and host-only session cookies.
+It does not use PocketBase or import private 2026 CFP records.
+The existing root CFP, reviewer, and admin workflows remain unchanged.
+This implementation does not register a production client or deploy `cfp.wts.sh`.
+
+### Local CFP initialization
+
+The CLI does not load `.env` files.
+Use `cfp/.env.example` for the server configuration names.
+`CFP_SESSION_KEY` requires exactly 32 random bytes in canonical base64url encoding.
+Keep that key and the OIDC client secret outside Git and database backups.
+Local sign-in requires a separate configured OIDC client.
+
+1. Export the CFP configuration into your development shell.
+2. Initialize a fresh local edition.
+
+   ```bash
+   export CFP_DATA_DIR="$PWD/cfp/.data"
+   export CFP_EDITION_ID=2027
+   pnpm --filter @wts/cfp data init 2027
+   ```
+
+3. Open the local edition.
+
+   ```bash
+   pnpm --filter @wts/cfp data open 2027
+   ```
+
+4. Start the app.
+
+   ```bash
+   pnpm dev:cfp
+   ```
+
+New editions remain closed until an operator opens them.
+Closing CFP blocks draft creation, draft saves, and submissions.
+Saved record reads and profile or settings maintenance remain available.
+CFP sessions require live central verification and expire after at most five minutes.
+Local logout does not end central SSO.
+
+### CFP maintenance and recovery
+
+The maintenance CLI supports `migrate`, `init`, `open`, `close`, `backup`, and `restore`.
+Backup uses the native SQLite online backup operation and includes a checksum manifest.
+Use the online backup command instead of copying a live SQLite file.
+Treat every CFP backup as private applicant data.
+
+1. Create a backup in a new directory.
+
+   ```bash
+   pnpm --filter @wts/cfp data backup /private/cfp-backup-2026-10-02
+   ```
+
+2. Restore the backup into a new directory.
+
+   ```bash
+   pnpm --filter @wts/cfp data restore /private/cfp-backup-2026-10-02 /private/cfp-restored-2026-10-02
+   ```
+
+3. Start a replacement container with the restored directory.
+4. Verify the restored profiles, settings, drafts, applications, and receipts.
+5. Open the intended edition after you review its restored state.
+
+Restore validates the checksum, schema, integrity, foreign keys, and stored domain records.
+It preserves applicant data and identity bindings.
+It clears all local sessions and OIDC flows and closes every edition.
+Recover `CFP_SESSION_KEY` separately or create a new key before a fresh sign-in.
+Enable `CFP_TRUST_PROXY` only when the proxy replaces forwarded headers and blocks direct application access.
+
+The isolated browser fixture starts a real built CFP app and synthetic central auth over local HTTPS.
+Build auth and CFP before you run `pnpm --filter @wts/cfp browser:fixture`.
+The fixture accepts JSON commands for restart, closure, backup, restore, and cleanup.
+It never registers a production client or reads production data.
+
+### CFP local verification
+
+`pnpm --filter @wts/cfp test:browser` runs the isolated built browser proof.
+It requires the auth and CFP builds and an installed Playwright Chromium browser.
+It checks submissions, reuse, private reads, closure, account changes, and recovery.
+
+The container proof uses only its own synthetic data and volumes.
+It checks online backup, restore, container replacement, and runtime dependency boundaries.
+
+1. Build a Docker-format image from the repository root.
+
+   ```bash
+   podman build --format docker -f cfp/Dockerfile -t localhost/wts-cfp:verify .
+   ```
+
+2. Verify the prebuilt local image.
+
+   ```bash
+   pnpm --filter @wts/cfp test:container localhost/wts-cfp:verify
+   ```
+
+
+
 # WTS — WhatTheStack Conference 2026
 
 Web app for the WhatTheStack 2026 conference. Public-facing site, CFP system, reviewer workflow, admin tools, ticketing, and content (blog/agenda/speakers).
@@ -11,7 +180,7 @@ Live: [wts.sh](https://wts.sh)
 - [Tailwind CSS 4](https://tailwindcss.com/) + [DaisyUI](https://daisyui.com/)
 - [Velite](https://velite.js.org/) for MDX content (blog, pages)
 - TypeScript
-- Node `>= 22`, pnpm
+- Node.js `>=24.15.0` and pnpm `11.24.0`
 
 ## Features
 
@@ -29,7 +198,7 @@ Live: [wts.sh](https://wts.sh)
 
 ```bash
 # 1. Install deps
-pnpm install
+pnpm install --frozen-lockfile
 
 # 2. Download PocketBase binary
 pnpm pocketbase:download

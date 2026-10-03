@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1",
+  "contentVersion": "2026-09-28",
+  "event": {
+    "name": "WhatTheStack",
+    "date": { "status": "not_announced" },
+    "location": { "status": "not_announced" },
+    "timeZone": { "status": "not_announced" }
+  },
+  "mainVenue": { "status": "not_announced" },
+  "preConferenceVenue": { "status": "not_announced" },
+  "tickets": { "status": "not_announced" },
+  "codeOfConduct": {
+    "status": "announced",
+    "canonicalPath": "/code-of-conduct",
+    "reportingEmail": "what@wts.sh"
+  },
+  "accessibility": { "status": "not_announced", "contactEmail": "what@wts.sh" },
+  "accommodation": { "status": "not_announced" },
+  "contact": { "generalEmail": "what@wts.sh" }
+}

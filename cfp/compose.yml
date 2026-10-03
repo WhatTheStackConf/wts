@@ -1,0 +1,29 @@
+x-cfp: &cfp
+  image: wts-cfp:local
+  build:
+    context: ..
+    dockerfile: cfp/Dockerfile
+  env_file: .env
+  environment:
+    CFP_DATA_DIR: /app/data
+  volumes:
+    - cfp-data:/app/data
+
+services:
+  migrate:
+    <<: *cfp
+    command: [node, --experimental-strip-types, scripts/cfp-data.ts, migrate]
+    restart: "no"
+    healthcheck:
+      disable: true
+  cfp:
+    <<: *cfp
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - 127.0.0.1:3309:3000
+    restart: unless-stopped
+
+volumes:
+  cfp-data:

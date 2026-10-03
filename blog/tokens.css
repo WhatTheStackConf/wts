@@ -1,0 +1,32 @@
+/* WTS 2027 public theme. Source: ../wts/tokens.css. */
+:root {
+  --color-orbit-paper: oklch(97% 0.018 82);
+  --color-orbit-surface: oklch(93% 0.025 78);
+  --color-orbit-ink: oklch(24% 0.03 245);
+  --color-orbit-muted: oklch(46% 0.025 245);
+  --color-orbit-rule: oklch(86% 0.025 78);
+  --color-orbit-accent: oklch(43% 0.09 225);
+  --color-orbit-accent-ink: oklch(97% 0.018 82);
+  --color-orbit-focus: oklch(54% 0.15 65);
+  --color-orbit-error: oklch(52% 0.18 25);
+  --color-orbit-success: oklch(43% 0.12 150);
+  --color-orbit-amber: oklch(65% 0.16 72);
+  --color-orbit-magenta: oklch(56% 0.18 335);
+  --color-orbit-on-dark-muted: oklch(89% 0.025 82);
+  --color-orbit-line-on-dark: oklch(97% 0.018 82 / 22%);
+  --font-orbit-display: "StarzoomShavian", sans-serif;
+  --font-orbit-body: "Space Grotesk", sans-serif;
+  --space-orbit-1: 0.25rem;
+  --space-orbit-2: 0.5rem;
+  --space-orbit-3: 0.75rem;
+  --space-orbit-4: 1rem;
+  --space-orbit-6: 1.5rem;
+  --space-orbit-8: 2rem;
+  --space-orbit-12: 3rem;
+  --space-orbit-16: 4rem;
+  --space-orbit-24: 6rem;
+  --ease-orbit-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-orbit-fast: 160ms;
+  --launch-cyan: oklch(78% 0.11 205);
+  --launch-night-deep: oklch(18% 0.035 245);
+}

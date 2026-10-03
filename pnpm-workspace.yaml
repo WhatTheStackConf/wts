@@ -1,27 +1,44 @@
+packages:
+  - auth
+  - blog
+  - site
+  - cfp
+injectWorkspacePackages: true
+resolvePeersFromWorkspaceRoot: false
+dedupePeerDependents: false
+autoInstallPeers: false
+minimumReleaseAge: 1440
+blockExoticSubdeps: true
 allowBuilds:
   '@parcel/watcher': true
   '@serialport/bindings-cpp': true
   '@stoprocent/bluetooth-hci-socket': false
+  '@tailwindcss/oxide': true
   '@stoprocent/noble': false
   esbuild: true
+  node-sqlite3: true
   sharp: true
   sqlite3: true
   usb: false
+  workerd: false
 minimumReleaseAgeExclude:
   - baseline-browser-mapping@2.11.20
-onlyBuiltDependencies:
-  - '@parcel/watcher'
-  - '@tailwindcss/oxide'
-  - esbuild
-  - node-sqlite3
-  - sharp
-  - sqlite3
+  - emdash
+  - '@emdash-cms/*'
+  - '@better-auth/core@1.7.7'
+  - '@better-auth/drizzle-adapter@1.7.7'
+  - '@better-auth/kysely-adapter@1.7.7'
+  - '@better-auth/memory-adapter@1.7.7'
+  - '@better-auth/mongo-adapter@1.7.7'
+  - '@better-auth/oauth-provider@1.7.7'
+  - '@better-auth/prisma-adapter@1.7.7'
+  - '@better-auth/telemetry@1.7.7'
+  - better-auth@1.7.7
 overrides:
   '@babel/core': 7.29.6
   '@mapbox/node-pre-gyp>tar': 7.5.16
   'brace-expansion@>=5.0.0 <5.0.6': 5.0.6
   prosemirror-model: 1.25.11
-  vite@*: 'catalog:'
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@0.3.0
   vite-plus: 0.3.0

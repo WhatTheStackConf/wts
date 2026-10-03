@@ -1,0 +1,45 @@
+{
+  "name": "@wts/blog",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "emdash": {
+    "label": "WTS Blog",
+    "seed": "seed/seed.json"
+  },
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1",
+    "build": "astro build",
+    "preview": "astro preview",
+    "start": "node ./dist/server/entry.mjs",
+    "typecheck": "astro check",
+    "seed:generate": "node scripts/generate-seed.mjs",
+    "seed": "emdash seed",
+    "import:dates": "node scripts/restore-publication-dates.mjs"
+  },
+  "dependencies": {
+    "@astrojs/node": "^11.1.5",
+    "@astrojs/react": "^6.0.5",
+    "astro": "^7.3.2",
+    "emdash": "^1.0.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "sanitize-html": "2.17.7",
+    "sharp": "0.35.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "gray-matter": "^4.0.3",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "typescript": "^6.0.3",
+    "unified": "^11.0.5"
+  },
+  "packageManager": "pnpm@11.24.0"
+}

@@ -1,0 +1,187 @@
+html:has(:is(.landing-2027, .supporting-shell)) {
+  --orbit-header-height: 90px;
+}
+
+.orbit-header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-orbit-8);
+  width: min(100% - 3rem, 1320px);
+  min-height: var(--orbit-header-height);
+  margin-inline: auto;
+  color: var(--launch-white);
+}
+
+.orbit-brand {
+  --orbit-brand-compact-logo-height: 46px;
+  position: relative;
+  display: inline-flex;
+  width: max-content;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  color: inherit;
+  text-decoration: none;
+}
+
+.orbit-brand-lockup {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  gap: var(--space-orbit-3);
+}
+
+.orbit-brand img {
+  display: block;
+  width: auto;
+  height: 46px;
+  flex: 0 0 auto;
+}
+
+.orbit-brand-name {
+  margin: 0;
+  font-family: var(--font-orbit-display);
+  font-size: 1.75rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  white-space: nowrap;
+}
+
+.orbit-brand-year {
+  position: absolute;
+  top: calc(100% + var(--orbit-brand-year-gap, 0.65rem));
+  left: 50%;
+  display: none;
+  transform: translateX(-50%);
+  color: var(--launch-cyan);
+  font-size: var(--text-orbit-small);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1;
+}
+
+.orbit-nav {
+  display: flex;
+  align-items: center;
+  gap: clamp(1rem, 3vw, 2.75rem);
+  margin-inline-start: auto;
+}
+
+
+.orbit-header[data-header-state="compact"] > .orbit-nav {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  margin: 0;
+  transform: translateY(-50%);
+}
+
+.orbit-header[data-header-state="compact"] .orbit-brand-lockup {
+  gap: 0.375rem;
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .orbit-header .orbit-nav {
+    gap: 1rem;
+  }
+
+  .orbit-nav > a,
+  .orbit-nav-cta {
+    font-size: 0.8125rem;
+  }
+
+  .orbit-header[data-header-state="compact"] .orbit-brand-name {
+    font-size: 1.4rem;
+  }
+}
+
+@media (max-width: 767px) {
+  html:has(:is(.landing-2027, .supporting-shell)) {
+    --orbit-header-height: 116px;
+  }
+
+  .orbit-header {
+    width: calc(100% - 1rem);
+    gap: 0;
+    padding-inline: 0.5rem;
+  }
+
+  .orbit-brand {
+    --orbit-brand-compact-logo-height: 38px;
+  }
+  .orbit-brand-name {
+    font-size: clamp(1.1rem, 5.5vw, 1.35rem);
+  }
+
+  .orbit-brand-lockup {
+    gap: 0.5rem;
+  }
+
+  .orbit-brand img {
+    height: 38px;
+  }
+
+  .orbit-header[data-header-state="compact"] > .orbit-brand {
+    position: absolute;
+    top: 10px;
+    left: 0.5rem;
+    min-height: 0;
+  }
+
+  .orbit-header[data-header-state="compact"] > .orbit-nav {
+    top: 64px;
+    right: 0;
+    left: 0;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.25rem 0.375rem;
+    transform: none;
+  }
+  .orbit-header .orbit-nav {
+    gap: 0.25rem 0.375rem;
+  }
+
+  .orbit-nav > a {
+    font-size: 0.6875rem;
+  }
+
+  .orbit-nav-cta {
+    min-height: 44px;
+    padding: 0.45rem 0.4rem;
+    font-size: 0.6875rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .orbit-header {
+    padding-inline: 0.375rem;
+  }
+
+  .orbit-header[data-header-state="compact"] > .orbit-brand {
+    left: 0.375rem;
+  }
+
+  .orbit-header[data-header-state="compact"] > .orbit-nav {
+    right: auto;
+    left: 50%;
+    width: max-content;
+    flex-wrap: nowrap;
+    gap: 0.25rem 0.375rem;
+    transform: translateX(-50%);
+  }
+
+  .orbit-nav > a {
+    font-size: 0.625rem;
+  }
+
+  .orbit-nav-cta {
+    gap: 0.25rem;
+    padding-inline: 0.3rem;
+    font-size: 0.625rem;
+  }
+}

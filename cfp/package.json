@@ -1,0 +1,60 @@
+{
+  "name": "@wts/cfp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "files": [
+    ".output",
+    "migrations",
+    "scripts/cfp-data.ts",
+    "src/server/storage.ts",
+    "src/lib/cfp-model.ts"
+  ],
+  "scripts": {
+    "dev": "vp dev --port 3309",
+    "build": "vp build && node ../scripts/check-server-bundle.mjs .output/server",
+    "typecheck": "tsc --noEmit",
+    "check": "vp check",
+    "test": "node --experimental-strip-types --test src/server/*.test.ts",
+    "test:oidc": "node --experimental-strip-types tests/cfp-oidc.acceptance.mjs",
+    "browser:fixture": "node --experimental-strip-types tests/browser-fixture.mjs",
+    "test:browser": "node --experimental-strip-types tests/browser-proof.mjs",
+    "test:container": "node --experimental-strip-types tests/container-proof.mjs",
+    "start": "node .output/server/index.mjs",
+    "data": "node --experimental-strip-types scripts/cfp-data.ts"
+  },
+  "dependencies": {
+    "@solidjs/meta": "^1.0.0-next.2",
+    "@solidjs/router": "^2.0.0-next.18",
+    "@solidjs/web": "^2.0.0-rc.3",
+    "solid-js": "^2.0.0-rc.3",
+    "zod": "^4.4.3",
+    "openid-client": "6.8.8",
+    "sanitize-html": "^2.17.7",
+    "prosemirror-commands": "^1.7.2",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.11",
+    "prosemirror-schema-basic": "^1.2.4",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "^1.42.3",
+    "prosemirror-schema-list": "1.5.1"
+  },
+  "devDependencies": {
+    "nitro": "^3.0.260610-beta",
+    "@solidjs/vite-plugin": "^3.0.0-next.34",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.4.0",
+    "@types/sanitize-html": "^2.16.1",
+    "daisyui": "^5.7.22",
+    "filesystem-routing": "0.2.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

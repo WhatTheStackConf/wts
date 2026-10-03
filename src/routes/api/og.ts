@@ -71,6 +71,7 @@ export async function GET({ request }: { request: Request }) {
 
   const svg = await satori(
     {
+      key: null,
       type: "div",
       props: {
         style: {

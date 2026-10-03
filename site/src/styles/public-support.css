@@ -1,0 +1,246 @@
+@import "../../tokens.css";
+
+.supporting-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  isolation: isolate;
+  color: var(--color-orbit-ink);
+  background: var(--color-orbit-paper);
+  font-family: var(--font-orbit-body);
+}
+
+html:has(:is(.landing-2027, .supporting-shell)),
+body:has(:is(.landing-2027, .supporting-shell)) {
+  background: var(--color-orbit-paper);
+  color-scheme: light;
+  scrollbar-color: var(--color-orbit-muted) transparent;
+}
+.public-login-body {
+  background: var(--color-orbit-paper);
+  color-scheme: light;
+}
+.supporting-shell *, .supporting-shell *::before, .supporting-shell *::after { box-sizing: border-box; }
+.supporting-shell a, .supporting-shell button { min-width: 44px; min-height: 44px; }
+.support-main :where([id], a, button, input, textarea, select) {
+  scroll-margin-top: calc(var(--orbit-header-height) + 1rem);
+}
+.support-skip {
+  position: fixed; z-index: 30; top: 0.75rem; left: 0.75rem; padding: 0.75rem 1rem;
+  transform: translateY(-160%); background: var(--color-orbit-paper); color: var(--color-orbit-ink);
+}
+.support-skip:focus { transform: translateY(0); }
+.support-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-shrink: 0;
+  background-color: var(--launch-sky-night);
+  background-image: var(--launch-starfield);
+  background-size: 100% var(--orbit-header-height);
+}
+.orbit-footer {
+  width: min(100% - 3rem, 1320px);
+  margin-inline: auto;
+  padding-block: 2.5rem 1.25rem;
+  border-top: 1px solid var(--color-orbit-rule);
+  color: var(--color-orbit-ink);
+}
+.orbit-footer-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.35fr);
+  align-items: start;
+  gap: 2rem;
+  padding-bottom: 2.75rem;
+}
+.orbit-footer-brand {
+  display: inline-flex;
+  justify-self: start;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 0.65rem;
+  color: inherit;
+  font-family: var(--font-orbit-display);
+  font-size: 1.125rem;
+  line-height: 1.12;
+  text-decoration: none;
+}
+.orbit-footer-brand img { display: block; width: auto; height: 42px; }
+.orbit-footer-brand strong {
+  color: var(--color-orbit-accent);
+  font-family: var(--font-orbit-body);
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+}
+.orbit-footer-top > p { margin: 0; color: var(--color-orbit-muted); font-size: 0.9375rem; line-height: 1.55; }
+.orbit-footer-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.7rem 1.2rem; }
+.orbit-footer-links a,
+.orbit-footer-bottom a {
+  position: relative;
+  display: inline-flex;
+  min-inline-size: 44px;
+  min-height: 44px;
+  align-items: center;
+  color: var(--color-orbit-muted);
+  text-decoration: none;
+}
+.orbit-footer-links a { gap: 0.5rem; font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+.orbit-footer-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+  padding-block: 1rem 0.25rem;
+  border-top: 1px solid var(--color-orbit-rule);
+  color: var(--color-orbit-muted);
+  font-size: 0.75rem;
+}
+.orbit-footer-bottom nav { display: flex; align-items: center; gap: clamp(0.9rem, 2vw, 1.75rem); }
+.orbit-footer-bottom a { font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.support-main { width: min(100% - 2rem, 68rem); flex: 1; margin: 0 auto; padding: clamp(2rem, 6vw, 5rem) 0; }
+.support-main :is(h1, h2, h3, h4, h5, h6) { color: var(--color-orbit-ink); font-family: var(--font-orbit-body); font-weight: 600; }
+.support-main h1 { margin: 0 0 1.5rem; font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.1; }
+.support-main h2 { margin: 2.25rem 0 .75rem; font-size: clamp(1.35rem, 3vw, 2rem); }
+.support-main p, .support-main li { max-width: 72ch; font-size: 1.05rem; line-height: 1.75; }
+.support-main p + p { margin-top: 1rem; }
+ .support-main a { color: var(--color-orbit-accent); text-underline-offset: .18em; }
+.support-main .support-prose { max-width: 70rem; padding: clamp(1rem, 4vw, 3rem); border-radius: .75rem; background: var(--color-orbit-surface); }
+.supporting-shell .prose {
+  --tw-prose-body: var(--color-orbit-ink);
+  --tw-prose-headings: var(--color-orbit-ink);
+  --tw-prose-lead: var(--color-orbit-muted);
+  --tw-prose-links: var(--color-orbit-accent);
+  --tw-prose-bold: var(--color-orbit-ink);
+  --tw-prose-counters: var(--color-orbit-muted);
+  --tw-prose-bullets: var(--color-orbit-muted);
+  --tw-prose-hr: var(--color-orbit-rule);
+  --tw-prose-quotes: var(--color-orbit-ink);
+  --tw-prose-quote-borders: var(--color-orbit-rule);
+  --tw-prose-captions: var(--color-orbit-muted);
+  --tw-prose-code: var(--color-orbit-ink);
+  --tw-prose-pre-code: var(--color-orbit-ink);
+  --tw-prose-pre-bg: var(--color-orbit-surface);
+  --tw-prose-th-borders: var(--color-orbit-rule);
+  --tw-prose-td-borders: var(--color-orbit-rule);
+}
+.supporting-shell .prose strong,
+.supporting-shell .prose b {
+  color: var(--color-orbit-ink) !important;
+}
+@media (max-width: 850px) {
+  .orbit-footer-top { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+  .orbit-footer-top > p { display: none; }
+}
+@media (max-width: 767px) {
+  .orbit-footer { width: calc(100% - 2rem); padding-top: 1.75rem; }
+  .orbit-footer-top {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+    padding-bottom: 1.75rem;
+  }
+  .orbit-footer-links { justify-content: flex-start; gap: 0.75rem 1.1rem; }
+  .orbit-footer-bottom { align-items: flex-start; flex-direction: column; gap: 0.85rem; font-size: 0.6875rem; }
+  .orbit-footer-bottom nav { flex-wrap: wrap; justify-content: flex-start; gap: 0.75rem 1rem; }
+  .orbit-footer-bottom a { font-size: 0.6875rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .supporting-shell *, .supporting-shell *::before, .supporting-shell *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+.support-not-found { max-width: 42rem; margin: 0 auto; padding: clamp(1.5rem, 5vw, 3rem); border: 1px solid var(--color-orbit-rule); border-radius: .75rem; background: var(--color-orbit-surface); }
+.support-not-found .support-kicker { margin: 0 0 .75rem; color: var(--color-orbit-muted); font-size: .8rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.support-not-found nav { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
+ .support-not-found nav a { display: inline-flex; align-items: center; padding: .5rem 1rem; border-radius: .25rem; background: var(--color-orbit-accent); color: var(--color-orbit-accent-ink); text-decoration: none; }
+.support-auth { width: min(100%, 34rem); margin: 0 auto; }
+.supporting-shell .support-auth a { display: inline-flex; align-items: center; }
+.support-auth .bg-base-100, .support-auth .bg-base-200, .supporting-shell .glass-panel {
+  background: var(--color-orbit-surface) !important;
+  color: var(--color-orbit-ink) !important;
+  border-color: var(--color-orbit-rule) !important;
+}
+.support-auth .text-base-content\/70, .supporting-shell .text-secondary-200, .supporting-shell .text-secondary-300 { color: var(--color-orbit-muted) !important; }
+.support-auth .text-white, .supporting-shell .text-white { color: var(--color-orbit-ink) !important; }
+ .supporting-shell .text-primary-200, .supporting-shell .text-primary-300 { color: var(--color-orbit-accent) !important; }
+ .supporting-shell .text-success { color: var(--color-orbit-success) !important; }
+ .supporting-shell .text-error { color: var(--color-orbit-error) !important; }
+ .supporting-shell .support-main .btn {
+  min-height: 48px;
+  border-radius: 2px;
+  box-shadow: none;
+  font-family: var(--font-orbit-body);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: none;
+  transition: background-color 160ms var(--ease-orbit-out), border-color 160ms var(--ease-orbit-out), color 160ms var(--ease-orbit-out), box-shadow 100ms ease-out, transform 100ms ease-out;
+}
+.supporting-shell .support-main .btn-primary {
+  border-color: var(--launch-cyan) !important;
+  background: var(--launch-cyan) !important;
+  color: var(--launch-night-floor) !important;
+}
+.supporting-shell .support-main .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.supporting-shell .support-main .btn-primary:active:not(:disabled) {
+  box-shadow: inset 0 0 0 1px currentColor;
+  transform: translateY(1px);
+}
+.supporting-shell .support-main .btn-outline {
+  border-color: var(--color-orbit-accent) !important;
+  background: transparent !important;
+  color: var(--color-orbit-accent) !important;
+}
+.supporting-shell .support-main .btn-ghost {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--color-orbit-ink) !important;
+}
+.supporting-shell .support-main .btn:disabled {
+  border-color: var(--color-orbit-rule) !important;
+  background: var(--color-orbit-surface) !important;
+  color: var(--color-orbit-muted) !important;
+  cursor: not-allowed;
+  opacity: 1;
+}
+.supporting-shell .support-main .input,
+.supporting-shell .support-main .textarea,
+.supporting-shell .support-main .select {
+  min-height: 3rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--color-orbit-muted);
+  border-radius: 0.3rem;
+  background-color: var(--color-orbit-paper);
+  box-shadow: none;
+  color: var(--color-orbit-ink);
+  font: 400 1rem/1.4 var(--font-orbit-body);
+  color-scheme: light;
+}
+.supporting-shell .support-main .input::placeholder,
+.supporting-shell .support-main .textarea::placeholder {
+  color: var(--color-orbit-muted);
+  opacity: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+  .supporting-shell .support-main :is(.input, .textarea, .select):enabled:hover {
+    border-color: var(--color-orbit-accent);
+  }
+}
+.supporting-shell .support-main .input:focus-visible,
+.supporting-shell .support-main .textarea:focus-visible,
+.supporting-shell .support-main .select:focus-visible {
+  border-color: var(--color-orbit-accent);
+  outline: 3px solid var(--color-orbit-focus);
+  outline-offset: 2px;
+}
+.supporting-shell .support-main :is(.input, .textarea, .select):disabled {
+  background-color: var(--color-orbit-surface);
+  color: var(--color-orbit-muted);
+  cursor: not-allowed;
+}
+.supporting-shell .support-main input[type="checkbox"],
+.supporting-shell .support-main input[type="radio"] {
+  accent-color: var(--color-orbit-accent);
+}
+.supporting-shell [class*="border-white/"] { border-color: var(--color-orbit-rule) !important; }
+.supporting-shell [class*="bg-primary-"], .supporting-shell [class*="bg-secondary-"] { background-color: var(--color-orbit-surface) !important; }

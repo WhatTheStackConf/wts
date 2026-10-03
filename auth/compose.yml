@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:18.3-alpine@sha256:1b13c640ae11f2f165d1e89667e5862b0017baf4c80fec2fb7377d86319859ba
+    environment:
+      POSTGRES_DB: wts_auth
+      POSTGRES_USER: wts_auth_owner
+      POSTGRES_PASSWORD: ${AUTH_DATABASE_OWNER_PASSWORD:?Set AUTH_DATABASE_OWNER_PASSWORD}
+    volumes:
+      - auth_postgres:/var/lib/postgresql
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U wts_auth_owner -d wts_auth]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: auth/Dockerfile
+    image: ${AUTH_IMAGE:-wts-auth:local}
+    command: [sh, -c, "node dist/cli.js migrate && node scripts/provision-runtime.mjs"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      AUTH_PUBLIC_URL: https://auth.wts.sh
+      DATABASE_URL: postgresql://wts_auth_owner:${AUTH_DATABASE_OWNER_PASSWORD:?Set AUTH_DATABASE_OWNER_PASSWORD}@postgres:5432/wts_auth
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+      AUTH_REGISTRATION: closed
+      AUTH_DATABASE_RUNTIME_PASSWORD: ${AUTH_DATABASE_RUNTIME_PASSWORD:?Set AUTH_DATABASE_RUNTIME_PASSWORD}
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_FROM: ${SMTP_FROM:?Set SMTP_FROM}
+      SMTP_USER: ${SMTP_USER:?Set SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?Set SMTP_PASSWORD}
+
+  auth:
+    image: ${AUTH_IMAGE:-wts-auth:local}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      AUTH_PUBLIC_URL: https://auth.wts.sh
+      DATABASE_URL: postgresql://wts_auth_runtime:${AUTH_DATABASE_RUNTIME_PASSWORD:?Set AUTH_DATABASE_RUNTIME_PASSWORD}@postgres:5432/wts_auth
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+      AUTH_REGISTRATION: closed
+      PORT: 3000
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_FROM: ${SMTP_FROM:?Set SMTP_FROM}
+      SMTP_USER: ${SMTP_USER:?Set SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?Set SMTP_PASSWORD}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    expose:
+      - "3000"
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  auth_postgres:

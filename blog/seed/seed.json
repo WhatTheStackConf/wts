@@ -1,0 +1,1832 @@
+{
+  "$schema": "https://emdashcms.com/seed.schema.json",
+  "version": "1",
+  "defaultLocale": "en",
+  "meta": {
+    "name": "WTS Blog",
+    "description": "Original WhatTheStack posts with the 2027 public theme",
+    "author": "WhatTheStack"
+  },
+  "settings": {
+    "title": "WTS Blog",
+    "tagline": "Stories, updates, and ideas from the WhatTheStack community.",
+    "url": "https://blog.wts.sh",
+    "dateFormat": "yyyy-MM-dd",
+    "timezone": "Europe/Skopje"
+  },
+  "collections": [
+    {
+      "slug": "posts",
+      "label": "Posts",
+      "labelSingular": "Post",
+      "urlPattern": "/posts/{slug}",
+      "supports": [
+        "drafts",
+        "revisions",
+        "preview",
+        "scheduling",
+        "search",
+        "seo"
+      ],
+      "commentsEnabled": false,
+      "fields": [
+        {
+          "slug": "title",
+          "label": "Title",
+          "type": "string",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "slug": "featured_image",
+          "label": "Featured image",
+          "type": "image"
+        },
+        {
+          "slug": "content",
+          "label": "Content",
+          "type": "portableText",
+          "searchable": true
+        },
+        {
+          "slug": "excerpt",
+          "label": "Excerpt",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "slug": "pages",
+      "label": "Pages",
+      "labelSingular": "Page",
+      "urlPattern": "/pages/{slug}",
+      "supports": [
+        "drafts",
+        "revisions",
+        "preview",
+        "search",
+        "seo"
+      ],
+      "fields": [
+        {
+          "slug": "title",
+          "label": "Title",
+          "type": "string",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "slug": "content",
+          "label": "Content",
+          "type": "portableText",
+          "searchable": true
+        }
+      ]
+    }
+  ],
+  "taxonomies": [
+    {
+      "name": "category",
+      "label": "Categories",
+      "labelSingular": "Category",
+      "hierarchical": true,
+      "collections": [
+        "posts"
+      ],
+      "terms": []
+    },
+    {
+      "name": "tag",
+      "label": "Tags",
+      "labelSingular": "Tag",
+      "hierarchical": false,
+      "collections": [
+        "posts"
+      ],
+      "terms": []
+    }
+  ],
+  "bylines": [
+    {
+      "id": "darko-from-wts",
+      "slug": "darko-from-whatthe-stack",
+      "displayName": "Darko from WhatTheStack"
+    }
+  ],
+  "menus": [
+    {
+      "name": "primary",
+      "label": "Primary navigation",
+      "items": [
+        {
+          "type": "custom",
+          "label": "Blog",
+          "url": "/"
+        },
+        {
+          "type": "custom",
+          "label": "All posts",
+          "url": "/posts"
+        },
+        {
+          "type": "custom",
+          "label": "Conference",
+          "url": "https://wts.sh"
+        }
+      ]
+    }
+  ],
+  "widgetAreas": [
+    {
+      "name": "sidebar",
+      "label": "Sidebar",
+      "widgets": [
+        {
+          "type": "component",
+          "componentId": "core:search",
+          "title": "Search"
+        }
+      ]
+    },
+    {
+      "name": "footer",
+      "label": "Footer",
+      "widgets": []
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/blog/behind-the-scenes-running-wts",
+      "destination": "/posts/behind-the-scenes-running-wts",
+      "type": 301,
+      "enabled": true
+    },
+    {
+      "source": "/blog/inside-the-cfp",
+      "destination": "/posts/inside-the-cfp",
+      "type": 301,
+      "enabled": true
+    }
+  ],
+  "content": {
+    "posts": [
+      {
+        "id": "post-behind-the-scenes-running-wts",
+        "slug": "behind-the-scenes-running-wts",
+        "status": "published",
+        "data": {
+          "title": "Behind the Scenes: What It Takes to Run WhatTheStack",
+          "excerpt": "We're pulling back the curtain on what actually goes into organizing an 800+ attendee developer conference. Spoiler: it's a lot of spreadsheets.",
+          "content": [
+            {
+              "_type": "block",
+              "_key": "wts-2",
+              "style": "h2",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-1",
+                  "text": "Behind the Scenes: What It Takes to Run WhatTheStack",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-4",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-3",
+                  "text": "Running a developer conference is a lot more than booking a venue and setting up a projector. We've learned this the hard way - twice. This year, we'll hopfully find out whether we've learned it properly, or we might need a refresher 😎",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-6",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-5",
+                  "text": "With 800+ attendees, 4 stages, 30+ speakers, and a full week of pre-event activities, WhatTheStack has grown into something we're genuinely proud of. But none of it happens by accident (well, most of it anyway), and the process isn't that smooth under the hood.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-8",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-7",
+                  "text": "The reality - all of those have actually happened",
+                  "marks": [
+                    "em"
+                  ]
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-10",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-9",
+                  "text": "So we're starting this blog. Consider it the conference equivalent of \"building it in public.\" And we're all about keeping everything open and transparent - code, knowledge, process, all of it.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-12",
+              "style": "h3",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-11",
+                  "text": "Why bother writing about this?",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-14",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-13",
+                  "text": "Organizing and running a conference is one of those things that may look deceptively simple from the outside. You show up, watch some talks, grab swag, network, maybe have one too many beers at the after-party. Easy, right?",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "image",
+              "_key": "wts-15",
+              "alt": "Conference organizing iceberg meme",
+              "asset": {
+                "$media": {
+                  "url": "https://raw.githubusercontent.com/WhatTheStackConf/wts/75718cb297362deaaf4d8993aac4036c999b63f6/public/blog/iceberg-meme.jpg",
+                  "filename": "iceberg-meme.jpg",
+                  "alt": "Conference organizing iceberg meme"
+                }
+              }
+            },
+            {
+              "_type": "block",
+              "_key": "wts-17",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-16",
+                  "text": "Behind every smooth-running event, there are months of planning, dozens of decisions that could go either way, and more spreadsheets than anyone should ever have to deal with. With the occasional \"I'm never-ever doing this s**t again\" thrown in, for good measure.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-19",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-18",
+                  "text": "We believe that the community deserves to see the process. Not just the end result, but the messy middle. The tradeoffs, the surprises, the \"why did we think this was a good idea\" moments at 2 AM.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-21",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-20",
+                  "text": "If you're thinking about running your own conference, maybe this helps. If you're just curious, that works too.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-23",
+              "style": "h3",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-22",
+                  "text": "What to expect",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-25",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-24",
+                  "text": "Over the coming months, we'll be writing about:",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-28",
+              "style": "normal",
+              "listItem": "bullet",
+              "level": 1,
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-26",
+                  "text": "Venue and logistics",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-27",
+                  "text": " - How do you set up 4 stages for 800+ people in a space that wasn't exactly designed for it?",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-31",
+              "style": "normal",
+              "listItem": "bullet",
+              "level": 1,
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-29",
+                  "text": "Speaker selection",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-30",
+                  "text": " - Our CFP process, how we evaluate proposals, and what makes a talk stand out",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-34",
+              "style": "normal",
+              "listItem": "bullet",
+              "level": 1,
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-32",
+                  "text": "Community partnerships",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-33",
+                  "text": " - We work with 25+ dev communities across the region. Here's how that actually works.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-37",
+              "style": "normal",
+              "listItem": "bullet",
+              "level": 1,
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-35",
+                  "text": "Budgeting and sponsorships",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-36",
+                  "text": " - The real economics of running a community conference (it's not what you'd expect)",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-40",
+              "style": "normal",
+              "listItem": "bullet",
+              "level": 1,
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-38",
+                  "text": "The final sprint",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-39",
+                  "text": " - What the week before the event looks like when everything comes together. Or doesn't.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-42",
+              "style": "h3",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-41",
+                  "text": "Stay tuned",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-47",
+              "style": "normal",
+              "markDefs": [
+                {
+                  "_type": "link",
+                  "_key": "wts-44",
+                  "href": "mailto:what@wts.sh"
+                }
+              ],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-43",
+                  "text": "We'll be posting regularly as we ramp up toward September 19th. If you have questions about running events or want to share your own experience, reach out at ",
+                  "marks": []
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-45",
+                  "text": "what@wts.sh",
+                  "marks": [
+                    "wts-44"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-46",
+                  "text": ".",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-49",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-48",
+                  "text": "See you at WhatTheStack 2026.",
+                  "marks": []
+                }
+              ]
+            }
+          ]
+        },
+        "bylines": [
+          {
+            "byline": "darko-from-wts"
+          }
+        ]
+      },
+      {
+        "id": "post-inside-the-cfp",
+        "slug": "inside-the-cfp",
+        "status": "published",
+        "data": {
+          "title": "Inside the CfP: How We Pick Talks at WhatTheStack",
+          "excerpt": "The transparent angle, continued. How our scoring works, who sits on the committee, how invited speakers get picked, and a few honest tips if you're thinking of applying.",
+          "content": [
+            {
+              "_type": "block",
+              "_key": "wts-51",
+              "style": "h2",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-50",
+                  "text": "Inside the CfP: How We Pick Talks at WhatTheStack",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-53",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-52",
+                  "text": "We promised the transparent angle, so here we go. This one is about our Call for Papers (or proposals, or presentations... it gets confusing). The whole thing, warts and all - how the scoring works, who sits on the committee, how invited speakers get picked, and a few things worth knowing if you're thinking of applying.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-55",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-54",
+                  "text": "Fair warning: this is a longer one. If you've ever wondered what actually happens between \"submit\" and \"you're in\", this is it. Plus a few tips and tricks to help things along ;)",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-57",
+              "style": "h3",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-56",
+                  "text": "How we designed the process",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-59",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-58",
+                  "text": "A conference CfP has one job: turn a pile of proposals into a lineup. The hard part isn't saying yes to the good ones. It's being honest about what \"good\" means, and having a process that holds up when a room full of smart people disagree about it. Plus dealing with the mercurial nature of \"good\" - meaning, agreeing on what \"good\" means among the different committee members. Different committee members have different taste preferences - that's fine, and in fact, we consider that a feature. But, more about that later.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-64",
+              "style": "normal",
+              "markDefs": [
+                {
+                  "_type": "link",
+                  "_key": "wts-61",
+                  "href": "https://refl.blog"
+                }
+              ],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-60",
+                  "text": "Originally, we leaned on a friend for the original design of the scoring system. ",
+                  "marks": []
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-62",
+                  "text": "Boro Sitnikovski",
+                  "marks": [
+                    "wts-61"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-63",
+                  "text": " (who dabbles in maths and is annoyingly good at it) sketched out the weighted scoring system back in 2024 when we were prepping the first edition. The brief was simple: something that respects gut feeling but doesn't collapse into vibes-only voting. Structured vibes maybe?",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-68",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-65",
+                  "text": "What we landed on is a weighted sum: six criteria, each scored 1 to 5 by a committee of four reviewers, multiplied by weights that the committee itself decides independently. Submissions are anonymized before they hit the queue, so reviewers score the talk, not the name. The final score is the sum of ",
+                  "marks": []
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-66",
+                  "text": "score * weight",
+                  "marks": [
+                    "code"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-67",
+                  "text": " across all criteria, aggregated across the committee.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-70",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-69",
+                  "text": "No single reviewer can tank or save a proposal. No one gets in because we think they're cool. Nobody gets rejected because a reviewer happens to dislike their framework of choice.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-72",
+              "style": "h3",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-71",
+                  "text": "Why these metrics",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-74",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-73",
+                  "text": "The six criteria are:",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-77",
+              "style": "normal",
+              "listItem": "bullet",
+              "level": 1,
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-75",
+                  "text": "Relevance",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-76",
+                  "text": " - how well does this fit the conference, the current state of things, what our audience actually deals with day to day",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-80",
+              "style": "normal",
+              "listItem": "bullet",
+              "level": 1,
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-78",
+                  "text": "Originality",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-79",
+                  "text": " - is this a take we've seen fifty times, or does it bring something fresh",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-83",
+              "style": "normal",
+              "listItem": "bullet",
+              "level": 1,
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-81",
+                  "text": "Depth",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-82",
+                  "text": " - does it go deep enough to be useful, without going so deep that the slot can't contain it (this one is especially complicated, as it's a balancing act more than anything else).",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-86",
+              "style": "normal",
+              "listItem": "bullet",
+              "level": 1,
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-84",
+                  "text": "Clarity",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-85",
+                  "text": " - can a reviewer follow the proposal without having to guess what the talk is about",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-89",
+              "style": "normal",
+              "listItem": "bullet",
+              "level": 1,
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-87",
+                  "text": "Takeaways",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-88",
+                  "text": " - is it clear what the audience walks away with",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-92",
+              "style": "normal",
+              "listItem": "bullet",
+              "level": 1,
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-90",
+                  "text": "Engagement",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-91",
+                  "text": " - would you, honestly, want to sit through it",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-94",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-93",
+                  "text": "We picked these because they're the ones we kept arguing about when we were judging talks at other events. Each one maps to a real failure mode we've seen. A brilliantly deep talk that nobody could follow. A fun talk with nothing to take home. A tightly argued talk about something nobody cares about anymore.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-96",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-95",
+                  "text": "The weights are the honest part. They say \"this year, we care about this more than that.\" To give you a sense of what that looks like, here's an example from a previous edition:",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "table",
+              "_key": "wts-97",
+              "hasHeaderRow": true,
+              "rows": [
+                {
+                  "_type": "tableRow",
+                  "_key": "wts-98",
+                  "cells": [
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-99",
+                      "isHeader": true,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-100",
+                          "text": "Criteria",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    },
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-101",
+                      "isHeader": true,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-102",
+                          "text": "Weight",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    }
+                  ]
+                },
+                {
+                  "_type": "tableRow",
+                  "_key": "wts-103",
+                  "cells": [
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-104",
+                      "isHeader": false,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-105",
+                          "text": "Relevance",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    },
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-106",
+                      "isHeader": false,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-107",
+                          "text": "6",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    }
+                  ]
+                },
+                {
+                  "_type": "tableRow",
+                  "_key": "wts-108",
+                  "cells": [
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-109",
+                      "isHeader": false,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-110",
+                          "text": "Clarity",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    },
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-111",
+                      "isHeader": false,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-112",
+                          "text": "5",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    }
+                  ]
+                },
+                {
+                  "_type": "tableRow",
+                  "_key": "wts-113",
+                  "cells": [
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-114",
+                      "isHeader": false,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-115",
+                          "text": "Takeaways",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    },
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-116",
+                      "isHeader": false,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-117",
+                          "text": "4",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    }
+                  ]
+                },
+                {
+                  "_type": "tableRow",
+                  "_key": "wts-118",
+                  "cells": [
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-119",
+                      "isHeader": false,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-120",
+                          "text": "Originality",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    },
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-121",
+                      "isHeader": false,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-122",
+                          "text": "3",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    }
+                  ]
+                },
+                {
+                  "_type": "tableRow",
+                  "_key": "wts-123",
+                  "cells": [
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-124",
+                      "isHeader": false,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-125",
+                          "text": "Depth",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    },
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-126",
+                      "isHeader": false,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-127",
+                          "text": "2",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    }
+                  ]
+                },
+                {
+                  "_type": "tableRow",
+                  "_key": "wts-128",
+                  "cells": [
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-129",
+                      "isHeader": false,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-130",
+                          "text": "Engagement",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    },
+                    {
+                      "_type": "tableCell",
+                      "_key": "wts-131",
+                      "isHeader": false,
+                      "content": [
+                        {
+                          "_type": "span",
+                          "_key": "wts-132",
+                          "text": "1",
+                          "marks": []
+                        }
+                      ],
+                      "markDefs": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-134",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-133",
+                  "text": "Note: we used to keep these as whole numbers - we changed that to an average of what each committee member voted on.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-136",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-135",
+                  "text": "That year, relevance and clarity dominated because we'd seen too many events where a genuinely smart speaker lost the room in the first five minutes. The weights are not a fixed formula though. Each year the committee re-votes, and the priorities shift with the state of tech and the state of conference-going.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-140",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-137",
+                  "text": "One more thing baked into the process: if a reviewer reads a proposal and it feels fully machine-written, they flag it, and flagged proposals get disqualified. To be clear - we are not ",
+                  "marks": []
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-138",
+                  "text": "strictly",
+                  "marks": [
+                    "em"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-139",
+                  "text": " against you using LLMs. Use them to brainstorm, to tighten a sentence, to translate, to pressure-test your takeaways. Just don't hand us something you clearly prompted once and pasted. If it reads like nobody was actually driving, that's the signal we're catching. Put in the effort, the reviewers will put in theirs - it's only fair.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-142",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-141",
+                  "text": "While we're on format: main-stage talks are 25 minutes of core content plus a 10 minute cushion you can spend however you like. All Q&A, more talk, a live demo, whatever makes sense. 35 minutes total, but the split is yours to call.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-144",
+              "style": "h3",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-143",
+                  "text": "How the committee is chosen",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-146",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-145",
+                  "text": "Each year, we pick four people, kept anonymous for the duration of the review.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-150",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-147",
+                  "text": "We, the organizers, pick them from the pool of active folks in our partner communities, but the important word there is ",
+                  "marks": []
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-148",
+                  "text": "varied",
+                  "marks": [
+                    "em"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-149",
+                  "text": ". Different tech stacks, different seniorities, different backgrounds, different opinions. The goal is for the committee to act as a proxy for the audience. The more diverse the committee, the more diverse the program.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-152",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-151",
+                  "text": "If we stacked the committee with four senior backend engineers who love the same language, we'd get a program full of senior backend talks in that language. That's not interesting. Diversity on the committee is the simplest lever we have for a varied program, and we use it every year. It sounds trivial on paper. In practice, finding four people who'll actually disagree with each other in good faith - and still finish the review on time - is harder than it looks.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-154",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-153",
+                  "text": "They stay anonymous until the review is over, so that we keep things as fair as possible. It's a deliberate call. It protects the committee from the social pressure of \"my friend submitted this\" or \"this person has a big audience online\" during review. Once decisions are out, we publish their names as a thank-you, and they get a VIP ticket for their trouble.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-158",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-155",
+                  "text": "Two more guardrails worth calling out. An organizer ",
+                  "marks": []
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-156",
+                  "text": "never",
+                  "marks": [
+                    "em"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-157",
+                  "text": " sits on the committee - we don't want to be anywhere near the scoring of talks, full stop. And committee members are not allowed to submit a talk the year they're reviewing. You can do one or the other, not both. That second rule exists for obvious reasons, but also because we've seen what happens at other events where it doesn't. It's how a conference quietly turns into a clique, and we'd rather not.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-160",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-159",
+                  "text": "The committee also rotates every year on purpose. Fresh eyes, fresh arguments, fresh weight votes. Nobody gets comfortable, nobody gets a fiefdom.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-162",
+              "style": "h3",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-161",
+                  "text": "Invited speakers",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-164",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-163",
+                  "text": "We invite some speakers directly, without them going through the CfP. We keep that count small on purpose: six to eight per edition, across all the main stages. Everyone else comes through the open process.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-166",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-165",
+                  "text": "Each of our partner communities that helps us run this also gets an invite slot of their own. They use it to bring someone relevant to their stack, or someone from their scene they think deserves a bigger stage. They decide, we trust them. That's the deal.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-168",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-167",
+                  "text": "Until this year (2026), we had no sponsored speaking slots. We've had a lot of interesting experiences with those, from every side of the stage, so that was an intentional decision to avoid \"cheapening\" the conference goers experience. We feel like the most important people in a conference are the audience, so it stands to reason that we don't \"cheapen\" the program by running thinly-veiled sales pitches on stage. This year we've opened a few, due to high demand, but they go through the same review process as every other applicant. A sponsor slot gets you a slot - it does not mean a proposal auto-accept, however. If the proposal doesn't score well enough, it doesn't run. We iterate until it does, but we won't compromise on quality.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-172",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-169",
+                  "text": "In short - you will not see a sales pitch on our stages. ",
+                  "marks": []
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-170",
+                  "text": "Еver",
+                  "marks": [
+                    "em"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-171",
+                  "text": ".",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-174",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-173",
+                  "text": "We're saying this out loud because we've been to conferences where the opposite is true, and the audience can always tell. We'd rather lose the sponsor money than lose the trust and the baseline of quality we've established.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-176",
+              "style": "h3",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-175",
+                  "text": "Stages and slots this year",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-178",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-177",
+                  "text": "Last year we ran four main stages with eight slots each (32 talks in total). This year the main stages go to six slots apiece, so 24. Fewer, tighter, more curated. We listened to the audience's feedback that it ran a bit longer than they'd like. Fair enough, we'll fix that.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-180",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-179",
+                  "text": "But we're adding a fifth stage with a shorter format: 15 minutes plus 5 for Q&A. Think of it as the lo-fi stage at a festival, the one you duck into between the headliners to cleanse your palate and chill. Startups, soft-skill talks, weird experiments, niche deep-dives that don't quite fit the main-stage arcs. Anything that wants to exist but doesn't need 35 minutes to do it.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-182",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-181",
+                  "text": "The net effect of that decision translated into even more speaker slots overall than last year, but with a format that gives shorter ideas a proper home instead of squeezing them into a 35 minute shape they never wanted. The scoring criteria and the committee process are the same across both formats. Only the time constraint changes.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-184",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-183",
+                  "text": "If you've got a talk that you've been hesitating to submit because it felt too small, the lo-fi stage is probably the answer. Write the proposal, set expectations for the shorter format in your abstract, and send it in.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-186",
+              "style": "h3",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-185",
+                  "text": "Tips for applying",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-188",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-187",
+                  "text": "If you've made it this far, you're probably at least thinking about applying. A few honest pointers.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-191",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-189",
+                  "text": "Write the abstract for a reviewer, not for an algorithm.",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-190",
+                  "text": " Nobody is keyword-matching your proposal. Four humans will read it and try to imagine the talk. Give them enough to picture it. A good abstract tells us what the problem is, what your angle on it is, and why we should care.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-194",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-192",
+                  "text": "Nail the takeaways.",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-193",
+                  "text": " This is the one most people under-invest in. \"Attendees will learn about Kubernetes\" is not a takeaway. \"Attendees will know three concrete ways to cut their cluster costs by 30% without touching node sizing\" is a takeaway. Specifics score higher. We literally have a criterion for this.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-197",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-195",
+                  "text": "First-time speakers are not at a disadvantage.",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-196",
+                  "text": " Past speaking experience is not a scoring criterion. In fact, those fields in the application never make it in front of the committee. FWIW, some of our best-received talks have come from first-time speakers. If you've been sitting on a talk because you've never done one, this is your sign.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-200",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-198",
+                  "text": "Don't dress up a sales pitch as a talk.",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-199",
+                  "text": " Reviewers sniff this out fast, and it scores badly on basically every criterion (relevance, originality, takeaways, engagement). If your talk is mostly about your product, it's not a talk. You're not forbidden from talking about a product you're working on - but let us learn something from it, don't make it a feature or pricing list.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-205",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-201",
+                  "text": "Say what the talk is ",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-202",
+                  "text": "not",
+                  "marks": [
+                    "strong",
+                    "em"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-203",
+                  "text": ".",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-204",
+                  "text": " If your topic is big, narrow it explicitly. \"This is not a React tutorial. This is a postmortem of one specific migration that went sideways.\" That kind of framing helps reviewers slot the talk against the format and score clarity and depth accurately.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-208",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-206",
+                  "text": "Submit early, edit often.",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-207",
+                  "text": " You can keep editing your proposal until the CfP closes. Get a draft in, sit with it a few days, revisit with fresh eyes. A proposal you wrote twice is almost always better than one you wrote once.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-211",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-209",
+                  "text": "If your employer covers travel, tell us.",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-210",
+                  "text": " It frees up our budget for someone who needs it, and we list your employer as a supporter during the campaign. If they don't, that's fine too. We cover travel and accommodation in full for accepted talks.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-214",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-212",
+                  "text": "We don't care about your framework or tech of choice.",
+                  "marks": [
+                    "strong"
+                  ]
+                },
+                {
+                  "_type": "span",
+                  "_key": "wts-213",
+                  "text": " React, Solid, Vue, Svelte, Qwik, htmx, jQuery, .NET, Java, Ruby (Rails or otherwise), Python or a bespoke stack you wrote in Rust over a weekend. Pick whatever serves the story. What we do care about is: did you ship something real, did you learn something non-obvious, can you tell us about it in a way that respects our time. And please, PLEASE no more \"Ai Is GoiNg tO RepLacE uS!!1!!\". Or y'know, at least make it good ;)",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-216",
+              "style": "h3",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-215",
+                  "text": "That's it",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-218",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-217",
+                  "text": "The CfP for 2026 closes June 1st. The committee will be assembled, weights voted on, and the anonymized pile will be ready for review the week after. For what it's worth, we're already sitting at 130+ proposals and the deadline hasn't hit yet, so the bar is going to be real.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-220",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-219",
+                  "text": "If you're on the fence, submit anyway. We'd rather read one more proposal we can't fit than pass on one we'd have loved.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-222",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-221",
+                  "text": "See you in September.",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-224",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-223",
+                  "text": "PS. If your idea feels too niche, too weird, or too small for a main stage - good. That's exactly what the lo-fi stage wants. Submit it anyway 😉",
+                  "marks": []
+                }
+              ]
+            },
+            {
+              "_type": "block",
+              "_key": "wts-226",
+              "style": "normal",
+              "markDefs": [],
+              "children": [
+                {
+                  "_type": "span",
+                  "_key": "wts-225",
+                  "text": "PPS. If you like the scoring system and the way we do things, feel free to \"steal\" it. Hit us up for pointers too :)",
+                  "marks": []
+                }
+              ]
+            }
+          ]
+        },
+        "bylines": [
+          {
+            "byline": "darko-from-wts"
+          }
+        ]
+      }
+    ],
+    "pages": []
+  }
+}
