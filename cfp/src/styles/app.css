@@ -7,35 +7,35 @@
 @plugin "daisyui/theme" {
   name: "wts";
   default: true;
-  prefersdark: true;
-  color-scheme: "dark";
-  --color-base-100: oklch(0.15 0.04 270);
-  --color-base-200: oklch(0.1 0.02 270);
-  --color-base-300: oklch(0.05 0.01 270);
-  --color-base-content: oklch(98% 0 0);
-  --color-primary: oklch(0.6 0.25 330);
-  --color-primary-content: oklch(93% 0.034 272.788);
-  --color-secondary: oklch(0.65 0.25 85);
-  --color-secondary-content: oklch(94% 0.028 342.258);
-  --color-accent: oklch(77% 0.152 181.912);
-  --color-accent-content: oklch(38% 0.063 188.416);
-  --color-neutral: oklch(0.25 0.08 270);
-  --color-neutral-content: oklch(92% 0.004 286.32);
-  --color-info: oklch(74% 0.16 232.661);
-  --color-info-content: oklch(29% 0.066 243.157);
-  --color-success: oklch(76% 0.177 163.223);
-  --color-success-content: oklch(37% 0.077 168.94);
-  --color-warning: oklch(82% 0.189 84.429);
-  --color-warning-content: oklch(41% 0.112 45.904);
-  --color-error: oklch(71% 0.194 13.428);
-  --color-error-content: oklch(27% 0.105 12.094);
+  prefersdark: false;
+  color-scheme: "light";
+  --color-base-100: oklch(93% 0.025 78);
+  --color-base-200: oklch(97% 0.018 82);
+  --color-base-300: oklch(86% 0.025 78);
+  --color-base-content: oklch(24% 0.03 245);
+  --color-primary: oklch(78% 0.11 205);
+  --color-primary-content: oklch(12% 0.025 245);
+  --color-secondary: oklch(43% 0.09 225);
+  --color-secondary-content: oklch(97% 0.018 82);
+  --color-accent: oklch(43% 0.09 225);
+  --color-accent-content: oklch(97% 0.018 82);
+  --color-neutral: oklch(93% 0.025 78);
+  --color-neutral-content: oklch(24% 0.03 245);
+  --color-info: oklch(43% 0.09 225);
+  --color-info-content: oklch(97% 0.018 82);
+  --color-success: oklch(43% 0.12 150);
+  --color-success-content: oklch(97% 0.018 82);
+  --color-warning: oklch(54% 0.15 65);
+  --color-warning-content: oklch(97% 0.018 82);
+  --color-error: oklch(52% 0.18 25);
+  --color-error-content: oklch(97% 0.018 82);
   --radius-selector: 2rem;
   --radius-field: 0.25rem;
   --radius-box: 0rem;
   --size-selector: 0.3125rem;
   --size-field: 0.3125rem;
-  --border: 2px;
-  --depth: 1;
+  --border: 1px;
+  --depth: 0;
   --noise: 0;
 }
 
@@ -57,8 +57,13 @@
 }
 
 :root {
+  --cfp-muted: oklch(46% 0.025 245);
+  --cfp-header: oklch(19% 0.045 250);
+  --cfp-header-content: oklch(97% 0.018 82);
+  --cfp-header-muted: oklch(89% 0.025 82);
+  --cfp-header-rule: oklch(97% 0.018 82 / 22%);
   font-family: "Space Grotesk", sans-serif;
-  color-scheme: dark;
+  color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   background: var(--color-base-200);
@@ -71,7 +76,8 @@
 
 html {
   min-width: 320px;
-  scrollbar-color: var(--color-neutral) var(--color-base-200);
+  scroll-padding-top: 132px;
+  scrollbar-color: var(--cfp-muted) var(--color-base-200);
 }
 
 body {
@@ -81,6 +87,7 @@ body {
   background: var(--color-base-200);
   font-size: 1rem;
   line-height: 1.55;
+  caret-color: var(--color-accent);
 }
 
 button,
@@ -116,8 +123,8 @@ a:hover {
 }
 
 ::selection {
-  background: color-mix(in oklch, var(--color-primary) 45%, transparent);
-  color: var(--color-base-content);
+  background: var(--color-primary);
+  color: var(--color-primary-content);
 }
 
 ::placeholder {
@@ -148,12 +155,17 @@ a:hover {
 
 .site-header {
   display: flex;
-  min-height: 76px;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  color-scheme: dark;
   align-items: center;
   gap: 1.5rem;
+  min-height: 90px;
   padding: 0.7rem max(1.25rem, calc((100vw - 1160px) / 2));
-  border-bottom: 1px solid color-mix(in oklch, var(--color-base-content) 16%, transparent);
-  background: var(--color-base-200);
+  border-bottom: 1px solid var(--cfp-header-rule);
+  background: var(--cfp-header);
+  color: var(--cfp-header-content);
 }
 
 .brand {
@@ -161,8 +173,12 @@ a:hover {
   min-width: 200px;
   align-items: center;
   gap: 0.7rem;
-  color: var(--color-base-content);
+  color: var(--cfp-header-content);
   text-decoration: none;
+}
+
+.brand:hover {
+  color: var(--cfp-header-content);
 }
 
 .brand img {
@@ -181,7 +197,7 @@ a:hover {
 
 .brand small {
   margin-top: 0.2rem;
-  color: color-mix(in oklch, var(--color-base-content) 72%, var(--color-base-100));
+  color: var(--cfp-header-muted);
   font-size: 0.75rem;
 }
 
@@ -198,29 +214,45 @@ a:hover {
   place-items: center;
   padding: 0.5rem 0.8rem;
   border-radius: 8px;
-  color: color-mix(in oklch, var(--color-base-content) 72%, var(--color-base-100));
+  color: var(--cfp-header-muted);
   text-decoration: none;
 }
 
 .primary-nav a[aria-current="page"],
 .primary-nav a:hover {
-  background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
-  color: var(--color-base-content);
+  background: color-mix(in oklch, var(--cfp-header-content) 8%, transparent);
+  color: var(--cfp-header-content);
 }
 
 .account-menu {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 0.75rem;
 }
 
 .account-email {
   max-width: 13rem;
+  min-width: 0;
   overflow: hidden;
-  color: color-mix(in oklch, var(--color-base-content) 72%, var(--color-base-100));
+  color: var(--cfp-header-muted);
   font-size: 0.875rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.site-header .button-quiet,
+.site-header .cfp-status {
+  color: var(--cfp-header-muted);
+}
+
+.site-header .button-quiet:hover {
+  color: var(--cfp-header-content);
+}
+
+.site-header .cfp-status {
+  border-color: var(--cfp-header-rule);
+  background: transparent;
 }
 
 .page-main {
@@ -289,7 +321,7 @@ h3 {
 
 .surface {
   padding: clamp(1.1rem, 3.5vw, 2rem);
-  border: 1px solid color-mix(in oklch, var(--color-base-content) 16%, transparent);
+  border: 1px solid var(--color-base-300);
   border-radius: 14px;
   background: var(--color-base-100);
 }
@@ -340,8 +372,8 @@ h3 {
 .button {
   @apply btn btn-primary;
   min-height: 48px;
-  border-radius: 8px;
-  color: var(--color-base-300);
+  border-radius: 2px;
+  color: var(--color-primary-content);
   font-weight: 700;
   text-decoration: none;
   transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
@@ -353,12 +385,13 @@ h3 {
 
 .button-secondary {
   @apply btn btn-neutral;
-  border-radius: 8px;
+  border-radius: 2px;
+  color: var(--color-neutral-content);
 }
 
 .button-quiet {
   @apply btn btn-ghost;
-  border-radius: 8px;
+  border-radius: 2px;
   color: color-mix(in oklch, var(--color-base-content) 72%, var(--color-base-100));
 }
 
@@ -407,8 +440,8 @@ h3 {
   width: 100%;
   min-height: 48px;
   padding: 0.7rem 0.8rem;
-  border-color: color-mix(in oklch, var(--color-base-content) 55%, var(--color-base-100));
-  border-radius: 7px;
+  border-color: var(--cfp-muted);
+  border-radius: 0.3rem;
   background: var(--color-base-200);
   color: var(--color-base-content);
   font-size: 1rem;
@@ -488,7 +521,7 @@ select.control {
   min-height: 30px;
   align-items: center;
   padding: 0.2rem 0.6rem;
-  border-color: var(--color-neutral);
+  border-color: var(--color-base-300);
   border-radius: 999px;
   color: var(--color-base-content);
   font-size: 0.8rem;
@@ -533,7 +566,7 @@ select.control {
 .cfp-progress li:not(:last-child)::after {
   height: 1px;
   flex: 1;
-  background: var(--color-neutral);
+  background: var(--color-base-300);
   content: "";
 }
 
@@ -543,7 +576,7 @@ select.control {
   height: 30px;
   flex: none;
   place-items: center;
-  border: 1px solid var(--color-neutral);
+  border: 1px solid var(--cfp-muted);
   border-radius: 50%;
   font-variant-numeric: tabular-nums;
 }
@@ -554,9 +587,9 @@ select.control {
 
 .cfp-progress [aria-current="step"] .progress-step,
 .cfp-progress .is-complete .progress-step {
-  border-color: var(--color-primary);
+  border-color: var(--color-accent);
   background: var(--color-primary);
-  color: var(--color-base-300);
+  color: var(--color-primary-content);
   font-weight: 700;
 }
 
@@ -589,7 +622,7 @@ select.control {
   align-items: center;
   gap: 0.4rem;
   padding: 0.45rem;
-  border: 1px solid var(--color-neutral);
+  border: 1px solid var(--cfp-muted);
   border-bottom: 0;
   border-radius: 8px 8px 0 0;
   background: var(--color-base-200);
@@ -608,7 +641,7 @@ select.control {
 }
 
 .editor-tool[aria-pressed="true"] {
-  border-color: var(--color-primary);
+  border-color: var(--color-accent);
   background: color-mix(in oklch, var(--color-primary) 25%, transparent);
 }
 
@@ -616,7 +649,7 @@ select.control {
   min-height: 180px;
   overflow-wrap: anywhere;
   padding: 0.75rem;
-  border: 1px solid var(--color-neutral);
+  border: 1px solid var(--cfp-muted);
   border-radius: 0 0 8px 8px;
   background: var(--color-base-200);
   color: var(--color-base-content);
@@ -668,19 +701,19 @@ select.control {
   align-items: center;
   gap: 0.55rem;
   padding: 0.65rem 0.75rem;
-  border: 1px solid var(--color-neutral);
+  border: 1px solid var(--cfp-muted);
   border-radius: 8px;
   background: var(--color-base-200);
   cursor: pointer;
 }
 
 .choice:has(input:checked) {
-  border-color: var(--color-primary);
+  border-color: var(--color-accent);
   background: color-mix(in oklch, var(--color-primary) 30%, var(--color-base-100));
 }
 
 .choice input {
-  @apply radio radio-primary;
+  @apply radio radio-secondary;
   width: 1.2rem;
   height: 1.2rem;
 }
@@ -713,8 +746,9 @@ select.control {
   align-items: center;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 767px) {
   .site-header {
+    min-height: 116px;
     flex-wrap: wrap;
     gap: 0.3rem 0.7rem;
     padding: 0.65rem 1rem;
@@ -730,7 +764,7 @@ select.control {
     width: 100%;
     overflow: auto;
     margin: 0;
-    border-top: 1px solid color-mix(in oklch, var(--color-base-content) 12%, transparent);
+    border-top: 1px solid var(--cfp-header-rule);
   }
 
   .primary-nav a {

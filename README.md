@@ -70,10 +70,13 @@ Pending edits remain private drafts until confirmation.
 Finalized applications can supply an independent reuse draft.
 Email remains read-only central identity data.
 
+CFP uses the 2027 supporting-page style with a compact navy header, warm-ivory surfaces, and cyan actions.
+Authenticated applicant routes use the same style as the public CFP page.
+
 The app owns its SQLite database, migrations, backups, OIDC client, and host-only session cookies.
 It does not use PocketBase or import private 2026 CFP records.
 The existing root CFP, reviewer, and admin workflows remain unchanged.
-This implementation does not register a production client or deploy `cfp.wts.sh`.
+Production at `https://cfp.wts.sh` uses the independent central identity service.
 
 ### Local CFP initialization
 
@@ -143,6 +146,31 @@ The isolated browser fixture starts a real built CFP app and synthetic central a
 Build auth and CFP before you run `pnpm --filter @wts/cfp browser:fixture`.
 The fixture accepts JSON commands for restart, closure, backup, restore, and cleanup.
 It never registers a production client or reads production data.
+
+### CFP production deployment
+
+On 2026-10-03, Coolify deployed commit `cd2b730705a485af1d178cf4114e61bc34e8efd5` to `https://cfp.wts.sh`.
+The application is `wts-cfp-2027`, resource `bqqm98rkzhgbzkqvvg3sooxi`.
+It builds `/cfp/Dockerfile` from the repository root on `design/wts-2027-light-cyberpunk`.
+Automatic deployment remains disabled.
+Edition `2027` starts closed.
+
+The central client is `wts-cfp`.
+Its only callback is `https://cfp.wts.sh/auth/callback`.
+It requires S256 PKCE and `client_secret_basic`.
+Credentials remain runtime-only Coolify settings.
+The private credential recovery file remains separate from SQLite backups.
+
+The named volume `bqqm98rkzhgbzkqvvg3sooxi-wts-cfp-2027-data` mounts at `/app/data`.
+Daily native online backups use `/usr/local/sbin/wts-cfp-backup` and `/etc/cron.d/wts-cfp-backup`.
+Backups remain under `/data/coolify/backups/applications/wts-cfp-2027`.
+The initial backup and an isolated restored container passed recovery checks.
+These backups remain on the production server and do not protect against server loss.
+
+Keep the Coolify HTTP healthcheck override disabled.
+The image supplies its own Node healthcheck because it does not contain curl or wget.
+Production enables `CFP_TRUST_PROXY` behind the Coolify proxy.
+The existing 2026 site and PocketBase storage remain unchanged.
 
 ### CFP local verification
 

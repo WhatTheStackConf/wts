@@ -42,3 +42,13 @@ Use existing OKLCH tokens in `src/styles/app.css` and DaisyUI theme tokens befor
 - Do not animate layout properties.
 - Focus states must be visible for keyboard users.
 - Loading states should preserve layout and make the pending action clear.
+
+## CFP applicant app
+
+The independent `cfp/` app uses the 2027 supporting-page palette on every route, including authenticated applicant routes.
+Its compact header uses navy with the original WTS logo.
+Pages and form fields use warm ivory with dark ink.
+Primary actions use cyan with dark ink.
+Keep Space Grotesk, DaisyUI controls, and the amber keyboard-focus outline.
+The semantic theme in `cfp/src/styles/app.css` owns the app's colors.
+The existing root operational screens retain their dark theme.
