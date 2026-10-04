@@ -1,23 +1,30 @@
-import { createSignal, onSettled, Show, type ParentProps } from "solid-js";
+import { createEffect, createSignal, Show, type ParentProps } from "solid-js";
 import { useLocation } from "@solidjs/router";
-import { getAccount } from "~/lib/cfp-actions";
+import { getNavigation } from "~/lib/staff-actions";
 import { Router } from "~/router";
 import type { VerifiedCfpAccount } from "~/lib/account-model";
+import type { StaffAccess } from "~/lib/staff-model";
 import "~/styles/app.css";
 
 function ApplicantShell(props: ParentProps) {
   const location = useLocation();
   const [account, setAccount] = createSignal<VerifiedCfpAccount | null>();
+  const [staffAccess, setStaffAccess] = createSignal<StaffAccess | null>(null);
   const [identityState, setIdentityState] = createSignal<"checking" | "anonymous" | "verified" | "unavailable">("checking");
-  onSettled(() => {
+  createEffect(() => location.pathname, (pathname) => {
     let active = true;
-    void getAccount().then((result) => {
-      if (!active) return;
-      setAccount(result);
+    setAccount(null);
+    setStaffAccess(null);
+    setIdentityState("checking");
+    void getNavigation().then((result) => {
+      if (!active || location.pathname !== pathname) return;
+      setAccount(result?.account ?? null);
+      setStaffAccess(result?.access ?? null);
       setIdentityState(result ? "verified" : "anonymous");
     }).catch(() => {
       if (!active) return;
       setAccount(null);
+      setStaffAccess(null);
       setIdentityState("unavailable");
     });
     return () => { active = false; };
@@ -32,6 +39,8 @@ function ApplicantShell(props: ParentProps) {
       <nav class="primary-nav" aria-label="Main navigation">
         <a href="/applications" aria-current={location.pathname.startsWith("/applications") || location.pathname.startsWith("/apply/") ? "page" : undefined}>Applications</a>
         <Show when={account()}><a href="/profile" aria-current={location.pathname === "/profile" ? "page" : undefined}>Profile</a><a href="/settings" aria-current={location.pathname === "/settings" ? "page" : undefined}>Settings</a></Show>
+        <Show when={staffAccess()?.roles.includes("reviewer")}><a href="/reviewer" aria-current={location.pathname.startsWith("/reviewer") ? "page" : undefined}>Review</a></Show>
+        <Show when={staffAccess()?.roles.includes("admin")}><a href="/admin" aria-current={location.pathname.startsWith("/admin") ? "page" : undefined}>Admin</a></Show>
       </nav>
       <Show when={account()} fallback={
         <Show when={identityState() === "anonymous" || identityState() === "unavailable"} fallback={<span class="cfp-status" role="status">Checking identity…</span>}>
@@ -42,7 +51,11 @@ function ApplicantShell(props: ParentProps) {
       </Show>
     </header>
     <main id="main" class="page-main">{props.children}</main>
-    <footer class="site-footer"><span>WhatTheStack · Call for Papers</span><a href="https://wts.sh" rel="external">Conference site</a></footer>
+    <footer class="site-footer">
+      <span>WhatTheStack · Call for Papers</span>
+      <Show when={account()}><span class="account-id">Your WTS user ID <code>{account()?.wtsUserId}</code></span></Show>
+      <a href="https://wts.sh" rel="external">Conference site</a>
+    </footer>
   </div>;
 }
 

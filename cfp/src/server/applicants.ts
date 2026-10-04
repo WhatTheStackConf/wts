@@ -12,6 +12,7 @@ import {
   type SubmissionReceipt, type SubmitDraftCommand, type Workspace,
 } from "../lib/cfp-model.ts";
 import { openCfpDatabase } from "./storage.ts";
+import { enqueueSubmissionConfirmation } from "./cfp-mail.ts";
 
 function parseCommand<T>(schema: z.ZodType<T>, input: unknown): T {
   const result = schema.safeParse(input);
@@ -228,6 +229,9 @@ export function submitDraft(account: VerifiedCfpAccount, command: SubmitDraftCom
       }
       db.prepare("INSERT INTO submission_receipts VALUES (?, ?, ?, ?, ?, ?)").run(draft.id, edition, account.wtsUserId, receipt.applicationId, JSON.stringify(command.expected), JSON.stringify(receipt));
       db.prepare("UPDATE drafts SET state='committed', revision=revision+1, presentation_json=?, updated_at=? WHERE draft_id=? AND edition_id=? AND wts_user_id=?").run(JSON.stringify(presentation), now, draft.id, edition, account.wtsUserId);
+      db.prepare("INSERT INTO application_presentation_versions VALUES (?,?,?,?,?,?,?)").run(edition, receipt.applicationId, receipt.applicationRevision, JSON.stringify(presentation), draft.id, now, account.email);
+      db.prepare("INSERT INTO proposal_staff_state VALUES (?,?,?,0) ON CONFLICT(edition_id,application_id) DO UPDATE SET current_presentation_revision=excluded.current_presentation_revision").run(edition, receipt.applicationId, receipt.applicationRevision);
+      enqueueSubmissionConfirmation(db, { editionId: edition, draftId: draft.id, account, receipt, title: presentation.title });
       return receipt;
     });
   } finally { db.close(); }

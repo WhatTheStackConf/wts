@@ -337,6 +337,9 @@ importers:
       prosemirror-schema-list:
         specifier: 1.5.1
         version: 1.5.1
+      nodemailer:
+        specifier: 10.0.13
+        version: 10.0.13
     devDependencies:
       nitro:
         specifier: ^3.0.260610-beta
@@ -371,6 +374,9 @@ importers:
       vite-plus:
         specifier: "catalog:"
         version: 0.3.0(@types/node@26.4.0)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.4.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.1)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.46.1)(typescript@7.0.2)(yaml@2.9.0)
+      "@types/nodemailer":
+        specifier: 8.0.2
+        version: 8.0.2
   site:
     dependencies:
       "@modelcontextprotocol/sdk":

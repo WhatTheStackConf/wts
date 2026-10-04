@@ -16,11 +16,12 @@ const account: VerifiedCfpAccount = {
 test("online backup and new-directory restore preserve applicant work but clear authentication and close every edition", async (t) => {
   const root = mkdtempSync(join(tmpdir(), "wts-cfp-recovery-"));
   const data = join(root, "data"); const saved = join(root, "backup"); const restored = join(root, "restored");
-  const oldDir = process.env.CFP_DATA_DIR; const oldEdition = process.env.CFP_EDITION_ID;
-  process.env.CFP_DATA_DIR = data; process.env.CFP_EDITION_ID = "2027";
+  const oldDir = process.env.CFP_DATA_DIR; const oldEdition = process.env.CFP_EDITION_ID; const oldOrigin = process.env.CFP_ORIGIN;
+  process.env.CFP_DATA_DIR = data; process.env.CFP_EDITION_ID = "2027"; process.env.CFP_ORIGIN = "https://cfp.acceptance.localhost";
   t.after(() => {
     if (oldDir === undefined) delete process.env.CFP_DATA_DIR; else process.env.CFP_DATA_DIR = oldDir;
     if (oldEdition === undefined) delete process.env.CFP_EDITION_ID; else process.env.CFP_EDITION_ID = oldEdition;
+    if (oldOrigin === undefined) delete process.env.CFP_ORIGIN; else process.env.CFP_ORIGIN = oldOrigin;
     rmSync(root, { recursive: true, force: true });
   });
   initializeEdition("2027"); setCfpOpen("2027", true); initializeEdition("2028"); setCfpOpen("2028", true);

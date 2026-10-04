@@ -300,10 +300,13 @@ try {
     const paths = [
       ['/profile', '/profile'], ['/settings', '/settings'], ['/', '/'],
       [`/apply/${id}`, `/apply/${id}`], [`/applications/${id}`, `/applications/${id}`],
+      ['/reviewer', '/reviewer'], ['/admin', '/admin'], ['/admin/staff', '/admin/staff'],
+      [`/reviewer/${id}`, `/reviewer/${id}`], [`/admin/${id}`, `/admin/${id}`],
       ['/auth/logout', '/applications'], ['//other.localhost/profile', '/applications'],
       ['/profile?token=private', '/applications'], ['/profile#private', '/applications'],
       ['/applications/../profile', '/applications'], ['/applications/foreign-owner', '/applications'],
       ['/apply/%2fother', '/applications'], ['/profile\\other', '/applications'],
+      ['/admin?token=private', '/applications'], ['/reviewer/foreign-owner', '/applications'],
     ];
     for (const [requested, expected] of paths) {
       const request = new Request(`${origin}/auth/login?${new URLSearchParams({ returnTo: requested })}`);

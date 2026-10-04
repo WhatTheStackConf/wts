@@ -176,9 +176,9 @@ function assertOrigin(request: Request, config: Pick<Settings, "origin" | "secur
 function returnPath(value: string | null, origin: string): string {
   if (!value || !value.startsWith("/") || value.startsWith("//") || /[\\\x00-\x20\x7f]/.test(value)) return "/applications";
   const url = new URL(value, origin);
-  const idPath = /^\/(?:apply|applications)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const idPath = /^\/(?:apply|applications|reviewer|admin)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (url.origin !== origin || url.search || url.hash || url.pathname !== value ||
-      !(["/", "/applications", "/profile", "/settings"].includes(url.pathname) || idPath.test(url.pathname))) return "/applications";
+      !(["/", "/applications", "/profile", "/settings", "/reviewer", "/admin", "/admin/staff"].includes(url.pathname) || idPath.test(url.pathname))) return "/applications";
   return url.pathname;
 }
 

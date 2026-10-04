@@ -18,12 +18,13 @@ const blank = { title: "", abstract: "", keyTakeaways: "", technicalRequirements
 const proposal: Presentation = { title: "SQLite under load", abstract: "<p>A practical <strong>database</strong> session.</p>", keyTakeaways: "<ul><li>Design safe transactions.</li></ul>", technicalRequirements: "HDMI", previousPresentation: "Never", organizerNotes: "Private note", additionalInfo: "Workshop" };
 function fixture(t: TestContext): string {
   const root = mkdtempSync(join(tmpdir(), "wts-cfp-domain-"));
-  const oldDir = process.env.CFP_DATA_DIR; const oldEdition = process.env.CFP_EDITION_ID;
-  process.env.CFP_DATA_DIR = root; process.env.CFP_EDITION_ID = "2027";
+  const oldDir = process.env.CFP_DATA_DIR; const oldEdition = process.env.CFP_EDITION_ID; const oldOrigin = process.env.CFP_ORIGIN;
+  process.env.CFP_DATA_DIR = root; process.env.CFP_EDITION_ID = "2027"; process.env.CFP_ORIGIN = "https://cfp.acceptance.localhost";
   t.mock.method(Date, "now", () => 1_800_000_000_000);
   t.after(() => {
     if (oldDir === undefined) delete process.env.CFP_DATA_DIR; else process.env.CFP_DATA_DIR = oldDir;
     if (oldEdition === undefined) delete process.env.CFP_EDITION_ID; else process.env.CFP_EDITION_ID = oldEdition;
+    if (oldOrigin === undefined) delete process.env.CFP_ORIGIN; else process.env.CFP_ORIGIN = oldOrigin;
     rmSync(root, { recursive: true, force: true });
   });
   initializeEdition("2027"); setCfpOpen("2027", true);

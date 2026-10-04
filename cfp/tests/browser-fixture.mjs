@@ -9,7 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { command, resources, postgres, smtp, service, freePort, until } from '../../auth/acceptance/resources.mjs';
-import { snapshot } from '../../auth/acceptance/fixtures.mjs';
+import { importedEmail, snapshot } from '../../auth/acceptance/fixtures.mjs';
 import { openCfpDatabase } from '../src/server/storage.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -142,7 +142,17 @@ async function fixture() {
       AUTH_REGISTRATION: 'closed', SMTP_HOST: '127.0.0.1', SMTP_PORT: String(mail.port), SMTP_SECURE: 'false',
       SMTP_FROM: 'Synthetic Auth <auth@acceptance.localhost>', CFP_SESSION_KEY: randomBytes(32).toString('base64url'),
     };
-    const imported = await scope.privateFile('synthetic-identities.json', JSON.stringify(await snapshot()));
+    Object.assign(env, {
+      CFP_MAIL_MODE: 'smtp', CFP_SMTP_HOST: '127.0.0.1', CFP_SMTP_PORT: String(mail.port),
+      CFP_SMTP_SECURE: 'false', CFP_SMTP_FROM: 'cfp@acceptance.localhost',
+      CFP_DAILY_REPORT_RECIPIENTS: JSON.stringify([{ wtsUserId: 'syntheticuser04', email: 'legacy@acceptance.localhost' }]),
+    });
+    const identities = await snapshot();
+    for (const [id, email, name] of [
+      ['syntheticuser05', 'second-admin@acceptance.localhost', 'Synthetic second admin'],
+      ['syntheticuser06', 'unassigned@acceptance.localhost', 'Synthetic unassigned reviewer'],
+    ]) identities.users.push({ ...identities.users[0], id, email, name, username: id, externalAuths: [] });
+    const imported = await scope.privateFile('synthetic-identities.json', JSON.stringify(identities));
     await authCli(['migrate']);
     await authCli(['import', '--snapshot', imported]);
     const runtimePassword = randomBytes(36).toString('base64url');
@@ -168,6 +178,21 @@ async function fixture() {
     await cfpCli(['open', '2027']);
     await proxy('127.0.0.2', cfpTlsPort, cfpPort, tls);
     cfpService = await startCfp(origin, cfpPort);
+    const fixtureAccount = (wtsUserId, email) => ({
+      wtsUserId, email, emailVerified: true, accountUrl: `${issuer}/account`,
+      profile: { version: 1, wtsUserId, name: `Synthetic ${wtsUserId}`, avatarUrl: null,
+        preferredLanguage: 'en', username: wtsUserId, emailVisibility: false, revision: 1 },
+    });
+    const withCfpData = async (work) => {
+      const previous = Object.fromEntries(['CFP_DATA_DIR', 'CFP_EDITION_ID', 'CFP_ORIGIN'].map((key) => [key, process.env[key]]));
+      Object.assign(process.env, { CFP_DATA_DIR: dataDir, CFP_EDITION_ID: '2027', CFP_ORIGIN: origin });
+      try { return await work(); } finally {
+        for (const [key, value] of Object.entries(previous)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+    };
     report({ ready: true, origin, issuer, runId: scope.runId });
     commands = createInterface({ input: process.stdin, crlfDelay: Infinity });
     for await (const line of commands) {
@@ -186,13 +211,83 @@ async function fixture() {
           await cfpCli([input.command, '2027']);
           report({ cfpOpen: input.command === 'open' });
           break;
+        case 'bootstrap-admin': {
+          assert.match(input.wtsUserId, /^syntheticuser0[1-6]$/);
+          const result = await cfpCli(['bootstrap-admin', '2027', input.wtsUserId]);
+          report({ bootstrapped: JSON.parse(result.stdout.toString('utf8')) });
+          break;
+        }
+        case 'historical-reviewer': {
+          await cfpCli(['init', '2026']);
+          await cfpCli(['bootstrap-admin', '2026', 'syntheticuser04']);
+          const previous = { data: process.env.CFP_DATA_DIR, edition: process.env.CFP_EDITION_ID };
+          try {
+            process.env.CFP_DATA_DIR = dataDir;
+            process.env.CFP_EDITION_ID = '2026';
+            const staff = await import('../src/server/staff.ts');
+            const actor = {
+              wtsUserId: 'syntheticuser04', email: 'legacy@acceptance.localhost', emailVerified: true, accountUrl: `${issuer}/account`,
+              profile: { version: 1, wtsUserId: 'syntheticuser04', name: 'Synthetic syntheticuser04',
+                avatarUrl: null, preferredLanguage: 'en', username: 'syntheticuser04', emailVisibility: false, revision: 1 },
+            };
+            const member = staff.getStaffDirectory(actor).members.find((value) => value.wtsUserId === 'syntheticuser06');
+            assert.ok(member);
+            staff.executeStaffCommand(actor, {
+              kind: 'set-grant', requestId: randomUUID(), wtsUserId: 'syntheticuser06', role: 'reviewer',
+              expectedRevision: member.reviewerGrant?.revision ?? 0, active: true,
+            });
+            report({ historicalReviewer: true });
+          } finally {
+            for (const [key, value] of [['CFP_DATA_DIR', previous.data], ['CFP_EDITION_ID', previous.edition]]) {
+              if (value === undefined) delete process.env[key];
+              else process.env[key] = value;
+            }
+          }
+          break;
+        }
+        case 'mail-tick': {
+          const result = await cfpCli(['mail-tick']);
+          report({ mailTick: JSON.parse(result.stdout.toString('utf8')), capturedMessages: mail.count() });
+          break;
+        }
+        case 'staff-inspect':
+          report(database((db) => ({
+            staff: true,
+            grants: db.prepare('SELECT edition_id, wts_user_id, role, revision, state FROM edition_staff_grants ORDER BY wts_user_id, role').all(),
+            assignments: db.prepare('SELECT edition_id, application_id, reviewer_id, revision, state FROM proposal_assignments ORDER BY application_id, reviewer_id').all(),
+            reviews: db.prepare('SELECT edition_id, application_id, reviewer_id, revision, presentation_revision FROM proposal_reviews ORDER BY application_id, reviewer_id').all(),
+            policy: db.prepare('SELECT * FROM edition_review_policy ORDER BY edition_id').all(),
+            mailJobs: db.prepare('SELECT kind, state, attempts FROM cfp_mail_jobs ORDER BY job_id').all(),
+          })));
+          break;
+        case 'seed-bulk':
+          await withCfpData(async () => {
+            const domain = await import('../src/server/applicants.ts');
+            const account = fixtureAccount('syntheticuser01', importedEmail);
+            const ids = [];
+            for (let index = 1; index <= 51; index++) {
+              const started = domain.startDraft(account, { requestId: randomUUID(), intent: { kind: 'new' } });
+              const saved = domain.saveDraft(account, { draftId: started.draft.id, expectedDraftRevision: started.draft.revision,
+                presentation: { title: `Synthetic pagination proposal ${String(index).padStart(2, '0')}`,
+                  abstract: 'Synthetic batch selection abstract.', keyTakeaways: 'Preserve revision-bound targets across pages.' } });
+              ids.push(domain.submitDraft(account, { draftId: saved.draft.id,
+                expected: { draft: saved.draft.revision, speaker: saved.speaker.revision, settings: saved.settings.revision } }).applicationId);
+            }
+            report({ seededBulk: true, ids });
+          });
+          break;
         case 'finalize':
           assert.match(input.applicationId, /^[0-9a-f-]{36}$/);
-          database((db) => {
-            const result = db.prepare("UPDATE applications SET status = 'accepted', revision = revision + 1 WHERE application_id = ? AND status = 'pending'").run(input.applicationId);
-            assert.equal(result.changes, 1);
+          await withCfpData(async () => {
+            const staff = await import('../src/server/staff.ts');
+            const actor = fixtureAccount('syntheticuser04', 'legacy@acceptance.localhost');
+            const proposal = staff.getAdminProposal(actor, input.applicationId);
+            staff.executeStaffCommand(actor, { kind: 'decide-proposals', requestId: randomUUID(),
+              expectedWeightingRevision: proposal.weighting.revision, status: 'accepted',
+              targets: [{ applicationId: proposal.application.id, expectedApplicationRevision: proposal.application.revision,
+                expectedPresentationRevision: proposal.presentationRevision, expectedAssessmentRevision: proposal.assessmentRevision }] });
+            report({ finalized: input.applicationId });
           });
-          report({ finalized: input.applicationId });
           break;
         case 'inspect':
           report(database((db) => ({
@@ -220,7 +315,7 @@ async function fixture() {
           report({ providerStopped: true });
           break;
         default:
-          throw new Error('Use restart, open, close, finalize, inspect, backup, restore, stop-provider, or cleanup.');
+          throw new Error('Use a supported browser-fixture command.');
       }
     }
   } catch (error) {

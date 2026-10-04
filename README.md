@@ -78,6 +78,104 @@ It does not use PocketBase or import private 2026 CFP records.
 The existing root CFP, reviewer, and admin workflows remain unchanged.
 Production at `https://cfp.wts.sh` uses the independent central identity service.
 
+### CFP committee roles and reviews
+
+The staff workflow uses edition-local permissions and the independent CFP database.
+Production grants, SMTP configuration, and scheduling require separate approval.
+
+Every WTS user retains applicant access to their own data.
+CFP stores administrator and reviewer grants by edition and stable WTS user ID.
+Central auth and historical 2026 roles do not grant CFP privileges.
+Users can hold both local grants.
+An administrator grant alone does not permit reviews.
+
+Administrators use `/admin` for rankings and decisions.
+They use `/admin/staff` for local grants, assignments, and independent intake and review gates.
+Reviewers use `/reviewer` for assigned pending proposals and their own reviews.
+Review access requires an active edition grant, active assignment, and a different applicant ID.
+Review writes also require an open review gate.
+Permission changes affect the next protected request.
+
+Reviews use six integer scores from 1 to 5 and private notes of at most 10000 characters.
+Reviewer weight votes use integers from 1 to 6.
+Ranking uses average criterion weights, or equal weights when no votes exist.
+Each weighted review stays on the 1–5 scale.
+The proposal score averages current-presentation reviews.
+The interface shows current, stale, and total review counts separately.
+Historical reviews and weight votes survive grant revocation.
+Revocation does not restore assignments when an operator grants access again.
+
+Confirmed presentation edits make earlier reviews stale.
+Reviewers can compare the allowed old and current presentation fields.
+They cannot read applicant identity, contact details, organizer notes, or another reviewer's private review.
+Administrators can read committed application context and submission-time contact snapshots, but not private drafts or individual weight votes.
+Applicants cannot read committee reviews.
+
+Individual and bulk decisions use the same atomic command for 1–100 proposals.
+Decisions require current application, presentation, assessment, and weighting revisions.
+One stale target prevents the entire batch from changing.
+Administrators can explicitly reopen a finalized application to pending.
+Decisions retain an immutable audit record.
+Acceptance does not publish conference content or send a decision email.
+
+### First local CFP administrator
+
+Bootstrap requires an existing local OIDC binding and no active edition administrator.
+The signed-in footer shows the stable WTS user ID.
+Email addresses are not grant keys.
+The server prevents removal of the last active administrator.
+
+1. Sign in to the local CFP app through central auth.
+2. Copy the signed-in WTS user ID into `WTS_USER_ID`.
+3. Create the first edition-local administrator grant.
+
+   ```bash
+   pnpm --filter @wts/cfp data bootstrap-admin 2027 "$WTS_USER_ID"
+   ```
+
+4. Open `/admin/staff` to manage local grants and gates.
+
+### CFP confirmation mail and daily reports
+
+Each committed submission queues one durable confirmation in the submission transaction.
+Receipt replay does not queue another confirmation.
+The queue preserves the submission title, contact address, receipt, and application link.
+`CFP_ORIGIN` must be configured before submissions.
+Delivery failure does not roll back a committed submission.
+
+Mail defaults to disabled.
+SMTP mode requires `CFP_SMTP_HOST`, `CFP_SMTP_PORT`, `CFP_SMTP_SECURE`, `CFP_SMTP_FROM`, `CFP_SMTP_USER`, and `CFP_SMTP_PASSWORD`.
+Use a bare email address for `CFP_SMTP_FROM`.
+Production SMTP requires authentication and TLS.
+Invalid configuration appears as unconfigured without blocking applicant or staff access.
+The web process does not schedule mail.
+
+Daily reports default to disabled with a send time of 08:00 UTC.
+Reports summarize the previous complete UTC day and show inventory at generation time.
+Enabling reports establishes a date boundary and does not send earlier historical reports.
+Each tick generates at most seven missed report days per edition.
+Reports include CFP activity only, without private notes, applicant contact details, or ticket data.
+
+Operators configure exact recipient IDs and addresses in `CFP_DAILY_REPORT_RECIPIENTS`.
+The value is a JSON array of objects with `wtsUserId` and `email`.
+Each recipient must have an active edition-local administrator grant when the worker schedules and sends the report.
+Recipient addresses and SMTP credentials do not enter staff responses.
+
+An authorized scheduler can invoke the finite worker periodically:
+
+```bash
+pnpm --filter @wts/cfp data mail-tick
+```
+
+Each tick handles at most 20 due jobs.
+Delivery occurs outside SQLite write transactions.
+The worker uses 120-second leases, a 45-second delivery deadline, bounded backoff, and at most five attempts.
+Staff pages show queued, retrying, sent, failed, suspended, and delivery-unknown counts.
+
+NOTE: Stable Message-IDs and queue keys prevent duplicate logical jobs, not duplicate SMTP deliveries.
+An accepted message can arrive again after the worker loses its acknowledgment or crashes.
+Do not treat the queue as exactly-once delivery.
+
 ### Local CFP initialization
 
 The CLI does not load `.env` files.
@@ -115,7 +213,7 @@ Local logout does not end central SSO.
 
 ### CFP maintenance and recovery
 
-The maintenance CLI supports `migrate`, `init`, `open`, `close`, `backup`, and `restore`.
+The maintenance CLI also supports `bootstrap-admin`, `mail-tick`, and `mail-resume` alongside the existing database commands.
 Backup uses the native SQLite online backup operation and includes a checksum manifest.
 Use the online backup command instead of copying a live SQLite file.
 Treat every CFP backup as private applicant data.
@@ -137,10 +235,28 @@ Treat every CFP backup as private applicant data.
 5. Open the intended edition after you review its restored state.
 
 Restore validates the checksum, schema, integrity, foreign keys, and stored domain records.
-It preserves applicant data and identity bindings.
-It clears all local sessions and OIDC flows and closes every edition.
+It preserves applicant data, identity bindings, committee evidence, delivered mail, and immutable history.
+It clears all local sessions and OIDC flows, closes both gates, and disables staff grants, assignments, and reports.
+Unsent mail remains suspended.
 Recover `CFP_SESSION_KEY` separately or create a new key before a fresh sign-in.
 Enable `CFP_TRUST_PROXY` only when the proxy replaces forwarded headers and blocks direct application access.
+
+Current backups use schema version 3.
+Restore accepts exact known schema-one, schema-two, and schema-three backups.
+It applies pending migrations only to the new restore target.
+It does not modify the backup or send historical confirmation mail during migration.
+
+After restore, bootstrap an administrator before you reconcile other grants and assignments.
+Open intake and review separately after you inspect the restored state.
+Do not resume suspended mail until you reconcile its recipients and prior delivery.
+Use reconciled `cfp_mail_jobs.job_id` values for explicit resumption:
+
+```bash
+pnpm --filter @wts/cfp data mail-resume 2027 "$JOB_ID"
+```
+
+Resumption selects named suspended jobs from one edition.
+The worker still checks daily-report recipients before dispatch.
 
 The isolated browser fixture starts a real built CFP app and synthetic central auth over local HTTPS.
 Build auth and CFP before you run `pnpm --filter @wts/cfp browser:fixture`.
@@ -171,6 +287,13 @@ Keep the Coolify HTTP healthcheck override disabled.
 The image supplies its own Node healthcheck because it does not contain curl or wget.
 Production enables `CFP_TRUST_PROXY` behind the Coolify proxy.
 The existing 2026 site and PocketBase storage remain unchanged.
+
+The staff release requires schema version 3.
+Before deployment, create an online backup with the current image.
+Stop the current CFP container before you migrate its existing volume with the new image.
+Keep application intake closed, review access closed, and mail disabled during this release.
+An image rollback does not reverse a database migration.
+If rollback requires a restore, use a new volume and reconcile authentication and permissions before reopening.
 
 ### CFP local verification
 

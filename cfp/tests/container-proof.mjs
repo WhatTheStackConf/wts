@@ -3,12 +3,15 @@
 // Local domain code prepares synthetic records. Image proof uses only packaged storage/model code.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { DatabaseSync } from 'node:sqlite';
+import { fileURLToPath } from 'node:url';
+import { resources, smtp } from '../../auth/acceptance/resources.mjs';
 
 const runId = `wts-cfp-container-${Date.now()}-${randomBytes(6).toString('hex')}`;
 const assertions = [];
@@ -21,7 +24,11 @@ let failure;
 let image;
 let sequence = 0;
 let privateRoot;
-const originalEnvironment = new Map(['CFP_DATA_DIR', 'CFP_EDITION_ID'].map((key) => [key, process.env[key]]));
+let mailScope;
+const originalEnvironment = new Map([
+  'CFP_DATA_DIR', 'CFP_EDITION_ID', 'CFP_ORIGIN', 'NODE_ENV', 'CFP_MAIL_MODE', 'CFP_SMTP_HOST',
+  'CFP_SMTP_PORT', 'CFP_SMTP_SECURE', 'CFP_SMTP_FROM', 'CFP_SMTP_USER', 'CFP_SMTP_PASSWORD', 'CFP_DAILY_REPORT_RECIPIENTS',
+].map((key) => [key, process.env[key]]));
 const edition = '2027';
 const signal = () => {
   interrupted = true;
@@ -217,7 +224,7 @@ async function observeRuntime(runtime, label) {
 }
 
 const account = {
-  wtsUserId: 'synthetic-recovery-user', email: 'recovery@example.test', emailVerified: true,
+  wtsUserId: 'synthetic-recovery-user', email: 'recovery@acceptance.localhost', emailVerified: true,
   accountUrl: 'https://127.0.0.1:1/account',
   profile: { version: 1, wtsUserId: 'synthetic-recovery-user', name: 'Synthetic Initial Name', avatarUrl: null,
     preferredLanguage: null, username: 'synthetic-recovery', emailVisibility: false, revision: 1 },
@@ -230,6 +237,61 @@ const presentation = { title: 'Synthetic recovery application', abstract: '<p>Sy
   previousPresentation: 'Never', organizerNotes: 'Synthetic private note', additionalInfo: 'Synthetic workshop' };
 const durableTables = ['cfp_accounts', 'oidc_bindings', 'speaker_profiles', 'applicant_settings', 'drafts', 'applications', 'submission_receipts', 'schema_migrations'];
 function durable(db) { return Object.fromEntries(durableTables.map((table) => [table, db.prepare('SELECT * FROM ' + table + ' ORDER BY 1').all().map((row) => ({ ...row }))])); }
+const unchangedStaffTables = ['application_presentation_versions', 'proposal_staff_state', 'proposal_reviews', 'criterion_weight_votes', 'proposal_decisions', 'staff_command_receipts', 'daily_cfp_reports'];
+function rows(db, table) { return db.prepare('SELECT * FROM ' + table + ' ORDER BY 1, 2').all().map((row) => ({ ...row })); }
+function staffSnapshot(db) {
+  return {
+    immutable: Object.fromEntries(unchangedStaffTables.map((table) => [table, rows(db, table)])),
+    grants: rows(db, 'edition_staff_grants'), assignments: rows(db, 'proposal_assignments'),
+    policy: rows(db, 'edition_review_policy'), changes: rows(db, 'staff_grant_changes'), mail: rows(db, 'cfp_mail_jobs'),
+  };
+}
+function staffRecoveryCode(snapshot, label) {
+  return `
+const staffExpected = ${JSON.stringify(snapshot)};
+${rows.toString()}
+check('${label}: immutable presentations, reviews, votes, decisions, receipts and reports survive', () => {
+  for (const [table, records] of Object.entries(staffExpected.immutable)) assert.deepEqual(rows(db, table), records);
+  for (const original of staffExpected.changes) assert.deepEqual(
+    { ...db.prepare('SELECT * FROM staff_grant_changes WHERE change_id=?').get(original.change_id) }, original);
+});
+check('${label}: privileged grants and assignments require explicit reconciliation', () => {
+  for (const [table, originals] of [['edition_staff_grants', staffExpected.grants], ['proposal_assignments', staffExpected.assignments]]) {
+    const current = rows(db, table);
+    assert.equal(current.length, originals.length);
+    for (const original of originals) {
+      const row = current.find((value) => value.edition_id === original.edition_id &&
+        (table === 'edition_staff_grants' ? value.wts_user_id === original.wts_user_id && value.role === original.role
+          : value.application_id === original.application_id && value.reviewer_id === original.reviewer_id));
+      assert.ok(row);
+      assert.equal(row.state, original.state === 'active' ? 'disabled_restore' : original.state);
+      assert.ok(row.revision >= original.revision + Number(original.state === 'active'));
+      if (original.state === 'active') assert.deepEqual(JSON.parse(row.changed_by_json), { kind: 'maintenance' });
+    }
+  }
+  const policy = rows(db, 'edition_review_policy');
+  assert.ok(policy.every((value) => value.review_open === 0 && value.daily_report_enabled === 0));
+  for (const original of staffExpected.policy) {
+    const row = policy.find((value) => value.edition_id === original.edition_id);
+    assert.equal(row.weighting_revision, original.weighting_revision);
+    assert.ok(row.revision > original.revision);
+  }
+});
+check('${label}: delivered mail survives and pending mail stays suspended without leases', () => {
+  const current = rows(db, 'cfp_mail_jobs');
+  assert.equal(current.length, staffExpected.mail.length);
+  for (const original of staffExpected.mail) {
+    const row = current.find((value) => value.job_id === original.job_id);
+    assert.ok(row);
+    for (const key of ['logical_key','edition_id','kind','draft_id','report_date','recipient_id','payload_json','message_id','created_at']) assert.equal(row[key], original[key]);
+    assert.equal(row.state, original.state === 'sent' ? 'sent' : 'suspended');
+    assert.equal(row.lease_token, null);
+    assert.equal(row.lease_until, null);
+    if (original.state === 'sent') assert.equal(row.sent_at, original.sent_at);
+  }
+});
+`;
+}
 const recordsCode = `const durableTables = ${JSON.stringify(durableTables)};
 ${durable.toString()}
 `;
@@ -240,7 +302,7 @@ const expected = ${JSON.stringify(snapshot)};
 const db = openCfpDatabase();
 try {
   check('${label}: every durable record and binding matches the native snapshot', () => assert.deepEqual(durable(db), expected.durable),
-    { accounts: 1, bindings: 1, profiles: 1, settings: 1, drafts: 2, applications: 1, receipts: 1 });
+    ${JSON.stringify(Object.fromEntries(Object.entries(snapshot.durable).map(([table, records]) => [table, records.length])))});
   check('${label}: sessions and OIDC flows are empty', () => {
     assert.equal(db.prepare('SELECT count(*) AS count FROM cfp_sessions').get().count, 0);
     assert.equal(db.prepare('SELECT count(*) AS count FROM oidc_flows').get().count, 0);
@@ -259,6 +321,7 @@ try {
     assert.deepEqual(presentationSchema.parse(JSON.parse(db.prepare('SELECT presentation_json FROM drafts WHERE draft_id=?').get(expected.active.draft.id).presentation_json)), expected.active.draft.state.presentation);
     assert.deepEqual(submissionReceiptSchema.parse(JSON.parse(db.prepare('SELECT receipt_json FROM submission_receipts').get().receipt_json)), expected.receipt);
   });
+  ${staffRecoveryCode(snapshot.staff, label)}
 } finally { db.close(); }
 `;
 }
@@ -297,9 +360,31 @@ async function proveDomainSnapshot(restoredVolume, backupVolume, transfer, snaps
   check(`${label}: the recovered domain rejects new drafts while the edition is closed`, () => assert.throws(
     () => domain.startDraft(account, { requestId: randomUUID(), intent: { kind: 'new' } }), (error) => error.code === 'cfp_closed'));
 }
+async function oldBackup(path, snapshot) {
+  await mkdir(path, { mode: 0o700 });
+  const { migration } = await import('../migrations/001-initial.ts');
+  const db = new DatabaseSync(join(path, 'cfp.sqlite'));
+  try {
+    db.exec(migration.sql);
+    db.exec('CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, installed_at INTEGER NOT NULL) STRICT');
+    db.prepare('INSERT INTO schema_migrations VALUES (?, ?, ?, ?)').run(1, migration.name, createHash('sha256').update(migration.sql).digest('hex'), Date.now());
+    db.prepare('INSERT INTO editions VALUES (?, 1, ?)').run(edition, Date.now());
+    for (const table of ['cfp_accounts', 'oidc_bindings', 'speaker_profiles', 'applicant_settings', 'applications', 'drafts', 'submission_receipts']) {
+      for (const row of snapshot.durable[table]) db.prepare(
+        `INSERT INTO ${table} (${Object.keys(row).join(',')}) VALUES (${Object.keys(row).map(() => '?').join(',')})`).run(...Object.values(row));
+    }
+    db.exec('PRAGMA user_version=1');
+  } finally { db.close(); }
+  await chmod(join(path, 'cfp.sqlite'), 0o600);
+  const bytes = await readFile(join(path, 'cfp.sqlite'));
+  const hash = createHash('sha256').update(bytes).digest('hex');
+  await writeFile(join(path, 'manifest.json'), JSON.stringify({ schemaVersion: 1, databaseSha256: hash }), { mode: 0o600 });
+  return hash;
+}
 
 async function cleanup() {
   const failures = [];
+  if (mailScope) failures.push(...await mailScope.cleanup());
   for (const name of containers.toReversed()) {
     try {
       const result = await command(['rm', '--force', '--ignore', '--time', '5', name], { cleanup: true, allowFailure: true });
@@ -336,6 +421,8 @@ try {
   const backupVolume = await newVolume('backup');
   const restoredVolume = await newVolume('restored');
   const emptyVolume = await newVolume('empty');
+  const oldBackupVolume = await newVolume('old-backup');
+  const oldRestoredVolume = await newVolume('old-restored');
 
   await cli(sourceVolume, ['init', edition]);
   const imageMigrations = await evaluate(sourceVolume, `
@@ -352,6 +439,7 @@ try {
   const nativeSnapshot = join(privateRoot, 'native-snapshot');
   process.env.CFP_DATA_DIR = localData;
   process.env.CFP_EDITION_ID = edition;
+  process.env.CFP_ORIGIN = 'https://cfp.acceptance.localhost';
   const storage = await import('../src/server/storage.ts');
   const domain = await import('../src/server/applicants.ts');
   const { getApplication, getCfpStatus, getDraft, getWorkspace, saveApplicant, saveDraft, startDraft, submitDraft } = domain;
@@ -404,6 +492,94 @@ try {
       return { workspace: getWorkspace(account), application, active, committed, command, receipt, durable: durable(db) };
     } finally { db.close(); }
   })();
+  const oldSource = join(privateRoot, 'pre-feature');
+  const oldHash = await oldBackup(oldSource, snapshot);
+  const staff = await import('../src/server/staff.ts');
+  const mail = await import('../src/server/cfp-mail.ts');
+  const admin = { ...account, wtsUserId: 'syntheticuser04', email: 'admin-recovery@acceptance.localhost',
+    profile: { ...account.profile, wtsUserId: 'syntheticuser04', username: 'syntheticuser04', name: 'Synthetic Recovery Admin' } };
+  const reviewer = { ...account, wtsUserId: 'syntheticuser02', email: 'reviewer-recovery@acceptance.localhost',
+    profile: { ...account.profile, wtsUserId: 'syntheticuser02', username: 'syntheticuser02', name: 'Synthetic Recovery Reviewer' } };
+  getWorkspace(admin); getWorkspace(reviewer);
+  const staffDb = storage.openCfpDatabase(localData);
+  try {
+    for (const actor of [admin, reviewer]) staffDb.prepare('INSERT INTO oidc_bindings VALUES (?, ?, ?, ?)').run(
+      'https://127.0.0.1:1', `${actor.wtsUserId}-subject`, actor.wtsUserId, Date.now());
+  } finally { staffDb.close(); }
+  staff.bootstrapAdmin(edition, admin.wtsUserId, localData);
+  const execute = (actor, command) => staff.executeStaffCommand(actor, { requestId: randomUUID(), ...command });
+  execute(admin, { kind: 'set-grant', wtsUserId: reviewer.wtsUserId, role: 'reviewer', expectedRevision: 0, active: true });
+  execute(admin, { kind: 'set-assignments', changes: [{ applicationId: snapshot.receipt.applicationId, reviewerId: reviewer.wtsUserId, expectedRevision: 0, active: true }] });
+  const initialPolicy = staff.getAdminWorkspace(admin).reviewPolicy;
+  execute(admin, { kind: 'set-review-policy', expectedRevision: initialPolicy.revision, reviewOpen: true,
+    dailyReport: { enabled: true, timeZone: 'UTC', localSendTime: '08:00' } });
+  execute(reviewer, { kind: 'save-review', applicationId: snapshot.receipt.applicationId, expectedAssignmentRevision: 1,
+    expectedPresentationRevision: 1, expectedReviewRevision: 0, scores: { relevance: 4, originality: 4, depth: 4, clarity: 4, takeaways: 4, engagement: 4 },
+    notes: 'Synthetic private recovery review', suspectedAi: true });
+  execute(reviewer, { kind: 'save-weight-vote', expectedRevision: 0, weights: { relevance: 1, originality: 1, depth: 1, clarity: 1, takeaways: 1, engagement: 1 } });
+  for (const status of ['accepted', 'pending']) {
+    const proposal = staff.getAdminProposal(admin, snapshot.receipt.applicationId);
+    execute(admin, { kind: 'decide-proposals', expectedWeightingRevision: proposal.weighting.revision, status,
+      targets: [{ applicationId: proposal.application.id, expectedApplicationRevision: proposal.application.revision,
+        expectedPresentationRevision: proposal.presentationRevision, expectedAssessmentRevision: proposal.assessmentRevision }] });
+  }
+  mailScope = await resources(fileURLToPath(new URL('../', import.meta.url)));
+  const sink = await smtp(mailScope);
+  Object.assign(process.env, { NODE_ENV: 'test', CFP_MAIL_MODE: 'smtp', CFP_SMTP_HOST: '127.0.0.1',
+    CFP_SMTP_PORT: String(sink.port), CFP_SMTP_SECURE: 'false', CFP_SMTP_FROM: 'cfp@acceptance.localhost',
+    CFP_SMTP_USER: '', CFP_SMTP_PASSWORD: '',
+    CFP_DAILY_REPORT_RECIPIENTS: JSON.stringify([{ wtsUserId: admin.wtsUserId, email: admin.email }]) });
+  const today = new Date();
+  const reportTime = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1, 9);
+  const delivered = await mail.runMailTick(reportTime, localData);
+  check('Synthetic SMTP receives the submission and one frozen CFP-only daily report', () => {
+    assert.equal(delivered.sent, 2); assert.equal(delivered.reportsCreated, 1); assert.equal(sink.count(), 2);
+  });
+  const next = startDraft(account, { requestId: randomUUID(), intent: { kind: 'new' } });
+  const ready = saveDraft(account, { draftId: next.draft.id, expectedDraftRevision: next.draft.revision,
+    presentation: { ...presentation, title: 'Synthetic pending notification' } });
+  submitDraft(account, { draftId: ready.draft.id, expected: { draft: ready.draft.revision, speaker: ready.speaker.revision, settings: ready.settings.revision } });
+  snapshot.workspace = getWorkspace(account);
+  snapshot.application = getApplication(account, snapshot.receipt.applicationId);
+  const captured = storage.openCfpDatabase(localData);
+  try {
+    snapshot.durable = durable(captured);
+    snapshot.staff = staffSnapshot(captured);
+    check('The source contains committee evidence, decision history, sent reports and pending mail', () => {
+      assert.equal(snapshot.staff.immutable.proposal_reviews.length, 1);
+      assert.equal(snapshot.staff.immutable.criterion_weight_votes.length, 1);
+      assert.equal(snapshot.staff.immutable.proposal_decisions.length, 2);
+      assert.equal(snapshot.staff.immutable.daily_cfp_reports.length, 1);
+      assert.equal(snapshot.staff.mail.filter((job) => job.state === 'sent').length, 2);
+      assert.equal(snapshot.staff.mail.filter((job) => job.state === 'queued').length, 1);
+    });
+  } finally { captured.close(); }
+  const oldTransfer = await carrier(oldBackupVolume);
+  await command(['cp', oldSource, `${oldTransfer.name}:/app/data/pre-feature`]);
+  await cli(oldRestoredVolume, ['restore', '/app/old/pre-feature', '/app/data/restored'], mount(oldBackupVolume, '/app/old', true));
+  await evaluate(oldRestoredVolume, `
+    const db = openCfpDatabase();
+    try {
+      check('The packaged CLI upgrades a known schema-one backup without historical mail or grants', () => {
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);
+        assert.equal(db.prepare('SELECT count(*) AS count FROM edition_staff_grants').get().count, 0);
+        assert.equal(db.prepare('SELECT count(*) AS count FROM cfp_mail_jobs').get().count, 0);
+        assert.equal(db.prepare('SELECT count(*) AS count FROM application_presentation_versions').get().count, 1);
+        assert.equal(db.prepare('SELECT cfp_open FROM editions').get().cfp_open, 0);
+        assert.equal(db.prepare('SELECT review_open FROM edition_review_policy').get().review_open, 0);
+        assert.equal(db.prepare('SELECT receipt_json FROM submission_receipts').get().receipt_json, ${JSON.stringify(JSON.stringify(snapshot.receipt))});
+      });
+    } finally { db.close(); }
+  `, { dataDir: '/app/data/restored' });
+  await evaluate(oldBackupVolume, `
+    check('Target-only migration leaves the schema-one backup bytes and manifest unchanged', () => {
+      const bytes = readFileSync('/app/data/pre-feature/cfp.sqlite');
+      assert.equal(createHash('sha256').update(bytes).digest('hex'), ${JSON.stringify(oldHash)});
+      assert.equal(JSON.parse(readFileSync('/app/data/pre-feature/manifest.json', 'utf8')).schemaVersion, 1);
+    });
+  `, { imports: "import { readFileSync } from 'node:fs'; import { createHash } from 'node:crypto';" });
+  const oldRuntime = await startRuntime(oldRestoredVolume, '/app/data/restored');
+  await observeRuntime(oldRuntime, 'Pre-feature restored runtime');
   stage = 'Create a consistent native online-backup snapshot for image startup';
   await storage.backup(nativeSnapshot, localData);
   const sourceTransfer = await carrier(sourceVolume);
@@ -432,7 +608,7 @@ try {
     const bytes = readFileSync(root + '/cfp.sqlite');
     const manifest = JSON.parse(readFileSync(root + '/manifest.json', 'utf8'));
     check('Online backup writes a matching SHA-256 manifest and no SQLite sidecars', () => {
-      assert.deepEqual(manifest, { schemaVersion: 1, databaseSha256: createHash('sha256').update(bytes).digest('hex') });
+      assert.deepEqual(manifest, { schemaVersion: 3, databaseSha256: createHash('sha256').update(bytes).digest('hex') });
       for (const suffix of ['-wal', '-shm', '-journal']) assert.equal(existsSync(root + '/cfp.sqlite' + suffix), false);
     }, { schemaVersion: manifest.schemaVersion, checksumMatches: true, sidecars: 0 });
   `, { imports: "import { readFileSync, existsSync } from 'node:fs'; import { createHash } from 'node:crypto';" });

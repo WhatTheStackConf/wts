@@ -110,7 +110,7 @@ jobs:
         run: pnpm --filter @wts/cfp test:oidc
       - name: Build the independent CFP for browser acceptance
         run: pnpm --filter @wts/cfp build
-      - name: Verify the built applicant workflow and recovery
+      - name: Verify built applicant, reviewer, admin, and recovery workflows
         run: pnpm --filter @wts/cfp test:browser
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: failure()

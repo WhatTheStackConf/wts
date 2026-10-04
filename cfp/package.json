@@ -12,6 +12,11 @@
     "migrations",
     "scripts/cfp-data.ts",
     "src/server/storage.ts",
+    "src/server/staff.ts",
+    "src/server/cfp-mail.ts",
+    "src/lib/staff-model.ts",
+    "src/lib/mail-model.ts",
+    "src/lib/account-model.ts",
     "src/lib/cfp-model.ts"
   ],
   "scripts": {
@@ -34,6 +39,7 @@
     "solid-js": "^2.0.0-rc.3",
     "zod": "^4.4.3",
     "openid-client": "6.8.8",
+    "nodemailer": "10.0.13",
     "sanitize-html": "^2.17.7",
     "prosemirror-commands": "^1.7.2",
     "prosemirror-history": "^1.5.0",
@@ -49,6 +55,7 @@
     "@solidjs/vite-plugin": "^3.0.0-next.34",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.4.0",
+    "@types/nodemailer": "8.0.2",
     "@types/sanitize-html": "^2.16.1",
     "daisyui": "^5.7.22",
     "filesystem-routing": "0.2.1",

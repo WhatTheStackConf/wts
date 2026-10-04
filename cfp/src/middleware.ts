@@ -17,19 +17,19 @@ async function preserveDeclaredStatus(request: Request, next: (request?: Request
   return new Response(response.body, { status, headers: response.headers });
 }
 
-async function protectApplicantResponse(request: Request, next: (request?: Request) => Promise<Response>) {
+async function protectPrivateResponse(request: Request, next: (request?: Request) => Promise<Response>) {
   const pathname = new URL(request.url).pathname;
   const auth = /^\/auth(?:\/|$)/.test(pathname);
-  const applicant = pathname === "/" || /^\/(?:applications|apply|profile|settings)(?:\/|$)/.test(pathname);
+  const privatePage = pathname === "/" || /^\/(?:applications|apply|profile|settings|reviewer|admin)(?:\/|$)/.test(pathname);
   const rpc = pathname.startsWith("/_server");
   const headers = getRequestEvent()?.response.headers;
-  if (auth || applicant || rpc) {
+  if (auth || privatePage || rpc) {
     headers?.set("Cache-Control", "private, no-store");
     headers?.set("X-Robots-Tag", "noindex, nofollow");
     headers?.set("Referrer-Policy", auth ? "no-referrer" : "same-origin");
   }
   const response = await next();
-  if (auth || applicant || rpc) {
+  if (auth || privatePage || rpc) {
     response.headers.set("Cache-Control", "private, no-store");
     response.headers.set("X-Robots-Tag", "noindex, nofollow");
     response.headers.set("Referrer-Policy", auth ? "no-referrer" : "same-origin");
@@ -37,4 +37,4 @@ async function protectApplicantResponse(request: Request, next: (request?: Reque
   return response;
 }
 
-export default [protectApplicantResponse, preserveDeclaredStatus, createAPIHandler(routes)];
+export default [protectPrivateResponse, preserveDeclaredStatus, createAPIHandler(routes)];

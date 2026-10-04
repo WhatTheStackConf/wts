@@ -264,6 +264,7 @@ a:hover {
 
 .site-footer {
   display: flex;
+  flex-wrap: wrap;
   width: min(100% - 2rem, 1160px);
   justify-content: space-between;
   gap: 1rem;
@@ -744,6 +745,84 @@ select.control {
   display: inline-flex;
   min-height: 44px;
   align-items: center;
+}
+
+.account-id {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+}
+
+.account-id code {
+  overflow-wrap: anywhere;
+}
+
+.reviewer-counts,
+.reviewer-scores,
+.reviewer-weights {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 1rem;
+}
+
+.reviewer-counts > div,
+.reviewer-activity {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.reviewer-presentation {
+  overflow-wrap: anywhere;
+}
+
+.reviewer-presentation :is(ul, ol) {
+  padding-left: 1.5rem;
+}
+
+.reviewer-presentation pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.review-own-summary {
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-base-300);
+}
+
+.review-notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reviewer-ai-flag {
+  display: flex;
+  min-height: 44px;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding-block: 0.75rem;
+  cursor: pointer;
+}
+
+@media (max-width: 1023px) {
+  .site-header {
+    flex-wrap: wrap;
+    gap: 0.3rem 0.7rem;
+  }
+
+  .brand {
+    margin-right: auto;
+  }
+
+  .primary-nav {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    margin: 0;
+    border-top: 1px solid var(--cfp-header-rule);
+  }
 }
 
 @media (max-width: 767px) {
