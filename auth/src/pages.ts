@@ -75,8 +75,7 @@ function providers(state: PageShell): string {
 
 function closedRegistration(): string {
   return `<section class="registration-note" aria-labelledby="registration-title"><h2 id="registration-title">Registration is closed</h2>
-    <p>Existing-user migration to this account service is not yet enabled. Continue to use the unchanged WTS login for your existing WTS account.</p>
-    <a href="https://wts.sh/login">Go to the existing WTS login</a>
+    <p>New WTS identity accounts cannot be created here. If you already have a WTS identity account, sign in above or use password recovery.</p>
     <p class="field-help">Signing in identifies you. Each app controls its own access and permissions.</p></section>`;
 }
 

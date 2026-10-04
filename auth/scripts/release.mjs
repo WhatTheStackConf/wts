@@ -107,7 +107,12 @@ try {
       'RUN pnpm prune --prod && mkdir -p /prod/auth && cp -a package.json node_modules dist migrations public scripts /prod/auth/'],
   ]);
   const withSource = sourceDockerfile.split('\n').flatMap((line) => {
-    if (line === 'COPY auth/package.json ./auth/package.json' || line === 'COPY blog/package.json ./blog/package.json') return [];
+    if (
+      line === 'COPY auth/package.json ./auth/package.json' ||
+      line === 'COPY blog/package.json ./blog/package.json' ||
+      line === 'COPY site/package.json ./site/package.json' ||
+      line === 'COPY cfp/package.json ./cfp/package.json'
+    ) return [];
     if (standaloneCommands.has(line)) return [standaloneCommands.get(line)];
     if (!line.startsWith('COPY ') || line.startsWith('COPY --')) return [line];
     const operands = line.slice(5).split(/\s+/);

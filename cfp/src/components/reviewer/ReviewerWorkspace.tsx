@@ -139,12 +139,14 @@ export default function ReviewerWorkspace() {
   return <>
     <header class="page-heading">
       <h1>Reviewer queue</h1>
-      <p>Edition {workspace()?.editionId || ""}. Review only proposals assigned to you.</p>
+      <p><Show when={workspace()?.editionId}>{(edition) => <>Edition {edition()}. </>}</Show>Review only proposals assigned to you.</p>
     </header>
     <Switch>
       <Match when={loading()}><div class="cfp-loading" role="status">Loading your assigned proposals…</div></Match>
       <Match when={error() && !workspace()}>
-        <ErrorNotice message={error()?.message} onRetry={() => void load()} />
+        <Show when={error()?.code !== "unauthenticated"} fallback={<ErrorNotice message={error()?.message} />}>
+          <ErrorNotice message={error()?.message} onRetry={() => void load()} />
+        </Show>
         <Show when={error()?.code === "unauthenticated"}><a class="button" href={`/auth/login?returnTo=${encodeURIComponent("/reviewer")}`} rel="external">Sign in to continue</a></Show>
       </Match>
       <Match when={workspace()}>

@@ -1,10 +1,22 @@
 import { createEffect, createSignal, Show, type ParentProps } from "solid-js";
 import { useLocation } from "@solidjs/router";
+import { Title } from "@solidjs/meta";
 import { getNavigation } from "~/lib/staff-actions";
 import { Router } from "~/router";
 import type { VerifiedCfpAccount } from "~/lib/account-model";
 import type { StaffAccess } from "~/lib/staff-model";
 import "~/styles/app.css";
+
+const PAGE_TITLES: Record<string, string> = {
+  "/": "Call for Papers",
+  "/applications": "Your applications",
+  "/apply": "Application draft",
+  "/profile": "Speaker profile",
+  "/settings": "Applicant settings",
+  "/reviewer": "Reviewer queue",
+  "/admin": "CFP administration",
+  "/admin/staff": "Staff and gates",
+};
 
 function ApplicantShell(props: ParentProps) {
   const location = useLocation();
@@ -30,6 +42,7 @@ function ApplicantShell(props: ParentProps) {
     return () => { active = false; };
   });
   return <div class="cfp-app">
+    <Title>{PAGE_TITLES[location.pathname] ?? PAGE_TITLES[`/${location.pathname.split("/")[1]}`] ?? "Page not found"} | WTS CFP</Title>
     <a class="skip-link" href="#main">Skip to main content</a>
     <header class="site-header">
       <a class="brand" href="/" aria-label="WhatTheStack Call for Papers home">
@@ -44,7 +57,7 @@ function ApplicantShell(props: ParentProps) {
       </nav>
       <Show when={account()} fallback={
         <Show when={identityState() === "anonymous" || identityState() === "unavailable"} fallback={<span class="cfp-status" role="status">Checking identity…</span>}>
-          <a class="button button-small" href="/auth/login?returnTo=%2Fapplications" rel="external">{identityState() === "unavailable" ? "Try sign in" : "Sign in"}</a>
+          <a class="button button-small" href={`/auth/login?returnTo=${encodeURIComponent(location.pathname === "/" ? "/applications" : location.pathname)}`} rel="external">{identityState() === "unavailable" ? "Try sign in" : "Sign in"}</a>
         </Show>
       }>
         <div class="account-menu"><span class="account-email">{account()?.email}</span><form method="post" action="/auth/logout"><button class="button button-quiet button-small" type="submit">Sign out</button></form></div>

@@ -404,7 +404,22 @@ h3 {
 
 .button:disabled {
   opacity: 0.55;
-  cursor: wait;
+  cursor: not-allowed;
+}
+
+.label:has(> .toggle) {
+  min-height: 48px;
+  white-space: normal;
+}
+
+.label > .toggle {
+  flex-shrink: 0;
+}
+
+.row > a:not(.button) {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
 }
 
 .form {
@@ -807,6 +822,10 @@ select.control {
 }
 
 @media (max-width: 1023px) {
+  html {
+    scroll-padding-top: 200px;
+  }
+
   .site-header {
     flex-wrap: wrap;
     gap: 0.3rem 0.7rem;
@@ -819,7 +838,7 @@ select.control {
   .primary-nav {
     order: 3;
     width: 100%;
-    overflow-x: auto;
+    flex-wrap: wrap;
     margin: 0;
     border-top: 1px solid var(--cfp-header-rule);
   }
@@ -841,13 +860,13 @@ select.control {
   .primary-nav {
     order: 3;
     width: 100%;
-    overflow: auto;
+    flex-wrap: wrap;
     margin: 0;
     border-top: 1px solid var(--cfp-header-rule);
   }
 
   .primary-nav a {
-    flex: 1;
+    flex: 1 0 auto;
     white-space: nowrap;
   }
 
@@ -864,9 +883,15 @@ select.control {
     width: calc(100% - 1.25rem);
   }
 
+  .cfp-progress {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem 0.25rem;
+  }
+
   .cfp-progress li {
     display: grid;
-    min-width: 68px;
+    min-width: 0;
     justify-items: center;
     gap: 0.25rem;
     text-align: center;

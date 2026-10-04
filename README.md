@@ -72,6 +72,10 @@ Email remains read-only central identity data.
 
 CFP uses the 2027 supporting-page style with a compact navy header, warm-ivory surfaces, and cyan actions.
 Authenticated applicant routes use the same style as the public CFP page.
+CFP pages have route-specific browser titles and retain the current page after sign-in.
+On narrow screens, navigation wraps and all six application steps remain visible.
+Inline profile links have 44px touch targets, and toggle labels have 48px touch targets.
+Disabled buttons use an unavailable cursor rather than a loading cursor.
 
 The app owns its SQLite database, migrations, backups, OIDC client, and host-only session cookies.
 It does not use PocketBase or import private 2026 CFP records.

@@ -19,6 +19,7 @@ Its [permissions section](../docs/plans/wts-shared-identity-project-brief.md#per
 - Application logout ends only that application's session. Central logout does not erase existing application cookies.
 - Password reset revokes central sessions. Applications remain responsible for their local sessions and permissions.
 - Registration is closed by default. Do not open registration before resolving existing-account migration conflicts.
+- Existing imported accounts use sign-in or password recovery. The closed-registration notice does not direct them to the legacy login.
 
 ## Application authorization boundary
 
@@ -223,6 +224,7 @@ It does not resolve new versions or edit the dependency graph by hand.
 The manifest records canonical workspace checksums and exported metadata checksums separately.
 The generated Dockerfile embeds the exported auth metadata, explicit auth sources, migrations, the runtime-role provisioner, and public assets.
 It excludes unrelated source, the full workspace lockfile, local databases, acceptance artifacts, and secrets.
+The standalone export omits workspace-only manifest copies for auth, blog, site, and CFP.
 The standalone build uses a frozen install and removes development dependencies before it copies the auth runtime.
 The generator removes its private temporary files before it exits.
 The two public font assets are fetched from `wts.sh` during the build, with exact SHA-256 checksums.
