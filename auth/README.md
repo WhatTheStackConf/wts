@@ -210,6 +210,26 @@ To build from the repository root:
 podman build -f auth/Dockerfile -t localhost/wts-auth:local .
 ```
 
+### Git-backed production releases
+
+Production uses the existing Coolify application `mmchmqhj0n8rr7captzpxc3m`.
+Its source is `https://github.com/WhatTheStackConf/wts.git`, on branch `design/wts-2027-light-cyberpunk`.
+The build context is `/`, and the Dockerfile location is `/auth/Dockerfile`.
+Each release pins `git_commit_sha` to an approved commit. Automatic deployment remains disabled.
+The inline Dockerfile is empty. Releases do not require generated Dockerfile content or a dashboard sign-in.
+
+The application retains its existing private PostgreSQL resource, hostname, runtime secrets, and OIDC clients.
+Do not deploy `auth/compose.yml` over this resource. That file defines a separate database stack.
+Keep Coolify's healthcheck override disabled. The image supplies its native Node readiness check.
+
+1. Create a database backup with `coolify database backup trigger iin9jvhp1mpkviqccy29h7cf msv3xiksy85e9aydsa5ibaqz`.
+2. Set the approved `git_commit_sha` through `PATCH /api/v1/applications/mmchmqhj0n8rr7captzpxc3m`.
+3. Deploy through `POST /api/v1/deploy` with `{"uuid":"mmchmqhj0n8rr7captzpxc3m","force":true}`.
+4. Check the deployed readiness, issuer, signing keys, runtime configuration, and sign-in page.
+5. Create a post-release database backup.
+
+### Optional standalone source release
+
 After the root frozen install, prepare a source-packaged Coolify Dockerfile without publishing a Git revision:
 
 ```sh
@@ -241,7 +261,7 @@ The deployed backend labels use port `3000`.
 Disable Coolify's generated curl/wget healthcheck override. Keep the Dockerfile's Node `/readyz` healthcheck enabled.
 The slim runtime image does not contain curl or wget.
 CLI 1.6.2 uses obsolete start and environment-write contracts. Use the current API or dashboard for those operations.
-The observed update API does not permit replacing Dockerfile content. Use the dashboard for future Dockerfile updates.
+The update API does not permit replacing inline Dockerfile content. Production Git-backed releases do not use that field.
 
 Check `/healthz`, `/readyz`, discovery, JWKS, HTTPS, and real provider callbacks after deployment.
 Readiness checks the issuer, schema version, migration records, identity trigger, and persisted signing key.
@@ -259,22 +279,26 @@ The acceptance suite rehearses database dump restoration and verifies an earlier
 It does not exercise a production backup provider or cross-cluster disaster recovery.
 Consumer cutover and conference database migration remain separate work.
 
-## Production state: 2026-10-02
+## Production state: 2026-10-05
 
 - Host: `https://auth.wts.sh`.
 - Coolify project/environment: WTS / production, server `fss8sk4`.
 - Application: `mmchmqhj0n8rr7captzpxc3m`.
 - Private PostgreSQL resource: `iin9jvhp1mpkviqccy29h7cf`.
-- Verified deployment: `byqdgbcemfxn0b2r5hvicray`.
-- Runtime source digest: `f68ead8b4b3b4b709237e14a8c1457c0e0697c3dbccc7740d4e371332cf4fd0d`.
+- Verified Git-backed cutover deployment: `a7zs4spgi9rlhltakwbk6xlv`.
+- Git-backed cutover commit: `fc39113502b04c20a845eba3e07400ac103db3cf`.
+- Dockerfile: `/auth/Dockerfile`, with the repository root as its build context.
+- Automatic deployment and the Coolify healthcheck override remain disabled.
 - Google enabled. GitHub disabled. Registration closed.
 - Imported 274 WTS-2026 users and 204 provider links. Conference data and consumer clients were not imported.
 - Secrets are runtime-only Coolify environment variables. The service uses the restricted database role and runs as the Node user.
 
-Live checks passed for TLS, HTTP-to-HTTPS redirect, readiness, discovery, public JWKS, closed registration, anonymous profile denial, and disabled dynamic registration.
-Desktop and mobile account pages were inspected. Google initiation returned the correct callback and a secure host-prefixed state cookie.
-SMTP authentication and TLS were verified without sending a message.
-Real Google account authentication and production consumer SSO were not exercised.
+The Git-backed cutover passed HTTPS readiness, discovery, unchanged public JWKS, closed registration, and anonymous profile denial.
+The sign-in page passed browser checks at 320, 390, and 1440 pixels without overflow or console errors.
+It now directs existing identity users to sign-in or password recovery.
+The existing PostgreSQL container, volume, runtime configuration, identity counts, OIDC client, and signing key remained unchanged.
+CFP authorization still reaches central sign-in with its exact registered callback.
+The cutover did not exercise real password or Google authentication, recovery mail, or an authenticated CFP callback.
 
 Daily local backups use cron `0 2 * * *`, with seven backups and seven days of retention.
 Backup configuration: `msv3xiksy85e9aydsa5ibaqz`. An initial execution succeeded.
