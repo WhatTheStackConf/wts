@@ -1,15 +1,72 @@
 [
   {
+    "date": "2026-10-05",
+    "scope": "app",
+    "macrostructure": "Task-first identity forms and applicant/staff workspaces",
+    "theme": "Existing WTS 2027 supporting-page identity",
+    "brief": "Redesign auth and CFP landing pages and apps while preserving the main homepage, typography, colors, and brand",
+    "designSystem": "DESIGN.md",
+    "systemChanged": false,
+    "enrichment": "None. Reused the original logo and self-hosted fonts.",
+    "changes": [
+      "Compact auth forms with separate identity, profile, security, and consent sections",
+      "Live CFP status with a primary applicant action",
+      "Role-aware mobile navigation with current-page and expanded states",
+      "Grouped speaker fields, compact staff filters, and contained table scrolling"
+    ],
+    "verification": {
+      "viewports": [
+        320,
+        375,
+        414,
+        768,
+        1440
+      ],
+      "authLayouts": "55 final synthetic render checks across 11 page states. No page overflow, wrapped controls, missing images, or undersized checked controls.",
+      "cfpLayouts": "85 render checks across 17 states. No page overflow, missing images, undersized checked controls, or multiline control labels.",
+      "reviewerLayouts": "Real browser proof captured reviewer and admin workspaces at 390 and 1440 pixels.",
+      "interactions": "Exercised auth validation, password visibility, shared profile persistence, consent denial and approval, mobile navigation, CFP profile and settings persistence, draft saving, every submission step, and the receipt.",
+      "authAcceptance": "31 passed, 0 failed. Includes registration, verification, recovery, reset, consent, SSO, session isolation, and persistence.",
+      "cfpAcceptance": "22 browser checks passed. Includes reviewer scoring, assignments, role enforcement, stale writes, bulk decisions, and provider outage behavior.",
+      "build": "Auth build and typecheck passed. CFP build, server bundle syntax check, and typecheck passed.",
+      "contrast": "Sampled rendered auth text pairs ranged from 5.83:1 to 14.62:1. Sampled CFP text pairs ranged from 7.19:1 to 16.84:1.",
+      "homepage": "Homepage source files match the pre-edit archive. The reduced-motion before/after screenshots have zero differing pixels.",
+      "detector": "One detector pass per app. Only warnings for the required Space Grotesk font.",
+      "finishReview": "Separate read-only auth and CFP reviewers returned ship with no material fixes.",
+      "evidence": ".impeccable/review/verification.json",
+      "screenshots": [
+        ".impeccable/review/auth",
+        ".impeccable/review/cfp"
+      ]
+    },
+    "critique": {
+      "philosophy": 4,
+      "hierarchy": 4,
+      "execution": 4,
+      "specificity": 4,
+      "restraint": 4,
+      "variety": 4
+    },
+    "gateScope": "Locked-system redesign, not a universal gate or accessibility certification. Existing palette, component conventions, and pinned fonts remain. Reviewers used the available reviewer role. Documentation stayed in the main session. No production changes or deployment."
+  },
+  {
     "date": "2026-09-14",
     "scope": "app",
     "macrostructure": "Existing WTS task-first workspaces",
-    "theme": "Existing WTS — DESIGN.md preserved",
+    "theme": "Existing WTS \u2014 DESIGN.md preserved",
     "enrichment": "none added",
     "brief": "Simplify signed-in Q&A, account/achievements, admin, reviewer/CFP and check-in interfaces without changing the design system",
     "designSystem": "DESIGN.md",
     "systemChanged": false,
     "verification": "docs/signed-in-usability.md",
-    "critique": { "philosophy": 5, "hierarchy": 4, "execution": 4, "specificity": 5, "restraint": 4, "variety": 4 },
+    "critique": {
+      "philosophy": 5,
+      "hierarchy": 4,
+      "execution": 4,
+      "specificity": 5,
+      "restraint": 4,
+      "variety": 4
+    },
     "gateScope": "In-place usability cleanup. Existing system, shared public chrome, and catalog/export/rotation gates excluded by explicit user scope; no universal 58/58 claim."
   }
 ]

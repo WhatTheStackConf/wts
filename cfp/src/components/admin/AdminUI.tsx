@@ -14,7 +14,7 @@ export function AdminStatus(props: { state: string; label: string }) {
 }
 
 export function AdminSection(props: { title: string; description?: string; children: JSX.Element }) {
-  return <section class="surface cfp-stack" aria-label={props.title}>
+  return <section class="surface cfp-stack admin-section" aria-label={props.title}>
     <div class="surface-title"><div><h2>{props.title}</h2><Show when={props.description}><p>{props.description}</p></Show></div></div>
     {props.children}
   </section>;

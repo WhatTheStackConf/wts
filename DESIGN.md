@@ -52,3 +52,23 @@ Primary actions use cyan with dark ink.
 Keep Space Grotesk, DaisyUI controls, and the amber keyboard-focus outline.
 The semantic theme in `cfp/src/styles/app.css` owns the app's colors.
 The existing root operational screens retain their dark theme.
+
+### Auth and CFP task layouts
+
+The independent auth and CFP apps retain the public supporting-page identity.
+Starzoom Shavian appears in the compact wordmark only.
+Headings, forms, navigation, and staff controls use Space Grotesk.
+Both apps serve their fonts locally.
+
+Auth uses a narrow form column without an outer card.
+Rules separate identity, shared profile, security, and consent details.
+Password, recovery, and consent controls retain their existing behavior.
+The auth stylesheet is `auth/public/account.css`.
+
+The CFP landing shows the live submission status beside the next applicant action.
+The CFP header collapses navigation below 1024 pixels.
+Its menu exposes the current page and closes after a route change.
+Speaker profile fields form two groups: speaker details and links with speaking experience.
+Staff filters use a compact grid.
+Wide staff tables scroll within their own container, not the page.
+Empty states, retry controls, and server-enforced permissions remain part of each workflow.

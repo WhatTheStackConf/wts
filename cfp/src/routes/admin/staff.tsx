@@ -146,8 +146,8 @@ export default function AdminStaffPage() {
           <AdminSection title="Known WTS identities" description="Only local accounts appear. These edition grants do not create or change central accounts.">
             <p>Active edition administrators: {directory()!.activeAdminCount}. Revocation of the final active administrator is disabled here and remains protected by the server.</p>
             <Show when={directory()!.members.length} fallback={<p class="empty-state">No locally known WTS identities are available for this edition.</p>}>
-              <div class="overflow-x-auto" tabindex="0" aria-label="Scrollable WTS staff directory">
-                <table class="table table-zebra min-w-[52rem]"><caption class="sr-only">Known accounts and current edition roles</caption>
+              <div class="overflow-x-auto admin-table-wrapper" tabindex="0" aria-label="Scrollable WTS staff directory">
+                <table class="table table-zebra min-w-[52rem] admin-table"><caption class="sr-only">Known accounts and current edition roles</caption>
                   <thead><tr><th>WTS identity</th><th>Admin access</th><th>Reviewer access</th><th>Assignments</th><th>Saved reviews</th></tr></thead>
                   <tbody><For each={directory()!.members}>{(member) => <tr>
                     <th>{member.speakerName || "Known WTS account"}<br /><span class="mono">{member.wtsUserId}</span></th>

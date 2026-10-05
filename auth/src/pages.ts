@@ -94,45 +94,46 @@ function content(state: PageState): { title: string; html: string } {
     case "sign-in":
       return { title: "Sign in", html: `<h1>Sign in</h1><p class="intro">Use your WTS identity account.</p>
         ${form("sign-in", "/api/auth/sign-in/email", state, `${emailField()}${passwordField(false)}<button class="button" type="submit">Sign in</button>`)}
-        <div class="form-links"><a href="${escape(pageLink("/recovery", state))}">Forgot your password?</a><a href="${escape(pageLink("/verify-email", state))}">Verify your email</a></div>
+        <nav class="form-links" aria-label="Account help"><a href="${escape(pageLink("/recovery", state))}">Forgot password?</a><a href="${escape(pageLink("/verify-email", state))}">Verify email</a></nav>
         ${providers(state)}
-        ${state.registrationOpen ? `<p class="form-links">New here? <a href="${escape(pageLink("/sign-up", state))}">Create an account</a></p>` : closedRegistration()}` };
+        ${state.registrationOpen ? `<p class="form-links signup-link">New to WTS? <a href="${escape(pageLink("/sign-up", state))}">Create an account</a></p>` : closedRegistration()}` };
     case "sign-up":
       return { title: "Create account", html: `<h1>Create account</h1>${state.registrationOpen ? `<p class="intro">Create your WTS identity. Verify your email before you sign in to an app.</p>
         ${form("sign-up", "/api/auth/sign-up/email", state, `${nameField()}${emailField()}${passwordField(true)}<button class="button" type="submit">Create account</button>`)}${providers(state)}` : closedRegistration()}
         <p class="form-links"><a href="${escape(pageLink("/sign-in", state))}">Return to sign in</a></p>` };
     case "recovery":
-      return { title: "Recover your account", html: `<h1>Recover your account</h1><p class="intro">Enter your account email to request a password reset link.</p>
+      return { title: "Recover your account", html: `<h1>Recover your account</h1><p class="intro">Enter the email on your account to request a reset link.</p>
         ${form("recovery", "/api/auth/request-password-reset", state, `${emailField()}<button class="button" type="submit">Send reset link</button>`)}
         <p class="form-links"><a href="${escape(pageLink("/sign-in", state))}">Return to sign in</a></p>` };
     case "reset-password":
-      return { title: "Reset your password", html: `<h1>Reset your password</h1>${state.token === null ? `<p>This reset link is missing or no longer valid. Request a new link to reset your password.</p><a class="button" href="${escape(pageLink("/recovery", state))}">Request a new reset link</a>` : `<p class="intro">Choose a new password. This resets your central account sessions.</p>
+      return { title: "Reset your password", html: `<h1>Reset your password</h1>${state.token === null ? `<div class="state-copy"><p>This reset link is missing or no longer valid.</p><p>Request a new link to reset your password.</p></div><a class="button" href="${escape(pageLink("/recovery", state))}">Request a new reset link</a>` : `<p class="intro">Choose a new password. This ends central account sessions.</p>
         ${form("reset-password", "/api/auth/reset-password", state, `${hidden("token", state.token)}${passwordField(true, "newPassword")}<button class="button" type="submit">Reset password</button>`)}
         <p class="form-links"><a href="${escape(pageLink("/sign-in", state))}" data-reset-sign-in hidden>Sign in with your new password</a></p>`}` };
     case "verify-email":
       return { title: state.verified ? "Email verified" : "Verify your email", html: `<h1>${state.verified ? "Email verified" : "Verify your email"}</h1>
-        ${state.verified ? `<p class="intro">Your email is verified. Sign in to continue.</p><a class="button" href="${escape(pageLink("/sign-in", state))}">Continue to sign in</a>` : `<p class="intro">Open the verification link in your email. If you need a new link, enter your account email below.</p>
+        ${state.verified ? `<p class="intro">Your email is verified. Sign in to continue.</p><a class="button" href="${escape(pageLink("/sign-in", state))}">Continue to sign in</a>` : `<p class="intro">Open the link in your email. Enter your account email to request another link.</p>
         ${form("verify-email", "/api/auth/send-verification-email", state, `${emailField(state.email ?? "")}<button class="button" type="submit">Resend verification email</button>`)}
         <p class="form-links"><a href="${escape(pageLink("/sign-in", state))}">Return to sign in</a></p>`}` };
     case "consent":
       return { title: "Allow app access?", html: `<h1>Allow app access?</h1><p class="intro"><strong>${escape(state.client.name)}</strong> requests access to your WTS identity.</p>
-        <p>The app will receive:</p><ul class="scope-list">${state.scopes.map((scope) => `<li>${escape(scopeDescription(scope))}</li>`).join("")}</ul>
+        <section class="consent-details" aria-labelledby="consent-details-title"><h2 id="consent-details-title">Information shared</h2><ul class="scope-list">${state.scopes.map((scope) => `<li>${escape(scopeDescription(scope))}</li>`).join("")}</ul>
         <p class="field-help">You will return to <span class="destination">${escape(state.client.redirectUri)}</span>.</p>
-        <p>Consent shares your identity information. It does not grant app permissions.</p>
+        <p class="field-help">This shares identity information. It does not grant app permissions.</p></section>
         ${form("consent", "/api/auth/oauth2/consent", state, `<div class="consent-actions"><button class="button" type="submit" name="accept" value="true">Allow access</button><button class="button button-secondary" type="submit" name="accept" value="false">Deny access</button></div>`)}
         <p class="form-links"><a href="/account">Review your account</a></p>` };
     case "account":
-      return { title: "Your account", html: `<h1>Your account</h1><p class="intro">Manage the profile that connected apps read.</p>
-        <dl class="account-details"><div><dt>Email</dt><dd>${escape(state.email)}</dd></div><div><dt>WTS user ID</dt><dd>${escape(state.profile.wtsUserId)}</dd></div>${state.profile.username ? `<div><dt>Preserved username</dt><dd>${escape(state.profile.username)}</dd></div>` : ""}</dl>
+      return { title: "Your account", html: `<h1>Your account</h1><p class="intro">Manage the profile connected apps can read.</p>
+        <section class="identity-summary" aria-labelledby="identity-title"><h2 id="identity-title">Account identity</h2><dl class="account-details"><div><dt>Email</dt><dd>${escape(state.email)}</dd></div><div><dt>WTS user ID</dt><dd>${escape(state.profile.wtsUserId)}</dd></div>${state.profile.username ? `<div><dt>Preserved username</dt><dd>${escape(state.profile.username)}</dd></div>` : ""}</dl></section>
+        <section class="profile-section" aria-labelledby="profile-title"><h2 id="profile-title">Shared profile</h2><p class="field-help">Connected apps can read these profile details. They do not grant app permissions.</p>
         ${form("profile", "/v1/me", state, `${hidden("expectedRevision", String(state.profile.revision))}${nameField(state.profile.name)}
-          <div class="field"><label for="avatarUrl">Avatar URL</label><p id="avatar-help" class="field-help">Use an HTTPS image URL without a username or password. Leave this field empty to remove your avatar.</p><input id="avatarUrl" name="avatarUrl" type="url" autocomplete="url" maxlength="2048" aria-describedby="avatar-help" value="${escape(state.profile.avatarUrl ?? "")}"></div>
-          <div class="field"><label for="preferredLanguage">Preferred language</label><p class="field-help" id="language-help">Use a language tag with its standard case, such as en, en-US, or mk. Leave this field empty for no preference.</p><input id="preferredLanguage" name="preferredLanguage" type="text" autocomplete="off" maxlength="64" spellcheck="false" aria-describedby="language-help" value="${escape(state.profile.preferredLanguage ?? "")}"></div>
+          <div class="field"><label for="avatarUrl">Avatar URL</label><p id="avatar-help" class="field-help">Use an HTTPS image URL without a username or password. Leave empty to remove your avatar.</p><input id="avatarUrl" name="avatarUrl" type="url" autocomplete="url" maxlength="2048" aria-describedby="avatar-help" value="${escape(state.profile.avatarUrl ?? "")}"></div>
+          <div class="field"><label for="preferredLanguage">Preferred language</label><p class="field-help" id="language-help">Use a language tag such as en, en-US, or mk. Leave empty for no preference.</p><input id="preferredLanguage" name="preferredLanguage" type="text" autocomplete="off" maxlength="64" spellcheck="false" aria-describedby="language-help" value="${escape(state.profile.preferredLanguage ?? "")}"></div>
           <button class="button" type="submit">Save profile</button><button class="button button-secondary" type="button" data-profile-reload hidden>Load current profile</button>`)}
-        <section class="session-section" aria-labelledby="session-title"><h2 id="session-title">Central account session</h2><p>Sign out of this account service to end your central session. Other apps can retain their local sessions.</p>
+        </section><section class="session-section" aria-labelledby="session-title"><h2 id="session-title">Security</h2><p>Sign out here to end your central account session. Other apps can retain their local sessions.</p>
           ${form("sign-out", "/api/auth/sign-out", state, '<button class="button button-secondary" type="submit">Sign out of this account</button>')}
           <a href="${escape(pageLink("/recovery", state))}">Reset your password</a></section>` };
     case "error":
-      return { title: state.title, html: `<h1>${escape(state.title)}</h1><p class="intro">${escape(state.message)}</p><p>Return to sign in to start a new account request.</p><a class="button" href="/sign-in">Return to sign in</a>` };
+      return { title: state.title, html: `<h1>${escape(state.title)}</h1><p class="intro">${escape(state.message)}</p><p>Return to sign in to try again.</p><a class="button" href="/sign-in">Return to sign in</a>` };
     default: {
       const exhaustive: never = state;
       return exhaustive;
@@ -146,7 +147,7 @@ export function renderPage(state: PageState): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow">
     <title>${escape(page.title)} | WTS account</title><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/account.css"><script src="/assets/account.js" defer></script></head>
     <body><a class="skip-link" href="#main">Skip to content</a><header class="support-header"><div class="header-inner">
-      <a class="brand" href="https://wts.sh/" aria-label="WhatTheStack home"><img src="/assets/logo.svg" width="36" height="46" alt=""><span>WhatTheStack <span class="brand-year">WTS account</span></span></a>
+      <a class="brand" href="https://wts.sh/" aria-label="WhatTheStack home"><img src="/assets/logo.svg" width="36" height="46" alt=""><span><span class="brand-name">WhatTheStack</span><span class="brand-year">WTS account</span></span></a>
       <nav aria-label="Account navigation"><a href="https://wts.sh/">WTS website</a><a href="${state.kind === "account" ? "/account" : escape(pageLink("/sign-in", state))}">${state.kind === "account" ? "Your account" : "Sign in"}</a></nav>
     </div></header><main id="main" class="account-main" tabindex="-1">${notice}${page.html}
       <noscript><p class="page-notice">Enable JavaScript to complete account actions. You can still use the existing <a href="https://wts.sh/login">WTS login</a>.</p></noscript>

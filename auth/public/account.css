@@ -1,3 +1,7 @@
+/* Hallmark · macrostructure: task-first identity forms · theme: existing WTS 2027
+ * Genre: app · tone: compact and direct · anchor: navy with cyan actions
+ * Pre-emit critique: P4 H4 E4 S4 R5 V4 · scope: locked-system redesign
+ */
 @font-face {
   font-family: "Space Grotesk";
   src: url("/assets/fonts/space-grotesk-latin.woff2") format("woff2");
@@ -207,4 +211,239 @@ dd { margin: 0; overflow-wrap: anywhere; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
+}
+@font-face {
+  font-family: "Starzoom Shavian";
+  src: url("/assets/fonts/starzoom-shavian.regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+.header-inner {
+  width: min(100%, 1320px);
+  min-height: 72px;
+  padding: 0.75rem 2rem;
+}
+.brand {
+  gap: 0.7rem;
+  font-size: 1.1rem;
+}
+.brand img {
+  width: 28px;
+  height: 36px;
+}
+.brand-name {
+  font-family: var(--font-brand);
+  font-size: 1.35rem;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.brand-year {
+  margin-top: 0.25rem;
+  color: var(--paper);
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+.account-main {
+  width: min(100%, 40rem);
+  min-height: calc(100svh - 72px - 112px);
+  padding: clamp(2.5rem, 6vw, 4rem) 1.5rem 3.5rem;
+}
+h1 {
+  margin-bottom: 0.65rem;
+  font-size: clamp(1.9rem, 5vw, 2.35rem);
+  letter-spacing: -0.025em;
+}
+h2 {
+  font-size: 1.125rem;
+  letter-spacing: -0.015em;
+}
+.intro {
+  max-width: 38ch;
+  margin-bottom: 1.5rem;
+}
+form {
+  gap: 1rem;
+}
+input:not([type="hidden"]) {
+  border-radius: 5px;
+}
+.button {
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.button:focus-visible,
+.password-toggle:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline-color: var(--focus);
+}
+.form-links {
+  gap: 0.25rem 1.25rem;
+  margin-top: 1.25rem;
+}
+.provider-section,
+.registration-note,
+.session-section,
+.identity-summary,
+.profile-section,
+.consent-details {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+}
+.provider-section {
+  gap: 0.75rem;
+}
+.provider-section form .button {
+  width: 100%;
+}
+.registration-note h2 {
+  margin-bottom: 0.5rem;
+}
+.registration-note p:last-child {
+  margin-bottom: 0;
+}
+.signup-link {
+  margin-top: 0.75rem;
+}
+.state-copy {
+  margin-block: 1rem 1.25rem;
+}
+.state-copy p:last-child {
+  margin-bottom: 0;
+}
+.consent-details {
+  margin-top: 0.5rem;
+  padding-bottom: 0.25rem;
+}
+.consent-details h2 {
+  margin-bottom: 0.6rem;
+}
+.scope-list {
+  padding-left: 1.2rem;
+}
+.scope-list li {
+  padding-left: 0.15rem;
+  margin-block: 0.4rem;
+}
+.consent-actions {
+  gap: 0.65rem;
+}
+.consent-actions .button {
+  min-width: 0;
+  padding-inline: 0.65rem;
+}
+.identity-summary h2,
+.profile-section h2 {
+  margin-bottom: 0.75rem;
+}
+.account-details {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 0;
+}
+.account-details > div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.7fr) minmax(0, 1.3fr);
+  gap: 0.75rem;
+  margin: 0;
+}
+.profile-section > .field-help {
+  margin-bottom: 1rem;
+}
+.session-section > p {
+  max-width: 55ch;
+}
+.session-section > a {
+  margin-top: 0.5rem;
+}
+.account-footer {
+  padding: 1rem 1.5rem;
+}
+
+@media (max-width: 767px) {
+  .header-inner {
+    min-height: 104px;
+    padding: 0.65rem 1rem;
+    flex-direction: row;
+    gap: 0.5rem;
+  }
+  .brand {
+    align-self: auto;
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 1rem;
+  }
+  .brand-name {
+    font-size: 1.15rem;
+  }
+  nav {
+    width: auto;
+    justify-content: flex-end;
+    gap: 0 0.75rem;
+  }
+  nav a {
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  .account-main {
+    min-height: calc(100svh - 104px - 112px);
+    padding: 2.5rem 1rem 3rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .header-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.2rem;
+  }
+  .brand {
+    align-self: flex-start;
+  }
+  nav {
+    justify-content: flex-start;
+  }
+  .account-main {
+    padding-top: 2rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .consent-actions {
+    grid-template-columns: 1fr;
+  }
+  .consent-actions .button {
+    width: 100%;
+  }
+  .account-details > div {
+    grid-template-columns: minmax(5.5rem, 0.8fr) minmax(0, 1.2fr);
+    gap: 0.5rem;
+  }
+}
+.support-header nav a {
+  color: var(--paper);
+}
+.account-main nav a {
+  color: var(--link);
+}
+
+:root {
+  --font-brand: "Starzoom Shavian", "Space Grotesk", sans-serif;
+  --font-body: "Space Grotesk", sans-serif;
+  font-family: var(--font-body);
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
+h1,
+h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-style: normal;
 }

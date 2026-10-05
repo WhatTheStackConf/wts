@@ -1,4 +1,8 @@
 @import "tailwindcss";
+/* Hallmark · macrostructure: task-first applicant and staff workspaces · theme: existing WTS 2027
+ * Genre: app · tone: compact and direct · anchor: navy with cyan actions
+ * Pre-emit critique: P4 H4 E4 S4 R4 V4 · scope: locked-system redesign
+ */
 
 @plugin "daisyui" {
   themes: wts --default;
@@ -953,4 +957,458 @@ select.control {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+/* Hallmark · critique: clearer role navigation, task hierarchy, and compact staff workspaces
+ * designed-as-app: existing CFP routes and actions, with no new product claims
+ */
+
+@font-face {
+  font-family: "StarzoomShavian";
+  src: url("/fonts/starzoom-shavian.regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+:root {
+  --font-sans: "Space Grotesk", sans-serif;
+  --font-brand: "StarzoomShavian", "Space Grotesk", sans-serif;
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+.brand strong {
+  font-family: var(--font-brand);
+  font-size: 1.2rem;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.page-main {
+  width: min(100% - 2rem, 1160px);
+}
+
+.page-heading {
+  margin-bottom: clamp(1.5rem, 3vw, 2.25rem);
+}
+
+.page-heading h1,
+.cfp-home-intro h1 {
+  max-width: 28ch;
+  overflow-wrap: anywhere;
+  font-family: var(--font-sans);
+  font-size: clamp(2rem, 4.2vw, 3.1rem);
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.16;
+  min-width: 0;
+}
+
+.cfp-home-intro {
+  margin-bottom: clamp(1.25rem, 3vw, 2rem);
+}
+
+.cfp-home-intro .lede {
+  max-width: 64ch;
+  margin-bottom: 0;
+}
+
+.cfp-home-status {
+  max-width: 58rem;
+  gap: 1rem;
+}
+
+.cfp-home-status .surface-title {
+  align-items: center;
+}
+
+.cfp-home-status .surface-title h2 {
+  margin-bottom: 0.35rem;
+}
+
+.cfp-home-status .surface-title p {
+  max-width: 55ch;
+}
+
+.cfp-home-action {
+  min-width: 13rem;
+}
+
+.nav-toggle {
+  display: none;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--cfp-header-rule);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--cfp-header-content);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.nav-toggle:hover,
+.nav-toggle[aria-expanded="true"] {
+  background: color-mix(in oklch, var(--cfp-header-content) 8%, transparent);
+}
+
+.nav-toggle-mark {
+  color: var(--color-primary);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.primary-nav a {
+  white-space: nowrap;
+}
+
+.primary-nav a[aria-current="page"] {
+  box-shadow: inset 0 -2px 0 var(--color-primary);
+}
+
+.account-menu form {
+  margin: 0;
+}
+
+.button,
+.cfp-status {
+  white-space: nowrap;
+}
+
+.button:active {
+  transform: translateY(1px);
+}
+
+.button:focus-visible,
+.nav-toggle:focus-visible,
+.primary-nav a:focus-visible {
+  outline: 3px solid var(--color-warning);
+  outline-offset: 3px;
+}
+
+.surface {
+  border-radius: 8px;
+}
+
+.surface + .surface {
+  margin-top: 1rem;
+}
+
+.admin-section {
+  gap: 1rem;
+  padding: clamp(1rem, 2.2vw, 1.5rem);
+}
+
+.admin-section > .surface-title h2 {
+  margin-bottom: 0.25rem;
+}
+
+.admin-filters {
+  gap: 0.8rem;
+  padding-block: 0.5rem 1rem;
+  border-bottom: 1px solid var(--color-base-300);
+}
+
+.admin-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.admin-filter-grid label {
+  display: grid;
+  min-width: 0;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.admin-filter-grid .control {
+  min-width: 0;
+}
+
+.admin-filter-grid > .button {
+  width: 100%;
+}
+
+.admin-table-wrapper {
+  max-width: 100%;
+  border: 1px solid var(--color-base-300);
+  border-radius: 6px;
+  background: var(--color-base-100);
+  overscroll-behavior-x: contain;
+  scrollbar-color: var(--cfp-muted) var(--color-base-100);
+}
+
+.admin-table {
+  font-size: 0.9rem;
+}
+
+.admin-table :is(th, td) {
+  padding: 0.55rem 0.7rem;
+  vertical-align: top;
+}
+
+.admin-table th {
+  color: var(--color-base-content);
+}
+
+.admin-table td .cfp-stack {
+  gap: 0.45rem;
+}
+
+.admin-table .button-small {
+  width: fit-content;
+}
+
+.cfp-list {
+  gap: 0;
+}
+
+.cfp-list .list-item {
+  padding-inline: 0;
+  border: 0;
+  border-bottom: 1px solid color-mix(in oklch, var(--color-base-content) 16%, transparent);
+  border-radius: 0;
+  background: transparent;
+}
+
+.cfp-list .list-item:last-child {
+  border-bottom: 0;
+}
+
+.list-item h3,
+.list-item p {
+  overflow-wrap: anywhere;
+}
+
+.cfp-progress {
+  scrollbar-color: var(--cfp-muted) var(--color-base-200);
+}
+
+.cfp-progress li,
+.cfp-progress .is-complete {
+  white-space: nowrap;
+}
+
+.editor-toolbar {
+  flex-wrap: wrap;
+}
+
+.control,
+.editor-content {
+  border-width: 1px;
+}
+
+.control:focus-visible {
+  outline: 3px solid var(--color-warning);
+  outline-offset: 2px;
+}
+
+.editor-content:focus-visible {
+  outline: 3px solid var(--color-warning);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.confirm-section {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 63.999rem) {
+  html {
+    scroll-padding-top: 1rem;
+  }
+
+  .site-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 0;
+    padding: 0.65rem max(1rem, calc((100% - 1160px) / 2));
+  }
+
+  .brand {
+    min-width: 0;
+    margin: 0;
+  }
+
+  .brand strong {
+    font-size: 1.1rem;
+  }
+
+  .nav-toggle {
+    display: inline-flex;
+  }
+
+  .primary-nav {
+    display: none;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.25rem;
+    width: 100%;
+    margin: 0;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--cfp-header-rule);
+  }
+
+  .primary-nav[data-open="true"] {
+    display: grid;
+  }
+
+  .primary-nav a {
+    min-width: 0;
+    justify-content: start;
+    padding-inline: 0.75rem;
+  }
+
+  .header-auth,
+  .header-status,
+  .account-menu {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .account-menu {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .account-email {
+    max-width: calc(100% - 8rem);
+  }
+
+  .site-header .button-small {
+    min-height: 48px;
+  }
+
+  .page-main {
+    width: min(100% - 2rem, 1160px);
+    padding-block: clamp(1.5rem, 4vw, 2.5rem);
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .page-main {
+    width: min(100% - 1.25rem, 1160px);
+  }
+
+  .cfp-home-status .surface-title {
+    align-items: flex-start;
+  }
+
+  .cfp-home-status .row {
+    align-items: stretch;
+  }
+
+  .cfp-home-status .row > * {
+    flex: 1 1 100%;
+  }
+
+  .cfp-home-action {
+    justify-content: center;
+  }
+
+  .admin-filters {
+    padding: 0.8rem;
+  }
+
+  .admin-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-table :is(th, td) {
+    padding: 0.5rem;
+  }
+
+  .cfp-progress {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 22rem) {
+  .site-header {
+    padding-inline: 0.75rem;
+  }
+
+  .brand {
+    gap: 0.5rem;
+  }
+
+  .brand img {
+    width: 36px;
+    height: 36px;
+  }
+
+  .brand strong {
+    font-size: 1rem;
+  }
+
+  .brand small {
+    font-size: 0.7rem;
+  }
+
+  .nav-toggle {
+    padding-inline: 0.55rem;
+  }
+
+  .page-main {
+    width: calc(100% - 1.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button:active {
+    transform: none;
+  }
+}
+.page-main > form.surface {
+  max-width: 58rem;
+}
+
+.cfp-status[data-state="active"] {
+  border-color: color-mix(in oklch, var(--color-success) 60%, transparent);
+  color: var(--color-success);
+}
+
+.cfp-status[data-state="pending"] {
+  border-color: color-mix(in oklch, var(--color-warning) 60%, transparent);
+  color: var(--color-base-content);
+}
+.form-section {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+  padding: 1.1rem 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-base-300);
+}
+
+.form-section legend {
+  padding: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.site-header {
+  min-height: 72px;
+}
+
+.button,
+.button-secondary,
+.button-quiet,
+.control,
+.editor-tool {
+  border-radius: 5px;
 }

@@ -148,8 +148,8 @@ export default function AdminWorkspacePage() {
               <div><dt>Rejected</dt><dd>{workspace()!.counts.rejected}</dd></div>
               <For each={CRITERIA}>{(criterion) => <div><dt>{CRITERION_LABELS[criterion]}</dt><dd>{workspace()!.weighting.averages[criterion]}</dd></div>}</For>
             </dl>
-            <form class="cfp-stack" onSubmit={submitFilters} aria-label="Filter proposals">
-              <div class="row">
+            <form class="cfp-stack admin-filters" onSubmit={submitFilters} aria-label="Filter proposals">
+              <div class="admin-filter-grid">
                 <label>Status
                   <select class="control" name="status" value={query().status ?? "pending"} onChange={(event) => changeQuery({ status: event.currentTarget.value as AdminQuery["status"] })}>
                     <option value="pending">Pending</option><option value="accepted">Accepted</option><option value="rejected">Rejected</option><option value="all">All statuses</option>
@@ -177,7 +177,7 @@ export default function AdminWorkspacePage() {
               </div>
             </form>
             <Show when={request.savedMessage()}><p class="alert" role="status">{request.savedMessage()}</p></Show>
-            
+
             <Show when={pendingDecision() && !busy()}><p class="alert" role="status">A decision response was uncertain. Retry the same saved request before you start another bulk decision. Request ID: {pendingDecision()?.requestId} <button class="button button-secondary button-small" type="button" disabled={busy()} onClick={() => void submitDecision(pendingDecision()!)}>Retry exact decision</button></p></Show>
             <div class="row row-between">
               <p>{workspace()!.total} proposals · page {workspace()!.page}</p>
@@ -200,8 +200,8 @@ export default function AdminWorkspacePage() {
               </fieldset>
             </Show>
             <Show when={workspace()!.proposals.length} fallback={<p class="empty-state">No proposals match these filters.</p>}>
-              <div class="overflow-x-auto" tabindex="0" aria-label="Scrollable proposal results">
-                <table class="table table-zebra min-w-[70rem]">
+              <div class="overflow-x-auto admin-table-wrapper" tabindex="0" aria-label="Scrollable proposal results">
+                <table class="table table-zebra min-w-[70rem] admin-table">
                   <caption class="sr-only">CFP proposals, review evidence, and decisions</caption>
                   <thead><tr><th><span class="sr-only">Select</span></th><th>Proposal</th><th>Applicant</th><th>Status</th><th>Normalized score</th><th>Reviews current / stale / total</th><th>Expenses</th><th>Submitted</th></tr></thead>
                   <tbody><For each={workspace()!.proposals}>{(row) => <tr>

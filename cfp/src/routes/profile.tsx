@@ -64,11 +64,17 @@ export default function Profile() {
     <Show when={workspace() && error()?.code !== "unauthenticated" && error()?.code !== "unavailable"}>
       <form class="surface form" onSubmit={save}>
         <div class="field"><label for="profile-email">Account email</label><input id="profile-email" class="control" type="email" value={workspace()!.email} disabled autocomplete="email" /><span class="hint">Email comes from your verified WTS account.</span></div>
+        <fieldset class="form-section">
+          <legend>Speaker details</legend>
         <div class="field"><label for="profile-name">Full name <span class="required">Required</span></label><input id="profile-name" class="control" name="fullName" autocomplete="name" maxlength="200" required value={name()} onInput={(event) => setName(event.currentTarget.value)} /></div>
         <div class="field"><label for="profile-affiliation">Affiliation</label><input id="profile-affiliation" class="control" name="affiliation" autocomplete="organization-title" maxlength="500" value={affiliation()} onInput={(event) => setAffiliation(event.currentTarget.value)} /></div>
         <div class="field"><label for="profile-bio">Short bio <span class="required">Required</span></label><p class="hint" id="profile-bio-help">This bio can appear publicly if your talk is accepted.</p><textarea id="profile-bio" class="control" name="bio" required maxlength="50000" aria-describedby="profile-bio-help" value={bio()} onInput={(event) => setBio(event.currentTarget.value)} /></div>
+        </fieldset>
+        <fieldset class="form-section">
+          <legend>Links and experience</legend>
         <div class="field"><label for="profile-social">Social links</label><p class="hint" id="profile-social-help">Enter one link per line.</p><textarea id="profile-social" class="control" name="socialHandles" maxlength="15000" aria-describedby="profile-social-help" value={socialHandles()} onInput={(event) => setSocialHandles(event.currentTarget.value)} /></div>
         <div class="field"><label for="profile-talks">Previous talks</label><p class="hint" id="profile-talks-help">Add talk links or speaker-profile details. This information is reused in each application.</p><textarea id="profile-talks" class="control" name="previousTalks" maxlength="50000" aria-describedby="profile-talks-help" value={previousTalks()} onInput={(event) => setPreviousTalks(event.currentTarget.value)} /></div>
+        </fieldset>
         <div class="form-actions"><a class="button button-secondary" href="/applications">Back to applications</a><button class="button" type="submit" disabled={busy()}>{busy() ? "Saving profile…" : "Save profile"}</button></div>
         <Show when={saved()}><p role="status" class="muted">Your speaker profile is saved.</p></Show>
       </form>
