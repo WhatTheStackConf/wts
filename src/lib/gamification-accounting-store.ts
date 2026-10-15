@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import type PocketBase from "pocketbase";
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import type { GamificationAccountingStore } from "~/lib/gamification-accounting";
 
@@ -37,10 +38,44 @@ function wait(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
+async function clearExpiredLockOrBackOff(pb: PocketBase, key: string): Promise<void> {
+  const { expression, parameters } = matchingFilter({ key });
+  const existing = await pb.collection(LOCK_COLLECTION)
+    .getFirstListItem<{ id: string; expires_at: string }>(pb.filter(expression, parameters))
+    .catch(() => undefined);
+  if (existing && Date.parse(existing.expires_at) <= Date.now()) {
+    await pb.collection(LOCK_COLLECTION).delete(existing.id).catch(() => undefined);
+  } else {
+    await wait(25 + Math.floor(Math.random() * 25));
+  }
+}
+
+async function acquireLock(pb: PocketBase, key: string, owner: string, deadline: number): Promise<{ id: string; key: string }> {
+  while (Date.now() < deadline) {
+    try {
+      const lock = await pb.collection(LOCK_COLLECTION).create<{ id: string }>({
+        key,
+        owner,
+        expires_at: new Date(Date.now() + LOCK_LEASE_MS).toISOString(),
+      });
+      return { id: lock.id, key };
+    } catch (error) {
+      if ((error as { status?: number }).status !== 400) throw error;
+      await clearExpiredLockOrBackOff(pb, key);
+    }
+  }
+  throw new Error("The gamification operation is busy. Retry using the same operation reference.");
+}
+
 /** PocketBase adapter kept separate so accounting contracts cannot use a browser client. */
 export function createGamificationAccountingStore(): GamificationAccountingStore {
   const admin = getAdminPB();
   const store: GamificationAccountingStore = {
+    async count(collection, match) {
+      const { expression, parameters } = matchingFilter(match);
+      const pb = await admin.getInstance();
+      return (await pb.collection(collection).getList(1, 1, { filter: pb.filter(expression, parameters), fields: "id", skipTotal: false })).totalItems;
+    },
     async findOne<T>(collection: string, match: Record<string, unknown>): Promise<T | undefined> {
       const { expression, parameters } = matchingFilter(match);
       const pb = await admin.getInstance();
@@ -109,33 +144,7 @@ export function createGamificationAccountingStore(): GamificationAccountingStore
       const deadline = Date.now() + LOCK_WAIT_MS;
       const pb = await admin.getInstance();
       try {
-        for (const key of required) {
-          while (Date.now() < deadline) {
-            try {
-              const lock = await pb.collection(LOCK_COLLECTION).create<{ id: string }>({
-                key,
-                owner,
-                expires_at: new Date(Date.now() + LOCK_LEASE_MS).toISOString(),
-              });
-              acquired.push({ id: lock.id, key });
-              break;
-            } catch (error) {
-              if ((error as { status?: number }).status !== 400) throw error;
-              const { expression, parameters } = matchingFilter({ key });
-              const existing = await pb.collection(LOCK_COLLECTION)
-                .getFirstListItem<{ id: string; expires_at: string }>(pb.filter(expression, parameters))
-                .catch(() => undefined);
-              if (existing && Date.parse(existing.expires_at) <= Date.now()) {
-                await pb.collection(LOCK_COLLECTION).delete(existing.id).catch(() => undefined);
-              } else {
-                await wait(25 + Math.floor(Math.random() * 25));
-              }
-            }
-          }
-          if (!acquired.some((lock) => lock.key === key)) {
-            throw new Error("The gamification operation is busy. Retry using the same operation reference.");
-          }
-        }
+        for (const key of required) acquired.push(await acquireLock(pb, key, owner, deadline));
         return await heldLocks.run(new Set([...inherited, ...required]), operation);
       } finally {
         await Promise.all(acquired.map((lock) => pb.collection(LOCK_COLLECTION).delete(lock.id).catch(() => undefined)));

@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const fetchAllRecords = vi.fn();
 const fetchRecordById = vi.fn();
+const requireCapability = vi.hoisted(() => vi.fn());
 
 vi.mock("~/lib/pocketbase-admin-service", () => ({
   getAdminPB: () => ({
     fetchAllRecords,
     fetchRecordById,
   }),
+}));
+vi.mock("~/lib/capability-availability", () => ({
+  requireCapability,
 }));
 
 import {
@@ -75,6 +79,10 @@ describe("MCP programme data", () => {
   beforeEach(() => {
     fetchAllRecords.mockReset();
     fetchRecordById.mockReset();
+    const syntheticAvailability = { cfp: true, review: true };
+    requireCapability.mockImplementation(async (capability: keyof typeof syntheticAvailability) => {
+      if (!syntheticAvailability[capability]) throw new Error("Capability unavailable.");
+    });
   });
 
   it("exposes explicit MC status without inferring it from session availability", async () => {

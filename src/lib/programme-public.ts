@@ -9,6 +9,7 @@ import type {
   SpeakerRecord,
 } from "~/lib/pocketbase-types";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
+import { sessionHostIds, sharedSlotHosts, withoutHostCredit } from "~/lib/programme-hosts";
 
 /** Date/event assignment is known, but the session itself has no clock time yet. */
 export interface PublicSessionAnnouncement {
@@ -35,14 +36,21 @@ export interface PublicAgendaSession {
   /** Organizer-announced session timing, possibly without a confirmed end. */
   schedule?: PublicSessionSchedule;
   speakers: { slug: string; name: string; photoUrl?: string | null }[];
+  /** Explicit hosts, also retained in speakers for participant-list compatibility. */
+  hosts?: PublicAgendaSession["speakers"];
 }
 
 /** Shared allowlist for timed and announced sessions; never copy private profile fields. */
 export function publicAgendaSession(session: SessionRecord, speakersById: ReadonlyMap<string, SpeakerRecord>): PublicAgendaSession {
+  const hosts = publicAgendaSpeakers(sessionHostIds(session).flatMap((id) => {
+    const speaker = speakersById.get(id);
+    return speaker ? [speaker] : [];
+  }));
   return {
     slug: session.slug,
     title: session.title,
     format: session.format || undefined,
+    ...(hosts.length ? { hosts } : {}),
     speakers: publicAgendaSpeakers((session.speakers || []).flatMap((id) => {
       const speaker = speakersById.get(id);
       return speaker ? [speaker] : [];
@@ -122,6 +130,18 @@ export interface PublicAgenda {
   days: PublicAgendaDay[];
 }
 
+function slotTrack(slot: AgendaSlotRecord, tracksById: Map<string, AgendaTrackRecord>): AgendaTrackRecord | undefined {
+  return slot.track ? tracksById.get(slot.track) : undefined;
+}
+
+function isForeignTrack(track: AgendaTrackRecord | undefined, programmeId: string): boolean {
+  return Boolean(track && track.programme !== programmeId);
+}
+
+function slotLocationLabel(slot: AgendaSlotRecord, track: AgendaTrackRecord | undefined): string | undefined {
+  return slot.location_label || track?.location_label || undefined;
+}
+
 export function derivePublicSessionSchedule(
   slot: AgendaSlotRecord,
   programmesById: Map<string, EventProgrammeRecord>,
@@ -134,8 +154,8 @@ export function derivePublicSessionSchedule(
   const day = daysById.get(programme.day);
   const event = eventsById.get(programme.appearance_event);
   if (!day?.published || !event?.published) return undefined;
-  const track = slot.track ? tracksById.get(slot.track) : undefined;
-  if (track && track.programme !== programme.id) return undefined;
+  const track = slotTrack(slot, tracksById);
+  if (isForeignTrack(track, programme.id)) return undefined;
   return {
     dayDate: day.local_date,
     dayTitle: day.title,
@@ -143,7 +163,7 @@ export function derivePublicSessionSchedule(
     startAt: slot.start_at,
     endAt: slot.end_at,
     trackName: track?.name || undefined,
-    locationLabel: slot.location_label || track?.location_label || undefined,
+    locationLabel: slotLocationLabel(slot, track),
   };
 }
 
@@ -152,6 +172,52 @@ function publicAgendaEvent(event: AppearanceEventRecord): PublicAgendaEvent {
     name: event.name,
     compactLabel: event.compact_label || event.name,
     destinationUrl: event.destination_url || undefined,
+  };
+}
+
+function publicAgendaTrack(track: AgendaTrackRecord): PublicAgendaTrack {
+  return { key: track.key, name: track.name, locationLabel: track.location_label || undefined };
+}
+
+function trackDisplayOrder(tracksById: Map<string, AgendaTrackRecord>, trackId: string | undefined): number {
+  return Number(tracksById.get(trackId || "")?.display_order || 0);
+}
+
+function compareAgendaSlots(tracksById: Map<string, AgendaTrackRecord>) {
+  return (a: AgendaSlotRecord, b: AgendaSlotRecord): number => {
+    const timeOrder = Date.parse(a.start_at) - Date.parse(b.start_at);
+    if (timeOrder !== 0) return timeOrder;
+    if (!a.track && b.track) return -1;
+    if (a.track && !b.track) return 1;
+    const trackOrder = trackDisplayOrder(tracksById, a.track) - trackDisplayOrder(tracksById, b.track);
+    return trackOrder || Number(a.display_order) - Number(b.display_order);
+  };
+}
+
+interface PublicSlotContext {
+  eventId: string;
+  sessionsById: Map<string, SessionRecord>;
+  speakersById: Map<string, SpeakerRecord>;
+}
+
+function publicAgendaSlot(slot: AgendaSlotRecord, track: AgendaTrackRecord | undefined, { eventId, sessionsById, speakersById }: PublicSlotContext): PublicAgendaSlot | undefined {
+  const base = {
+    kind: slot.kind,
+    startAt: slot.start_at,
+    endAt: slot.end_at,
+    locationLabel: slotLocationLabel(slot, track),
+    track: track ? publicAgendaTrack(track) : undefined,
+  };
+  if (slot.kind === "session") {
+    const session = slot.session ? sessionsById.get(slot.session) : undefined;
+    return session ? { ...base, session: publicAgendaSession(session, speakersById) } : undefined;
+  }
+  const hosts = publicAgendaSpeakers(sharedSlotHosts(slot, eventId, speakersById));
+  return {
+    ...base,
+    title: slot.title || undefined,
+    ...(hosts.length ? { speakers: hosts } : {}),
+    summary: withoutHostCredit(slot.summary || "", hosts.map((host) => host.name)) || undefined,
   };
 }
 
@@ -186,49 +252,16 @@ export function buildPublicAgenda(
         programmes: visibleProgrammes.flatMap((programme) => {
           const event = eventsById.get(programme.appearance_event);
           if (!event) return [];
-          const slotRows = slots
+          const slotContext = { eventId: event.id, sessionsById, speakersById };
+          const visibleSlots = slots
             .filter((slot) => slot.published && slot.programme === programme.id)
-            .sort((a, b) => {
-              const timeOrder = Date.parse(a.start_at) - Date.parse(b.start_at);
-              if (timeOrder !== 0) return timeOrder;
-              if (!a.track && b.track) return -1;
-              if (a.track && !b.track) return 1;
-              const trackOrder = Number(tracksById.get(a.track || "")?.display_order || 0) -
-                Number(tracksById.get(b.track || "")?.display_order || 0);
-              return trackOrder || Number(a.display_order) - Number(b.display_order);
+            .sort(compareAgendaSlots(tracksById))
+            .flatMap((slot) => {
+              const track = slotTrack(slot, tracksById);
+              if (isForeignTrack(track, programme.id)) return [];
+              const publicSlot = publicAgendaSlot(slot, track, slotContext);
+              return publicSlot ? [publicSlot] : [];
             });
-          const visibleSlots: PublicAgendaSlot[] = [];
-
-          for (const slot of slotRows) {
-            const track = slot.track ? tracksById.get(slot.track) : undefined;
-            if (track && track.programme !== programme.id) continue;
-            if (slot.kind === "session") {
-              const session = slot.session ? sessionsById.get(slot.session) : undefined;
-              if (!session) continue;
-              visibleSlots.push({
-                kind: slot.kind,
-                startAt: slot.start_at,
-                endAt: slot.end_at,
-                locationLabel: slot.location_label || track?.location_label || undefined,
-                track: track
-                  ? { key: track.key, name: track.name, locationLabel: track.location_label || undefined }
-                  : undefined,
-                session: publicAgendaSession(session, speakersById),
-              });
-              continue;
-            }
-            visibleSlots.push({
-              kind: slot.kind,
-              startAt: slot.start_at,
-              endAt: slot.end_at,
-              locationLabel: slot.location_label || track?.location_label || undefined,
-              track: track
-                ? { key: track.key, name: track.name, locationLabel: track.location_label || undefined }
-                : undefined,
-              title: slot.title || undefined,
-              summary: slot.summary || undefined,
-            });
-          }
 
           return visibleSlots.length > 0
             ? [{
@@ -236,7 +269,7 @@ export function buildPublicAgenda(
               tracks: tracks
                 .filter((track) => track.programme === programme.id)
                 .sort((a, b) => Number(a.display_order) - Number(b.display_order) || a.key.localeCompare(b.key))
-                .map((track) => ({ key: track.key, name: track.name, locationLabel: track.location_label || undefined })),
+                .map(publicAgendaTrack),
               slots: visibleSlots,
             }]
             : [];

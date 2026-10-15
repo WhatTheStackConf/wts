@@ -1,5 +1,6 @@
 import PocketBase from "pocketbase";
 import { getRequestEvent } from "@solidjs/web";
+import { authFailure, type AuthOperation, type AuthResult } from "~/lib/auth-errors";
 import {
   PB_AUTH_COOKIE,
   hasManagedSessionCookie,
@@ -119,6 +120,25 @@ export const serverLoginWithTokenCore = async (token: string): Promise<SessionUs
   setSessionCookie(pb.authStore.token);
   return user;
 };
+
+async function loginResult(operation: AuthOperation, authenticate: () => Promise<SessionUser>): Promise<AuthResult<SessionUser>> {
+  try {
+    return { ok: true, user: await authenticate() };
+  } catch (error) {
+    const failure = authFailure(error, operation);
+    // Do not log the raw SDK error: its request can contain passwords/tokens.
+    if (failure.code === "unavailable" || failure.code === "network") {
+      console.error("Authentication service failure", { operation, code: failure.code });
+    }
+    return { ok: false, error: failure };
+  }
+}
+
+export const serverLoginResultCore = (email: string, password: string) =>
+  loginResult("password", () => serverLoginCore(email, password));
+
+export const serverLoginWithTokenResultCore = (token: string) =>
+  loginResult("oauth", () => serverLoginWithTokenCore(token));
 
 /** Returns sanitized session state and rotates valid legacy/readable cookies to HttpOnly. */
 export const getSessionCore = async (): Promise<SessionUser | null> => {

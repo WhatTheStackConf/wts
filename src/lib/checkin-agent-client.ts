@@ -39,15 +39,21 @@ async function request<T>(body: object, parse: (value: unknown) => T): Promise<T
 }
 export const agentAdminList = (): Promise<AgentAdminListDTO> => request({ operation: "admin_list" }, (value) => z.strictObject({ stations: z.array(readiness).length(3) }).parse(value));
 export const agentStatus = (): Promise<{ station: AgentReadinessDTO | null }> => request({ operation: "status" }, (value) => z.strictObject({ station: readiness.nullable() }).parse(value));
+type ControlResult = z.infer<typeof controlResult>;
+function checkIssuance(result: ControlResult): void {
+  if (result.station.credentialState !== "active" || !result.station.agentId || (!result.replayed && !result.credential)) throw new Error("Mismatched issuance");
+}
+function checkRevocation(result: ControlResult, agentId: string): void {
+  if (result.credential || result.station.credentialState !== "revoked" || result.station.agentId !== agentId) throw new Error("Mismatched revocation");
+}
 export function mutateAgent(mutation: AgentMutation): Promise<AgentControlResult> {
   const submitted = structuredClone(mutation);
   return request(submitted, (value) => {
     const result = controlResult.parse(value);
     if (result.station.stationId !== submitted.command.stationId || result.station.stationVersion !== submitted.command.expectedStationVersion + 1) throw new Error("Mismatched station result");
     if (result.replayed && result.credential) throw new Error("Replay exposed a credential");
-    if (submitted.operation === "admin_issue") {
-      if (result.station.credentialState !== "active" || !result.station.agentId || (!result.replayed && !result.credential)) throw new Error("Mismatched issuance");
-    } else if (result.credential || result.station.credentialState !== "revoked" || result.station.agentId !== submitted.command.agentId) throw new Error("Mismatched revocation");
+    if (submitted.operation === "admin_issue") checkIssuance(result);
+    else checkRevocation(result, submitted.command.agentId);
     return result;
   });
 }

@@ -1,6 +1,8 @@
-// API endpoint for admin operations
+import { capabilityAvailable, capabilityUnavailableMetadata, requireCapability } from "~/lib/capability-availability";
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { requireAdmin } from "~/lib/admin-security";
+import { requireApproved2027Admin } from "~/lib/edition-admin";
+import { fetchCfpAdminConfiguration, saveClosedCfpConfiguration } from "~/lib/cfp-admin-preparation";
 import { fetchHiEventsAttendees } from "~/lib/hievents";
 import { slugify, uniqueSpeakerSlug } from "~/lib/conference-slug";
 import {
@@ -12,6 +14,7 @@ import {
   normalizeSpeakerSocialHandles,
   speakerSnapshot,
   speakerSlugExistsForOther,
+  trimmedText,
   validateSpeakerPhotoUpload,
 } from "~/lib/admin-speaker-profile";
 import {
@@ -57,6 +60,14 @@ function pbAdminErrorMessage(error: unknown): string {
   }
   if (error instanceof Error && error.message) return error.message;
   return "Request failed";
+}
+
+function capabilityActionFailure(error: unknown) {
+  return {
+    success: false as const,
+    error: pbAdminErrorMessage(error),
+    ...capabilityUnavailableMetadata(error),
+  };
 }
 
 // Define a server function for admin operations
@@ -123,26 +134,21 @@ export const adminFetchAllUsers = async () => {
   try {
     await requireAdmin();
     const adminService = getAdminPB();
-
-    // Fetch users, applicants, and attendees in parallel
-    let attendees: any[] = [];
-    const [users, applicants] = await Promise.all([
+    const cfpAvailable = await capabilityAvailable("cfp");
+    const [users, applicants, attendees] = await Promise.all([
       adminService.fetchAllRecords("users", { sort: "-created" }),
-      adminService.fetchAllRecords("cfp_applicants", { fields: "user" }),
-      fetchHiEventsAttendees().then(a => { attendees = a; }).catch(() => {}),
+      cfpAvailable
+        ? adminService.fetchAllRecords("cfp_applicants", { fields: "user" })
+        : Promise.resolve([]),
+      fetchHiEventsAttendees().catch(() => []),
     ]);
-
-    // Create lookup sets
-    const applicantUserIds = new Set(applicants.map((a: any) => a.user));
-    const attendeeEmails = new Set(attendees.map((a: any) => a.email.toLowerCase()));
-
-    // Enhance user objects with isApplicant and hasTicket flags
+    const applicantUserIds = new Set(applicants.map((applicant: any) => applicant.user));
+    const attendeeEmails = new Set(attendees.map((attendee: any) => attendee.email.toLowerCase()));
     const enhancedUsers = users.map((user: any) => ({
       ...user,
       isApplicant: applicantUserIds.has(user.id),
       hasTicket: attendeeEmails.has(user.email.toLowerCase()),
     }));
-
     return { success: true, data: enhancedUsers };
   } catch (error) {
     console.error("Admin fetch all users error:", error);
@@ -183,6 +189,7 @@ export const adminFetchLeaderboardData = async () => {
   "use server";
 
   try {
+    await requireCapability("review");
     await requireAdmin();
     const adminService = getAdminPB();
 
@@ -249,17 +256,18 @@ export const adminFetchLeaderboardData = async () => {
     // 4. Sort by Score Descending
     scoredSubmissions.sort((a, b) => b.totalScore - a.totalScore);
 
-    return { success: true, data: scoredSubmissions };
+    return { success: true as const, data: scoredSubmissions };
 
   } catch (error) {
     console.error("Admin fetch leaderboard error:", error);
-    return { success: false, error: (error as Error).message };
+    return capabilityActionFailure(error);
   }
 };
 
 export const adminFetchUserSpeakerProfile = async (userId: string) => {
   "use server";
   try {
+    await requireCapability("cfp");
     await requireAdmin();
     const adminService = getAdminPB();
 
@@ -269,7 +277,7 @@ export const adminFetchUserSpeakerProfile = async (userId: string) => {
     });
 
     if (applicants.length === 0) {
-      return { success: true, data: null };
+      return { success: true as const, data: null };
     }
 
     const applicant = applicants[0];
@@ -281,7 +289,7 @@ export const adminFetchUserSpeakerProfile = async (userId: string) => {
     });
 
     return {
-      success: true,
+      success: true as const,
       data: {
         applicant,
         submissions,
@@ -289,7 +297,7 @@ export const adminFetchUserSpeakerProfile = async (userId: string) => {
     };
   } catch (error) {
     console.error("Admin fetch user speaker profile error:", error);
-    return { success: false, error: (error as Error).message };
+    return capabilityActionFailure(error);
   }
 };
 
@@ -327,13 +335,14 @@ export const adminFetchAttendeesWithAccounts = async () => {
 export const deleteSubmission = async (id: string) => {
   "use server";
   try {
+    await requireCapability("cfp");
     await requireAdmin();
     const adminPB = getAdminPB();
     await adminPB.deleteRecord("cfp_submissions", id);
-    return { success: true };
+    return { success: true as const };
   } catch (error: any) {
     console.error("Delete submission error:", error);
-    return { success: false, error: error.message };
+    return capabilityActionFailure(error);
   }
 };
 
@@ -348,20 +357,22 @@ function isCfpSubmissionStatus(status: unknown): status is CfpSubmissionStatus {
 export const adminSetSubmissionStatus = async (id: string, status: CfpSubmissionStatus) => {
   "use server";
   try {
+    await requireCapability("cfp");
     await requireAdmin();
     if (!isCfpSubmissionStatus(status)) return { success: false, error: "Choose a valid status." };
     const adminService = getAdminPB();
     const result = await adminService.updateRecord("cfp_submissions", id, { status });
-    return { success: true, data: result };
+    return { success: true as const, data: result };
   } catch (error) {
     console.error("Admin set submission status error:", error);
-    return { success: false, error: pbAdminErrorMessage(error) };
+    return capabilityActionFailure(error);
   }
 };
 
 export const adminSetSubmissionStatuses = async (ids: string[], status: CfpSubmissionStatus) => {
   "use server";
   try {
+    await requireCapability("cfp");
     await requireAdmin();
     if (!isCfpSubmissionStatus(status)) return { success: false, error: "Choose a valid status." };
 
@@ -377,10 +388,10 @@ export const adminSetSubmissionStatuses = async (ids: string[], status: CfpSubmi
       uniqueIds.map((id) => adminService.updateRecord("cfp_submissions", id, { status })),
     );
 
-    return { success: true, data: { updated: uniqueIds.length } };
+    return { success: true as const, data: { updated: uniqueIds.length } };
   } catch (error) {
     console.error("Admin bulk set submission status error:", error);
-    return { success: false, error: pbAdminErrorMessage(error) };
+    return capabilityActionFailure(error);
   }
 };
 
@@ -394,39 +405,19 @@ export type CfpConfigData = {
 export const adminFetchCfpConfig = async () => {
   "use server";
   try {
-    await requireAdmin();
-    const adminService = getAdminPB();
-    const records = await adminService.fetchAllRecords("conference_config");
-    if (records.length === 0) {
-      return { success: true, data: { cfp_open: true, cfp_deadline: "2026-07-30" } };
-    }
-    const r = records[0] as any;
-    return {
-      success: true,
-      data: { cfp_open: r.cfp_open ?? true, cfp_deadline: r.cfp_deadline ?? null },
-    };
+    await requireApproved2027Admin();
+    return { success: true, data: await fetchCfpAdminConfiguration(getAdminPB()) };
   } catch (error) {
     console.error("Admin fetch CfP config error:", error);
     return { success: false, error: pbAdminErrorMessage(error) };
   }
 };
 
-export const adminUpdateCfpConfig = async (data: Partial<CfpConfigData>) => {
+export const adminUpdateCfpConfig = async (data: unknown) => {
   "use server";
   try {
-    await requireAdmin();
-    const adminService = getAdminPB();
-    const records = await adminService.fetchAllRecords("conference_config");
-    if (records.length === 0) {
-      const created = await adminService.createRecord("conference_config", data);
-      return { success: true, data: created };
-    }
-    const updated = await adminService.updateRecord(
-      "conference_config",
-      records[0].id,
-      data,
-    );
-    return { success: true, data: updated };
+    await requireApproved2027Admin();
+    return { success: true, data: await saveClosedCfpConfiguration(getAdminPB(), data) };
   } catch (error) {
     console.error("Admin update CfP config error:", error);
     return { success: false, error: pbAdminErrorMessage(error) };
@@ -440,8 +431,9 @@ export const adminFetchSpeakers = async () => {
   try {
     await requireAdmin();
     const adminService = getAdminPB();
+    const applicantExpansionAvailable = await capabilityAvailable("cfp");
     const data = await adminService.fetchAllRecords("speakers", {
-      expand: "cfp_applicant.user,user",
+      expand: applicantExpansionAvailable ? "cfp_applicant.user,user" : "user",
       sort: "slug",
     });
     return { success: true, data };
@@ -528,13 +520,13 @@ export const adminPublishFromApplicant = async (applicantId: string) => {
     const adminService = getAdminPB();
     const result = await createOrReuseCfpSpeakerFromApplicant(adminService, applicantId);
     return {
-      success: true,
+      success: true as const,
       data: speakerSnapshot(result.speaker),
       created: result.created,
     };
   } catch (error) {
     console.error("Admin create speaker from applicant error:", error);
-    return { success: false, error: pbAdminErrorMessage(error) };
+    return capabilityActionFailure(error);
   }
 };
 
@@ -547,10 +539,10 @@ export const adminPromoteSubmissionToDraftSession = async (submissionId: string)
     await requireAdmin();
     const adminService = getAdminPB();
     const data = await promoteSubmissionToDraftSession(adminService, submissionId);
-    return { success: true, data };
+    return { success: true as const, data };
   } catch (error) {
     console.error("Admin promote submission to draft session error:", error);
-    return { success: false, error: pbAdminErrorMessage(error) };
+    return capabilityActionFailure(error);
   }
 };
 
@@ -564,6 +556,12 @@ export type InviteSpeakerInput = {
   photo?: InviteSpeakerPhotoPayload | null;
 };
 
+function inviteSpeakerContentError(input: InviteSpeakerInput, displayName: string): string | null {
+  if (!displayName) return "Display name is required.";
+  if (input.photo?.data?.length) return validateSpeakerPhotoUpload(input.photo);
+  return null;
+}
+
 export const adminCreateInviteSpeaker = async (input: InviteSpeakerInput) => {
   "use server";
   try {
@@ -573,15 +571,9 @@ export const adminCreateInviteSpeaker = async (input: InviteSpeakerInput) => {
     if (input.is_mc !== undefined && typeof input.is_mc !== "boolean") {
       return { success: false, error: "MC designation must be a boolean." };
     }
-    const displayName = input.display_name?.trim();
-    if (!displayName) {
-      return { success: false, error: "Display name is required." };
-    }
-
-    if (input.photo?.data?.length) {
-      const photoError = validateSpeakerPhotoUpload(input.photo);
-      if (photoError) return { success: false, error: photoError };
-    }
+    const displayName = trimmedText(input.display_name);
+    const inputError = inviteSpeakerContentError(input, displayName);
+    if (inputError) return { success: false, error: inputError };
 
     const slugExists = async (candidate: string) => {
       const hits = await adminService.fetchAllRecords("speakers", {
@@ -600,8 +592,8 @@ export const adminCreateInviteSpeaker = async (input: InviteSpeakerInput) => {
       origin: "invite",
       is_mc: input.is_mc ?? false,
       display_name: displayName,
-      affiliation: input.affiliation?.trim() || "",
-      bio: input.bio?.trim() || "",
+      affiliation: trimmedText(input.affiliation),
+      bio: trimmedText(input.bio),
       social_handles: normalizeSpeakerSocialHandles(input.social_handles),
     };
 
@@ -762,6 +754,7 @@ export const adminFetchAcceptedApplicantsWithoutSpeaker = async () => {
   "use server";
   try {
     await requireAdmin();
+    await requireCapability("cfp");
     const adminService = getAdminPB();
 
     const [{ submissions: acceptedSubs, warning }, speakers] = await Promise.all([
@@ -786,9 +779,9 @@ export const adminFetchAcceptedApplicantsWithoutSpeaker = async () => {
       }
     }
 
-    return { success: true, data: Array.from(byApplicant.values()), warning };
+    return { success: true as const, data: Array.from(byApplicant.values()), warning };
   } catch (error) {
     console.error("Admin fetch accepted without speaker error:", error);
-    return { success: false, error: pbAdminErrorMessage(error) };
+    return capabilityActionFailure(error);
   }
 };

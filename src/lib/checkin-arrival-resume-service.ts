@@ -5,6 +5,7 @@ import type { CheckinArrivalSource } from "~/lib/checkin-arrival-source";
 import { CheckinArrivalService } from "~/lib/checkin-arrival-service";
 import { checkinEventBindingHash } from "~/lib/checkin-event-service";
 import { CheckinError } from "~/lib/checkin-service";
+import { CHECKIN_STATION_ERROR_CODES, checkinHookError } from "~/lib/checkin-hook-error";
 import { checkinArrivalResumeInputSchema, checkinArrivalResumeOperationIdSchema, checkinArrivalResumeSchema, type CheckinArrivalResumeInput, type CheckinArrivalResumeServiceContract } from "~/lib/checkin-arrival-resume-contract";
 
 export class CheckinArrivalResumeService implements CheckinArrivalResumeServiceContract {
@@ -14,12 +15,7 @@ export class CheckinArrivalResumeService implements CheckinArrivalResumeServiceC
     try {
       return checkinArrivalResumeSchema.parse(await this.pb.send("/api/wts/checkin-arrival-resume", { method: "POST", requestKey: null, body: { ...body, identityHash: checkinEventBindingHash(bindingToken), actorUserId: this.actor.userId, sourceKey: this.source.sourceKey } }));
     } catch (error) {
-      if (error instanceof CheckinError) throw error;
-      const value = error as { status?: number; response?: { data?: { code?: { code?: string } | string } } };
-      const field = value.response?.data?.code;
-      const code = typeof field === "string" ? field : field?.code;
-      if (["forbidden", "invalid_input", "invalid_binding", "revoked_binding", "disabled", "conflict", "unavailable"].includes(code || "")) throw new CheckinError(code as ConstructorParameters<typeof CheckinError>[0], value.status || 400);
-      throw new CheckinError(value.status === 401 || value.status === 403 ? "forbidden" : "unavailable", value.status === 401 || value.status === 403 ? 403 : 503);
+      throw error instanceof CheckinError ? error : checkinHookError(error, CHECKIN_STATION_ERROR_CODES);
     }
   }
   async get(bindingToken: string | undefined, operationId: string) {

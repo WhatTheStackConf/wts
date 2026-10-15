@@ -1,10 +1,12 @@
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { getPbFileUrl } from "~/lib/pocketbase-public-url";
-import { addAnnouncedWeekProgrammes, announcedWeekSessionAppearance, announcedWeekSessionSchedule } from "~/lib/conference-week-agenda";
+import { sessionHostIds } from "~/lib/programme-hosts";
+
 import {
   buildPublicAgenda,
   derivePublicSessionSchedule,
   type PublicAgenda,
+  type PublicSessionAnnouncement,
   type PublicAgendaDay,
   type PublicAgendaEvent,
   type PublicAgendaSession,
@@ -12,17 +14,14 @@ import {
   type PublicAgendaTrack,
   type PublicEventProgramme,
   type PublicSessionSchedule,
-  type PublicSessionAnnouncement,
+
 } from "~/lib/programme-public";
 import type { AgendaSlotRecord, AgendaTrackRecord, AppearanceEventRecord, ConferenceDayRecord, EventProgrammeRecord, SpeakerRecord, SessionRecord } from "~/lib/pocketbase-types";
-import {
-  conferenceGuideContent,
-  conferenceShortDate,
-} from "~/lib/conference-guide-content";
 
 export { getPbFileUrl } from "~/lib/pocketbase-public-url";
 export type {
   PublicAgenda,
+  PublicSessionAnnouncement,
   PublicAgendaDay,
   PublicAgendaEvent,
   PublicAgendaSession,
@@ -71,8 +70,7 @@ export interface PublicSpeakerPromo {
   roleLine: string;
   statusMessage: string;
   stack: PromoStackTag[];
-  ctaHref: string;
-  ctaLabel: string;
+  cta?: PromoCallToAction;
   footerText: string;
   footerLinks: PromoFooterLink[];
   footerSuffix: string;
@@ -82,18 +80,27 @@ interface SpeakerPromoConfig {
   statusMessage?: string;
   roleLine?: string;
   stack?: PromoStackTag[];
-  ctaHref?: string;
-  ctaLabel?: string;
+  cta?: PromoCallToAction;
   footerText?: string;
   footerLinks?: PromoFooterLink[];
   footerSuffix?: string;
 }
 
+interface PromoCallToAction {
+  href: string;
+  label: string;
+}
+
 const DEFAULT_PROMO_STATUS = "will be there!";
-const DEFAULT_PROMO_CTA_LABEL = "See you there";
-const DEFAULT_PROMO_CTA_HREF = "/tickets";
 const DEFAULT_PROMO_FOOTER_TEXT = "Join us at ";
-const DEFAULT_PROMO_FOOTER_SUFFIX = ` — ${conferenceShortDate}, ${conferenceGuideContent.event.location.city}`;
+const DEFAULT_PROMO_FOOTER_SUFFIX = "";
+function isRetiredTicketsDestination(href: string): boolean {
+  try {
+    return new URL(href, "https://wts.sh").pathname.replace(/\/+$/, "") === "/tickets";
+  } catch {
+    return false;
+  }
+}
 const DEFAULT_PROMO_FOOTER_LINKS: PromoFooterLink[] = [
   { label: "wts.sh", href: "https://wts.sh", color: "#e879f9" },
 ];
@@ -127,41 +134,35 @@ function parsePromoFooterLink(raw: unknown): PromoFooterLink | null {
   return { label: item.label.trim(), href: item.href.trim(), color };
 }
 
+function parsePromoList<T>(value: unknown, parseItem: (raw: unknown) => T | null): T[] | undefined {
+  return Array.isArray(value)
+    ? value.map(parseItem).filter((item): item is T => item !== null)
+    : undefined;
+}
+
+function promoString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function parsePromoCta(config: Record<string, unknown>): SpeakerPromoConfig["cta"] {
+  const ctaHref = promoString(config.ctaHref)?.trim() ?? "";
+  const ctaLabel = promoString(config.ctaLabel)?.trim() ?? "";
+  return ctaHref && ctaLabel && !isRetiredTicketsDestination(ctaHref)
+    ? { href: ctaHref, label: ctaLabel }
+    : undefined;
+}
+
 function parseSpeakerPromoConfig(raw: unknown): SpeakerPromoConfig {
   if (!raw || typeof raw !== "object") return {};
   const config = raw as Record<string, unknown>;
-  const stack = Array.isArray(config.stack)
-    ? config.stack
-        .map(parsePromoStackTag)
-        .filter((tag): tag is PromoStackTag => tag !== null)
-    : undefined;
-  const footerLinks = Array.isArray(config.footerLinks)
-    ? config.footerLinks
-        .map(parsePromoFooterLink)
-        .filter((link): link is PromoFooterLink => link !== null)
-    : undefined;
-
   return {
-    statusMessage:
-      typeof config.statusMessage === "string"
-        ? config.statusMessage.trim()
-        : undefined,
-    roleLine:
-      typeof config.roleLine === "string" ? config.roleLine.trim() : undefined,
-    stack,
-    ctaHref:
-      typeof config.ctaHref === "string" ? config.ctaHref.trim() : undefined,
-    ctaLabel:
-      typeof config.ctaLabel === "string" ? config.ctaLabel.trim() : undefined,
-    footerText:
-      typeof config.footerText === "string"
-        ? config.footerText
-        : undefined,
-    footerLinks,
-    footerSuffix:
-      typeof config.footerSuffix === "string"
-        ? config.footerSuffix
-        : undefined,
+    statusMessage: promoString(config.statusMessage)?.trim(),
+    roleLine: promoString(config.roleLine)?.trim(),
+    stack: parsePromoList(config.stack, parsePromoStackTag),
+    cta: parsePromoCta(config),
+    footerText: promoString(config.footerText),
+    footerLinks: parsePromoList(config.footerLinks, parsePromoFooterLink),
+    footerSuffix: promoString(config.footerSuffix),
   };
 }
 
@@ -176,8 +177,7 @@ function mapSpeakerPromo(row: SpeakerRow): PublicSpeakerPromo {
     roleLine: config.roleLine || summary.affiliation || "Speaker @ WhatTheStack",
     statusMessage: config.statusMessage || DEFAULT_PROMO_STATUS,
     stack: config.stack ?? [],
-    ctaHref: config.ctaHref || DEFAULT_PROMO_CTA_HREF,
-    ctaLabel: config.ctaLabel || DEFAULT_PROMO_CTA_LABEL,
+    cta: config.cta,
     footerText: config.footerText ?? DEFAULT_PROMO_FOOTER_TEXT,
     footerLinks:
       config.footerLinks && config.footerLinks.length > 0
@@ -201,6 +201,8 @@ export interface PublicSessionDetail {
   schedule?: PublicSessionSchedule;
   announcement?: PublicSessionAnnouncement;
   speakers: PublicSpeakerSummary[];
+  /** Explicit host subset of speakers; not inferred from global MC status. */
+  hosts?: PublicSpeakerSummary[];
   /** Populated when related-sessions feature ships; empty at launch. */
   relatedSessions: PublicSessionCard[];
 }
@@ -409,17 +411,22 @@ export const fetchPublicSpeakerBySlug = async (
   return loadPublicSpeakerBySlug(slug);
 };
 
-export const fetchPublicSpeakerPromoBySlug = async (
+export const loadPublicSpeakerPromoBySlug = async (
   slug: string,
 ): Promise<PublicSpeakerPromo | null> => {
-  "use server";
   const escaped = slug.replace(/"/g, '\\"');
   const rows = (await getAdminPB().fetchAllRecords("speakers", {
     filter: `published = true && slug = "${escaped}"`,
   })) as SpeakerRow[];
   const row = rows[0];
-  if (!row) return null;
-  return mapSpeakerPromo(row);
+  return row ? mapSpeakerPromo(row) : null;
+};
+
+export const fetchPublicSpeakerPromoBySlug = async (
+  slug: string,
+): Promise<PublicSpeakerPromo | null> => {
+  "use server";
+  return loadPublicSpeakerPromoBySlug(slug);
 };
 
 export const fetchPublicSessions = async (): Promise<PublicSessionCard[]> => {
@@ -489,7 +496,7 @@ export const loadPublicAgenda = async (signal?: AbortSignal): Promise<PublicAgen
     sessions as SessionRecord[],
     speakers as SpeakerRecord[],
   );
-  return addAnnouncedWeekProgrammes(agenda, events as AppearanceEventRecord[], sessions as SessionRecord[], speakers as SpeakerRecord[]);
+  return agenda;
 };
 
 export const fetchPublicAgenda = async (): Promise<PublicAgenda> => {
@@ -539,13 +546,19 @@ export const loadPublicConferenceGuideProgramme = async (signal?: AbortSignal): 
 
   const sessions = sortByTitle(sessionRows.map((session): PublicSessionDetail => {
     const schedule = scheduleFromPublicAgenda(agenda, session.slug);
+    const hostIds = sessionHostIds(session);
+    const hosts = (session.expand?.speakers ?? []).filter((speaker) => speaker.published && hostIds.includes(speaker.id))
+      .map((speaker) => ({
+        ...mapSpeakerSummary(speaker, appearanceEventsForSpeaker(appearanceEvents, speaker)),
+        sessionCount: sessionsForSpeaker(rawSessionRows, speaker.id).length,
+      }));
     return {
       slug: session.slug,
       title: session.title,
       abstract: session.abstract,
       format: session.format || undefined,
       schedule,
-      announcement: schedule ? undefined : announcedWeekSessionAppearance(session, appearanceEvents),
+      ...(hosts.length ? { hosts } : {}),
       speakers: sortByDisplayName(
         (session.expand?.speakers ?? [])
           .filter((speaker) => speaker.published)
@@ -597,6 +610,8 @@ export const loadPublicSessionBySlug = async (
   if (!session) return null;
 
   const speakerRows = (session.expand?.speakers ?? []).filter((speaker) => speaker.published);
+  const hostIds = sessionHostIds(session);
+  const hosts = speakerRows.filter((speaker) => hostIds.includes(speaker.id)).map((speaker) => mapSpeakerSummary(speaker));
   const speakers = sortByDisplayName(
     speakerRows.map((speaker) => mapSpeakerSummary(speaker)),
   );
@@ -619,7 +634,7 @@ export const loadPublicSessionBySlug = async (
         new Map((days as ConferenceDayRecord[]).map((day) => [day.id, day])),
         new Map((tracks as AgendaTrackRecord[]).map((track) => [track.id, track])),
       )
-    : announcedWeekSessionSchedule(session, events as AppearanceEventRecord[]);
+    : undefined;
 
   return {
     slug: session.slug,
@@ -627,8 +642,8 @@ export const loadPublicSessionBySlug = async (
     abstract: session.abstract,
     format: session.format || undefined,
     schedule,
-    announcement: schedule ? undefined : announcedWeekSessionAppearance(session, events as AppearanceEventRecord[]),
     speakers,
+    ...(hosts.length ? { hosts } : {}),
     relatedSessions: [],
   };
 };

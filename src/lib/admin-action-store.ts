@@ -1,6 +1,7 @@
 import type PocketBase from "pocketbase";
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import type {
+  AdminActionInspection,
   AdminActionRecord,
   AdminActionStore,
   AdminActionStoreStartResult,
@@ -44,22 +45,27 @@ function isNotFound(error: unknown): boolean {
   return (error as { status?: number })?.status === 404;
 }
 
-function isConflict(error: unknown): boolean {
-  const value = error as {
-    status?: number;
+type PocketBaseFieldError = { code?: string; message?: string };
+
+type PocketBaseValidationError = {
+  status?: number;
+  message?: string;
+  response?: {
     message?: string;
-    response?: {
-      message?: string;
-      data?: Record<string, { code?: string; message?: string }>;
-    };
+    data?: Record<string, PocketBaseFieldError>;
   };
+};
+
+function validationErrorText(value: PocketBaseValidationError, identityError?: PocketBaseFieldError): string {
+  return `${identityError?.message || ""} ${value.message || ""} ${value.response?.message || ""}`.toLowerCase();
+}
+
+function isConflict(error: unknown): boolean {
+  const value = error as PocketBaseValidationError;
   const identityError = value.response?.data?.idempotency_key;
-  return value.status === 400 && (
-    identityError?.code === "validation_not_unique" ||
-    `${identityError?.message || ""} ${value.message || ""} ${value.response?.message || ""}`
-      .toLowerCase()
-      .includes("unique")
-  );
+  if (value.status !== 400) return false;
+  return identityError?.code === "validation_not_unique" ||
+    validationErrorText(value, identityError).includes("unique");
 }
 
 function timestamp(value: string): number {
@@ -112,18 +118,22 @@ export function createPocketBaseAdminActionStore(client?: PocketBase): AdminActi
     return { ...claimed, action: adminActionRecord(claimed.action) };
   };
 
+  const settleExisting = (
+    pb: PocketBase,
+    existing: Exclude<AdminActionInspection, { outcome: "new" }>,
+    input: Parameters<AdminActionStore["reserve"]>[0],
+  ): AdminActionStoreStartResult | Promise<AdminActionStoreStartResult> => {
+    if (existing.outcome === "retryable") return claim(pb, existing.action.id, input);
+    if (existing.outcome === "replayed") return { outcome: "replayed", action: existing.action };
+    return existing;
+  };
+
   return {
     inspect,
     async reserve(input): Promise<AdminActionStoreStartResult> {
       const pb = await pocketBase();
       const current = await inspect(input);
-      if (current.outcome === "mismatch" || current.outcome === "pending") return current;
-      if (current.outcome === "replayed") {
-        return { outcome: "replayed", action: current.action };
-      }
-      if (current.outcome === "retryable") {
-        return claim(pb, current.action.id, input);
-      }
+      if (current.outcome !== "new") return settleExisting(pb, current, input);
 
       try {
         const record = await pb.collection(ADMIN_ACTIONS_COLLECTION).create<PocketBaseAdminActionRecord>({
@@ -152,15 +162,10 @@ export function createPocketBaseAdminActionStore(client?: PocketBase): AdminActi
       } catch (error) {
         if (!isConflict(error)) throw error;
         const raced = await inspect(input);
-        if (raced.outcome === "retryable") {
-          return claim(pb, raced.action.id, input);
-        }
         if (raced.outcome === "new") {
           throw new Error("Concurrent Admin Action reservation could not be resolved.");
         }
-        return raced.outcome === "replayed"
-          ? { outcome: "replayed", action: raced.action }
-          : raced;
+        return settleExisting(pb, raced, input);
       }
     },
     async complete(handle, completion, now) {

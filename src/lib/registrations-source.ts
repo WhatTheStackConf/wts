@@ -23,7 +23,7 @@ export async function readRegistrations(input: CheckinDiscoveryConfig = checkinS
     const row = attendee.parse(value);
     return { id: row.id, registration: { id: row.id, programmeId: row.product_id, name: `${row.first_name} ${row.last_name}`.trim(), email: row.email,
       ticketStatus: row.status === "ACTIVE" || row.status === "CANCELLED" ? row.status : null } };
-  });
+  }, { pageSize: 100, maxItems: 10000, maxPages: 100 });
   // Check-in entries are list-specific, so never infer programme arrival from
   // an event-wide check_ins array. Unknown status remains explicitly unknown.
   return registrationRosterSchema.parse({ refreshedAt: new Date().toISOString(), registrations: rows.flatMap(row => row.registration ? [row.registration] : []) });

@@ -37,6 +37,17 @@ export interface LiveQaControlRecord extends RecordModel {
   mode: import("~/lib/live-qa-contract").LiveQaMode;
 }
 
+export interface ConferenceCapabilityAvailability {
+  cfp: boolean;
+  review: boolean;
+}
+
+export interface ConferenceConfigRecord extends RecordModel {
+  cfp_open: boolean;
+  cfp_deadline: string | null;
+  availability?: ConferenceCapabilityAvailability | null;
+}
+
 // CFP Applicant collection type
 export interface CfpApplicantRecord extends RecordModel {
   id: string;
@@ -258,6 +269,7 @@ export interface GamificationMissionRecord extends RecordModel {
 }
 
 export type GamificationActivityKind =
+  | "qr"
   | "session"
   | "booth"
   | "workshop"

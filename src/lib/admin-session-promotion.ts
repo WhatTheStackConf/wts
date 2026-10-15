@@ -1,4 +1,5 @@
 import { slugify } from "~/lib/conference-slug";
+import { requireCapability } from "~/lib/capability-availability";
 import {
   createOrReuseCfpSpeakerFromApplicant,
   isDuplicateFieldError,
@@ -72,13 +73,19 @@ export function addPromotedSessionSummaries<T extends { id: string }>(
   }));
 }
 
+const SESSION_TEXT_FIELDS = ["title", "abstract", "format"] as const;
+
+function sessionSpeakers(speakers: unknown): string[] {
+  return Array.isArray(speakers) ? speakers : [];
+}
+
 export function buildSessionCreateBody(input: SessionEditableInput): Record<string, unknown> {
   return {
     slug: slugify(input.slug || input.title || ""),
     title: input.title || "",
     abstract: input.abstract || "",
     format: input.format || "",
-    speakers: Array.isArray(input.speakers) ? input.speakers : [],
+    speakers: sessionSpeakers(input.speakers),
     published: false,
   };
 }
@@ -88,10 +95,10 @@ export function buildSessionUpdateBody(input: SessionEditableInput): Record<stri
   if ("slug" in input || "title" in input) {
     body.slug = slugify(input.slug || input.title || "");
   }
-  if ("title" in input) body.title = input.title || "";
-  if ("abstract" in input) body.abstract = input.abstract || "";
-  if ("format" in input) body.format = input.format || "";
-  if ("speakers" in input) body.speakers = Array.isArray(input.speakers) ? input.speakers : [];
+  for (const field of SESSION_TEXT_FIELDS) {
+    if (field in input) body[field] = input[field] || "";
+  }
+  if ("speakers" in input) body.speakers = sessionSpeakers(input.speakers);
   return body;
 }
 
@@ -148,10 +155,23 @@ function duplicatePromotionError(promotedSession: PromotedSessionSummary | null)
   return new Error(`This proposal already has a ${visibility} Session.`);
 }
 
+function promotableApplicantId(submission: ExpandedCfpSubmissionRecord): string {
+  if (submission.status !== "accepted") {
+    throw new Error("This proposal is no longer accepted.");
+  }
+
+  const applicantId = typeof submission.applicant === "string" ? submission.applicant.trim() : "";
+  if (!applicantId) {
+    throw new Error("This proposal is missing a linked CFP Applicant.");
+  }
+  return applicantId;
+}
+
 export async function promoteSubmissionToDraftSession(
   adminService: AdminSpeakerService,
   submissionId: string,
 ): Promise<PromoteSubmissionResult> {
+  await requireCapability("cfp");
   const safeSubmissionId = submissionId?.trim();
   if (!safeSubmissionId) throw new Error("Choose a proposal to promote.");
 
@@ -161,14 +181,7 @@ export async function promoteSubmissionToDraftSession(
     { expand: "applicant.user" },
   )) as ExpandedCfpSubmissionRecord;
 
-  if (submission.status !== "accepted") {
-    throw new Error("This proposal is no longer accepted.");
-  }
-
-  const applicantId = typeof submission.applicant === "string" ? submission.applicant.trim() : "";
-  if (!applicantId) {
-    throw new Error("This proposal is missing a linked CFP Applicant.");
-  }
+  const applicantId = promotableApplicantId(submission);
 
   const existingPromotion = await fetchPromotedSessionForSubmission(
     adminService,

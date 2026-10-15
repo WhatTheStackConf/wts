@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { samePersistedJson } from "~/lib/persisted-json";
 import {
   buildGamificationPublicOpsBoardRows,
   defaultGamificationDisplayName,
@@ -28,6 +29,7 @@ import type {
   GamificationActivityClaimRecord,
   GamificationAdminActionRecord,
   GamificationCategory,
+  GamificationCodeRecord,
   GamificationMissionRecord,
   GamificationProfileRecord,
   GamificationScoreScheduleCapRecord,
@@ -58,6 +60,7 @@ export const GAMIFICATION_COLLECTIONS = {
 } as const;
 
 export interface GamificationAccountingStore {
+  count?(collection: string, match: Record<string, unknown>): Promise<number>;
   findOne<T>(collection: string, match: Record<string, unknown>): Promise<T | undefined>;
   list<T>(
     collection: string,
@@ -247,6 +250,217 @@ function metaClaimFingerprint(achievementId: string, sourceClaimIds: string[]): 
     .digest("hex");
 }
 
+function claimMatchesInput(claim: GamificationActivityClaimRecord, input: ActivityClaimInput): boolean {
+  return claim.user === input.user &&
+    claim.activity === input.activity &&
+    claim.source_type === input.sourceType &&
+    (claim.source_collection || "") === (input.sourceCollection || "") &&
+    (claim.source_record_id || "") === (input.sourceRecordId || "") &&
+    claim.outcome_key === input.outcomeKey;
+}
+
+function isSponsorBoothEvidenceActivity(activity: GamificationActivityRecord): boolean {
+  return activity.kind === "booth" && activity.partner_kind === "sponsor" && Boolean(activity.evidence_channel);
+}
+
+function isCommunityPartnerEvidenceActivity(activity: GamificationActivityRecord): boolean {
+  return activity.kind === "community_partner" &&
+    activity.partner_kind === "community_partner" &&
+    (Boolean(activity.evidence_channel) || activity.evidence_mode === "derived_claim_set");
+}
+
+function isEasterEggEvidenceActivity(activity: GamificationActivityRecord): boolean {
+  return activity.kind === "easter_egg" || activity.category === "easter_egg" || activity.evidence_mode === "static_puzzle_code";
+}
+
+interface SourceRedemption {
+  user: string;
+  activity: string;
+  status: string;
+  code: string;
+}
+
+interface SourceAdminAction {
+  action: string;
+  status: string;
+  target_user?: string;
+  related_collection?: string;
+  related_record_id?: string;
+}
+
+type DerivedCompletionEvaluator = (input: {
+  achievements: GamificationAchievementRecord[];
+  activities: GamificationActivityRecord[];
+  claims: GamificationActivityClaimRecord[];
+}) => Array<{ activity: GamificationActivityRecord; sourceClaims: GamificationActivityClaimRecord[] }>;
+
+const CODE_ROLE_BY_EVIDENCE_MODE = new Map<string | undefined, string>([
+  ["single_code", "single"],
+  ["two_code_start", "start"],
+  ["two_code_finish", "finish"],
+]);
+
+function isAcceptedRedemptionFor(
+  redemption: { user: string; activity: string; status: string } | undefined,
+  userId: string,
+  activityId: string,
+): boolean {
+  return redemption?.status === "accepted" && redemption.user === userId && redemption.activity === activityId;
+}
+
+interface QuestionAttemptEvidence {
+  user: string;
+  activity: string;
+  code: string;
+  status: string;
+}
+
+function isApprovedQuestionAttempt(
+  attempt: QuestionAttemptEvidence,
+  redemption: SourceRedemption,
+  input: ActivityClaimInput,
+): attempt is QuestionAttemptEvidence & { status: "passed" | "passed_half" } {
+  return attempt.user === input.user &&
+    attempt.activity === input.activity &&
+    attempt.code === redemption.code &&
+    (attempt.status === "passed" || attempt.status === "passed_half");
+}
+
+function isManualAwardFor(action: SourceAdminAction | undefined, userId: string, activityId: string): boolean {
+  return action?.action === "manual_award" &&
+    action.status !== "failed" &&
+    action.target_user === userId &&
+    action.related_collection === GAMIFICATION_COLLECTIONS.activities &&
+    action.related_record_id === activityId;
+}
+
+function isStaticDiscoveryEvidence(activity: GamificationActivityRecord, input: ActivityClaimInput): boolean {
+  return activity.kind === "easter_egg" &&
+    activity.category === "easter_egg" &&
+    activity.outcome_key === "static_discovery" &&
+    activity.evidence_mode === "static_puzzle_code" &&
+    input.sourceType === "static_puzzle_code" &&
+    input.outcomeKey === "static_discovery";
+}
+
+interface DerivedAwardCandidate {
+  achievement: GamificationAchievementRecord;
+  activity: GamificationActivityRecord;
+}
+
+interface DerivedAwardOutputs {
+  badges: GamificationUserAchievementRecord[];
+  xpEvents: GamificationXpEventRecord[];
+}
+
+function rememberDerivedOutputs(known: DerivedAwardOutputs, award: DerivedActivityAward): void {
+  if (award.badge) known.badges.push(award.badge);
+  if (award.xpEvent) known.xpEvents.push(award.xpEvent);
+}
+
+type ScoredActivityXp = DirectActivityXpInput & { capOutcome: Record<string, unknown> };
+
+function assertManualAwardSelection(
+  input: AdminManualAwardInput,
+  activity: GamificationActivityRecord,
+  achievement: GamificationAchievementRecord,
+  occurredAt: string,
+): void {
+  if (!Number.isFinite(Date.parse(occurredAt))) throw new Error("A valid evidence time is required.");
+  if (input.mode !== "badge_only" && input.mode !== "missed_evidence") {
+    throw new Error("Choose either a Badge-only award or missed-evidence remediation.");
+  }
+  if (activity.achievement !== achievement.id) {
+    throw new Error("The selected Activity and Achievement must be configured together.");
+  }
+}
+
+function assertCorrectionAmounts(input: AdminXpCorrectionInput): void {
+  if (!Number.isFinite(input.amount) || !Number.isFinite(input.leaderboardAmount)) {
+    throw new Error("Correction amounts must be finite numbers.");
+  }
+  if (input.amount === 0 && input.leaderboardAmount === 0) {
+    throw new Error("A correction must change total XP or Leaderboard XP.");
+  }
+}
+
+/** Keeps the XP deltas an earlier admin action recorded, so retries never change the award. */
+function withRecordedXpDeltas(score: ScoredActivityXp, summary: Record<string, unknown> | undefined): ScoredActivityXp {
+  const totalXp = numericCapOutcome(summary, "totalXpDelta");
+  const leaderboardXp = numericCapOutcome(summary, "leaderboardXpDelta");
+  if (totalXp === undefined || leaderboardXp === undefined) return score;
+  return {
+    ...score,
+    amount: totalXp,
+    leaderboardAmount: leaderboardXp,
+    capOutcome: {
+      ...score.capOutcome,
+      awarded_total_xp: totalXp,
+      awarded_leaderboard_xp: leaderboardXp,
+    },
+  };
+}
+
+function derivedSourceClaimIds(input: ActivityClaimInput): unknown {
+  return input.metadata && typeof input.metadata.derived_claim_set === "object"
+    ? (input.metadata.derived_claim_set as { source_claim_ids?: unknown }).source_claim_ids
+    : undefined;
+}
+
+function isWithinActiveWindow(activity: GamificationActivityRecord, occurredAtValue: string): boolean {
+  const occurredAt = Date.parse(occurredAtValue);
+  return Number.isFinite(occurredAt) &&
+    !(activity.active_from && occurredAt < Date.parse(activity.active_from)) &&
+    !(activity.active_until && occurredAt > Date.parse(activity.active_until));
+}
+
+type AuthoritativeWriteCheck = (store: GamificationAccountingStore, action: GamificationAdminActionRecord) => Promise<boolean>;
+
+async function manualAwardHasAuthoritativeWrites(
+  store: GamificationAccountingStore,
+  action: GamificationAdminActionRecord,
+): Promise<boolean> {
+  const claim = await store.findOne<GamificationActivityClaimRecord>(GAMIFICATION_COLLECTIONS.activityClaims, {
+    source_collection: GAMIFICATION_COLLECTIONS.adminActions,
+    source_record_id: action.id,
+  });
+  if (!claim) return false;
+  const achievementId = typeof action.after_summary?.achievementId === "string" ? action.after_summary.achievementId : "";
+  const badge = await store.findOne<GamificationUserAchievementRecord>(GAMIFICATION_COLLECTIONS.userAchievements, {
+    user: action.target_user,
+    achievement: achievementId,
+    source_claim: claim.id,
+  }) || await store.findOne<GamificationUserAchievementRecord>(GAMIFICATION_COLLECTIONS.userAchievements, {
+    user: action.target_user,
+    achievement: achievementId,
+    status: "unlocked",
+  });
+  if (!badge) return false;
+  const totalXp = numericCapOutcome(action.after_summary, "totalXpDelta") || 0;
+  if (totalXp === 0) return true;
+  return Boolean(await store.findOne<GamificationXpEventRecord>(GAMIFICATION_COLLECTIONS.xpEvents, { source_claim: claim.id }));
+}
+
+/** Decides, per admin action kind, whether its durable accounting writes already exist. */
+const AUTHORITATIVE_WRITE_CHECKS = new Map<string, AuthoritativeWriteCheck>([
+  ["rebuild_profile_cache", async () => true],
+  ["manual_award", manualAwardHasAuthoritativeWrites],
+  ["admin_correction", async (store, action) =>
+    Boolean(await store.findOne<GamificationXpEventRecord>(GAMIFICATION_COLLECTIONS.xpEvents, { source_id: action.id }))],
+  ["void_xp_event", async (store, action) => {
+    const event = await store.getById<GamificationXpEventRecord>(GAMIFICATION_COLLECTIONS.xpEvents, action.related_record_id || "").catch(() => undefined);
+    return Boolean(event?.voided && event.void_admin_action === action.id);
+  }],
+  ["void_activity_claim", async (store, action) => {
+    const claim = await store.getById<GamificationActivityClaimRecord>(GAMIFICATION_COLLECTIONS.activityClaims, action.related_record_id || "").catch(() => undefined);
+    return Boolean(claim?.status === "voided" && claim.void_admin_action === action.id);
+  }],
+  ["revoke_user_achievement", async (store, action) => {
+    const badge = await store.getById<GamificationUserAchievementRecord>(GAMIFICATION_COLLECTIONS.userAchievements, action.related_record_id || "").catch(() => undefined);
+    return Boolean(badge?.status === "revoked" && badge.source_admin_action === action.id);
+  }],
+]);
+
 /**
  * Server-only service that writes the accounting records. Its caller owns authentication;
  * user-facing flows derive the User before constructing any input for this service.
@@ -298,19 +512,12 @@ export class GamificationAccountingService {
   }
 
   async recordActivityClaim(input: ActivityClaimInput): Promise<GamificationActivityClaimRecord> {
-    const matchesInput = (claim: GamificationActivityClaimRecord) =>
-      claim.user === input.user &&
-      claim.activity === input.activity &&
-      claim.source_type === input.sourceType &&
-      (claim.source_collection || "") === (input.sourceCollection || "") &&
-      (claim.source_record_id || "") === (input.sourceRecordId || "") &&
-      claim.outcome_key === input.outcomeKey;
     const existing = await this.store.findOne<GamificationActivityClaimRecord>(
       GAMIFICATION_COLLECTIONS.activityClaims,
       { idempotency_key: input.idempotencyKey },
     );
     if (existing) {
-      if (!matchesInput(existing)) throw new Error("This evidence operation ID belongs to a different Activity Claim.");
+      if (!claimMatchesInput(existing, input)) throw new Error("This evidence operation ID belongs to a different Activity Claim.");
       if (existing.status === "accepted") return existing;
       throw new Error("This evidence was voided and cannot be recorded again.");
     }
@@ -325,58 +532,43 @@ export class GamificationAccountingService {
       GAMIFICATION_COLLECTIONS.activities,
       input.activity,
     );
-    if (
-      activity.kind === "booth" &&
-      activity.partner_kind === "sponsor" &&
-      activity.evidence_channel &&
-      !["code_redemption", "admin_manual"].includes(input.sourceType)
-    ) {
-      throw new Error("Booth Activities accept only WTS Mission code evidence or audited admin support.");
-    }
-    if (activity.kind === "booth" && activity.partner_kind === "sponsor" && activity.evidence_channel) {
-      await this.assertSponsorBoothEvidence(activity, input);
-    }
-    if (
-      activity.kind === "community_partner" &&
-      activity.partner_kind === "community_partner" &&
-      (Boolean(activity.evidence_channel) || activity.evidence_mode === "derived_claim_set")
-    ) {
-      await this.assertCommunityPartnerEvidence(activity, input);
-    }
-    if (this.isConfiguredSessionAttendanceActivity(activity)) {
-      await this.assertSessionAttendanceEvidence(activity, input);
-    }
+    await this.assertActivityEvidence(activity, input);
+    await this.assertActivityAcceptsClaim(activity, input);
+    return this.createActivityClaim(input);
+  }
+
+  private async assertActivityEvidence(activity: GamificationActivityRecord, input: ActivityClaimInput): Promise<void> {
+    if (isSponsorBoothEvidenceActivity(activity)) await this.assertSponsorBoothEvidence(activity, input);
+    if (isCommunityPartnerEvidenceActivity(activity)) await this.assertCommunityPartnerEvidence(activity, input);
+    if (this.isConfiguredSessionAttendanceActivity(activity)) await this.assertSessionAttendanceEvidence(activity, input);
     if (isConfiguredEventActivityKind(activity.kind) && configuredEventReference(activity.event_ref)) {
       await this.assertConfiguredEventEvidence(activity, input);
     }
-    if (activity.kind === "easter_egg" || activity.category === "easter_egg" || activity.evidence_mode === "static_puzzle_code") {
-      await this.assertEasterEggEvidence(activity, input);
-    }
+    if (isEasterEggEvidenceActivity(activity)) await this.assertEasterEggEvidence(activity, input);
+  }
+
+  private async assertActivityAcceptsClaim(activity: GamificationActivityRecord, input: ActivityClaimInput): Promise<void> {
     if (activity.status !== "active" || !activity.enabled) {
       throw new Error("This Activity is not accepting evidence.");
     }
     if (activity.per_user_claim_limit !== 1) {
       throw new Error("September Activities support one accepted claim per User.");
     }
-    const occurredAt = Date.parse(input.occurredAt);
-    if (
-      !Number.isFinite(occurredAt) ||
-      (activity.active_from && occurredAt < Date.parse(activity.active_from)) ||
-      (activity.active_until && occurredAt > Date.parse(activity.active_until))
-    ) {
+    if (!isWithinActiveWindow(activity, input.occurredAt)) {
       throw new Error("This Activity is outside its active window.");
     }
-    if (activity.max_claims) {
-      const acceptedClaims = await this.store.list<GamificationActivityClaimRecord>(
-        GAMIFICATION_COLLECTIONS.activityClaims,
-        { activity: input.activity, status: "accepted" },
-        { limit: activity.max_claims },
-      );
-      if (acceptedClaims.length >= activity.max_claims) {
-        throw new Error("This Activity has reached its configured claim limit.");
-      }
+    if (!activity.max_claims) return;
+    const acceptedClaims = await this.store.list<GamificationActivityClaimRecord>(
+      GAMIFICATION_COLLECTIONS.activityClaims,
+      { activity: input.activity, status: "accepted" },
+      { limit: activity.max_claims },
+    );
+    if (acceptedClaims.length >= activity.max_claims) {
+      throw new Error("This Activity has reached its configured claim limit.");
     }
+  }
 
+  private async createActivityClaim(input: ActivityClaimInput): Promise<GamificationActivityClaimRecord> {
     try {
       const timestamp = this.clock();
       return await this.store.create<GamificationActivityClaimRecord>(GAMIFICATION_COLLECTIONS.activityClaims, {
@@ -400,7 +592,7 @@ export class GamificationAccountingService {
         { idempotency_key: input.idempotencyKey },
       );
       if (racedClaim) {
-        if (!matchesInput(racedClaim)) throw new Error("This evidence operation ID belongs to a different Activity Claim.");
+        if (!claimMatchesInput(racedClaim, input)) throw new Error("This evidence operation ID belongs to a different Activity Claim.");
         return racedClaim;
       }
       throw error;
@@ -557,50 +749,76 @@ export class GamificationAccountingService {
   }
 
   private async evaluateConfiguredEventCompletionsNow(userId: string): Promise<DerivedActivityAward[]> {
+    return this.reconcileDerivedAwards(
+      userId,
+      (records) => [...evaluateConfiguredEventCompletions(records), ...evaluateCommunityPartnerCompletions(records)],
+      (candidate) => this.recordConfiguredEventCompletion(userId, candidate),
+    );
+  }
+
+  /**
+   * Records each newly satisfied derived Activity once and repairs a Badge or
+   * XP Event missing from an earlier accepted derived claim.
+   */
+  private async reconcileDerivedAwards<Candidate extends DerivedAwardCandidate>(
+    userId: string,
+    evaluate: (records: {
+      achievements: GamificationAchievementRecord[];
+      activities: GamificationActivityRecord[];
+      claims: GamificationActivityClaimRecord[];
+    }) => Candidate[],
+    record: (candidate: Candidate) => Promise<DerivedActivityAward>,
+  ): Promise<DerivedActivityAward[]> {
     const [achievements, activities, claims] = await Promise.all([
       this.store.list<GamificationAchievementRecord>(GAMIFICATION_COLLECTIONS.achievements, undefined, { limit: 2001 }),
       this.store.list<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, undefined, { limit: 2001 }),
       this.store.list<GamificationActivityClaimRecord>(GAMIFICATION_COLLECTIONS.activityClaims, { user: userId, status: "accepted" }, { limit: 10001 }),
     ]);
     this.assertEvaluatorBounds(achievements, activities, claims);
-    const candidates = [
-      ...evaluateConfiguredEventCompletions({ achievements, activities, claims }),
-      ...evaluateCommunityPartnerCompletions({ achievements, activities, claims }),
-    ];
-    const [existingBadges, existingXpEvents] = await Promise.all([
+    const candidates = evaluate({ achievements, activities, claims });
+    const [badges, xpEvents] = await Promise.all([
       this.store.list<GamificationUserAchievementRecord>(GAMIFICATION_COLLECTIONS.userAchievements, { user: userId }),
       this.store.list<GamificationXpEventRecord>(GAMIFICATION_COLLECTIONS.xpEvents, { user: userId }),
     ]);
+    const known = { badges, xpEvents };
     const awards: DerivedActivityAward[] = [];
     for (const candidate of candidates) {
       const existing = claims.find((claim) =>
         claim.activity === candidate.activity.id && claim.status === "accepted"
       );
       if (!existing) {
-        const recorded = await this.recordConfiguredEventCompletion(userId, candidate);
+        const recorded = await record(candidate);
         claims.push(recorded.claim);
-        if (recorded.badge) existingBadges.push(recorded.badge);
-        if (recorded.xpEvent) existingXpEvents.push(recorded.xpEvent);
+        rememberDerivedOutputs(known, recorded);
         awards.push(recorded);
         continue;
       }
-      const existingBadge = existingBadges.find((badge) =>
-        badge.achievement === candidate.achievement.id && badge.status === "unlocked"
-      );
-      const existingXpEvent = existingXpEvents.find((event) => event.source_claim === existing.id);
-      const recordedScore = this.recordedClaimScore(candidate.activity, existing);
-      const expectsXp = recordedScore.amount > 0 || recordedScore.leaderboardAmount > 0;
-      if (existingBadge && (!expectsXp || existingXpEvent)) continue;
-      const repaired = await this.completeConfiguredEventAward(userId, candidate, existing, recordedScore);
-      if (repaired.badge) existingBadges.push(repaired.badge);
-      if (repaired.xpEvent) existingXpEvents.push(repaired.xpEvent);
-      awards.push({
-        claim: existing,
-        badge: existingBadge ? undefined : repaired.badge,
-        xpEvent: existingXpEvent ? undefined : repaired.xpEvent,
-      });
+      const repaired = await this.repairDerivedAward(userId, candidate, existing, known);
+      if (repaired) awards.push(repaired);
     }
     return awards;
+  }
+
+  private async repairDerivedAward(
+    userId: string,
+    candidate: DerivedAwardCandidate,
+    existing: GamificationActivityClaimRecord,
+    known: DerivedAwardOutputs,
+  ): Promise<DerivedActivityAward | undefined> {
+    const existingBadge = known.badges.find((badge) =>
+      badge.achievement === candidate.achievement.id && badge.status === "unlocked"
+    );
+    const existingXpEvent = known.xpEvents.find((event) => event.source_claim === existing.id);
+    const recordedScore = this.recordedClaimScore(candidate.activity, existing);
+    const expectsXp = recordedScore.amount > 0 || recordedScore.leaderboardAmount > 0;
+    if (existingBadge && (!expectsXp || existingXpEvent)) return undefined;
+    const repaired = await this.completeDerivedAward(userId, candidate.achievement.id, existing, recordedScore);
+    rememberDerivedOutputs(known, repaired);
+    return {
+      claim: existing,
+      badge: existingBadge ? undefined : repaired.badge,
+      xpEvent: existingXpEvent ? undefined : repaired.xpEvent,
+    };
   }
 
   private async recordConfiguredEventCompletion(
@@ -634,16 +852,16 @@ export class GamificationAccountingService {
     };
     const score = await this.directScoreForActivity(claimInput);
     const claim = await this.recordActivityClaim({ ...claimInput, capOutcome: score.capOutcome });
-    return this.completeConfiguredEventAward(userId, candidate, claim, score);
+    return this.completeDerivedAward(userId, candidate.achievement.id, claim, score);
   }
 
-  private async completeConfiguredEventAward(
+  private async completeDerivedAward(
     userId: string,
-    candidate: ConfiguredEventCompletionCandidate,
+    achievementId: string,
     claim: GamificationActivityClaimRecord,
     score: DirectActivityXpInput,
   ): Promise<DerivedActivityAward> {
-    const badge = await this.unlockBadge(userId, candidate.achievement.id, claim.id);
+    const badge = await this.unlockBadge(userId, achievementId, claim.id);
     const xpEvent = await this.recordDirectActivityXp(userId, claim.id, score);
     return { claim, badge, xpEvent };
   }
@@ -660,52 +878,11 @@ export class GamificationAccountingService {
   }
 
   private async evaluateMetaAchievementsNow(userId: string): Promise<DerivedActivityAward[]> {
-    const [achievements, activities, claims] = await Promise.all([
-      this.store.list<GamificationAchievementRecord>(GAMIFICATION_COLLECTIONS.achievements, undefined, { limit: 2001 }),
-      this.store.list<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, undefined, { limit: 2001 }),
-      this.store.list<GamificationActivityClaimRecord>(GAMIFICATION_COLLECTIONS.activityClaims, { user: userId, status: "accepted" }, { limit: 10001 }),
-    ]);
-    this.assertEvaluatorBounds(achievements, activities, claims);
-    const candidates = evaluateMetaAchievements({
-      achievements,
-      activities,
-      claims,
-      evaluatedAt: this.clock(),
-    });
-    const [existingBadges, existingXpEvents] = await Promise.all([
-      this.store.list<GamificationUserAchievementRecord>(GAMIFICATION_COLLECTIONS.userAchievements, { user: userId }),
-      this.store.list<GamificationXpEventRecord>(GAMIFICATION_COLLECTIONS.xpEvents, { user: userId }),
-    ]);
-    const awards: DerivedActivityAward[] = [];
-    for (const candidate of candidates) {
-      const existing = claims.find((claim) =>
-        claim.activity === candidate.activity.id && claim.status === "accepted"
-      );
-      if (!existing) {
-        const recorded = await this.recordMetaAward(userId, candidate);
-        claims.push(recorded.claim);
-        if (recorded.badge) existingBadges.push(recorded.badge);
-        if (recorded.xpEvent) existingXpEvents.push(recorded.xpEvent);
-        awards.push(recorded);
-        continue;
-      }
-      const existingBadge = existingBadges.find((badge) =>
-        badge.achievement === candidate.achievement.id && badge.status === "unlocked"
-      );
-      const existingXpEvent = existingXpEvents.find((event) => event.source_claim === existing.id);
-      const recordedScore = this.recordedClaimScore(candidate.activity, existing);
-      const expectsXp = recordedScore.amount > 0 || recordedScore.leaderboardAmount > 0;
-      if (existingBadge && (!expectsXp || existingXpEvent)) continue;
-      const repaired = await this.completeMetaAward(userId, candidate, existing, recordedScore);
-      if (repaired.badge) existingBadges.push(repaired.badge);
-      if (repaired.xpEvent) existingXpEvents.push(repaired.xpEvent);
-      awards.push({
-        claim: existing,
-        badge: existingBadge ? undefined : repaired.badge,
-        xpEvent: existingXpEvent ? undefined : repaired.xpEvent,
-      });
-    }
-    return awards;
+    return this.reconcileDerivedAwards(
+      userId,
+      (records) => evaluateMetaAchievements({ ...records, evaluatedAt: this.clock() }),
+      (candidate) => this.recordMetaAward(userId, candidate),
+    );
   }
 
   private async recordMetaAward(userId: string, candidate: MetaAchievementCandidate): Promise<DerivedActivityAward> {
@@ -749,18 +926,7 @@ export class GamificationAccountingService {
         },
       },
     });
-    return this.completeMetaAward(userId, candidate, claim, score);
-  }
-
-  private async completeMetaAward(
-    userId: string,
-    candidate: MetaAchievementCandidate,
-    claim: GamificationActivityClaimRecord,
-    score: DirectActivityXpInput,
-  ): Promise<DerivedActivityAward> {
-    const badge = await this.unlockBadge(userId, candidate.achievement.id, claim.id);
-    const xpEvent = await this.recordDirectActivityXp(userId, claim.id, score);
-    return { claim, badge, xpEvent };
+    return this.completeDerivedAward(userId, candidate.achievement.id, claim, score);
   }
 
   private assertEvaluatorBounds(
@@ -794,58 +960,22 @@ export class GamificationAccountingService {
     const activity = await this.store.getById<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, input.activityId);
     const achievement = await this.store.getById<GamificationAchievementRecord>(GAMIFICATION_COLLECTIONS.achievements, input.achievementId);
     const occurredAt = input.occurredAt || this.clock();
-    if (!Number.isFinite(Date.parse(occurredAt))) throw new Error("A valid evidence time is required.");
-    if (input.mode !== "badge_only" && input.mode !== "missed_evidence") {
-      throw new Error("Choose either a Badge-only award or missed-evidence remediation.");
-    }
-    if (activity.achievement !== achievement.id) {
-      throw new Error("The selected Activity and Achievement must be configured together.");
-    }
+    assertManualAwardSelection(input, activity, achievement, occurredAt);
     const supportReference = safeOptionalAdminReference(input.supportReference);
     const claimKey = manualActivityClaimIdempotencyKey(auditInput.targetUser, activity.id, auditInput.operationId);
-    const policyScore = input.mode === "missed_evidence"
-      ? await this.directScoreForActivity({
-        user: auditInput.targetUser,
-        activity: activity.id,
-        sourceType: "admin_manual",
-        outcomeKey: activity.outcome_key,
-        occurredAt,
-        evidenceFingerprint: claimKey,
-        idempotencyKey: claimKey,
-      })
-      : this.zeroScore(activity, occurredAt, "Badge-only manual award.");
-    const rankingRequested = policyScore.leaderboardAmount > 0 && Boolean(input.rankingError || input.highImpactConfirmed);
-    if (rankingRequested) {
-      this.assertPermittedRankingAdjustment(input, policyScore, supportReference);
-    }
-    let score = {
-      ...policyScore,
-      leaderboardAmount: rankingRequested ? policyScore.leaderboardAmount : 0,
-      capOutcome: {
-        ...policyScore.capOutcome,
-        awarded_total_xp: policyScore.amount,
-        awarded_leaderboard_xp: rankingRequested ? policyScore.leaderboardAmount : 0,
-        policy_leaderboard_xp: policyScore.leaderboardAmount,
-      },
-    };
+    const { score: policyScore, rankingRequested } = await this.manualAwardPolicyScore(
+      input,
+      auditInput,
+      activity,
+      occurredAt,
+      claimKey,
+      supportReference,
+    );
     const priorAction = await this.store.findOne<GamificationAdminActionRecord>(
       GAMIFICATION_COLLECTIONS.adminActions,
       { idempotency_key: adminActionIdempotencyKey("manual_award", safeAdminText(auditInput.operationId, "Operation ID")) },
     );
-    const priorTotalXp = priorAction && numericCapOutcome(priorAction.after_summary, "totalXpDelta");
-    const priorLeaderboardXp = priorAction && numericCapOutcome(priorAction.after_summary, "leaderboardXpDelta");
-    if (priorTotalXp !== undefined && priorLeaderboardXp !== undefined) {
-      score = {
-        ...score,
-        amount: priorTotalXp,
-        leaderboardAmount: priorLeaderboardXp,
-        capOutcome: {
-          ...score.capOutcome,
-          awarded_total_xp: priorTotalXp,
-          awarded_leaderboard_xp: priorLeaderboardXp,
-        },
-      };
-    }
+    let score = withRecordedXpDeltas(policyScore, priorAction?.after_summary);
     const action = await this.recordAdminAction(
       "manual_award",
       GAMIFICATION_COLLECTIONS.activities,
@@ -865,21 +995,8 @@ export class GamificationAccountingService {
       },
     );
     if (action.status === "applied") return this.manualAwardResult(action, auditInput.targetUser, activity.id, achievement.id, claimKey);
-    const recordedTotalXp = numericCapOutcome(action.after_summary, "totalXpDelta");
-    const recordedLeaderboardXp = numericCapOutcome(action.after_summary, "leaderboardXpDelta");
-    if (recordedTotalXp !== undefined && recordedLeaderboardXp !== undefined) {
-      // A cache-repair retry must retain the first authoritative policy result.
-      score = {
-        ...score,
-        amount: recordedTotalXp,
-        leaderboardAmount: recordedLeaderboardXp,
-        capOutcome: {
-          ...score.capOutcome,
-          awarded_total_xp: recordedTotalXp,
-          awarded_leaderboard_xp: recordedLeaderboardXp,
-        },
-      };
-    }
+    // A cache-repair retry must retain the first authoritative policy result.
+    score = withRecordedXpDeltas(score, action.after_summary);
 
     const existingClaim = await this.store.findOne<GamificationActivityClaimRecord>(
       GAMIFICATION_COLLECTIONS.activityClaims,
@@ -890,38 +1007,18 @@ export class GamificationAccountingService {
       throw new Error("This User already has accepted evidence for the selected Activity.");
     }
 
-    let claim: GamificationActivityClaimRecord;
-    let badge: GamificationUserAchievementRecord;
-    let xpEvent: GamificationXpEventRecord | undefined;
+    let written: DerivedActivityAward & { badge: GamificationUserAchievementRecord };
     try {
-      claim = await this.recordActivityClaim({
-        user: auditInput.targetUser,
-        activity: activity.id,
-        sourceType: "admin_manual",
-        sourceCollection: GAMIFICATION_COLLECTIONS.adminActions,
-        sourceRecordId: action.id,
-        outcomeKey: activity.outcome_key,
+      written = await this.writeManualAward({
+        userId: auditInput.targetUser,
+        activity,
+        achievementId: achievement.id,
+        action,
         occurredAt,
-        evidenceFingerprint: claimKey,
-        idempotencyKey: claimKey,
-        capOutcome: score.capOutcome,
-        metadata: supportReference ? { support_reference: supportReference } : {},
+        claimKey,
+        score,
+        supportReference,
       });
-      const awardedBadge = await this.unlockBadge(auditInput.targetUser, achievement.id, claim.id, true, true);
-      if (!awardedBadge) throw new Error("The audited Badge restoration could not be recorded.");
-      badge = awardedBadge;
-      xpEvent = await this.recordDirectActivityXp(auditInput.targetUser, claim.id, {
-        amount: score.amount,
-        leaderboardAmount: score.leaderboardAmount,
-        category: activity.category,
-        reason: "Admin manual award",
-        occurredAt,
-        metadata: { admin_action: action.id },
-      });
-      if (activity.kind !== "meta") {
-        await this.evaluateConfiguredEventCompletionsNow(auditInput.targetUser);
-        await this.evaluateMetaAchievementsNow(auditInput.targetUser);
-      }
     } catch (error) {
       await this.failAdminAction(action);
       throw error;
@@ -932,21 +1029,97 @@ export class GamificationAccountingService {
     await this.completeAdminAction(action);
     return {
       actionId: action.id,
-      claimId: claim.id,
-      badgeId: badge.id,
-      xpEventId: xpEvent?.id,
+      claimId: written.claim.id,
+      badgeId: written.badge.id,
+      xpEventId: written.xpEvent?.id,
       totalXp: score.amount,
       leaderboardXp: score.leaderboardAmount,
     };
   }
 
+  private async writeManualAward(award: {
+    userId: string;
+    activity: GamificationActivityRecord;
+    achievementId: string;
+    action: GamificationAdminActionRecord;
+    occurredAt: string;
+    claimKey: string;
+    score: ScoredActivityXp;
+    supportReference: string | undefined;
+  }): Promise<DerivedActivityAward & { badge: GamificationUserAchievementRecord }> {
+    const { userId, activity, action, occurredAt, claimKey, score, supportReference } = award;
+    const claim = await this.recordActivityClaim({
+      user: userId,
+      activity: activity.id,
+      sourceType: "admin_manual",
+      sourceCollection: GAMIFICATION_COLLECTIONS.adminActions,
+      sourceRecordId: action.id,
+      outcomeKey: activity.outcome_key,
+      occurredAt,
+      evidenceFingerprint: claimKey,
+      idempotencyKey: claimKey,
+      capOutcome: score.capOutcome,
+      metadata: supportReference ? { support_reference: supportReference } : {},
+    });
+    const badge = await this.unlockBadge(userId, award.achievementId, claim.id, true, true);
+    if (!badge) throw new Error("The audited Badge restoration could not be recorded.");
+    const xpEvent = await this.recordDirectActivityXp(userId, claim.id, {
+      amount: score.amount,
+      leaderboardAmount: score.leaderboardAmount,
+      category: activity.category,
+      reason: "Admin manual award",
+      occurredAt,
+      metadata: { admin_action: action.id },
+    });
+    if (activity.kind !== "meta") {
+      await this.evaluateConfiguredEventCompletionsNow(userId);
+      await this.evaluateMetaAchievementsNow(userId);
+    }
+    return { claim, badge, xpEvent };
+  }
+
+  /** Reproduces the configured Activity policy; ranking impact stays opt-in and audited. */
+  private async manualAwardPolicyScore(
+    input: AdminManualAwardInput,
+    auditInput: AuditOperationInput,
+    activity: GamificationActivityRecord,
+    occurredAt: string,
+    claimKey: string,
+    supportReference: string | undefined,
+  ): Promise<{ score: ScoredActivityXp; rankingRequested: boolean }> {
+    const policyScore = input.mode === "missed_evidence"
+      ? await this.directScoreForActivity({
+        user: auditInput.targetUser,
+        activity: activity.id,
+        sourceType: "admin_manual",
+        outcomeKey: activity.outcome_key,
+        occurredAt,
+        evidenceFingerprint: claimKey,
+        idempotencyKey: claimKey,
+      })
+      : this.zeroScore(activity, occurredAt, "Badge-only manual award.");
+    const rankingRequested = policyScore.leaderboardAmount > 0 && Boolean(input.rankingError || input.highImpactConfirmed);
+    if (rankingRequested) {
+      this.assertPermittedRankingAdjustment(input, policyScore, supportReference);
+    }
+    const leaderboardAmount = rankingRequested ? policyScore.leaderboardAmount : 0;
+    return {
+      rankingRequested,
+      score: {
+        ...policyScore,
+        leaderboardAmount,
+        capOutcome: {
+          ...policyScore.capOutcome,
+          awarded_total_xp: policyScore.amount,
+          awarded_leaderboard_xp: leaderboardAmount,
+          policy_leaderboard_xp: policyScore.leaderboardAmount,
+        },
+      },
+    };
+  }
+
   async recordXpCorrection(input: AdminXpCorrectionInput, auditInput: AuditOperationInput): Promise<GamificationXpEventRecord> {
-    if (!Number.isFinite(input.amount) || !Number.isFinite(input.leaderboardAmount)) {
-      throw new Error("Correction amounts must be finite numbers.");
-    }
-    if (input.amount === 0 && input.leaderboardAmount === 0) {
-      throw new Error("A correction must change total XP or Leaderboard XP.");
-    }
+    assertCorrectionAmounts(input);
     const supportReference = safeOptionalAdminReference(input.supportReference);
     const isHighImpact = input.amount < 0 || input.leaderboardAmount !== 0;
     let activity: GamificationActivityRecord | undefined;
@@ -954,16 +1127,7 @@ export class GamificationAccountingService {
       activity = await this.store.getById<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, input.activityId);
     }
     if (input.leaderboardAmount !== 0) {
-      if (!activity) throw new Error("A ranking correction must identify the original Activity.");
-      const expected = await this.originalPolicyOutcome(input, auditInput.targetUser, activity);
-      this.assertPermittedRankingAdjustment(input, expected, supportReference);
-      const sign = Math.sign(input.amount || input.leaderboardAmount);
-      if (
-        input.amount !== sign * expected.amount ||
-        input.leaderboardAmount !== sign * expected.leaderboardAmount
-      ) {
-        throw new Error("A ranking correction must match the original Activity policy and cap outcome.");
-      }
+      await this.assertRankingCorrection(input, auditInput.targetUser, activity, supportReference);
     }
     if (isHighImpact && !input.highImpactConfirmed) {
       throw new Error("Negative corrections and ranking changes require high-impact confirmation.");
@@ -989,23 +1153,7 @@ export class GamificationAccountingService {
     let event = existing;
     try {
       if (!event) {
-        event = await this.store.create<GamificationXpEventRecord>(GAMIFICATION_COLLECTIONS.xpEvents, {
-          user: auditInput.targetUser,
-          amount: input.amount,
-          leaderboard_amount: input.leaderboardAmount,
-          category: activity?.category || "admin_manual",
-          reason: "Admin XP correction",
-          source_type: "admin_correction",
-          source_id: action.id,
-          idempotency_key: idempotencyKey,
-          occurred_at: this.clock(),
-          voided: false,
-          metadata: {
-            activity_id: activity?.id,
-            original_xp_event_id: input.originalXpEventId,
-            support_reference: supportReference,
-          },
-        });
+        event = await this.createCorrectionXpEvent(input, auditInput.targetUser, activity, action, idempotencyKey, supportReference);
       }
     } catch (error) {
       await this.failAdminAction(action);
@@ -1014,6 +1162,51 @@ export class GamificationAccountingService {
     await this.rebuildProfile({ id: auditInput.targetUser });
     await this.completeAdminAction(action);
     return event;
+  }
+
+  private async createCorrectionXpEvent(
+    input: AdminXpCorrectionInput,
+    userId: string,
+    activity: GamificationActivityRecord | undefined,
+    action: GamificationAdminActionRecord,
+    idempotencyKey: string,
+    supportReference: string | undefined,
+  ): Promise<GamificationXpEventRecord> {
+    return this.store.create<GamificationXpEventRecord>(GAMIFICATION_COLLECTIONS.xpEvents, {
+      user: userId,
+      amount: input.amount,
+      leaderboard_amount: input.leaderboardAmount,
+      category: activity?.category || "admin_manual",
+      reason: "Admin XP correction",
+      source_type: "admin_correction",
+      source_id: action.id,
+      idempotency_key: idempotencyKey,
+      occurred_at: this.clock(),
+      voided: false,
+      metadata: {
+        activity_id: activity?.id,
+        original_xp_event_id: input.originalXpEventId,
+        support_reference: supportReference,
+      },
+    });
+  }
+
+  private async assertRankingCorrection(
+    input: AdminXpCorrectionInput,
+    userId: string,
+    activity: GamificationActivityRecord | undefined,
+    supportReference: string | undefined,
+  ): Promise<void> {
+    if (!activity) throw new Error("A ranking correction must identify the original Activity.");
+    const expected = await this.originalPolicyOutcome(input, userId, activity);
+    this.assertPermittedRankingAdjustment(input, expected, supportReference);
+    const sign = Math.sign(input.amount || input.leaderboardAmount);
+    if (
+      input.amount !== sign * expected.amount ||
+      input.leaderboardAmount !== sign * expected.leaderboardAmount
+    ) {
+      throw new Error("A ranking correction must match the original Activity policy and cap outcome.");
+    }
   }
 
   async rebuildProfile(user: AccountingUser): Promise<GamificationProfileRecord> {
@@ -1406,12 +1599,39 @@ export class GamificationAccountingService {
 
   async summaryForUser(user: AccountingUser): Promise<GamificationProfileSummary> {
     const profile = await this.ensureProfile(user);
-    const [userAchievements, achievements, missions] = await Promise.all([
+    const [userAchievements, achievements, missions, activities, claims] = await Promise.all([
       this.store.list<GamificationUserAchievementRecord>(GAMIFICATION_COLLECTIONS.userAchievements, { user: user.id }),
       this.store.list<GamificationAchievementRecord>(GAMIFICATION_COLLECTIONS.achievements, undefined, { sort: "sort_order,key", limit: 500 }),
-      this.store.list<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, { status: "active", visibility: "public", suggested: true }, { sort: "sort_order,key", limit: 20 }),
+      this.store.list<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, { status: "active", visibility: "public", suggested: true }, { sort: "sort_order,key" }),
+      this.store.list<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, { status: "active", enabled: true }),
+      this.store.list<GamificationActivityClaimRecord>(GAMIFICATION_COLLECTIONS.activityClaims, { user: user.id, status: "accepted" }),
     ]);
-    return buildGamificationProfileSummary(profile, userAchievements, achievements, missions);
+    const now = this.clock();
+    const time = Date.parse(now);
+    const inWindow = (from?: string, until?: string) => (!from || Date.parse(from) <= time) && (!until || Date.parse(until) >= time);
+    const missionIds = new Set(missions.filter(mission => inWindow(mission.starts_at, mission.ends_at)).map(mission => mission.id));
+    const completed = new Set(claims.map(claim => claim.activity));
+    const candidates = new Map(activities.filter(activity => missionIds.has(activity.mission || "") && !completed.has(activity.id) && inWindow(activity.active_from, activity.active_until)).map(activity => [activity.id, activity]));
+    const inventory = candidates.size ? await this.store.list<GamificationCodeRecord>(GAMIFICATION_COLLECTIONS.codes, { status: "active", enabled: true }, { sort: "id", limit: 10001, fields: "id,activity,status,enabled,evidence_role,starts_at,ends_at,invalidated_at,max_redemptions,total_redemptions_cached" }) : [];
+    const countUpTo = async (collection: string, match: Record<string, unknown>, ceiling: number) => {
+      if (this.store.count) return this.store.count(collection, match);
+      const bound = Math.min(ceiling, 10001);
+      const rows = await this.store.list(collection, match, { limit: bound, fields: "id" });
+      return rows.length >= bound ? ceiling : rows.length;
+    };
+    const activityCapacity = new Map<string, Promise<boolean>>();
+    // Advice is bounded: omit unverified opportunities rather than publish stale availability.
+    const checkedCodes = await Promise.all(inventory.filter(code => candidates.has(code.activity) && !code.invalidated_at && inWindow(code.starts_at, code.ends_at)).slice(0, 100).map(async code => {
+      const activity = candidates.get(code.activity)!;
+      if (!activityCapacity.has(activity.id)) activityCapacity.set(activity.id, activity.max_claims
+        ? countUpTo(GAMIFICATION_COLLECTIONS.activityClaims, { activity: activity.id, status: "accepted" }, activity.max_claims).then(count => count < activity.max_claims!)
+        : Promise.resolve(true));
+      if (!await activityCapacity.get(activity.id)) return undefined;
+      const count = code.max_redemptions ? await countUpTo(GAMIFICATION_COLLECTIONS.codeRedemptions, { code: code.id, status: "accepted" }, code.max_redemptions) : 0;
+      return code.max_redemptions && count >= code.max_redemptions ? undefined : { ...code, total_redemptions_cached: count };
+    }));
+    const availableCodes = checkedCodes.filter((code): code is GamificationCodeRecord => Boolean(code));
+    return buildGamificationProfileSummary(profile, userAchievements, achievements, missions, activities, claims, now, availableCodes);
   }
 
   /** Reads only profile-cache rows and configuration needed to allowlist public Badge presentation. */
@@ -1538,6 +1758,18 @@ export class GamificationAccountingService {
     });
   }
 
+  /** Resolve only retained server evidence; never trust claim metadata or a submitted multiplier. */
+  private async questionAwardEvidence(input: ActivityClaimInput): Promise<{ question_attempt: string; question_outcome: "passed" | "passed_half" } | undefined> {
+    if (input.sourceType !== "code_redemption" || input.sourceCollection !== GAMIFICATION_COLLECTIONS.codeRedemptions || !input.sourceRecordId) return undefined;
+    const redemption = await this.store.getById<SourceRedemption & { metadata?: Record<string, unknown> }>(GAMIFICATION_COLLECTIONS.codeRedemptions, input.sourceRecordId);
+    const attemptId = redemption.metadata?.question_attempt;
+    if (!attemptId) return undefined; // Direct codes and pre-migration full-credit history.
+    if (typeof attemptId !== "string" || !isAcceptedRedemptionFor(redemption, input.user, input.activity)) throw new Error("Question award evidence binding mismatch.");
+    const attempt = await this.store.getById<QuestionAttemptEvidence>("gamification_question_attempts", attemptId);
+    if (!isApprovedQuestionAttempt(attempt, redemption, input)) throw new Error("Question award requires immutable approved evidence.");
+    return { question_attempt: attemptId, question_outcome: attempt.status };
+  }
+
   private async directScoreForActivity(input: ActivityClaimInput): Promise<DirectActivityXpInput & {
     capOutcome: Record<string, unknown>;
   }> {
@@ -1573,8 +1805,11 @@ export class GamificationAccountingService {
     ]);
     const claimById = new Map(claims.map((claim) => [claim.id, claim]));
     const policyByActivity = new Map(policies.map((candidate) => [candidate.activity, candidate]));
-    let amount = Math.max(0, policy.total_xp);
-    let leaderboardAmount = Math.max(0, policy.leaderboard_xp);
+    const questionEvidence = await this.questionAwardEvidence(input);
+    const credit = questionEvidence?.question_outcome === "passed_half" ? 0.5 : 1;
+    // Scale configured awards before applying remaining caps. Preserve exact halves (including .5 XP).
+    let amount = Math.max(0, policy.total_xp) * credit;
+    let leaderboardAmount = Math.max(0, policy.leaderboard_xp) * credit;
     const appliedCaps: Array<{ key: string; totalXpRemaining: number; leaderboardXpRemaining: number }> = [];
     for (const cap of caps) {
       if (!cap.member_policy_keys.includes(policy.policy_key)) continue;
@@ -1602,6 +1837,7 @@ export class GamificationAccountingService {
       capOutcome: {
         schedule: schedule.id,
         policy: policy.policy_key,
+        ...questionEvidence,
         awarded_total_xp: amount,
         awarded_leaderboard_xp: leaderboardAmount,
         applied_caps: appliedCaps,
@@ -1626,41 +1862,20 @@ export class GamificationAccountingService {
     activity: GamificationActivityRecord,
     input: ActivityClaimInput,
   ): Promise<void> {
+    if (!["code_redemption", "admin_manual"].includes(input.sourceType)) {
+      throw new Error("Booth Activities accept only WTS Mission code evidence or audited admin support.");
+    }
     if (input.outcomeKey !== activity.outcome_key) {
       throw new Error("Booth evidence must match its configured outcome Activity.");
     }
     if (input.sourceType === "code_redemption") {
-      const redemption = input.sourceCollection === GAMIFICATION_COLLECTIONS.codeRedemptions && input.sourceRecordId
-        ? await this.store.findOne<{ user: string; activity: string; status: string }>(
-          GAMIFICATION_COLLECTIONS.codeRedemptions,
-          { id: input.sourceRecordId },
-        )
-        : undefined;
-      if (!redemption || redemption.status !== "accepted" || redemption.user !== input.user || redemption.activity !== activity.id) {
+      if (!await this.verifiedSourceRedemption(activity, input)) {
         throw new Error("Booth Activities require a verified WTS Mission code redemption for this User and outcome.");
       }
       return;
     }
-    if (input.sourceType === "admin_manual") {
-      const action = input.sourceCollection === GAMIFICATION_COLLECTIONS.adminActions && input.sourceRecordId
-        ? await this.store.findOne<{
-          action: string;
-          status: string;
-          target_user?: string;
-          related_collection?: string;
-          related_record_id?: string;
-        }>(GAMIFICATION_COLLECTIONS.adminActions, { id: input.sourceRecordId })
-        : undefined;
-      if (
-        !action ||
-        action.action !== "manual_award" ||
-        action.status === "failed" ||
-        action.target_user !== input.user ||
-        action.related_collection !== GAMIFICATION_COLLECTIONS.activities ||
-        action.related_record_id !== activity.id
-      ) {
-        throw new Error("Booth Activities require an audited admin support award for this User and outcome.");
-      }
+    if (input.sourceType === "admin_manual" && !await this.hasAuditedManualAward(activity, input)) {
+      throw new Error("Booth Activities require an audited admin support award for this User and outcome.");
     }
   }
 
@@ -1676,64 +1891,27 @@ export class GamificationAccountingService {
       throw new Error("Community Partner evidence must match its configured community Activity.");
     }
     if (input.sourceType === "admin_manual") {
-      const action = input.sourceCollection === GAMIFICATION_COLLECTIONS.adminActions && input.sourceRecordId
-        ? await this.store.findOne<{
-          action: string;
-          status: string;
-          target_user?: string;
-          related_collection?: string;
-          related_record_id?: string;
-        }>(GAMIFICATION_COLLECTIONS.adminActions, { id: input.sourceRecordId })
-        : undefined;
-      if (
-        !action ||
-        action.action !== "manual_award" ||
-        action.status === "failed" ||
-        action.target_user !== input.user ||
-        action.related_collection !== GAMIFICATION_COLLECTIONS.activities ||
-        action.related_record_id !== activity.id
-      ) {
+      if (!await this.hasAuditedManualAward(activity, input)) {
         throw new Error("Community Partner Activities require audited admin support for manual exceptions.");
       }
       return;
     }
     if (activity.evidence_mode === "derived_claim_set") {
-      const sourceClaimIds = input.metadata && typeof input.metadata.derived_claim_set === "object"
-        ? (input.metadata.derived_claim_set as { source_claim_ids?: unknown }).source_claim_ids
-        : undefined;
-      if (input.sourceType !== "system_derived" || !Array.isArray(sourceClaimIds) || sourceClaimIds.length !== 2) {
-        throw new Error("Community Partner completion requires both accepted WTS start and finish claims.");
-      }
-      const [achievements, activities, claims] = await Promise.all([
-        this.store.list<GamificationAchievementRecord>(GAMIFICATION_COLLECTIONS.achievements),
-        this.store.list<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities),
-        this.store.list<GamificationActivityClaimRecord>(GAMIFICATION_COLLECTIONS.activityClaims, { user: input.user }),
-      ]);
-      const supported = evaluateCommunityPartnerCompletions({ achievements, activities, claims })
-        .find((candidate) => candidate.activity.id === activity.id);
-      const supportedIds = supported?.sourceClaims.map((claim) => claim.id).sort();
-      if (!supportedIds || JSON.stringify(supportedIds) !== JSON.stringify([...sourceClaimIds].sort())) {
-        throw new Error("Community Partner completion requires both accepted WTS start and finish claims.");
-      }
-      return;
+      return this.assertDerivedClaimSet(
+        evaluateCommunityPartnerCompletions,
+        activity,
+        input,
+        "Community Partner completion requires both accepted WTS start and finish claims.",
+      );
     }
     if (input.sourceType !== "code_redemption") {
       throw new Error("Community Partner Activities accept only WTS Mission code evidence or audited admin support.");
     }
-    const redemption = input.sourceCollection === GAMIFICATION_COLLECTIONS.codeRedemptions && input.sourceRecordId
-      ? await this.store.findOne<{ user: string; activity: string; status: string; code: string }>(
-        GAMIFICATION_COLLECTIONS.codeRedemptions,
-        { id: input.sourceRecordId },
-      )
-      : undefined;
-    if (!redemption || redemption.status !== "accepted" || redemption.user !== input.user || redemption.activity !== activity.id) {
+    const redemption = await this.verifiedSourceRedemption(activity, input);
+    if (!redemption) {
       throw new Error("Community Partner Activities require a verified WTS Mission code redemption.");
     }
-    const expectedRole = activity.evidence_mode === "single_code"
-      ? "single"
-      : activity.evidence_mode === "two_code_start" ? "start" : activity.evidence_mode === "two_code_finish" ? "finish" : undefined;
-    const code = await this.store.getById<{ activity: string; evidence_role: string }>(GAMIFICATION_COLLECTIONS.codes, redemption.code);
-    if (!expectedRole || code.activity !== activity.id || code.evidence_role !== expectedRole) {
+    if (!await this.redeemedCodeMatches(activity, redemption, CODE_ROLE_BY_EVIDENCE_MODE.get(activity.evidence_mode))) {
       throw new Error("Community Partner Activities require a matching WTS Mission code artifact.");
     }
   }
@@ -1754,17 +1932,11 @@ export class GamificationAccountingService {
     if (input.sourceType !== "code_redemption" || input.outcomeKey !== activity.outcome_key) {
       throw new Error("Session attendance requires verified WTS Mission code redemption evidence.");
     }
-    const redemption = input.sourceCollection === GAMIFICATION_COLLECTIONS.codeRedemptions && input.sourceRecordId
-      ? await this.store.findOne<{ user: string; activity: string; status: string; code: string }>(
-        GAMIFICATION_COLLECTIONS.codeRedemptions,
-        { id: input.sourceRecordId },
-      )
-      : undefined;
-    if (!redemption || redemption.status !== "accepted" || redemption.user !== input.user || redemption.activity !== activity.id) {
+    const redemption = await this.verifiedSourceRedemption(activity, input);
+    if (!redemption) {
       throw new Error("Session attendance requires verified WTS Mission code redemption evidence.");
     }
-    const code = await this.store.getById<{ activity: string; evidence_role: string }>(GAMIFICATION_COLLECTIONS.codes, redemption.code);
-    if (code.activity !== activity.id || code.evidence_role !== "single") {
+    if (!await this.redeemedCodeMatches(activity, redemption, "single")) {
       throw new Error("Session attendance requires a matching WTS single-code artifact.");
     }
   }
@@ -1777,23 +1949,7 @@ export class GamificationAccountingService {
       throw new Error("Configured event evidence must match its Activity outcome.");
     }
     if (input.sourceType === "admin_manual") {
-      const action = input.sourceCollection === GAMIFICATION_COLLECTIONS.adminActions && input.sourceRecordId
-        ? await this.store.findOne<{
-          action: string;
-          status: string;
-          target_user?: string;
-          related_collection?: string;
-          related_record_id?: string;
-        }>(GAMIFICATION_COLLECTIONS.adminActions, { id: input.sourceRecordId })
-        : undefined;
-      if (
-        !action ||
-        action.action !== "manual_award" ||
-        action.status === "failed" ||
-        action.target_user !== input.user ||
-        action.related_collection !== GAMIFICATION_COLLECTIONS.activities ||
-        action.related_record_id !== activity.id
-      ) {
+      if (!await this.hasAuditedManualAward(activity, input)) {
         throw new Error("Configured event Activities require audited admin support for manual exceptions.");
       }
       return;
@@ -1802,42 +1958,21 @@ export class GamificationAccountingService {
       if (input.sourceType !== "system_derived") {
         throw new Error("Configured event completion requires both accepted start and finish claims.");
       }
-      const sourceClaimIds = input.metadata && typeof input.metadata.derived_claim_set === "object"
-        ? (input.metadata.derived_claim_set as { source_claim_ids?: unknown }).source_claim_ids
-        : undefined;
-      if (!Array.isArray(sourceClaimIds) || sourceClaimIds.length !== 2) {
-        throw new Error("Configured event completion requires both accepted start and finish claims.");
-      }
-      const [achievements, activities, claims] = await Promise.all([
-        this.store.list<GamificationAchievementRecord>(GAMIFICATION_COLLECTIONS.achievements),
-        this.store.list<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities),
-        this.store.list<GamificationActivityClaimRecord>(GAMIFICATION_COLLECTIONS.activityClaims, { user: input.user }),
-      ]);
-      const supported = evaluateConfiguredEventCompletions({ achievements, activities, claims })
-        .find((candidate) => candidate.activity.id === activity.id);
-      const supportedIds = supported?.sourceClaims.map((claim) => claim.id).sort();
-      if (!supportedIds || JSON.stringify(supportedIds) !== JSON.stringify([...sourceClaimIds].sort())) {
-        throw new Error("Configured event completion requires both accepted start and finish claims.");
-      }
-      return;
+      return this.assertDerivedClaimSet(
+        evaluateConfiguredEventCompletions,
+        activity,
+        input,
+        "Configured event completion requires both accepted start and finish claims.",
+      );
     }
     if (input.sourceType !== "code_redemption") {
       throw new Error("Configured event attendance requires verified WTS Mission code redemption evidence.");
     }
-    const redemption = input.sourceCollection === GAMIFICATION_COLLECTIONS.codeRedemptions && input.sourceRecordId
-      ? await this.store.findOne<{ user: string; activity: string; status: string; code: string }>(
-        GAMIFICATION_COLLECTIONS.codeRedemptions,
-        { id: input.sourceRecordId },
-      )
-      : undefined;
-    if (!redemption || redemption.status !== "accepted" || redemption.user !== input.user || redemption.activity !== activity.id) {
+    const redemption = await this.verifiedSourceRedemption(activity, input);
+    if (!redemption) {
       throw new Error("Configured event attendance requires verified WTS Mission code redemption evidence.");
     }
-    const expectedRole = activity.evidence_mode === "single_code"
-      ? "single"
-      : activity.evidence_mode === "two_code_start" ? "start" : activity.evidence_mode === "two_code_finish" ? "finish" : undefined;
-    const code = await this.store.getById<{ activity: string; evidence_role: string }>(GAMIFICATION_COLLECTIONS.codes, redemption.code);
-    if (!expectedRole || code.activity !== activity.id || code.evidence_role !== expectedRole) {
+    if (!await this.redeemedCodeMatches(activity, redemption, CODE_ROLE_BY_EVIDENCE_MODE.get(activity.evidence_mode))) {
       throw new Error("Configured event attendance requires a matching WTS Mission code artifact.");
     }
   }
@@ -1846,28 +1981,65 @@ export class GamificationAccountingService {
     activity: GamificationActivityRecord,
     input: ActivityClaimInput,
   ): Promise<void> {
-    if (
-      activity.kind !== "easter_egg" ||
-      activity.category !== "easter_egg" ||
-      activity.outcome_key !== "static_discovery" ||
-      activity.evidence_mode !== "static_puzzle_code" ||
-      input.sourceType !== "static_puzzle_code" ||
-      input.outcomeKey !== "static_discovery"
-    ) {
+    if (!isStaticDiscoveryEvidence(activity, input)) {
       throw new Error("Easter egg discovery requires verified WTS static-code redemption evidence.");
     }
-    const redemption = input.sourceCollection === GAMIFICATION_COLLECTIONS.codeRedemptions && input.sourceRecordId
-      ? await this.store.findOne<{ user: string; activity: string; status: string; code: string }>(
-        GAMIFICATION_COLLECTIONS.codeRedemptions,
-        { id: input.sourceRecordId },
-      )
-      : undefined;
-    if (!redemption || redemption.status !== "accepted" || redemption.user !== input.user || redemption.activity !== activity.id) {
+    const redemption = await this.verifiedSourceRedemption(activity, input);
+    if (!redemption) {
       throw new Error("Easter egg discovery requires verified WTS static-code redemption evidence.");
     }
-    const code = await this.store.getById<{ activity: string; evidence_role: string }>(GAMIFICATION_COLLECTIONS.codes, redemption.code);
-    if (code.activity !== activity.id || code.evidence_role !== "static_puzzle") {
+    if (!await this.redeemedCodeMatches(activity, redemption, "static_puzzle")) {
       throw new Error("Easter egg discovery requires a matching WTS static-code artifact.");
+    }
+  }
+
+  /** Returns the claim's source redemption only when it is accepted for this User and Activity. */
+  private async verifiedSourceRedemption(
+    activity: GamificationActivityRecord,
+    input: ActivityClaimInput,
+  ): Promise<SourceRedemption | undefined> {
+    const redemption = input.sourceCollection === GAMIFICATION_COLLECTIONS.codeRedemptions && input.sourceRecordId
+      ? await this.store.findOne<SourceRedemption>(GAMIFICATION_COLLECTIONS.codeRedemptions, { id: input.sourceRecordId })
+      : undefined;
+    return isAcceptedRedemptionFor(redemption, input.user, activity.id) ? redemption : undefined;
+  }
+
+  private async redeemedCodeMatches(
+    activity: GamificationActivityRecord,
+    redemption: SourceRedemption,
+    expectedRole: string | undefined,
+  ): Promise<boolean> {
+    const code = await this.store.getById<{ activity: string; evidence_role: string }>(GAMIFICATION_COLLECTIONS.codes, redemption.code);
+    return Boolean(expectedRole) && code.activity === activity.id && code.evidence_role === expectedRole;
+  }
+
+  private async hasAuditedManualAward(activity: GamificationActivityRecord, input: ActivityClaimInput): Promise<boolean> {
+    const action = input.sourceCollection === GAMIFICATION_COLLECTIONS.adminActions && input.sourceRecordId
+      ? await this.store.findOne<SourceAdminAction>(GAMIFICATION_COLLECTIONS.adminActions, { id: input.sourceRecordId })
+      : undefined;
+    return isManualAwardFor(action, input.user, activity.id);
+  }
+
+  private async assertDerivedClaimSet(
+    evaluate: DerivedCompletionEvaluator,
+    activity: GamificationActivityRecord,
+    input: ActivityClaimInput,
+    message: string,
+  ): Promise<void> {
+    const sourceClaimIds = derivedSourceClaimIds(input);
+    if (input.sourceType !== "system_derived" || !Array.isArray(sourceClaimIds) || sourceClaimIds.length !== 2) {
+      throw new Error(message);
+    }
+    const [achievements, activities, claims] = await Promise.all([
+      this.store.list<GamificationAchievementRecord>(GAMIFICATION_COLLECTIONS.achievements),
+      this.store.list<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities),
+      this.store.list<GamificationActivityClaimRecord>(GAMIFICATION_COLLECTIONS.activityClaims, { user: input.user }),
+    ]);
+    const supported = evaluate({ achievements, activities, claims })
+      .find((candidate) => candidate.activity.id === activity.id);
+    const supportedIds = supported?.sourceClaims.map((claim) => claim.id).sort();
+    if (!supportedIds || JSON.stringify(supportedIds) !== JSON.stringify([...sourceClaimIds].sort())) {
+      throw new Error(message);
     }
   }
 
@@ -1891,7 +2063,7 @@ export class GamificationAccountingService {
         existing.target_user !== input.targetUser ||
         existing.related_collection !== relatedCollection ||
         existing.related_record_id !== relatedRecordId ||
-        JSON.stringify(existing.after_summary || {}) !== JSON.stringify(afterSummary)
+        !samePersistedJson(existing.after_summary || {}, afterSummary)
       ) {
         throw new Error("This admin operation ID belongs to another accounting action.");
       }
@@ -1968,43 +2140,7 @@ export class GamificationAccountingService {
   }
 
   private async hasAuthoritativeWrites(action: GamificationAdminActionRecord): Promise<boolean> {
-    if (action.action === "rebuild_profile_cache") return true;
-    if (action.action === "manual_award") {
-      const claim = await this.store.findOne<GamificationActivityClaimRecord>(GAMIFICATION_COLLECTIONS.activityClaims, {
-        source_collection: GAMIFICATION_COLLECTIONS.adminActions,
-        source_record_id: action.id,
-      });
-      if (!claim) return false;
-      const achievementId = typeof action.after_summary?.achievementId === "string" ? action.after_summary.achievementId : "";
-      const badge = await this.store.findOne<GamificationUserAchievementRecord>(GAMIFICATION_COLLECTIONS.userAchievements, {
-        user: action.target_user,
-        achievement: achievementId,
-        source_claim: claim.id,
-      }) || await this.store.findOne<GamificationUserAchievementRecord>(GAMIFICATION_COLLECTIONS.userAchievements, {
-        user: action.target_user,
-        achievement: achievementId,
-        status: "unlocked",
-      });
-      if (!badge) return false;
-      const totalXp = numericCapOutcome(action.after_summary, "totalXpDelta") || 0;
-      if (totalXp === 0) return true;
-      return Boolean(await this.store.findOne<GamificationXpEventRecord>(GAMIFICATION_COLLECTIONS.xpEvents, { source_claim: claim.id }));
-    }
-    if (action.action === "admin_correction") {
-      return Boolean(await this.store.findOne<GamificationXpEventRecord>(GAMIFICATION_COLLECTIONS.xpEvents, { source_id: action.id }));
-    }
-    if (action.action === "void_xp_event") {
-      const event = await this.store.getById<GamificationXpEventRecord>(GAMIFICATION_COLLECTIONS.xpEvents, action.related_record_id || "").catch(() => undefined);
-      return Boolean(event?.voided && event.void_admin_action === action.id);
-    }
-    if (action.action === "void_activity_claim") {
-      const claim = await this.store.getById<GamificationActivityClaimRecord>(GAMIFICATION_COLLECTIONS.activityClaims, action.related_record_id || "").catch(() => undefined);
-      return Boolean(claim?.status === "voided" && claim.void_admin_action === action.id);
-    }
-    if (action.action === "revoke_user_achievement") {
-      const badge = await this.store.getById<GamificationUserAchievementRecord>(GAMIFICATION_COLLECTIONS.userAchievements, action.related_record_id || "").catch(() => undefined);
-      return Boolean(badge?.status === "revoked" && badge.source_admin_action === action.id);
-    }
-    return false;
+    const check = AUTHORITATIVE_WRITE_CHECKS.get(action.action);
+    return check ? check(this.store, action) : false;
   }
 }

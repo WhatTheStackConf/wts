@@ -1,27 +1,11 @@
 import { expect, it } from "vite-plus/test";
+import { corruptPage, strippedPage } from "~/lib/checkin-pagination-test-helper";
 import { createCheckinLookupAdapter } from "~/lib/checkin-lookup-hievents";
 import type { CheckinEventSnapshot } from "~/lib/checkin-event-contract";
 
 // Synthetic source-pinned responses, never deployed proof.
-// Observed paginator shape only; synthetic hosts and identities throughout.
-function stripped(body: unknown) {
-  const copy = JSON.parse(JSON.stringify(body).replaceAll(`${base}/`, `${base.slice(0, -4)}/`));
-  copy.meta.current_page_url = `${copy.meta.path}?page=${copy.meta.current_page}`;
-  return copy;
-}
-function corrupt(body: ReturnType<typeof stripped>, field: string, kind: string) {
-  const owner = field === "path" || field === "current_page_url" ? body.meta : body.links;
-  if (kind === "origin") owner[field] = owner[field].replace(new URL(base).host, "foreign.example.invalid");
-  if (kind === "capability") owner[field] = owner[field].replace(/cil_[^/]+|events\/[0-9]+/, "other-list");
-  if (kind === "query") owner[field] += `${field === "path" ? "?" : "&"}extra=1`;
-  if (kind === "changed query") owner[field] += `${field === "path" ? "?" : "&"}query=A-ABC1235`;
-  if (kind === "duplicate query") owner[field] += `${field === "path" ? "?" : "&"}query=A-ABC1234&query=A-ABC1234`;
-  if (kind === "wrong mount") owner[field] = owner[field].replace(new URL(base).origin, `${new URL(base).origin}/api/api`);
-  if (kind === "duplicate") owner[field] += `${field === "path" ? "?" : "&"}per_page=1&per_page=1`;
-  if (kind === "credentials") owner[field] = owner[field].replace("https://", "https://user:pass@");
-  if (kind === "fragment") owner[field] += "#fragment";
-  if (kind === "count") body.meta.to = 2;
-}
+const stripped = (body: unknown) => strippedPage(base, body);
+const corrupt = (body: ReturnType<typeof stripped>, field: string, kind: string) => corruptPage(base, body, field, kind);
 const base = "https://lookup.example.invalid/api";
 const apiKey = `${Buffer.from('{"alg":"HS256"}').toString("base64url")}.${Buffer.from('{"account_id":77}').toString("base64url")}.c3ludGhldGlj`;
 const config = { apiUrl: base, apiKey, accountId: "77" };

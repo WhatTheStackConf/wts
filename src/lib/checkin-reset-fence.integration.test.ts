@@ -71,6 +71,24 @@ async function provision() {
   } catch(error) {await coordinator?.close();await u.close();await t.cleanup();throw error;}
 }
 
+type Fixture=Awaited<ReturnType<typeof provision>>;
+async function setSystemEnabled(t:Fixture["t"],enabled:boolean,reason:"configuration"|"incident") {
+  const system=await t.pb.collection("checkin_system").getOne("wts2026system00");
+  await t.control.adminControl({operation:"set_system_enabled",operationId:crypto.randomUUID(),expectedVersion:system.version,enabled,reason});
+}
+/** Applies one fault while the reset inspection is paused; a takeover returns the successor coordinator. */
+async function injectInspectionFault(f:Fixture,fault:"valid"|"enabled"|"enabled_then_stopped"|"takeover"|"fingerprint"):Promise<Coordinator|undefined> {
+  if(fault === "enabled" || fault === "enabled_then_stopped") await setSystemEnabled(f.t,true,"configuration");
+  if(fault === "enabled_then_stopped") await setSystemEnabled(f.t,false,"incident");
+  if(fault === "fingerprint")f.u.change();
+  if(fault !== "takeover") return undefined;
+  // Keep the original coordinator active locally; expire only its backend lease
+  // so the production callback reaches PB and is denied by the new owner fence.
+  const db=new DatabaseSync(join(f.t.root,"pb_data/data.db"));
+  try {db.prepare("UPDATE checkin_coordinator SET last_seen_at=? WHERE id='wts2026coord000'").run(new Date(Date.now()-60000).toISOString());} finally {db.close();}
+  const successor=new Coordinator(f.t.pb);await successor.listen();
+  return successor;
+}
 it.each(["valid","enabled","enabled_then_stopped","takeover","fingerprint"] as const)("real PB + production reset adapter: paused fresh inspection %s",async fault=>{
   const f=await provision();let successor:Coordinator|undefined;
   try {
@@ -80,19 +98,7 @@ it.each(["valid","enabled","enabled_then_stopped","takeover","fingerprint"] as c
     const [claimed]=await f.t.pb.collection("checkin_recovery_resets").getFullList();
     expect(claimed.state).toBe("possibly_sent");expect(claimed.delete_fence_at).toBe("");
     expect(claimed.send_claim_target.resetId).toBe(claimed.id);
-    if(fault === "enabled" || fault === "enabled_then_stopped") {
-      let system=await f.t.pb.collection("checkin_system").getOne("wts2026system00");
-      await f.t.control.adminControl({operation:"set_system_enabled",operationId:crypto.randomUUID(),expectedVersion:system.version,enabled:true,reason:"configuration"});
-      if(fault === "enabled_then_stopped") {system=await f.t.pb.collection("checkin_system").getOne("wts2026system00");await f.t.control.adminControl({operation:"set_system_enabled",operationId:crypto.randomUUID(),expectedVersion:system.version,enabled:false,reason:"incident"});}
-    }
-    if(fault === "takeover") {
-      // Keep the original coordinator active locally; expire only its backend lease
-      // so the production callback reaches PB and is denied by the new owner fence.
-      const db=new DatabaseSync(join(f.t.root,"pb_data/data.db"));
-      try {db.prepare("UPDATE checkin_coordinator SET last_seen_at=? WHERE id='wts2026coord000'").run(new Date(Date.now()-60000).toISOString());} finally {db.close();}
-      successor=new Coordinator(f.t.pb);await successor.listen();
-    }
-    if(fault === "fingerprint")f.u.change();
+    successor=await injectInspectionFault(f,fault);
     f.u.release(); const result=await processing;
     if(fault!=="takeover")expect(result).toEqual({value:1});
     expect(f.u.effects()).toBe(fault === "valid"?1:0);
@@ -138,6 +144,7 @@ it("real PB send route binds every target field, lifecycle and current pending r
   } finally {await f.cleanup();}
 },20000);
 
+const lostResponses:Record<string,string>={lost_fence:"machine_reset_fence",lost_claim:"machine_reset_claim",lost_result:"machine_reset_result"};
 it.each(["lost_fence","duplicate_fence","lost_claim","lost_delete","lost_result"] as const)("real PB one-shot reset cannot replay %s",async fault=>{
   const f=await provision();const send=f.t.pb.send.bind(f.t.pb);let fenceBody:unknown;
   try {
@@ -146,7 +153,7 @@ it.each(["lost_fence","duplicate_fence","lost_claim","lost_delete","lost_result"
       if(op === "machine_reset_fence")fenceBody=options!.body;
       const reply=await send(url,options);
       if(op === "machine_reset_fence" && fault === "duplicate_fence")await send(url,options); // second authorization must throw
-      if(op === "machine_reset_fence" && fault === "lost_fence" || op === "machine_reset_claim" && fault === "lost_claim" || op === "machine_reset_result" && fault === "lost_result")throw new Error("Synthetic committed response loss");
+      if(op && lostResponses[fault] === op)throw new Error("Synthetic committed response loss");
       return reply;
     }) as typeof f.t.pb.send;
     const processor=fault === "lost_delete"?{reset:async(job:Parameters<typeof f.u.source.reset>[0],beforeDelete:()=>Promise<void>)=>{await f.u.source.reset(job,beforeDelete);throw new Error("Synthetic lost DELETE response");}}:f.u.source;

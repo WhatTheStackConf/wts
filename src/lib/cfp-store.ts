@@ -122,20 +122,31 @@ export const updateApplicant = async (
   return res;
 };
 
+// The first truthy value; when none is truthy, the last value is kept as is.
+function firstFilled(...values: any[]): any {
+  return values.find(Boolean) ?? values[values.length - 1];
+}
+
+// Convert social handles from string to array if needed
+function socialHandleList(socialHandles: any): any {
+  if (Array.isArray(socialHandles)) return socialHandles;
+  if (typeof socialHandles === "string") return socialHandles ? [socialHandles] : [];
+  return socialHandles || [];
+}
+
+function knownIdentity(submission: any, identity?: { email?: string; name?: string }) {
+  return {
+    email: submission.email || identity?.email || cfpStore.formData.email,
+    full_name: submission.full_name || identity?.name || cfpStore.formData.full_name,
+  };
+}
+
 // Function to load a submission into the store for editing
 export const loadSubmissionToStore = (
   submission: any,
   identity?: { email?: string; name?: string },
 ) => {
-  // Convert social handles from string to array if needed
-  const socialHandles = submission.social_handles;
-  const socialHandlesArray = Array.isArray(socialHandles)
-    ? socialHandles
-    : typeof socialHandles === "string"
-      ? socialHandles
-        ? [socialHandles]
-        : []
-      : socialHandles || [];
+  const socialHandlesArray = socialHandleList(submission.social_handles);
 
   // Extract meta fields if they exist
   const meta = submission.meta || {};
@@ -145,31 +156,28 @@ export const loadSubmissionToStore = (
 
   setCfpStore("formData", {
     id: submission.id || "",
-    email: submission.email || identity?.email || cfpStore.formData.email,
-    full_name: submission.full_name || identity?.name || cfpStore.formData.full_name,
-    affiliation: submission.affiliation || applicant.affiliation || "",
-    short_bio: submission.bio || applicant.bio || "",
+    ...knownIdentity(submission, identity),
+    affiliation: firstFilled(submission.affiliation, applicant.affiliation, ""),
+    short_bio: firstFilled(submission.bio, applicant.bio, ""),
     social_handles:
       socialHandlesArray.length > 0
         ? socialHandlesArray
-        : applicant.social_handles || [],
-    preferred_contact:
-      submission.preferred_contact_method ||
-      applicant.preferred_contact_method ||
+        : firstFilled(applicant.social_handles, []),
+    preferred_contact: firstFilled(
+      submission.preferred_contact_method,
+      applicant.preferred_contact_method,
       "",
-    talk_title: submission.session_title || submission.talk_title || "",
-    abstract: submission.abstract || "",
-    key_takeaways: submission.key_takeaways || "",
-    technical_requirements: submission.technical_requirements || "",
-    previous_presentation:
-      meta.previous_presentation || submission.previous_presentation || "",
-    company_cover_expenses:
-      meta.company_cover_expenses || submission.company_cover_expenses || "",
-    additional_info: meta.additional_info || submission.additional_info || "",
-    applicant_id:
-      submission.applicant || submission.applicant_id || applicant.id || "",
-    previous_talks: applicant.previous_talks || submission.previous_talks || "",
-    organizer_notes: meta.organizer_notes || submission.organizer_notes || "",
+    ),
+    talk_title: firstFilled(submission.session_title, submission.talk_title, ""),
+    abstract: firstFilled(submission.abstract, ""),
+    key_takeaways: firstFilled(submission.key_takeaways, ""),
+    technical_requirements: firstFilled(submission.technical_requirements, ""),
+    previous_presentation: firstFilled(meta.previous_presentation, submission.previous_presentation, ""),
+    company_cover_expenses: firstFilled(meta.company_cover_expenses, submission.company_cover_expenses, ""),
+    additional_info: firstFilled(meta.additional_info, submission.additional_info, ""),
+    applicant_id: firstFilled(submission.applicant, submission.applicant_id, applicant.id, ""),
+    previous_talks: firstFilled(applicant.previous_talks, submission.previous_talks, ""),
+    organizer_notes: firstFilled(meta.organizer_notes, submission.organizer_notes, ""),
   });
 
   // Set step to 1 to start editing from the beginning

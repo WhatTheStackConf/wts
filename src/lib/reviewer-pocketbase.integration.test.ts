@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import PocketBase from "pocketbase";
 import { describe, expect, it } from "vite-plus/test";
+import { fetchCfpAdminConfiguration, saveClosedCfpConfiguration, type CfpAdminConfigurationService } from "~/lib/cfp-admin-preparation";
+import { isApproved2027Admin } from "~/lib/edition-admin";
 
 async function availablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -61,11 +63,15 @@ describe("reviewer PocketBase isolation", () => {
       "1768850001_fix_user_role.js",
       "1768850002_create_cfp_weight_votes.js",
       "1768850003_restrict_admin_writes.js",
+      "1776000000_create_speakers_and_sessions.js",
+      "1776000001_speakers_sessions_public_rules.js",
       "1776000002_add_cfp_submissions_status.js",
       "1777000000_harden_auth_and_reviewer_rules.js",
       "1777000001_fix_users_role_update_rule.js",
       "1781000000_fix_registration_role_escalation.js",
+      "1780000000_create_conference_config.js",
       "1787000007_harden_reviewer_ownership.js",
+      "1790200000_add_conference_capability_availability.js",
     ];
     for (const migration of migrationNames) {
       writeFileSync(
@@ -76,6 +82,14 @@ describe("reviewer PocketBase isolation", () => {
     writeFileSync(
       join(hooksDir, "users_role_guard.pb.js"),
       readFileSync(new URL("../../pocketbase/pb_hooks/users_role_guard.pb.js", import.meta.url), "utf8"),
+    );
+    writeFileSync(
+      join(hooksDir, "capability_availability.pb.js"),
+      readFileSync(new URL("../../pocketbase/pb_hooks/capability_availability.pb.js", import.meta.url), "utf8"),
+    );
+    writeFileSync(
+      join(hooksDir, "capability-availability.js"),
+      readFileSync(new URL("../../pocketbase/pb_hooks/capability-availability.js", import.meta.url), "utf8"),
     );
 
     const binary = fileURLToPath(new URL("../../pocketbase/pocketbase", import.meta.url));
@@ -170,6 +184,60 @@ describe("reviewer PocketBase isolation", () => {
         role: "admin",
         verified: true,
       });
+      const configuration = await rootClient.collection("conference_config").getFirstListItem("");
+      expect(isApproved2027Admin(admin.id, admin.role, admin.id)).toBe(true);
+      expect(isApproved2027Admin(reviewerA.id, reviewerA.role, admin.id)).toBe(false);
+      const prepService = {
+        fetchAllRecords: (collection: string) => rootClient.collection(collection).getFullList(),
+        createRecord: (collection: string, data: Record<string, unknown>) => rootClient.collection(collection).create(data),
+        updateRecord: (collection: string, id: string, data: Record<string, unknown>) => rootClient.collection(collection).update(id, data),
+      };
+      const preparedConfiguration = await saveClosedCfpConfiguration(
+        prepService as unknown as CfpAdminConfigurationService,
+        { cfp_open: false, cfp_deadline: "2027-06-30" },
+      );
+      expect(preparedConfiguration).toMatchObject({
+        cfp_open: false,
+        cfp_deadline: "2027-06-30 00:00:00.000Z",
+        availability: { cfp: false, review: false },
+      });
+      await expect(fetchCfpAdminConfiguration(prepService as unknown as CfpAdminConfigurationService))
+        .resolves.toEqual({ cfp_open: false, cfp_available: false, cfp_deadline: "2027-06-30" });
+      const ordinaryClient = new PocketBase(baseUrl);
+      await ordinaryClient.collection("users").authWithPassword("ordinary-user@example.test", temporaryPassword);
+      await expect(ordinaryClient.collection("conference_config").update(configuration.id, {
+        cfp_open: true,
+        availability: { cfp: true, review: true },
+      })).rejects.toMatchObject({ status: expect.any(Number) });
+      const reviewerAClient = new PocketBase(baseUrl);
+      await reviewerAClient.collection("users").authWithPassword("reviewer-a@example.test", temporaryPassword);
+      await expect(publicClient.collection("cfp_applicants").getList(1, 10))
+        .rejects.toMatchObject({ status: expect.any(Number) });
+      await expect(ordinaryClient.collection("cfp_applicants").getList(1, 10))
+        .rejects.toMatchObject({ status: expect.any(Number) });
+      await expect(ordinaryClient.collection("cfp_submissions").getList(1, 10))
+        .rejects.toMatchObject({ status: expect.any(Number) });
+      await expect(reviewerAClient.collection("cfp_applicants").getList(1, 10))
+        .rejects.toMatchObject({ status: expect.any(Number) });
+      await expect(reviewerAClient.collection("cfp_reviews").getList(1, 10))
+        .rejects.toMatchObject({ status: 404 });
+      await expect(rootClient.collection("cfp_applicants").getList(1, 10))
+        .rejects.toMatchObject({ status: 404 });
+      await expect(rootClient.collection("cfp_applicants").create({
+        affiliation: "Test Organization",
+        bio: "Test bio",
+        user: ordinary.id,
+      })).rejects.toMatchObject({ status: 404 });
+      await expect(rootClient.collection("speakers").getList(1, 10, {
+        expand: "cfp_applicant.user",
+      })).rejects.toMatchObject({ status: 404 });
+      await rootClient.collection("conference_config").update(configuration.id, {
+        cfp_open: true,
+        cfp_deadline: "2099-07-30",
+        availability: { cfp: true, review: false },
+      });
+      await expect(rootClient.collection("cfp_reviews").getList(1, 10))
+        .rejects.toMatchObject({ status: 404 });
       const applicant = await rootClient.collection("cfp_applicants").create({
         affiliation: "Test Organization",
         bio: "Test bio",
@@ -181,9 +249,17 @@ describe("reviewer PocketBase isolation", () => {
         key_takeaways: "Takeaways",
         applicant: applicant.id,
       });
+      await rootClient.collection("conference_config").update(configuration.id, {
+        cfp_open: false,
+        availability: { cfp: false, review: true },
+      });
+      await expect(rootClient.collection("cfp_applicants").getList(1, 10))
+        .rejects.toMatchObject({ status: 404 });
+      await expect(rootClient.collection("cfp_submissions").getList(1, 10))
+        .resolves.toMatchObject({ items: [expect.objectContaining({ id: submission.id })] });
 
-      const ordinaryClient = new PocketBase(baseUrl);
-      await ordinaryClient.collection("users").authWithPassword("ordinary-user@example.test", temporaryPassword);
+      await expect(ordinaryClient.collection("cfp_submissions").getList(1, 10))
+        .rejects.toMatchObject({ status: expect.any(Number) });
       await expect(ordinaryClient.collection("users").update(ordinary.id, { role: "admin" }))
         .rejects.toMatchObject({ status: expect.any(Number) });
       const renamed = await ordinaryClient.collection("users").update(ordinary.id, { name: "Renamed User" });
@@ -195,12 +271,13 @@ describe("reviewer PocketBase isolation", () => {
       expect(withAvatar.avatar).toMatch(/\.png$/);
       expect(withAvatar.role).toBe("user");
 
-      const reviewerAClient = new PocketBase(baseUrl);
       const reviewerBClient = new PocketBase(baseUrl);
       const adminClient = new PocketBase(baseUrl);
-      await reviewerAClient.collection("users").authWithPassword("reviewer-a@example.test", temporaryPassword);
       await reviewerBClient.collection("users").authWithPassword("reviewer-b@example.test", temporaryPassword);
       await adminClient.collection("users").authWithPassword("admin-user@example.test", temporaryPassword);
+      await expect(adminClient.collection("conference_config").update(configuration.id, {
+        cfp_open: true,
+      })).rejects.toMatchObject({ status: expect.any(Number) });
 
       const reviewPayload = {
         submission: submission.id,
@@ -227,6 +304,10 @@ describe("reviewer PocketBase isolation", () => {
       })).rejects.toMatchObject({ status: expect.any(Number) });
       await expect(reviewerAClient.collection("cfp_reviews").update(ownReview.id, { reviewer: reviewerB.id }))
         .rejects.toMatchObject({ status: expect.any(Number) });
+      await rootClient.collection("conference_config").update(configuration.id, {
+        cfp_open: true,
+        availability: { cfp: true, review: true },
+      });
       await rootClient.collection("cfp_submissions").update(submission.id, { status: "accepted" });
       await expect(reviewerAClient.collection("cfp_reviews").getOne(ownReview.id))
         .rejects.toMatchObject({ status: expect.any(Number) });
@@ -267,6 +348,52 @@ describe("reviewer PocketBase isolation", () => {
       await expect(adminClient.collection("cfp_weight_votes").delete(voteA.id))
         .rejects.toMatchObject({ status: expect.any(Number) });
 
+      await rootClient.collection("conference_config").update(configuration.id, {
+        availability: { cfp: true, review: false },
+      });
+      const reviewerWithExpandedRecords = await rootClient.collection("users").getOne(reviewerA.id, {
+        expand: "cfp_reviews_via_reviewer,cfp_weight_votes_via_user",
+      });
+      expect(reviewerWithExpandedRecords.expand?.cfp_reviews_via_reviewer).toBeUndefined();
+      expect(reviewerWithExpandedRecords.expand?.cfp_weight_votes_via_user).toBeUndefined();
+      await rootClient.collection("conference_config").update(configuration.id, {
+        availability: { cfp: true },
+      });
+      await expect(fetchCfpAdminConfiguration(prepService as unknown as CfpAdminConfigurationService))
+        .rejects.toThrow("Capability availability configuration is incomplete.");
+      await expect(rootClient.collection("cfp_applicants").getList(1, 10))
+        .rejects.toMatchObject({ status: 404 });
+      await expect(rootClient.collection("cfp_reviews").getList(1, 10))
+        .rejects.toMatchObject({ status: 404 });
+
+      await rootClient.collection("conference_config").update(configuration.id, {
+        cfp_open: true,
+        availability: { cfp: true, review: true },
+      });
+      const duplicate = await rootClient.collection("conference_config").create({
+        cfp_open: true,
+        cfp_deadline: "2099-07-30",
+        availability: { cfp: true, review: true },
+      });
+      await expect(fetchCfpAdminConfiguration(prepService as unknown as CfpAdminConfigurationService))
+        .rejects.toThrow("Conference configuration must contain exactly one record.");
+      await expect(rootClient.collection("cfp_applicants").getList(1, 10))
+        .rejects.toMatchObject({ status: 404 });
+      await expect(rootClient.collection("cfp_reviews").getList(1, 10))
+        .rejects.toMatchObject({ status: 404 });
+      await rootClient.collection("conference_config").delete(duplicate.id);
+      await rootClient.collection("conference_config").delete(configuration.id);
+      await expect(fetchCfpAdminConfiguration(prepService as unknown as CfpAdminConfigurationService))
+        .rejects.toThrow("Conference configuration must contain exactly one record.");
+      await expect(rootClient.collection("cfp_applicants").getList(1, 10))
+        .rejects.toMatchObject({ status: 404 });
+      await expect(rootClient.collection("cfp_reviews").getList(1, 10))
+        .rejects.toMatchObject({ status: 404 });
+      await rootClient.collection("conference_config").create({
+        cfp_open: true,
+        cfp_deadline: "2099-07-30",
+        availability: { cfp: true, review: true },
+      });
       await stop(server);
       const down = spawnSync(binary, ["migrate", "down", "1", ...migrateArgs], { encoding: "utf8" });
       expect(down.status, `${down.stdout}\n${down.stderr}`).toBe(0);

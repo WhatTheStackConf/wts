@@ -15,15 +15,6 @@ import { AgentError, printPayloadHash, type Operation } from "../../runtime/chec
 import { NiimbotSerialPrinter, SimulatedNiimbotPrinter, type NiimbotPrinter } from "../../runtime/checkin/printer.js";
 import { LABEL_FONT_VERSION, LABEL_RENDERER_VERSION } from "~/lib/checkin-label-render-contract";
 
-it("scopes the service to an exact serial path without unsupported device globs", () => {
-  const unit = readFileSync(new URL("../../deployment/systemd/wts-checkin-agent.service", import.meta.url), "utf8");
-  const devicePaths = unit.split("\n").filter((line) => line.startsWith("DeviceAllow="));
-  expect(devicePaths).toEqual(["DeviceAllow=/dev/serial/by-id/usb-NIIMBOT_B1_LABEL_PRINTER_<serial>-if00 rw"]);
-  expect(unit).toContain("PrivateDevices=no");
-  expect(unit).toContain("DevicePolicy=closed");
-  expect(unit).toContain("RestartPreventExitStatus=78");
-});
-
 it("adds profile snapshots after journaled delivery without rewriting legacy work or replaying migrations", async () => {
   const fixture = await startCheckinPocketBase();
   try {

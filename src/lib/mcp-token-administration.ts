@@ -255,6 +255,157 @@ function newRecordId(): string {
   return randomUUID().replaceAll("-", "").slice(0, 15);
 }
 
+type McpTokenAdministrationFailure = Extract<McpTokenAdministrationResult<never>, { success: false }>;
+
+type ValidationFailure = McpTokenAdministrationFailure & { code: "validation" };
+
+type Parsed<T> = { success: true; value: T } | ValidationFailure;
+
+type AdminActionInspection = Awaited<ReturnType<AdminActions["inspect"]>>;
+
+type CreatedTokenData = {
+  token: McpTokenSnapshot;
+  credentialAvailable: boolean;
+  credential?: string;
+};
+
+const UNRESOLVED_OPERATION_ERRORS = {
+  pending: {
+    code: "operation_pending",
+    error: "This MCP token operation is already in progress.",
+  },
+  mismatch: {
+    code: "operation_mismatch",
+    error: "This operation ID is already bound to different MCP token input.",
+  },
+} as const;
+
+type UnresolvedOperation = {
+  outcome: keyof typeof UNRESOLVED_OPERATION_ERRORS;
+  action: AdminActionRecord;
+};
+
+function isUnresolvedOperation<T extends { outcome: string }>(
+  check: T,
+): check is Extract<T, UnresolvedOperation> {
+  return check.outcome === "pending" || check.outcome === "mismatch";
+}
+
+function unresolvedOperationFailure(check: UnresolvedOperation): McpTokenAdministrationFailure {
+  return {
+    success: false,
+    ...UNRESOLVED_OPERATION_ERRORS[check.outcome],
+    action: unresolvedAction(check.action),
+  };
+}
+
+function existingOperationResult<T>(
+  existing: AdminActionInspection,
+  replay: (action: AdminActionRecord) => McpTokenAdministrationResult<T>,
+): McpTokenAdministrationResult<T> | undefined {
+  if (existing.outcome === "replayed") return replay(existing.action);
+  if (isUnresolvedOperation(existing)) return unresolvedOperationFailure(existing);
+  return undefined;
+}
+
+function validationFailure(error: string): ValidationFailure {
+  return { success: false, code: "validation", error };
+}
+
+function expiryError(reason: string): string {
+  return reason === "too_long"
+    ? "Token expiry cannot be more than 90 days away."
+    : "Choose a future expiry date.";
+}
+
+function isValidOperationId(operationId: string): boolean {
+  return Boolean(operationId?.trim()) && operationId.trim() === operationId &&
+    operationId.length <= 128 && !containsSecretMaterial(operationId);
+}
+
+function parseSecretFreeText(
+  value: string,
+  maximum: number,
+  lengthError: string,
+  secretError: string,
+): Parsed<string> {
+  const text = value?.trim();
+  if (!text || text.length > maximum) return validationFailure(lengthError);
+  if (containsSecretMaterial(text)) return validationFailure(secretError);
+  return { success: true, value: text };
+}
+
+function parseTokenScopes(value: readonly McpScope[]): Parsed<McpScope[]> {
+  if (!Array.isArray(value) || value.some((scope) => !MCP_SCOPES.includes(scope))) {
+    return validationFailure("Choose valid MCP scopes.");
+  }
+  const scopes = normalizeMcpScopes(value);
+  if (scopes.length === 0) return validationFailure("Choose at least one MCP scope.");
+  return { success: true, value: scopes };
+}
+
+function parseCreateTokenInput(
+  input: McpTokenCreateRequest,
+  operationId: string,
+): Parsed<{ name: string; scopes: McpScope[]; expiresOn: string | null }> {
+  const name = parseSecretFreeText(
+    input.name,
+    120,
+    "Token name must be between 1 and 120 characters.",
+    "Token name cannot contain MCP credential or hash material.",
+  );
+  if (!name.success) return name;
+  const scopes = parseTokenScopes(input.scopes);
+  if (!scopes.success) return scopes;
+  if (!isValidOperationId(operationId)) return validationFailure("Choose a valid operation ID.");
+  return {
+    success: true,
+    value: { name: name.value, scopes: scopes.value, expiresOn: input.expires_at?.trim() || null },
+  };
+}
+
+function parseRevokeTokenInput(
+  idValue: string,
+  reasonValue: string,
+  operationId: string,
+): Parsed<{ id: string; reason: string }> {
+  const id = idValue?.trim();
+  if (!id || id.length > 128) return validationFailure("Choose a valid MCP token.");
+  const reason = parseSecretFreeText(
+    reasonValue,
+    500,
+    "Revocation reason must be between 1 and 500 characters.",
+    "Revocation reason cannot contain MCP credential or hash material.",
+  );
+  if (!reason.success) return reason;
+  if (!isValidOperationId(operationId)) return validationFailure("Choose a valid operation ID.");
+  return { success: true, value: { id, reason: reason.value } };
+}
+
+function withIssuedCredential(
+  result: McpTokenAdministrationResult<CreatedTokenData>,
+  credential: string,
+): McpTokenAdministrationResult<CreatedTokenData> {
+  if (!result.success) return result;
+  return {
+    ...result,
+    data: {
+      ...result.data,
+      credentialAvailable: true,
+      credential,
+    },
+  };
+}
+
+const ACTIVITY_FILTERS: Array<(item: McpActivityItem, filters: McpActivityFilters) => boolean> = [
+  (item, filters) => !filters.tokenId || item.token?.id === filters.tokenId,
+  (item, filters) => !filters.ownerUserId || item.owner.id === filters.ownerUserId,
+  (item, filters) => !filters.statuses?.length || filters.statuses.includes(item.status),
+  (item, filters) => !filters.operationKind || item.operationKind === filters.operationKind,
+  (item, filters) => !filters.targetCollection || item.targetCollection === filters.targetCollection,
+  (item, filters) => !filters.targetId || item.targetId === filters.targetId,
+];
+
 export class McpTokenAdministration {
   private readonly now: () => Date;
 
@@ -323,14 +474,7 @@ export class McpTokenAdministration {
           updatedAt: action.updatedAt,
         };
       });
-    return items.filter((item) =>
-      (!filters.tokenId || item.token?.id === filters.tokenId) &&
-      (!filters.ownerUserId || item.owner.id === filters.ownerUserId) &&
-      (!filters.statuses?.length || filters.statuses.includes(item.status)) &&
-      (!filters.operationKind || item.operationKind === filters.operationKind) &&
-      (!filters.targetCollection || item.targetCollection === filters.targetCollection) &&
-      (!filters.targetId || item.targetId === filters.targetId)
-    );
+    return items.filter((item) => ACTIVITY_FILTERS.every((matches) => matches(item, filters)));
   }
 
   async createToken(
@@ -341,35 +485,9 @@ export class McpTokenAdministration {
     credentialAvailable: boolean;
     credential?: string;
   }>> {
-    const name = input.name?.trim();
-    if (!name || name.length > 120) {
-      return {
-        success: false,
-        code: "validation",
-        error: "Token name must be between 1 and 120 characters.",
-      };
-    }
-    if (containsSecretMaterial(name)) {
-      return {
-        success: false,
-        code: "validation",
-        error: "Token name cannot contain MCP credential or hash material.",
-      };
-    }
-    if (!Array.isArray(input.scopes) || input.scopes.some((scope) => !MCP_SCOPES.includes(scope))) {
-      return { success: false, code: "validation", error: "Choose valid MCP scopes." };
-    }
-    const scopes = normalizeMcpScopes(input.scopes);
-    if (scopes.length === 0) {
-      return { success: false, code: "validation", error: "Choose at least one MCP scope." };
-    }
-    if (
-      !operationId?.trim() || operationId.trim() !== operationId || operationId.length > 128 ||
-      containsSecretMaterial(operationId)
-    ) {
-      return { success: false, code: "validation", error: "Choose a valid operation ID." };
-    }
-    const expiresOn = input.expires_at?.trim() || null;
+    const parsed = parseCreateTokenInput(input, operationId);
+    if (!parsed.success) return parsed;
+    const { name, scopes, expiresOn } = parsed.value;
     const request = {
       actorUserId: this.actor.userId,
       source: "admin_ui" as const,
@@ -378,36 +496,14 @@ export class McpTokenAdministration {
       operationId,
       normalizedInput: { name, scopes, expiresOn },
     };
-    const existing = await this.adminActions.inspect(request);
-    if (existing.outcome === "replayed") return this.replayCreate(existing.action);
-    if (existing.outcome === "pending") {
-      return {
-        success: false,
-        code: "operation_pending",
-        error: "This MCP token operation is already in progress.",
-        action: unresolvedAction(existing.action),
-      };
-    }
-    if (existing.outcome === "mismatch") {
-      return {
-        success: false,
-        code: "operation_mismatch",
-        error: "This operation ID is already bound to different MCP token input.",
-        action: unresolvedAction(existing.action),
-      };
-    }
+    const existing = existingOperationResult(
+      await this.adminActions.inspect(request),
+      (action) => this.replayCreate(action),
+    );
+    if (existing) return existing;
 
     const expiry = normalizeNewMcpTokenExpiry(expiresOn, this.now().getTime());
-    if (!expiry.success) {
-      return {
-        success: false,
-        code: "validation",
-        error:
-          expiry.reason === "too_long"
-            ? "Token expiry cannot be more than 90 days away."
-            : "Choose a future expiry date.",
-      };
-    }
+    if (!expiry.success) return validationFailure(expiryError(expiry.reason));
     const userRecords = await this.store.listUsers();
     const users = new Map(userRecords.map((user) => [user.id, user]));
     const material = createMcpTokenMaterial();
@@ -446,22 +542,7 @@ export class McpTokenAdministration {
       },
     });
     if (started.outcome === "replayed") return this.replayCreate(started.action);
-    if (started.outcome === "pending") {
-      return {
-        success: false,
-        code: "operation_pending",
-        error: "This MCP token operation is already in progress.",
-        action: unresolvedAction(started.action),
-      };
-    }
-    if (started.outcome === "mismatch") {
-      return {
-        success: false,
-        code: "operation_mismatch",
-        error: "This operation ID is already bound to different MCP token input.",
-        action: unresolvedAction(started.action),
-      };
-    }
+    if (isUnresolvedOperation(started)) return unresolvedOperationFailure(started);
 
     const adminAction: McpTokenStoreAdminAction = {
       handle: started.handle,
@@ -490,47 +571,14 @@ export class McpTokenAdministration {
       if (inspected.outcome !== "replayed") {
         throw new Error("MCP token create returned before its Admin Action was applied.");
       }
-      const replayed = this.replayCreate(inspected.action, false);
-      if (!replayed.success) return replayed;
-      return {
-        ...replayed,
-        data: {
-          ...replayed.data,
-          credentialAvailable: true,
-          credential: material.token,
-        },
-      };
+      return withIssuedCredential(this.replayCreate(inspected.action, false), material.token);
     } catch {
       const inspected = await this.adminActions.inspect(request);
       if (inspected.outcome === "replayed") {
         if (inspected.action.targetId !== candidate.id) return this.replayCreate(inspected.action);
-        const committed = this.replayCreate(inspected.action, false);
-        if (!committed.success) return committed;
-        return {
-          ...committed,
-          data: {
-            ...committed.data,
-            credentialAvailable: true,
-            credential: material.token,
-          },
-        };
+        return withIssuedCredential(this.replayCreate(inspected.action, false), material.token);
       }
-      let failed = inspected.outcome === "new" ? undefined : inspected.action;
-      try {
-        failed = await this.adminActions.fail(started.handle, {
-          code: "mcp_token_write_failed",
-          message: "MCP token persistence failed safely.",
-          metadata: { retryable: true },
-        });
-      } catch {
-        // The unresolved pending action remains visible for recovery.
-      }
-      return {
-        success: false,
-        code: "operation_failed",
-        error: "The MCP token operation failed safely and may be retried with the same operation ID.",
-        action: failed ? unresolvedAction(failed) : undefined,
-      };
+      return this.failedOperation(started.handle, inspected);
     }
   }
 
@@ -539,31 +587,9 @@ export class McpTokenAdministration {
     reasonValue: string,
     operationId: string,
   ): Promise<McpTokenAdministrationResult<{ token: McpTokenSnapshot }>> {
-    const id = idValue?.trim();
-    const reason = reasonValue?.trim();
-    if (!id || id.length > 128) {
-      return { success: false, code: "validation", error: "Choose a valid MCP token." };
-    }
-    if (!reason || reason.length > 500) {
-      return {
-        success: false,
-        code: "validation",
-        error: "Revocation reason must be between 1 and 500 characters.",
-      };
-    }
-    if (containsSecretMaterial(reason)) {
-      return {
-        success: false,
-        code: "validation",
-        error: "Revocation reason cannot contain MCP credential or hash material.",
-      };
-    }
-    if (
-      !operationId?.trim() || operationId.trim() !== operationId || operationId.length > 128 ||
-      containsSecretMaterial(operationId)
-    ) {
-      return { success: false, code: "validation", error: "Choose a valid operation ID." };
-    }
+    const parsed = parseRevokeTokenInput(idValue, reasonValue, operationId);
+    if (!parsed.success) return parsed;
+    const { id, reason } = parsed.value;
 
     const request = {
       actorUserId: this.actor.userId,
@@ -574,24 +600,11 @@ export class McpTokenAdministration {
       operationId,
       normalizedInput: { id, reason },
     };
-    const existing = await this.adminActions.inspect(request);
-    if (existing.outcome === "replayed") return this.replay(existing.action);
-    if (existing.outcome === "pending") {
-      return {
-        success: false,
-        code: "operation_pending",
-        error: "This MCP token operation is already in progress.",
-        action: unresolvedAction(existing.action),
-      };
-    }
-    if (existing.outcome === "mismatch") {
-      return {
-        success: false,
-        code: "operation_mismatch",
-        error: "This operation ID is already bound to different MCP token input.",
-        action: unresolvedAction(existing.action),
-      };
-    }
+    const existing = existingOperationResult(
+      await this.adminActions.inspect(request),
+      (action) => this.replay(action),
+    );
+    if (existing) return existing;
 
     const [token, userRecords] = await Promise.all([this.store.get(id), this.store.listUsers()]);
     if (!token) return { success: false, code: "not_found", error: "MCP token was not found." };
@@ -624,22 +637,7 @@ export class McpTokenAdministration {
     };
     const started = await this.adminActions.start(request, completion);
     if (started.outcome === "replayed") return this.replay(started.action);
-    if (started.outcome === "pending") {
-      return {
-        success: false,
-        code: "operation_pending",
-        error: "This MCP token operation is already in progress.",
-        action: unresolvedAction(started.action),
-      };
-    }
-    if (started.outcome === "mismatch") {
-      return {
-        success: false,
-        code: "operation_mismatch",
-        error: "This operation ID is already bound to different MCP token input.",
-        action: unresolvedAction(started.action),
-      };
-    }
+    if (isUnresolvedOperation(started)) return unresolvedOperationFailure(started);
 
     const adminAction: McpTokenStoreAdminAction = {
       handle: started.handle,
@@ -664,23 +662,30 @@ export class McpTokenAdministration {
     } catch {
       const inspected = await this.adminActions.inspect(request);
       if (inspected.outcome === "replayed") return this.replay(inspected.action);
-      let failed = inspected.outcome === "new" ? undefined : inspected.action;
-      try {
-        failed = await this.adminActions.fail(started.handle, {
-          code: "mcp_token_write_failed",
-          message: "MCP token persistence failed safely.",
-          metadata: { retryable: true },
-        });
-      } catch {
-        // The unresolved pending action remains visible for recovery.
-      }
-      return {
-        success: false,
-        code: "operation_failed",
-        error: "The MCP token operation failed safely and may be retried with the same operation ID.",
-        action: failed ? unresolvedAction(failed) : undefined,
-      };
+      return this.failedOperation(started.handle, inspected);
     }
+  }
+
+  private async failedOperation(
+    handle: AdminActionHandle,
+    inspected: AdminActionInspection,
+  ): Promise<McpTokenAdministrationFailure> {
+    let failed = inspected.outcome === "new" ? undefined : inspected.action;
+    try {
+      failed = await this.adminActions.fail(handle, {
+        code: "mcp_token_write_failed",
+        message: "MCP token persistence failed safely.",
+        metadata: { retryable: true },
+      });
+    } catch {
+      // The unresolved pending action remains visible for recovery.
+    }
+    return {
+      success: false,
+      code: "operation_failed",
+      error: "The MCP token operation failed safely and may be retried with the same operation ID.",
+      action: failed ? unresolvedAction(failed) : undefined,
+    };
   }
 
   private snapshot(

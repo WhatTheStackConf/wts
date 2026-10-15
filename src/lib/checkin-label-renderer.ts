@@ -28,26 +28,23 @@ function freeze<T>(value: T): T {
  * swapping returned width/height at 90/270. No mm-to-dot conversion occurs.
  * Density/feed are explicit downstream device instructions, included in identity.
  */
+type ParsedProfileConfig = z.infer<typeof configSchema>;
+const PROFILE_RULES: readonly { broken: (config: ParsedProfileConfig) => boolean; message: string }[] = [
+  { broken: ({ printable: p, raster: r }) => p.x + p.width > r.width || p.y + p.height > r.height, message: "Printable bounds must be inside the configured raster." },
+  // Reserve a pixel guard around actual glyph outlines; do not silently clip.
+  { broken: ({ printable: p, margins: m }) => p.width - m.left - m.right < 48 || p.height - m.top - m.bottom < 112, message: "Margins leave too little space for two readable rows; allow at least 48×112 dots." },
+  { broken: ({ margins: m, offset: o }) => m.left + o.x < 0 || m.right - o.x < 0 || m.top + o.y < 0 || m.bottom - o.y < 0, message: "Offsets move the text box beyond printable bounds; reduce offsets or adjust margins." },
+  { broken: (c) => !c.synthetic && (c.printerRef === "synthetic-preview" || c.stockRef === "synthetic-50x30-gap"), message: "Synthetic printer/stock references cannot identify a physical profile." },
+];
+
 export function validateLabelProfileConfig(input: unknown): LabelProfileConfig {
   const parsed = configSchema.safeParse(input);
   if (!parsed.success) {
     throw new LabelRenderError("invalid_profile", "Use this renderer/font version, 50×30 pre-cut gap media, explicit integer dots (1–2048), density 1–5 and threshold 1–254; remove unknown profile fields.");
   }
   const c = parsed.data;
-  const { printable: p, raster: r, margins: m, offset: o } = c;
-  if (p.x + p.width > r.width || p.y + p.height > r.height) {
-    throw new LabelRenderError("invalid_profile", "Printable bounds must be inside the configured raster.");
-  }
-  // Reserve a pixel guard around actual glyph outlines; do not silently clip.
-  if (p.width - m.left - m.right < 48 || p.height - m.top - m.bottom < 112) {
-    throw new LabelRenderError("invalid_profile", "Margins leave too little space for two readable rows; allow at least 48×112 dots.");
-  }
-  if (m.left + o.x < 0 || m.right - o.x < 0 || m.top + o.y < 0 || m.bottom - o.y < 0) {
-    throw new LabelRenderError("invalid_profile", "Offsets move the text box beyond printable bounds; reduce offsets or adjust margins.");
-  }
-  if (!c.synthetic && (c.printerRef === "synthetic-preview" || c.stockRef === "synthetic-50x30-gap")) {
-    throw new LabelRenderError("invalid_profile", "Synthetic printer/stock references cannot identify a physical profile.");
-  }
+  const broken = PROFILE_RULES.find((rule) => rule.broken(c));
+  if (broken) throw new LabelRenderError("invalid_profile", broken.message);
   return freeze(c);
 }
 
@@ -59,29 +56,38 @@ const inputSchema = z.strictObject({
   expected: z.strictObject({ profileId: reference, profileVersion: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), printerRef: reference, stockRef: reference, rendererVersion: reference, fontVersion: reference }),
 });
 
+function checkLabelText(text: string): void {
+  if (!/^[\p{Script=Latin}\p{Script=Cyrillic}\p{M}\p{N} .,'’‘"“”\-‐‑–—()&+·•…!?/:;[\]]*$/u.test(text)
+    || /\b(?:bearer|authorization|capability|access[ -]?token|api[ -]?key|qr[ -]?code|https?)\b/i.test(text)
+    || /[A-Za-z0-9]{32,}/.test(text) && /[A-Za-z]/.test(text) && /[0-9]/.test(text)) {
+    throw new LabelRenderError("unsupported_text", "Labels accept Latin/Cyrillic names and affiliations, not email, URLs, QR/capability payloads, control characters or other scripts.");
+  }
+  if (text !== text.trim() || / {2}/.test(text)) throw new LabelRenderError("unsupported_text", "Remove leading/trailing or repeated spaces from label text; labels never wrap.");
+}
+
+type ParsedRenderInput = z.infer<typeof inputSchema>;
+function matchesExpected({ expected: e, profile: p }: ParsedRenderInput, config: LabelProfileConfig): boolean {
+  return e.profileId === p.id && e.profileVersion === p.version && e.printerRef === config.printerRef && e.stockRef === config.stockRef && e.rendererVersion === config.rendererVersion && e.fontVersion === config.fontVersion;
+}
+
+function approvalConflict({ mode, profile }: ParsedRenderInput, config: LabelProfileConfig): boolean {
+  return (mode === "production" && (profile.approval !== "approved" || config.synthetic)) || (config.synthetic && profile.approval === "approved");
+}
+
 function validatedInput(input: unknown): LabelRenderInput {
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) throw new LabelRenderError("invalid_input", "Provide only bounded name/affiliation text, an exact profile snapshot, preview/production mode and all expected identities.");
   const value = parsed.data;
   const config = validateLabelProfileConfig(value.profile.config);
-  for (const text of [value.text.name, value.text.affiliation]) {
-    if (!/^[\p{Script=Latin}\p{Script=Cyrillic}\p{M}\p{N} .,'’‘"“”\-‐‑–—()&+·•…!?/:;[\]]*$/u.test(text)
-      || /\b(?:bearer|authorization|capability|access[ -]?token|api[ -]?key|qr[ -]?code|https?)\b/i.test(text)
-      || /[A-Za-z0-9]{32,}/.test(text) && /[A-Za-z]/.test(text) && /[0-9]/.test(text)) {
-      throw new LabelRenderError("unsupported_text", "Labels accept Latin/Cyrillic names and affiliations, not email, URLs, QR/capability payloads, control characters or other scripts.");
-    }
-    if (text !== text.trim() || / {2}/.test(text)) throw new LabelRenderError("unsupported_text", "Remove leading/trailing or repeated spaces from label text; labels never wrap.");
-  }
+  for (const text of [value.text.name, value.text.affiliation]) checkLabelText(text);
   if (!value.text.name.trim()) throw new LabelRenderError("invalid_input", "Name is required; affiliation may be blank.");
-  const p = value.profile;
-  const e = value.expected;
-  if (e.profileId !== p.id || e.profileVersion !== p.version || e.printerRef !== config.printerRef || e.stockRef !== config.stockRef || e.rendererVersion !== config.rendererVersion || e.fontVersion !== config.fontVersion) {
+  if (!matchesExpected(value, config)) {
     throw new LabelRenderError("profile_mismatch", "Expected profile, printer, stock or software version changed; reload and explicitly select the current profile.");
   }
-  if ((value.mode === "production" && (p.approval !== "approved" || config.synthetic)) || (config.synthetic && p.approval === "approved")) {
+  if (approvalConflict(value, config)) {
     throw new LabelRenderError("not_approved", "Production requires an approved, non-synthetic printer/stock profile. Synthetic profiles cannot be approved.");
   }
-  return freeze({ ...value, profile: { ...p, config } });
+  return freeze({ ...value, profile: { ...value.profile, config } });
 }
 
 let loadedFonts: { name: Font; affiliation: Font } | undefined;

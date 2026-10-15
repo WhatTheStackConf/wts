@@ -1,7 +1,24 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { runCoordinatorSupervisor } from "../../runtime/checkin/supervision";
+import { AgentError } from "../../runtime/checkin/protocol";
 
 afterEach(() => vi.useRealTimers());
+it("keeps the same lease alive across transient work RPC failures without retrying an in-flight call", async () => {
+  vi.useFakeTimers();
+  const stop = new AbortController();
+  let polls = 0, pulses = 0;
+  const running = runCoordinatorSupervisor({
+    signal: stop.signal, heartbeatIntervalMs: 100, pollIntervalMs: 100,
+    pulse: async () => { pulses++; },
+    processAdmission: async () => { if (++polls <= 2) throw new AgentError("coordinator_transport_unavailable", true); stop.abort(); },
+    dispatchPrints: async () => undefined,
+  }).then(() => null, error => error);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(await running).toBeNull();
+  expect(polls).toBe(3);
+  expect(pulses).toBeGreaterThan(0);
+  expect(vi.getTimerCount()).toBe(0);
+});
 it("keeps heartbeats and print dispatch alive while a slow admission is in flight", async () => {
   vi.useFakeTimers();
   const stop = new AbortController();

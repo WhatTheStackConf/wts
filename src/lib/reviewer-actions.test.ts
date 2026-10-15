@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
   const reviewerCreate = vi.fn();
   const reviewerUpdate = vi.fn();
   const collection = vi.fn();
+  const requireCapability = vi.fn();
   return {
     requireReviewer,
     requireReviewerSession,
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => {
     reviewerCreate,
     reviewerUpdate,
     collection,
+    requireCapability,
     adminService: { fetchAllRecords, fetchRecordById, createRecord, updateRecord },
     reviewerPb: { collection },
   };
@@ -30,6 +32,14 @@ vi.mock("~/lib/server-auth", () => ({
   requireReviewerSession: mocks.requireReviewerSession,
 }));
 vi.mock("~/lib/pocketbase-admin-service", () => ({ getAdminPB: () => mocks.adminService }));
+vi.mock("~/lib/capability-availability", () => ({
+  requireCapability: mocks.requireCapability,
+  isCapabilityUnavailable: (error: unknown) => error instanceof Error && error.message === "Review is unavailable.",
+  capabilityUnavailableMetadata: (error: unknown) =>
+    error instanceof Error && error.message === "Review is unavailable."
+      ? { status: 404, code: "capability_unavailable" }
+      : {},
+}));
 
 
 import {
@@ -64,6 +74,7 @@ const review = {
   notes: "Private notes",
   is_llm_suspected: false,
 };
+const syntheticAvailability = { cfp: false, review: true };
 
 describe("reviewer server policy", () => {
   beforeEach(() => {
@@ -71,6 +82,7 @@ describe("reviewer server policy", () => {
     for (const mock of [
       mocks.requireReviewer,
       mocks.requireReviewerSession,
+      mocks.requireCapability,
       mocks.fetchAllRecords,
       mocks.fetchRecordById,
       mocks.createRecord,
@@ -80,7 +92,12 @@ describe("reviewer server policy", () => {
       mocks.collection,
     ]) mock.mockReset();
     mocks.requireReviewer.mockResolvedValue(reviewer);
+    syntheticAvailability.cfp = false;
+    syntheticAvailability.review = true;
     mocks.requireReviewerSession.mockResolvedValue({ user: reviewer, pb: mocks.reviewerPb });
+    mocks.requireCapability.mockImplementation(async (capability: keyof typeof syntheticAvailability) => {
+      if (!syntheticAvailability[capability]) throw new Error("Review is unavailable.");
+    });
     mocks.collection.mockReturnValue({
       create: mocks.reviewerCreate,
       update: mocks.reviewerUpdate,
@@ -96,6 +113,18 @@ describe("reviewer server policy", () => {
     await expect(saveWeightVote(null, weights)).resolves.toEqual({ success: false, error: "Unauthorized" });
     expect(mocks.createRecord).not.toHaveBeenCalled();
     expect(mocks.reviewerCreate).not.toHaveBeenCalled();
+  });
+
+  it("denies dormant review before authentication or data access", async () => {
+    syntheticAvailability.review = false;
+    await expect(fetchReviewerSubmissions()).resolves.toEqual({
+      success: false,
+      error: "Review is unavailable.",
+      status: 404,
+      code: "capability_unavailable",
+    });
+    expect(mocks.requireReviewer).not.toHaveBeenCalled();
+    expect(mocks.fetchAllRecords).not.toHaveBeenCalled();
   });
 
   it("returns only the minimized reviewer queue DTO", async () => {

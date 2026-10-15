@@ -128,18 +128,26 @@ function updateBody(input: PartnerStoreUpdateInput): Record<string, unknown> | F
   return input.logo ? appendLogo(fields, input.logo) : fields;
 }
 
-function throwIdentityConflict(error: unknown): never {
+const IDENTITY_CONFLICT_FIELDS = [
+  ["normalized_name", "name"],
+  ["canonical_url", "url"],
+] as const;
+
+function identityConflictEvidence(error: unknown) {
   const response = (error as {
     response?: { data?: Record<string, unknown>; message?: string };
     message?: string;
   })?.response;
-  const detail = `${response?.message || ""} ${(error as { message?: string })?.message || ""}`;
-  if (response?.data?.normalized_name || detail.includes("normalized_name")) {
-    throw new PartnerStoreConflictError("name");
-  }
-  if (response?.data?.canonical_url || detail.includes("canonical_url")) {
-    throw new PartnerStoreConflictError("url");
-  }
+  return {
+    data: response?.data,
+    detail: `${response?.message || ""} ${(error as { message?: string })?.message || ""}`,
+  };
+}
+
+function throwIdentityConflict(error: unknown): never {
+  const { data, detail } = identityConflictEvidence(error);
+  const conflict = IDENTITY_CONFLICT_FIELDS.find(([field]) => data?.[field] || detail.includes(field));
+  if (conflict) throw new PartnerStoreConflictError(conflict[1]);
   throw error;
 }
 

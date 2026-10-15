@@ -3,6 +3,7 @@ import type { CheckinServiceContract } from "~/lib/checkin-contract";
 import { handleCheckinRequest } from "~/lib/checkin-http";
 import { CheckinError } from "~/lib/checkin-service";
 import { isCheckinPath, protectCheckinResponse } from "~/lib/checkin-privacy";
+import { checkinPrinters, previewCheckinStation, selectCheckinPrinter } from "~/lib/checkin-client";
 
 const token = "a".repeat(64);
 function request(body: unknown, options: { origin?: string; cookie?: string; method?: string } = {}) {
@@ -20,6 +21,8 @@ function request(body: unknown, options: { origin?: string; cookie?: string; met
 function dependencies(role = "checkin_operator") {
   const service = {
     status: vi.fn().mockResolvedValue({ bindingState: "unbound", operationsEnabled: false }),
+    printers: vi.fn().mockResolvedValue({ printers: [] }),
+    selectPrinter: vi.fn().mockResolvedValue({ status: { bindingState: "bound", operationsEnabled: false }, bindingToken: token }),
     preview: vi.fn().mockResolvedValue({ canBind: true }),
     bind: vi.fn().mockResolvedValue({ status: { bindingState: "bound", operationsEnabled: false }, bindingToken: token }),
     adminList: vi.fn().mockResolvedValue({ stations: [] }),
@@ -34,6 +37,81 @@ function dependencies(role = "checkin_operator") {
 }
 
 describe("authenticated Check-in HTTP boundary", () => {
+  it("cancels a queued printer choice before dispatch when its authority expires", async () => {
+    const release = Promise.withResolvers<void>();
+    const fetched = vi.fn();
+    vi.stubGlobal("window", {}); vi.stubGlobal("navigator", { locks: { request: (_name: string, _options: unknown, run: () => unknown) => release.promise.then(run) } }); vi.stubGlobal("fetch", fetched);
+    try {
+      const cancellation = new AbortController();
+      const selection = selectCheckinPrinter({ stationId: "wts2026station1", stationVersion: 1, systemGeneration: 1, bindingVersion: 0 }, { expectedActorId: "a".repeat(15), signal: cancellation.signal });
+      cancellation.abort(); release.resolve();
+      await expect(selection).rejects.toMatchObject({ name: "AbortError" });
+      expect(fetched).not.toHaveBeenCalled();
+    } finally { release.resolve(); vi.unstubAllGlobals(); }
+  });
+  it("rejects a printer choice from an old tab when a new operator owns the cookie", async () => {
+    const deps = dependencies(); deps.authenticate.mockResolvedValue({ id: "b".repeat(15), role: "checkin_operator" });
+    const result = await handleCheckinRequest(request({ operation: "select_printer", expectedActorId: "a".repeat(15), confirmation: { stationId: "wts2026station1", stationVersion: 1, systemGeneration: 1, bindingVersion: 0 } }, { cookie: `wts_checkin_client=${token}` }), deps);
+    expect(result.status).toBe(403);
+    expect(deps.service).not.toHaveBeenCalled();
+  });
+  it.each(["printers", "legacy preview"])("serializes printer identity setup with %s through the complete response", async kind => {
+    // Inject only the platform lock/fetch boundaries; exercise the real clients.
+    const queues = new Map<string, Promise<unknown>>();
+    const lock = vi.fn((name: string, _options: unknown, run: () => Promise<unknown>) => {
+      const next = (queues.get(name) ?? Promise.resolve()).then(run);
+      queues.set(name, next.catch(() => undefined));
+      return next;
+    });
+    const body = Promise.withResolvers<unknown>();
+    const fetched = vi.fn().mockResolvedValueOnce({ ok: true, json: () => body.promise })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ printers: [] }) });
+    vi.stubGlobal("window", {}); vi.stubGlobal("navigator", { locks: { request: lock } }); vi.stubGlobal("fetch", fetched);
+    try {
+      const first = checkinPrinters();
+      await vi.waitFor(() => expect(fetched).toHaveBeenCalledTimes(1));
+      const second = kind === "printers" ? checkinPrinters() : previewCheckinStation(token);
+      await Promise.resolve(); await Promise.resolve();
+      expect(fetched).toHaveBeenCalledTimes(1);
+      expect(lock.mock.calls.map(args => args[0])).toEqual(["wts-checkin-client-preview", "wts-checkin-client-preview"]);
+      body.resolve({ printers: [] }); await first; await second;
+      expect(fetched).toHaveBeenCalledTimes(2);
+      expect(fetched.mock.calls.every(([, options]) => options.credentials === "same-origin")).toBe(true);
+    } finally { body.resolve({ printers: [] }); vi.unstubAllGlobals(); }
+  });
+  it("refuses printer identity setup and selection without Web Locks before fetching", async () => {
+    const fetched = vi.fn(); vi.stubGlobal("window", {}); vi.stubGlobal("navigator", {}); vi.stubGlobal("fetch", fetched);
+    try {
+      await expect(checkinPrinters()).rejects.toThrow("current browser over HTTPS");
+      await expect(selectCheckinPrinter({ stationId: "wts2026station1", stationVersion: 1, systemGeneration: 1, bindingVersion: 0 })).rejects.toThrow();
+      expect(fetched).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it("lists operator printers and establishes identity before a code-free selection", async () => {
+    const deps = dependencies();
+    const catalogue = await handleCheckinRequest(request({ operation: "printers" }), deps);
+    expect(catalogue.status).toBe(200);
+    expect(await catalogue.json()).toEqual({ printers: [] });
+    const cookie = catalogue.headers.get("set-cookie")!;
+    expect(cookie).toMatch(/^wts_checkin_client=[a-f0-9]{64};/);
+    expect(cookie).toContain("HttpOnly; SameSite=Strict; Secure");
+    expect(deps.target.selectPrinter).not.toHaveBeenCalled();
+    const confirmation = { stationId: "wts2026station2", stationVersion: 2, systemGeneration: 2, bindingVersion: 0 };
+    const body = { operation: "select_printer", confirmation };
+    expect((await handleCheckinRequest(request(body), deps)).status).toBe(400);
+    const selected = await handleCheckinRequest(request(body, { cookie: cookie.split(";")[0] }), deps);
+    expect(selected.status).toBe(200);
+    expect(deps.target.selectPrinter).toHaveBeenCalledWith(cookie.split("=")[1].split(";")[0], confirmation);
+    expect(await selected.json()).toEqual({ bindingState: "bound", operationsEnabled: false });
+    expect(selected.headers.get("set-cookie")).toBeNull();
+    const existing = await handleCheckinRequest(request({ operation: "printers" }, { cookie: `wts_checkin_client=${token}` }), deps);
+    expect(existing.headers.get("set-cookie")).toBeNull();
+    expect(deps.target.printers).toHaveBeenLastCalledWith(token);
+    expect((await handleCheckinRequest(request(body, { origin: "https://foreign.test" }), deps)).status).toBe(403);
+    deps.authenticate.mockResolvedValue({ id: "ordinary", role: "user" });
+    expect((await handleCheckinRequest(request({ operation: "printers" }), deps)).status).toBe(403);
+    expect((await handleCheckinRequest(request(body, { cookie: cookie.split(";")[0] }), deps)).status).toBe(403);
+  });
   it("stops reading oversized streamed commands before obtaining privileged access", async () => {
     const deps = dependencies();
     let reads = 0;

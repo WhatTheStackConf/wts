@@ -7,6 +7,7 @@
  * announced / not_announced convention in `content/conference-guide.json`.
  */
 
+import { conferenceGuideContent } from "~/lib/conference-guide-content";
 export const conferenceWeekRange = "14-19 September 2026";
 
 export const conferenceWeekEyebrow = "WhatTheStack, Monday to Saturday";
@@ -143,7 +144,9 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
   },
   {
     name: "Main Conference Day",
-    date: "2026-09-19",
+    date: conferenceGuideContent.event.date.status === "announced"
+      ? conferenceGuideContent.event.date.localDate
+      : undefined,
     summary:
       "Saturday is the big one: five stages across FINKI, FEIT, and the Faculty of Mechanical Engineering, plus the expo, game corner, and an outdoor after-party.",
     topics: [
@@ -164,7 +167,9 @@ export const conferenceWeekTracks: readonly ConferenceWeekTrack[] = [
 
 export const conferenceWeekCta = {
   text: "GRAB A TICKET",
-  href: "/tickets",
+  href: conferenceGuideContent.tickets.status === "announced"
+    ? conferenceGuideContent.tickets.canonicalPath
+    : undefined,
 } as const;
 
 /** Long weekday plus day and month, in the conference time zone. */

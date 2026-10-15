@@ -31,15 +31,24 @@ function normalizeDestinationUrl(raw: string): string {
   return value;
 }
 
-function normalizeAppearanceEventInput(input: AppearanceEventInput) {
-  const name = input.name?.trim() || "";
+function normalizePublicName(raw?: string): string {
+  const name = raw?.trim() || "";
   if (!name) throw new Error("Public name is required.");
   if (name.length > 160) throw new Error("Public name must be 160 characters or fewer.");
+  return name;
+}
 
-  const compactLabel = input.compactLabel?.trim() || "";
+function normalizeCompactLabel(raw?: string): string {
+  const compactLabel = raw?.trim() || "";
   if (compactLabel.length > 60) {
     throw new Error("Compact ribbon label must be 60 characters or fewer.");
   }
+  return compactLabel;
+}
+
+function normalizeAppearanceEventInput(input: AppearanceEventInput) {
+  const name = normalizePublicName(input.name);
+  const compactLabel = normalizeCompactLabel(input.compactLabel);
 
   const displayOrder = Number(input.displayOrder);
   if (!Number.isInteger(displayOrder) || displayOrder < 0) {

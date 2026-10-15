@@ -1,11 +1,59 @@
 import { describe, expect, it } from "vite-plus/test";
 import { conferenceGuideContent } from "~/lib/conference-guide-content";
 import {
-  createConferenceGuide,
+  createConferenceGuide as createConferenceGuideService,
   ProgrammeUnavailableError,
   type ConferenceGuidePublishedData,
 } from "~/lib/conference-guide";
 
+const scheduleTestContent = {
+  ...conferenceGuideContent,
+  contentVersion: "fixture-content-version",
+  event: {
+    ...conferenceGuideContent.event,
+    date: { status: "not_announced" as const, localDate: undefined },
+    location: { status: "not_announced" as const, city: undefined, country: undefined },
+    timeZone: { status: "announced" as const, iana: "Europe/Skopje" },
+  },
+  mainVenue: { status: "not_announced" as const, name: undefined, campuses: undefined, spaces: undefined },
+  preConferenceVenue: { status: "not_announced" as const, name: undefined, address: undefined },
+  tickets: {
+    ...conferenceGuideContent.tickets,
+    status: "not_announced" as const,
+    canonicalPath: undefined,
+    regular: undefined,
+    student: undefined,
+  },
+  accessibility: { ...conferenceGuideContent.accessibility, status: "not_announced" as const },
+  accommodation: { status: "not_announced" as const },
+};
+
+const unannouncedTestContent = {
+  ...scheduleTestContent,
+  event: {
+    ...scheduleTestContent.event,
+    date: { status: "not_announced" as const, localDate: undefined },
+    location: { status: "not_announced" as const, city: undefined, country: undefined },
+    timeZone: { status: "not_announced" as const, iana: undefined },
+  },
+  mainVenue: { status: "not_announced" as const, name: undefined, campuses: undefined, spaces: undefined },
+  preConferenceVenue: { status: "not_announced" as const, name: undefined, address: undefined },
+  tickets: {
+    ...scheduleTestContent.tickets,
+    status: "not_announced" as const,
+    canonicalPath: undefined,
+    regular: undefined,
+    student: undefined,
+  },
+} satisfies typeof conferenceGuideContent;
+
+type GuideTestOptions = Parameters<typeof createConferenceGuideService>[0];
+function createConferenceGuide(options: GuideTestOptions) {
+  return createConferenceGuideService({
+    ...options,
+    content: options.content ?? scheduleTestContent,
+  });
+}
 const mainAgendaEvent = {
   name: "WhatTheStack 2026",
   compactLabel: "WTS 2026",
@@ -523,7 +571,7 @@ function overnightPlannablePublishedData(): ConferenceGuidePublishedData {
 describe("Conference Guide", () => {
   it("plans ranked Published Sessions without overlap and returns unscored fixed context", async () => {
     const guide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: scheduleTestContent,
       loadPublishedData: async () => plannablePublishedData(),
       canonicalOrigin: "https://wts.sh",
       now: () => new Date("2026-07-14T18:00:00.000Z"),
@@ -541,10 +589,9 @@ describe("Conference Guide", () => {
     expect(proposal).toMatchObject({
       metadata: {
         schema_version: "2",
-        content_version: "2026-07-23",
+        content_version: "fixture-content-version",
         programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         generated_at: "2026-07-14T18:00:00.000Z",
-        time_zone: "Europe/Skopje",
         canonical_url: "https://wts.sh/agenda",
       },
       outcome: "planned_with_issues",
@@ -613,9 +660,34 @@ describe("Conference Guide", () => {
     }
   });
 
+  it("does not propose clock-based schedule slots before the time zone is announced", async () => {
+    const guide = createConferenceGuideService({
+      content: {
+        ...conferenceGuideContent,
+        event: {
+          ...conferenceGuideContent.event,
+          timeZone: { status: "not_announced" },
+        },
+      },
+      loadPublishedData: async () => plannablePublishedData(),
+      canonicalOrigin: "https://wts.sh",
+    });
+
+    const proposal = await guide.planProposedSchedule({
+      ranked_session_slugs: ["platform-depth", "reliable-runtime"],
+    });
+
+    expect(proposal.selected_sessions).toEqual([]);
+    expect(proposal.input_outcomes).toEqual([
+      { slug: "platform-depth", requested_as: ["ranked"], outcome: "unavailable" },
+      { slug: "reliable-runtime", requested_as: ["ranked"], outcome: "unavailable" },
+    ]);
+    expect(proposal.ranked_alternatives).toEqual([]);
+  });
+
   it("discloses stale and unresolved inputs without retaining Proposed Schedule state", async () => {
     const guide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: scheduleTestContent,
       loadPublishedData: async () => plannablePublishedData(),
       canonicalOrigin: "https://wts.sh",
       now: () => new Date("2026-07-14T18:00:00.000Z"),
@@ -689,7 +761,7 @@ describe("Conference Guide", () => {
 
   it("reports mutually conflicting inputs and Sessions blocked by fixed Programme-wide context", async () => {
     const guide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: scheduleTestContent,
       loadPublishedData: async () => plannablePublishedData(),
       canonicalOrigin: "https://wts.sh",
       now: () => new Date("2026-07-14T18:00:00.000Z"),
@@ -744,7 +816,7 @@ describe("Conference Guide", () => {
       relatedSessions: [],
     });
     const guide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: scheduleTestContent,
       loadPublishedData: async () => data,
       canonicalOrigin: "https://wts.sh",
     });
@@ -762,7 +834,7 @@ describe("Conference Guide", () => {
 
   it("handles overnight intervals across Conference Days and excludes tracked Slots from fixed context", async () => {
     const guide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: scheduleTestContent,
       loadPublishedData: async () => overnightPlannablePublishedData(),
       canonicalOrigin: "https://wts.sh",
       now: () => new Date("2026-07-14T18:00:00.000Z"),
@@ -813,7 +885,7 @@ describe("Conference Guide", () => {
 
     const trackedData = plannablePublishedData();
     const trackedGuide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: scheduleTestContent,
       loadPublishedData: async () => trackedData,
       canonicalOrigin: "https://wts.sh",
     });
@@ -828,7 +900,7 @@ describe("Conference Guide", () => {
 
   it("ranks Published Session data deterministically with explainable bounded matches", async () => {
     const guide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: scheduleTestContent,
       loadPublishedData: async () => searchablePublishedData(),
       canonicalOrigin: "https://wts.sh",
       now: () => new Date("2026-07-14T18:00:00.000Z"),
@@ -841,10 +913,9 @@ describe("Conference Guide", () => {
     expect(ranked).toMatchObject({
       metadata: {
         schema_version: "2",
-        content_version: "2026-07-23",
+        content_version: "fixture-content-version",
         programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         generated_at: "2026-07-14T18:00:00.000Z",
-        time_zone: "Europe/Skopje",
         canonical_url: "https://wts.sh/sessions",
       },
       outcome: "results",
@@ -914,7 +985,7 @@ describe("Conference Guide", () => {
 
   it("applies every structured Session filter and returns bounded actionable no-result outcomes", async () => {
     const guide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: scheduleTestContent,
       loadPublishedData: async () => searchablePublishedData(),
       canonicalOrigin: "https://wts.sh",
       now: () => new Date("2026-07-14T18:00:00.000Z"),
@@ -989,26 +1060,33 @@ describe("Conference Guide", () => {
     }
   });
 
-  it.each([true, false])("publishes the full event venue map even when programme availability is %s", async (available) => {
-    const guide = createConferenceGuide({ loadPublishedData: async () => {
+  it.each([true, false])("omits unannounced venue details when programme availability is %s", async (available) => {
+    const guide = createConferenceGuide({ content: unannouncedTestContent, loadPublishedData: async () => {
       if (!available) throw new Error("Temporarily unavailable");
       return publishedData();
     } });
     const index = await guide.getIndex();
-    expect(index.logistics.pre_conference_venue.applies_to_events).toEqual(["InfoSec Monday", "Workshop Thursday"]);
-    expect(index.logistics.pre_conference_events).toEqual([
-      { name: "InfoSec Monday", local_date: "2026-09-14", location: "Base42 Hackerspace, Rimska 25, 1000 Skopje" },
-      { name: "Workshop Tuesday: iOS + AI", local_date: "2026-09-15", location: "Netaville, Skopje" },
-      { name: "DevFest", local_date: "2026-09-16", location: "Small FINKI amphitheater, Technical Campus, Skopje" },
-      { name: "MAUI Day", local_date: "2026-09-17", location: "INNOFeit, Technical Campus, Skopje" },
-      { name: "Workshop Thursday", local_date: "2026-09-17", location: "Base42 Hackerspace, Rimska 25, 1000 Skopje" },
-      { name: "Angular Day", local_date: "2026-09-18", location: "Small FINKI amphitheater, Technical Campus, Skopje" },
-    ]);
+    expect(index.logistics.event.date).toMatchObject({ status: "not_announced" });
+    expect(index.logistics.event.location).toMatchObject({ status: "not_announced" });
+    expect(index.logistics.event.time_zone).toMatchObject({ status: "not_announced" });
+    expect(index.logistics.main_venue).toMatchObject({ status: "not_announced" });
+    expect(index.logistics.event.date.local_date).toBeUndefined();
+    expect(index.logistics.event.location.city).toBeUndefined();
+    expect(index.logistics.event.location.country).toBeUndefined();
+    expect(index.logistics.event.time_zone.iana).toBeUndefined();
+    expect(index.logistics.main_venue.name).toBeUndefined();
+    expect(index.logistics.pre_conference_venue.name).toBeUndefined();
+    expect(index.logistics.pre_conference_venue.address).toBeUndefined();
+    expect(index.logistics.pre_conference_venue).toMatchObject({ status: "not_announced", applies_to_events: [] });
+    expect(index.logistics.pre_conference_events).toEqual([]);
+    expect(index.logistics.tickets).toMatchObject({ status: "not_announced", includes: [] });
+    expect(index.logistics.tickets.regular).toBeUndefined();
+    expect(index.logistics.tickets.student).toBeUndefined();
   });
 
   it("combines deploy facts and Published DTOs into strict versioned resources", async () => {
     const guide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: scheduleTestContent,
       loadPublishedData: async () => publishedData(),
       canonicalOrigin: "https://wts.sh",
       now: () => new Date("2026-07-14T18:00:00.000Z"),
@@ -1023,7 +1101,7 @@ describe("Conference Guide", () => {
     expect(index).toMatchObject({
       metadata: {
         schema_version: "2",
-        content_version: "2026-07-23",
+        content_version: "fixture-content-version",
         programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         generated_at: "2026-07-14T18:00:00.000Z",
         time_zone: "Europe/Skopje",
@@ -1031,12 +1109,14 @@ describe("Conference Guide", () => {
       },
       programme_status: "available",
       logistics: {
-        event: { date: { status: "announced", local_date: "2026-09-19" } },
-        main_venue: {
-          status: "announced",
-          name: "Technical Campus",
-          spaces: { outdoor_stages: 3, indoor_stages: 2 },
+        event: {
+          date: { status: "not_announced" },
+          location: { status: "not_announced" },
+          time_zone: { status: "announced", iana: "Europe/Skopje" },
         },
+        main_venue: { status: "not_announced" },
+        pre_conference_venue: { status: "not_announced", applies_to_events: [] },
+        tickets: { status: "not_announced", includes: [] },
         accessibility: { status: "not_announced" },
         accommodation: { status: "not_announced" },
       },
@@ -1115,7 +1195,7 @@ describe("Conference Guide", () => {
 
   it("keeps deploy facts readable and marks the programme unavailable on source failure", async () => {
     const guide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: unannouncedTestContent,
       loadPublishedData: async () => { throw new Error("PocketBase unavailable"); },
       canonicalOrigin: "https://wts.sh",
       now: () => new Date("2026-07-14T18:00:00.000Z"),
@@ -1125,7 +1205,8 @@ describe("Conference Guide", () => {
       programme_status: "programme_unavailable",
       metadata: { programme_version: "programme_unavailable" },
       logistics: {
-        main_venue: { status: "announced", name: "Technical Campus" },
+        event: { date: { status: "not_announced" } },
+        main_venue: { status: "not_announced" },
       },
     });
     await expect(guide.getAgenda()).rejects.toBeInstanceOf(ProgrammeUnavailableError);
@@ -1141,7 +1222,7 @@ describe("Conference Guide", () => {
     let available = true;
     let loads = 0;
     const guide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: scheduleTestContent,
       loadPublishedData: async () => {
         loads += 1;
         if (!available) throw new Error("PocketBase unavailable");

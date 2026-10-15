@@ -1,4 +1,5 @@
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
+import { requireCapability } from "~/lib/capability-availability";
 import type {
   AgendaSlotRecord,
   AgendaTrackRecord,
@@ -104,14 +105,26 @@ function sessionSchedule(
     kind: slot.kind,
     published: Boolean(slot.published),
     location_label: slot.location_label || track?.location_label || null,
-    day: day ? { key: day.key, local_date: day.local_date, title: day.title } : null,
-    appearance_event: appearanceEvent
-      ? { id: appearanceEvent.id, name: appearanceEvent.name, published: Boolean(appearanceEvent.published) }
-      : null,
-    track: track
-      ? { key: track.key, name: track.name, location_label: track.location_label || null }
-      : null,
+    day: scheduleDayDto(day),
+    appearance_event: scheduleAppearanceEventDto(appearanceEvent),
+    track: scheduleTrackDto(track),
   };
+}
+
+function scheduleDayDto(day: ConferenceDayRecord | undefined) {
+  return day ? { key: day.key, local_date: day.local_date, title: day.title } : null;
+}
+
+function scheduleAppearanceEventDto(appearanceEvent: AppearanceEventRecord | undefined) {
+  return appearanceEvent
+    ? { id: appearanceEvent.id, name: appearanceEvent.name, published: Boolean(appearanceEvent.published) }
+    : null;
+}
+
+function scheduleTrackDto(track: AgendaTrackRecord | undefined) {
+  return track
+    ? { key: track.key, name: track.name, location_label: track.location_label || null }
+    : null;
 }
 
 function sessionDto(session: ExpandedSession, schedule: McpSessionSchedule | null) {
@@ -153,13 +166,21 @@ function reviewSummary(reviews: CfpReviewRecord[]): ProposalReviewSummary {
   return summary;
 }
 
+function proposalApplicantDto(applicant: ExpandedApplicant | undefined) {
+  if (!applicant) return null;
+  return {
+    id: applicant.id,
+    name: applicant.expand?.user?.name || null,
+    affiliation: applicant.affiliation || null,
+    bio: applicant.bio || null,
+    social_handles: applicant.social_handles || null,
+  };
+}
+
 function proposalDto(
   submission: ExpandedSubmission,
   reviews: CfpReviewRecord[],
 ) {
-  const applicant = submission.expand?.applicant;
-  const user = applicant?.expand?.user;
-
   return {
     id: submission.id,
     status: submission.status || "pending",
@@ -168,15 +189,7 @@ function proposalDto(
     key_takeaways: submission.key_takeaways,
     technical_requirements: submission.technical_requirements || null,
     notes: submission.notes || null,
-    applicant: applicant
-      ? {
-          id: applicant.id,
-          name: user?.name || null,
-          affiliation: applicant.affiliation || null,
-          bio: applicant.bio || null,
-          social_handles: applicant.social_handles || null,
-        }
-      : null,
+    applicant: proposalApplicantDto(submission.expand?.applicant),
     review_summary: reviewSummary(reviews),
     created: submission.created,
     updated: submission.updated,
@@ -222,6 +235,8 @@ export async function fetchMcpSpeakers() {
 }
 
 export async function fetchMcpProposals(status?: ProposalStatus) {
+  await requireCapability("cfp");
+  await requireCapability("review");
   const adminService = getAdminPB();
   const submissionOptions = {
     ...(status ? { filter: `status = "${status}"` } : {}),
@@ -232,7 +247,6 @@ export async function fetchMcpProposals(status?: ProposalStatus) {
     adminService.fetchAllRecords("cfp_submissions", submissionOptions) as Promise<ExpandedSubmission[]>,
     adminService.fetchAllRecords("cfp_reviews") as Promise<CfpReviewRecord[]>,
   ]);
-
   const groupedReviews = reviewsBySubmission(reviews);
   return submissions.map((submission) =>
     proposalDto(submission, groupedReviews.get(submission.id) || []),
@@ -240,6 +254,8 @@ export async function fetchMcpProposals(status?: ProposalStatus) {
 }
 
 export async function fetchMcpProposalContext(submissionId: string) {
+  await requireCapability("cfp");
+  await requireCapability("review");
   const adminService = getAdminPB();
   const [submission, reviews] = await Promise.all([
     adminService.fetchRecordById("cfp_submissions", submissionId, {
@@ -250,10 +266,8 @@ export async function fetchMcpProposalContext(submissionId: string) {
       sort: "created",
     }) as Promise<CfpReviewRecord[]>,
   ]);
-
   return proposalDto(submission, reviews);
 }
-
 function proposalStatusCounts(proposals: ReturnType<typeof proposalDto>[]) {
   return proposals.reduce(
     (counts, proposal) => {

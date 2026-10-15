@@ -15,12 +15,92 @@ function capability(value: unknown): string { assert(typeof value === "string" &
 export interface RecoveryResetTarget extends RecoveryTarget { resetId: string; checkinId: string; fingerprint: string }
 export interface RecoveryUpstream extends RecoverySource { reset(target: RecoveryResetTarget, beforeDelete: () => Promise<void>): Promise<"deleted" | "uncertain" | "identity_changed"> }
 
+type Row = Record<string, unknown>;
+interface Scan { target: RecoveryTarget; endpoint: string; publicId: string; productIds: string[]; seen: Set<string>; total: number; pageSize?: number; match?: Row }
+const isPageSize = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 25;
+/** Validates one page's size and position against the rows already scanned. */
+function scanPage(scan: Scan, body: Row, page: number) {
+  assert(!("errors" in body) && Array.isArray(body.data));
+  const data = body.data as unknown[], meta = object(body.meta);
+  object(body.links);
+  assert(!("total" in meta) && !("last_page" in meta));
+  assert(isPageSize(meta.per_page));
+  assert(scan.pageSize === undefined || scan.pageSize === meta.per_page); scan.pageSize = meta.per_page;
+  assert(meta.current_page === page && checkinMetadataPath(meta.path, scan.endpoint) && data.length <= scan.pageSize);
+  assert(meta.from === (data.length ? scan.total + 1 : null) && meta.to === (data.length ? scan.total + data.length : null));
+}
+/** A navigation URL stays on the scanned endpoint and carries only the scan's own query. */
+function scanLink(scan: Scan, value: unknown, expected: number) {
+  assert(typeof value === "string" && value.length <= 4096 && !/[\\\s]/.test(value));
+  const url = new URL(value, scan.endpoint);
+  assert(checkinMetadataUrl(url, scan.endpoint));
+  assert(url.searchParams.getAll("page").length === 1 && url.searchParams.get("page") === String(expected));
+  for (const [k, v] of url.searchParams) assert(k === "page" || k === "per_page" && v === String(scan.pageSize) || k === "query" && v === scan.publicId);
+  assert(url.searchParams.getAll("per_page").length <= 1 && url.searchParams.getAll("query").length <= 1);
+}
+function scanLinks(scan: Scan, body: Row, page: number) {
+  const meta = object(body.meta), links = object(body.links);
+  const expected = [["current_page_url", page], ["first", 1], ["last", null], ["prev", page > 1 ? page - 1 : null], ["next", links.next === null ? null : page + 1]] as const;
+  for (const [key, number] of expected) {
+    if (key === "current_page_url" && meta.current_page_url === undefined) continue;
+    const value = key === "current_page_url" ? meta.current_page_url : links[key];
+    if (number === null) assert(value === null);
+    else scanLink(scan, value, number);
+  }
+  return links.next !== null;
+}
+function scanRows(scan: Scan, data: unknown[]) {
+  for (const value of data) {
+    const row = object(value), rowId = id(row.id); assert(!scan.seen.has(rowId)); scan.seen.add(rowId);
+    if (rowId !== scan.target.upstreamAttendeeId && row.public_id !== scan.publicId) continue;
+    assert(!scan.match && rowId === scan.target.upstreamAttendeeId && row.public_id === scan.publicId && scan.productIds.includes(id(row.product_id)));
+    if (row.event_id !== undefined) assert(id(row.event_id) === scan.target.upstreamEventId);
+    scan.match = row;
+  }
+}
+function matchedCheckin(target: RecoveryTarget, match: Row | undefined, listShort: string): { result: RecoveryRead; list?: string; checkin?: string } {
+  // A missing attendee is not an authoritative empty check-in read.
+  assert(match);
+  if (!("check_in" in match)) return { result: { state: "absent" } };
+  const checkin = object(match.check_in);
+  assert(id(checkin.attendee_id) === target.upstreamAttendeeId && id(checkin.check_in_list_id) === target.upstreamListId && id(checkin.order_id) === id(match.order_id));
+  assert(typeof checkin.checked_in_at === "string" && Number.isFinite(Date.parse(checkin.checked_in_at)));
+  const checkinId = id(checkin.id), short = capability(checkin.short_id);
+  const fingerprint = createHash("sha256").update(JSON.stringify([target.sourceKey, target.upstreamEventId, target.upstreamListId, target.upstreamAttendeeId, checkinId, id(checkin.order_id), checkin.checked_in_at, short])).digest("hex");
+  return { result: { state: "existing", checkinId, fingerprint }, list: listShort, checkin: short };
+}
+function readFailure(error: unknown): RecoveryRead {
+  return { state: error instanceof CheckinReadError && !["contract", "limit"].includes(error.reason) ? "unavailable" : "malformed" };
+}
+
 export function createCheckinRecoverySource(input?: CheckinDiscoveryConfig, transport: typeof fetch = fetch, dependencies?: CheckinReadDependencies): RecoveryUpstream {
   const raw = input ?? checkinServerConfig();
   const config = checkinDiscoveryConfiguration(raw);
   const sourceKey = createCheckinEventSource(raw, transport).sourceKey;
   const discovery = createCheckinDiscoveryAdapter(raw, transport, dependencies);
   const read = config ? createCheckinUpstreamReader(config, transport, dependencies) : null;
+  async function attendeePublicId(target: RecoveryTarget) {
+    const detail = object((await read!(`events/${target.upstreamEventId}/attendees/${target.upstreamAttendeeId}`)).data);
+    assert(id(detail.id) === target.upstreamAttendeeId && id(detail.event_id) === target.upstreamEventId);
+    assert(typeof detail.public_id === "string" && /^A-[A-Z0-9]{7,9}$/.test(detail.public_id));
+    return detail.public_id;
+  }
+  async function scanList(target: RecoveryTarget, listShort: string, productIds: string[]) {
+    const publicId = await attendeePublicId(target);
+    const path = `public/check-in-lists/${listShort}/attendees`;
+    const scan: Scan = { target, endpoint: `${config!.base}/${path}`, publicId, productIds, seen: new Set(), total: 0 };
+    for (let page = 1; page <= 40; page++) {
+      const body = await read!(`${path}?page=${page}&per_page=25&query=${encodeURIComponent(publicId)}`, false);
+      scanPage(scan, body, page);
+      const more = scanLinks(scan, body, page);
+      const data = body.data as unknown[];
+      scanRows(scan, data);
+      scan.total += data.length;
+      if (!more) return matchedCheckin(target, scan.match, listShort);
+      assert(data.length === scan.pageSize && page < 40);
+    }
+    return { result: { state: "malformed" } as RecoveryRead };
+  }
   async function inspect(target: RecoveryTarget): Promise<{ result: RecoveryRead; list?: string; checkin?: string }> {
     if (!config || !read || sourceKey !== target.sourceKey) return { result: { state: "unavailable" } };
     try {
@@ -30,54 +110,8 @@ export function createCheckinRecoverySource(input?: CheckinDiscoveryConfig, tran
       const list = options.data.lists.find(row => row.id === target.upstreamListId);
       assert(list);
       const listShort = capability(options.data.serverOnly.listCapabilities[list.id]);
-      const detail = object((await read(`events/${target.upstreamEventId}/attendees/${target.upstreamAttendeeId}`)).data);
-      assert(id(detail.id) === target.upstreamAttendeeId && id(detail.event_id) === target.upstreamEventId);
-      assert(typeof detail.public_id === "string" && /^A-[A-Z0-9]{7,9}$/.test(detail.public_id));
-      const path = `public/check-in-lists/${listShort}/attendees`;
-      const endpoint = `${config.base}/${path}`;
-      const seen = new Set<string>(); let match: Record<string, unknown> | undefined;
-      let total = 0; let pageSize: number | undefined;
-      for (let page = 1; page <= 40; page++) {
-        const body = await read(`${path}?page=${page}&per_page=25&query=${encodeURIComponent(detail.public_id)}`, false);
-        assert(!("errors" in body) && Array.isArray(body.data));
-        const meta = object(body.meta), links = object(body.links);
-        assert(!("total" in meta) && !("last_page" in meta));
-        assert(typeof meta.per_page === "number" && Number.isSafeInteger(meta.per_page) && meta.per_page > 0 && meta.per_page <= 25);
-        assert(pageSize === undefined || pageSize === meta.per_page); pageSize = meta.per_page;
-        assert(meta.current_page === page && checkinMetadataPath(meta.path, endpoint) && body.data.length <= pageSize);
-        assert(meta.from === (body.data.length ? total + 1 : null) && meta.to === (body.data.length ? total + body.data.length : null));
-        for (const [key, expected] of [["current_page_url", page], ["first", 1], ["last", null], ["prev", page > 1 ? page - 1 : null], ["next", links.next === null ? null : page + 1]] as const) {
-          if (key === "current_page_url" && meta.current_page_url === undefined) continue;
-          const value = key === "current_page_url" ? meta.current_page_url : links[key]; if (expected === null) { assert(value === null); continue; }
-          assert(typeof value === "string" && value.length <= 4096 && !/[\\\s]/.test(value));
-          const url = new URL(value, endpoint);
-          assert(checkinMetadataUrl(url, endpoint));
-          assert(url.searchParams.getAll("page").length === 1 && url.searchParams.get("page") === String(expected));
-          for (const [k, v] of url.searchParams) assert(k === "page" || k === "per_page" && v === String(pageSize) || k === "query" && v === detail.public_id);
-          assert(url.searchParams.getAll("per_page").length <= 1 && url.searchParams.getAll("query").length <= 1);
-        }
-        for (const value of body.data) {
-          const row = object(value), rowId = id(row.id); assert(!seen.has(rowId)); seen.add(rowId);
-          if (rowId === target.upstreamAttendeeId || row.public_id === detail.public_id) {
-            assert(!match && rowId === target.upstreamAttendeeId && row.public_id === detail.public_id && list.productIds.includes(id(row.product_id)));
-            if (row.event_id !== undefined) assert(id(row.event_id) === target.upstreamEventId);
-            match = row;
-          }
-        }
-        total += body.data.length;
-        if (links.next !== null) { assert(body.data.length === pageSize && page < 40); continue; }
-        // A missing attendee is not an authoritative empty check-in read.
-        assert(match);
-        if (!("check_in" in match)) return { result: { state: "absent" } };
-        const checkin = object(match.check_in);
-        assert(id(checkin.attendee_id) === target.upstreamAttendeeId && id(checkin.check_in_list_id) === target.upstreamListId && id(checkin.order_id) === id(match.order_id));
-        assert(typeof checkin.checked_in_at === "string" && Number.isFinite(Date.parse(checkin.checked_in_at)));
-        const checkinId = id(checkin.id), short = capability(checkin.short_id);
-        const fingerprint = createHash("sha256").update(JSON.stringify([target.sourceKey, target.upstreamEventId, target.upstreamListId, target.upstreamAttendeeId, checkinId, id(checkin.order_id), checkin.checked_in_at, short])).digest("hex");
-        return { result: { state: "existing", checkinId, fingerprint }, list: listShort, checkin: short };
-      }
-      return { result: { state: "malformed" } };
-    } catch (error) { return { result: { state: error instanceof CheckinReadError && !["contract", "limit"].includes(error.reason) ? "unavailable" : "malformed" } }; }
+      return await scanList(target, listShort, list.productIds);
+    } catch (error) { return { result: readFailure(error) }; }
   }
   return {
     async reconcile(target) { return (await inspect(target)).result; },

@@ -241,11 +241,11 @@ function redact(value: string | undefined): string {
 }
 
 function policyOutcome(claim: GamificationActivityClaimRecord): AdminGamificationCaseDto["claims"][number]["policyOutcome"] {
-  const outcome = claim.cap_outcome;
-  const totalXp = numberValue(outcome?.awarded_total_xp);
-  const leaderboardXp = numberValue(outcome?.awarded_leaderboard_xp);
+  const outcome = claim.cap_outcome || {};
+  const totalXp = numberValue(outcome.awarded_total_xp);
+  const leaderboardXp = numberValue(outcome.awarded_leaderboard_xp);
   if (totalXp === undefined || leaderboardXp === undefined) return undefined;
-  const appliedCaps = Array.isArray(outcome?.applied_caps)
+  const appliedCaps = Array.isArray(outcome.applied_caps)
     ? outcome.applied_caps
       .filter((cap): cap is Record<string, unknown> => Boolean(cap && typeof cap === "object" && !Array.isArray(cap)))
       .map((cap) => ({
@@ -256,12 +256,20 @@ function policyOutcome(claim: GamificationActivityClaimRecord): AdminGamificatio
       .filter((cap) => Boolean(cap.key))
     : [];
   return {
-    schedule: text(outcome?.schedule) || undefined,
-    policy: text(outcome?.policy) || undefined,
+    schedule: text(outcome.schedule) || undefined,
+    policy: text(outcome.policy) || undefined,
     totalXp,
     leaderboardXp,
     appliedCaps: appliedCaps.length ? appliedCaps : undefined,
   };
+}
+
+type MetaDiversity = NonNullable<NonNullable<AdminGamificationCaseDto["claims"][number]["metaRule"]>["diversity"]>;
+
+const META_DIVERSITIES = new Set<string>(["session", "booth", "community"] satisfies MetaDiversity[]);
+
+function isMetaDiversity(value: string): value is MetaDiversity {
+  return META_DIVERSITIES.has(value);
 }
 
 function metaRuleEvidence(claim: GamificationActivityClaimRecord): AdminGamificationCaseDto["claims"][number]["metaRule"] {
@@ -273,7 +281,7 @@ function metaRuleEvidence(claim: GamificationActivityClaimRecord): AdminGamifica
   const diversity = text(value.diversity);
   return {
     kind,
-    diversity: diversity === "session" || diversity === "booth" || diversity === "community" ? diversity : undefined,
+    diversity: isMetaDiversity(diversity) ? diversity : undefined,
     sourceClaimIds: Array.isArray(value.source_claim_ids)
       ? value.source_claim_ids.filter((id): id is string => typeof id === "string" && id.length > 0)
       : [],
@@ -290,6 +298,114 @@ function safeAuditSummary(record: GamificationAdminActionRecord): AdminGamificat
     afterStatus: text(after.status) || undefined,
     activityId: text(after.activityId) || undefined,
     achievementId: text(after.achievementId) || undefined,
+  };
+}
+
+function matchesAny(query: string, values: unknown[]): boolean {
+  return values.some((value) => exact(value, query));
+}
+
+function idsMatching<T extends { id: string }>(records: T[], query: string, references: (record: T) => unknown[]): Set<string> {
+  return new Set(records.filter((record) => matchesAny(query, references(record))).map((record) => record.id));
+}
+
+/** Activities match by their own reference or through a matching Mission or Achievement. */
+function matchingSupportRecords(context: SupportContext, query: string): {
+  activityIds: Set<string>;
+  achievementIds: Set<string>;
+  codeIds: Set<string>;
+} {
+  const activityIds = idsMatching(context.activities, query, (activity) => [activity.id, activity.key]);
+  const missionIds = idsMatching(context.missions, query, (mission) => [mission.id, mission.key]);
+  const achievementIds = idsMatching(context.achievements, query, (achievement) => [achievement.id, achievement.key]);
+  for (const activity of context.activities) {
+    const viaMission = Boolean(activity.mission && missionIds.has(activity.mission));
+    const viaAchievement = Boolean(activity.achievement && achievementIds.has(activity.achievement));
+    if (viaMission || viaAchievement) activityIds.add(activity.id);
+  }
+  const codeIds = idsMatching(context.codes, query, (code) => [code.id, code.label, code.lookup_prefix]);
+  return { activityIds, achievementIds, codeIds };
+}
+
+function matchingUserIds(context: SupportContext, query: string): Set<string> {
+  const { activityIds, achievementIds, codeIds } = matchingSupportRecords(context, query);
+  return new Set([
+    ...idsMatching(context.users, query, (user) => [user.id, user.email, user.name]),
+    ...context.badges.filter((badge) => achievementIds.has(badge.achievement)).map((badge) => badge.user),
+    ...context.claims
+      .filter((claim) => activityIds.has(claim.activity) ||
+        matchesAny(query, [claim.id, claim.source_record_id, hiEventsStableId(claim), metadataReference(claim.metadata)]))
+      .map((claim) => claim.user),
+    ...context.hiEventsRuns.flatMap((run) => exact(run.source_stable_id, query) && run.user ? [run.user] : []),
+    ...context.redemptions
+      .filter((redemption) => codeIds.has(redemption.code) || activityIds.has(redemption.activity) || exact(redemption.id, query))
+      .map((redemption) => redemption.user),
+    ...context.xpEvents
+      .filter((event) => matchesAny(query, [event.id, event.source_id, metadataReference(event.metadata)]))
+      .map((event) => event.user),
+    ...context.audit.flatMap((action) =>
+      matchesAny(query, [action.correlation_id, metadataReference(action.metadata)]) && action.target_user ? [action.target_user] : []
+    ),
+  ]);
+}
+
+function profileSummary(
+  profile: GamificationProfileRecord | undefined,
+  pending: boolean,
+): AdminGamificationCaseDto["profile"] {
+  return {
+    state: pending ? "rebuild_pending" : profile ? "current" : "empty",
+    totalXp: profile?.total_xp,
+    leaderboardXp: profile?.leaderboard_xp,
+    accessLevel: profile?.access_level,
+    opsBoardVisible: profile?.ops_board_visible,
+    opsBoardDisplayName: profile?.ops_board_display_name,
+    publicBadgesVisible: profile?.public_badges_visible,
+    lastRecalculatedAt: profile?.totals_recalculated_at,
+  };
+}
+
+type HiEventsSourceDto = AdminGamificationCaseDto["status"]["hiEvents"]["sources"][number];
+
+/** Prefers the latest sync run's source; older Users fall back to their Hi.Events claims. */
+function hiEventsSources(
+  latestHiEventsRun: GamificationHiEventsSyncRunRecord | undefined,
+  claims: GamificationActivityClaimRecord[],
+): HiEventsSourceDto[] {
+  if (latestHiEventsRun?.source_stable_id && safeReference(latestHiEventsRun.source_stable_id)) {
+    return [{
+      type: latestHiEventsRun.checkin_id ? "checkin" : "ticket",
+      stableSourceId: latestHiEventsRun.source_stable_id,
+      status: latestHiEventsRun.user_status || latestHiEventsRun.result_state,
+      occurredAt: latestHiEventsRun.checked_in_at || latestHiEventsRun.fetched_at,
+    }];
+  }
+  return claims
+    .filter((claim) => claim.source_type === "hievents_ticket" || claim.source_type === "hievents_checkin")
+    .filter((claim) => safeReference(claim.source_record_id))
+    .map((claim) => ({
+      type: claim.source_type === "hievents_ticket" ? "ticket" as const : "checkin" as const,
+      stableSourceId: claim.source_record_id!,
+      status: claim.status,
+      occurredAt: claim.occurred_at,
+    }));
+}
+
+function hiEventsSummary(
+  hiEventsRuns: GamificationHiEventsSyncRunRecord[],
+  claims: GamificationActivityClaimRecord[],
+): AdminGamificationCaseDto["status"]["hiEvents"] {
+  const latestHiEventsRun = latestRun(hiEventsRuns);
+  const latestSuccessfulHiEventsRun = latestRun(hiEventsRuns.filter((run) => run.result_state === "success"));
+  const sources = hiEventsSources(latestHiEventsRun, claims);
+  return {
+    reconciliationState: latestHiEventsRun?.result_state === "success"
+      ? latestHiEventsRun.user_status || "stale"
+      : latestHiEventsRun ? "unavailable" : "stale",
+    lastSyncAt: latestHiEventsRun?.fetched_at,
+    lastSuccessfulSyncAt: latestSuccessfulHiEventsRun?.last_success_at || latestSuccessfulHiEventsRun?.fetched_at,
+    lastEvidenceAt: latest(claims.filter((claim) => claim.source_type.startsWith("hievents_")).map((claim) => claim.claimed_at)),
+    sources,
   };
 }
 
@@ -317,63 +433,7 @@ export class GamificationAdminSupportService {
     const historyPage = Math.max(1, Math.floor(Number(historyPageInput) || 1));
     const historyPerPage = Math.min(100, Math.max(1, Math.floor(Number(historyPerPageInput) || 50)));
     const context = await this.context();
-    const matchingActivityIds = new Set(
-      context.activities.filter((activity) => exact(activity.id, query) || exact(activity.key, query)).map((activity) => activity.id),
-    );
-    const matchingMissionIds = new Set(
-      context.missions.filter((mission) => exact(mission.id, query) || exact(mission.key, query)).map((mission) => mission.id),
-    );
-    for (const activity of context.activities) {
-      if (activity.mission && matchingMissionIds.has(activity.mission)) matchingActivityIds.add(activity.id);
-    }
-    const matchingAchievementIds = new Set(
-      context.achievements.filter((achievement) => exact(achievement.id, query) || exact(achievement.key, query)).map((achievement) => achievement.id),
-    );
-    for (const activity of context.activities) {
-      if (activity.achievement && matchingAchievementIds.has(activity.achievement)) matchingActivityIds.add(activity.id);
-    }
-    const matchingCodeIds = new Set(
-      context.codes
-        .filter((code) => exact(code.id, query) || exact(code.label, query) || exact(code.lookup_prefix, query))
-        .map((code) => code.id),
-    );
-    const userIds = new Set(
-      context.users
-        .filter((user) => exact(user.id, query) || exact(user.email, query) || exact(user.name, query))
-        .map((user) => user.id),
-    );
-    for (const badge of context.badges) {
-      if (matchingAchievementIds.has(badge.achievement)) userIds.add(badge.user);
-    }
-    for (const claim of context.claims) {
-      if (
-        matchingActivityIds.has(claim.activity) ||
-        exact(claim.id, query) ||
-        exact(claim.source_record_id, query) ||
-        exact(hiEventsStableId(claim), query) ||
-        exact(metadataReference(claim.metadata), query)
-      ) {
-        userIds.add(claim.user);
-      }
-    }
-    for (const run of context.hiEventsRuns) {
-      if (exact(run.source_stable_id, query) && run.user) userIds.add(run.user);
-    }
-    for (const redemption of context.redemptions) {
-      if (matchingCodeIds.has(redemption.code) || matchingActivityIds.has(redemption.activity) || exact(redemption.id, query)) {
-        userIds.add(redemption.user);
-      }
-    }
-    for (const event of context.xpEvents) {
-      if (exact(event.id, query) || exact(event.source_id, query) || exact(metadataReference(event.metadata), query)) {
-        userIds.add(event.user);
-      }
-    }
-    for (const action of context.audit) {
-      if (exact(action.correlation_id, query) || exact(metadataReference(action.metadata), query)) {
-        if (action.target_user) userIds.add(action.target_user);
-      }
-    }
+    const userIds = matchingUserIds(context, query);
     const users = context.users.filter((user) => userIds.has(user.id)).sort((left, right) => left.id.localeCompare(right.id));
     if (users.length > 20) throw new Error("This exact reference matches too many Users. Refine the support case.");
     const fullCases = users.map((user) => this.caseForUser(user, context));
@@ -441,40 +501,13 @@ export class GamificationAdminSupportService {
     const partnersById = new Map(context.partners.map((partner) => [partner.id, partner]));
     const partnerContactConsents = context.partnerContactConsents.filter((consent) => consent.user === user.id);
     const partnerContactDisclosures = context.partnerContactDisclosures.filter((disclosure) => disclosure.user === user.id);
-    const latestHiEventsRun = latestRun(hiEventsRuns);
-    const latestSuccessfulHiEventsRun = latestRun(hiEventsRuns.filter((run) => run.result_state === "success"));
-    const hiEventsSources = latestHiEventsRun?.source_stable_id && safeReference(latestHiEventsRun.source_stable_id)
-      ? [{
-        type: latestHiEventsRun.checkin_id ? "checkin" as const : "ticket" as const,
-        stableSourceId: latestHiEventsRun.source_stable_id,
-        status: latestHiEventsRun.user_status || latestHiEventsRun.result_state,
-        occurredAt: latestHiEventsRun.checked_in_at || latestHiEventsRun.fetched_at,
-      }]
-      : claims
-        .filter((claim) => claim.source_type === "hievents_ticket" || claim.source_type === "hievents_checkin")
-        .filter((claim) => safeReference(claim.source_record_id))
-        .map((claim) => ({
-          type: claim.source_type === "hievents_ticket" ? "ticket" as const : "checkin" as const,
-          stableSourceId: claim.source_record_id!,
-          status: claim.status,
-          occurredAt: claim.occurred_at,
-        }));
     const touchedActivityIds = new Set([...claims.map((claim) => claim.activity), ...redemptions.map((redemption) => redemption.activity)]);
     const touchedCodeIds = new Set(redemptions.map((redemption) => redemption.code));
     const pending = Boolean(profile?.rebuild_pending) || audit.some((action) => action.status === "rebuild_pending");
 
     return {
       user: { id: user.id, email: user.email, displayName: user.name || "Unnamed User" },
-      profile: {
-        state: pending ? "rebuild_pending" : profile ? "current" : "empty",
-        totalXp: profile?.total_xp,
-        leaderboardXp: profile?.leaderboard_xp,
-        accessLevel: profile?.access_level,
-        opsBoardVisible: profile?.ops_board_visible,
-        opsBoardDisplayName: profile?.ops_board_display_name,
-        publicBadgesVisible: profile?.public_badges_visible,
-        lastRecalculatedAt: profile?.totals_recalculated_at,
-      },
+      profile: profileSummary(profile, pending),
       status: {
         codeCount: touchedCodeIds.size,
         activityCount: touchedActivityIds.size,
@@ -483,15 +516,7 @@ export class GamificationAdminSupportService {
           ...redemptions.filter((redemption) => redemption.status === "accepted").map((redemption) => redemption.redeemed_at),
           ...claims.filter((claim) => claim.status === "accepted").map((claim) => claim.claimed_at || claim.occurred_at),
         ]),
-        hiEvents: {
-          reconciliationState: latestHiEventsRun?.result_state === "success"
-            ? latestHiEventsRun.user_status || "stale"
-            : latestHiEventsRun ? "unavailable" : "stale",
-          lastSyncAt: latestHiEventsRun?.fetched_at,
-          lastSuccessfulSyncAt: latestSuccessfulHiEventsRun?.last_success_at || latestSuccessfulHiEventsRun?.fetched_at,
-          lastEvidenceAt: latest(claims.filter((claim) => claim.source_type.startsWith("hievents_")).map((claim) => claim.claimed_at)),
-          sources: hiEventsSources,
-        },
+        hiEvents: hiEventsSummary(hiEventsRuns, claims),
       },
       activities: [...touchedActivityIds]
         .map((activityId) => activitiesById.get(activityId))

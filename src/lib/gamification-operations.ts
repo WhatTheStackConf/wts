@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
+import { samePersistedJson } from "~/lib/persisted-json";
 import {
   GAMIFICATION_COLLECTIONS,
   withGamificationLocks,
@@ -38,6 +39,8 @@ import {
 import {
   containsMissionCode,
   createMissionCodeGeneration,
+  hashNormalizedMissionCode,
+  MISSION_CODE_HASH_VERSION,
   parseMissionCode,
   verifyMissionCodeHash,
 } from "~/lib/mission-code-crypto";
@@ -84,6 +87,7 @@ const GAMIFICATION_CATEGORIES = [
 ] as const;
 
 const ACTIVITY_KINDS = [
+  "qr",
   "session",
   "booth",
   "workshop",
@@ -122,6 +126,8 @@ const BOOTH_SCORE_BANDS = {
   high_score: { totalXp: 35, leaderboardXp: 25 },
 } as const;
 const BOOTH_CAP = { totalXp: 35, leaderboardXp: 25 } as const;
+/** Prevent lifecycle publication while the create-only booth catalogue is being prepared. */
+export const BOOTH_SETUP_LOCK = "configuration:wts26-booth-catalogue";
 
 type GamificationCategory = (typeof GAMIFICATION_CATEGORIES)[number];
 type ActivityKind = (typeof ACTIVITY_KINDS)[number];
@@ -368,6 +374,21 @@ export interface AdminCodeGenerationInput {
   maxRedemptions: number;
   perUserLimit: number;
   operationId: string;
+}
+
+export type AdminCodeRegistrationInput = Omit<AdminCodeGenerationInput, "quantity"> & { rawCodes: string[] };
+
+/** A repeatable receipt, never an export of bearer secrets or code hashes. */
+export interface AdminCodeRegistrationResult {
+  batch: {
+    id: string;
+    label: string;
+    activityId: string;
+    quantity: number;
+    committed: true;
+    secretsAvailable: false;
+  };
+  codes: Array<{ id: string; label: string; lookupPrefix: string }>;
 }
 
 export interface AdminCodeInvalidationInput {
@@ -732,22 +753,27 @@ function safeEventRef(value: unknown): AdminMissionDto["eventRef"] {
   return Object.values(eventRef).some(Boolean) ? eventRef : undefined;
 }
 
-function safeUnlockRule(value: unknown): AdminUnlockRuleInput {
-  const rule = value && typeof value === "object" && !Array.isArray(value)
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
-  const kind = isUnlockRuleKind(rule.kind) ? rule.kind : "activity_claim";
-  const activityKeys = Array.isArray(rule.activityKeys || rule.activity_keys)
-    ? (rule.activityKeys || rule.activity_keys) as unknown[]
-    : [];
-  const cleanedActivityKeys = activityKeys
+}
+
+function ruleActivityKeys(rule: Record<string, unknown>): string[] | undefined {
+  const rawKeys = rule.activityKeys || rule.activity_keys;
+  const activityKeys = (Array.isArray(rawKeys) ? rawKeys as unknown[] : [])
     .filter((key): key is string => typeof key === "string")
     .map(cleanText)
     .filter(Boolean);
+  return activityKeys.length ? [...new Set(activityKeys)] : undefined;
+}
+
+function safeUnlockRule(value: unknown): AdminUnlockRuleInput {
+  const rule = recordValue(value);
   const sourceDiversity = rule.sourceDiversity || rule.source_diversity || rule.diversity;
   return {
-    kind,
-    activityKeys: cleanedActivityKeys.length ? [...new Set(cleanedActivityKeys)] : undefined,
+    kind: isUnlockRuleKind(rule.kind) ? rule.kind : "activity_claim",
+    activityKeys: ruleActivityKeys(rule),
     category: isCategory(rule.category) ? rule.category : undefined,
     count: finiteNonNegative(rule.count) ? Number(rule.count) : undefined,
     sourceDiversity: isMetaSourceDiversity(sourceDiversity) ? sourceDiversity : undefined,
@@ -993,6 +1019,2465 @@ function uniqueKeys(values: string[]): boolean {
   return new Set(values).size === values.length;
 }
 
+type ScoreBand = { totalXp: number; leaderboardXp: number };
+type GroupedScoreBand = ScoreBand & { groupTotal: number; groupLeaderboard: number };
+type CapRequirement = readonly [GamificationCapMembership["dimension"], string];
+type CapCeilingOverrides = GamificationScoreSchedulePolicyRecord["cap_ceiling_overrides"];
+/** A validation rule as `[failed, message]`; failed rules report their messages in list order. */
+type Check = readonly [unknown, string];
+type AuditStart = { record: { id: string }; replayed: boolean; failed: boolean; existing: boolean };
+type CodeIdentity = { lookupPrefix: string; codeHash: string };
+type CodeGenerationConfig = Required<AdminCodeGenerationInput>;
+type CommunityOutcomeInput = AdminCommunityPartnerMissionDraftInput["outcomes"][number];
+
+const MISSION_VISIBILITIES: string[] = ["public", "hidden_until_unlocked", "admin_only"];
+const BADGE_RARITIES: string[] = ["common", "uncommon", "rare", "epic", "legendary"];
+const EASTER_EGG_EVIDENCE_CHANNELS: string[] = ["wts_qr", "wts_link", "wts_manual_code"];
+const REDEEMABLE_CODE_MODES: string[] = ["single_code", "two_code_start", "two_code_finish"];
+const EASTER_EGG_KEY = /^easter_egg\.[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const EASTER_EGG_DISCOVERY_KEY = /^easter_egg\.([a-z0-9]+(?:-[a-z0-9]+)*)\.discovery$/;
+const SCORING_TWO_CODE_BANDS = new Map<string, GroupedScoreBand>([
+  ["two_code_start", { totalXp: 10, leaderboardXp: 5, groupTotal: 40, groupLeaderboard: 30 }],
+  ["derived_claim_set", { totalXp: 30, leaderboardXp: 25, groupTotal: 40, groupLeaderboard: 30 }],
+]);
+const TWO_CODE_SCORE_BANDS = new Map<string, GroupedScoreBand>([
+  ...SCORING_TWO_CODE_BANDS,
+  ["two_code_finish", { totalXp: 0, leaderboardXp: 0, groupTotal: 40, groupLeaderboard: 30 }],
+]);
+const CONFIGURED_EVENT_SCORE_BANDS = new Map<string, GroupedScoreBand>([
+  ["single_code", { totalXp: 30, leaderboardXp: 25, groupTotal: 30, groupLeaderboard: 25 }],
+  ...TWO_CODE_SCORE_BANDS,
+]);
+const TWO_CODE_KEY_SUFFIXES = new Map<string, "start" | "finish" | "completion">([
+  ["two_code_start", "start"],
+  ["two_code_finish", "finish"],
+  ["derived_claim_set", "completion"],
+]);
+const CONFIGURED_EVENT_KEY_SUFFIXES = new Map<string, string>([["single_code", "attendance"], ...TWO_CODE_KEY_SUFFIXES]);
+const META_DIVERSITY_SOURCE_KINDS = [
+  ["session", "session"],
+  ["booth", "booth"],
+  ["community", "community_partner"],
+] as const;
+
+const DRAFT_EDIT_COPY: Record<GamificationDefinitionKind, { notDraft: string; hasAccounting: string }> = {
+  achievement: {
+    notDraft: "Only draft Achievements can be edited. Retire used definitions and create successors.",
+    hasAccounting: "This Achievement has Badge history. Retire it and create an audited successor instead.",
+  },
+  mission: {
+    notDraft: "Only draft Missions can be edited. Retire used definitions and create successors.",
+    hasAccounting: "This Mission has accepted evidence. Retire it and create an audited successor instead.",
+  },
+  activity: {
+    notDraft: "Only draft Activities can be edited. Retire used definitions and create successors.",
+    hasAccounting: "This Activity has accepted evidence. Retire it and create an audited successor instead.",
+  },
+};
+
+function failedChecks(checks: Check[]): string[] {
+  return checks.filter(([failed]) => failed).map(([, message]) => message);
+}
+
+function isImmutableKey(value: string): boolean {
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}
+
+function hasValidWindow(from: unknown, until: unknown): boolean {
+  return validDate(from) && validDate(until) && Date.parse(from) < Date.parse(until);
+}
+
+function assertMissionVisibility(value: unknown, message: string): void {
+  if (!MISSION_VISIBILITIES.includes(value as string)) throw new Error(message);
+}
+
+function assertCodeFlow(value: unknown, message: string): void {
+  if (value !== "one_code" && value !== "two_code") throw new Error(message);
+}
+
+function assertPresentationCopy(fields: Array<readonly [string, string]>, missingMessage: string): void {
+  if (fields.some(([value]) => !value)) throw new Error(missingMessage);
+  for (const [value, label] of fields) assertNoSecretText(value, label);
+}
+
+interface CanonicalEvidenceInput {
+  activeFrom: string;
+  activeUntil: string;
+  perUserClaimLimit: number;
+  maxClaims: number;
+  scoreDay: string;
+  sortOrder: number;
+}
+
+interface CanonicalEvidenceCopy {
+  window: string;
+  limits: string;
+  scoreDay: string;
+  sortOrder: string;
+}
+
+/** Canonical Mission evidence is one claim per User inside an independent active window. */
+function assertCanonicalEvidenceLimits(input: CanonicalEvidenceInput, copy: CanonicalEvidenceCopy): void {
+  if (!hasValidWindow(input.activeFrom, input.activeUntil)) throw new Error(copy.window);
+  if (input.perUserClaimLimit !== 1 || !isPositiveInteger(input.maxClaims)) throw new Error(copy.limits);
+  if (!isISODate(input.scoreDay)) throw new Error(copy.scoreDay);
+  if (!Number.isInteger(input.sortOrder)) throw new Error(copy.sortOrder);
+}
+
+function requireDraftSchedule(context: GamificationContext, scheduleId: unknown, message: string): GamificationScoreScheduleRecord {
+  const schedule = context.schedules.find((candidate) => candidate.id === cleanText(scheduleId));
+  if (!schedule || schedule.status !== "draft") throw new Error(message);
+  return schedule;
+}
+
+function findAchievement(context: GamificationContext, id: string | undefined): GamificationAchievementRecord | undefined {
+  return id ? context.achievements.find((candidate) => candidate.id === id) : undefined;
+}
+
+function missionFor(activity: GamificationActivityRecord, context: GamificationContext): GamificationMissionRecord | undefined {
+  return activity.mission ? context.missions.find((candidate) => candidate.id === activity.mission) : undefined;
+}
+
+function activePoliciesFor(activityId: string, context: GamificationContext): GamificationScoreSchedulePolicyRecord[] {
+  return context.policies.filter((policy) => policy.activity === activityId && policy.active);
+}
+
+function isDirectClaimRule(rule: AdminUnlockRuleInput, activityKey: string): boolean {
+  return rule.kind === "activity_claim" && (!rule.activityKeys?.length || rule.activityKeys.includes(activityKey));
+}
+
+function isDirectClaimBadge(
+  achievement: GamificationAchievementRecord | undefined,
+  activityKey: string,
+  category?: string,
+): achievement is GamificationAchievementRecord {
+  return achievement !== undefined &&
+    (category === undefined || achievement.category === category) &&
+    isDirectClaimRule(safeUnlockRule(achievement.unlock_rule), activityKey);
+}
+
+function isExactClaimSetBadge(
+  achievement: GamificationAchievementRecord | undefined,
+  activityKeys: Array<string | undefined>,
+  category?: string,
+): achievement is GamificationAchievementRecord {
+  if (achievement === undefined || (category !== undefined && achievement.category !== category)) return false;
+  const rule = safeUnlockRule(achievement.unlock_rule);
+  return rule.kind === "claim_set" &&
+    JSON.stringify([...(rule.activityKeys || [])].sort()) === JSON.stringify([...activityKeys].sort());
+}
+
+function matchesScoreBand(actual: ScoreBand, expected: ScoreBand | undefined): boolean {
+  return expected !== undefined && actual.totalXp === expected.totalXp && actual.leaderboardXp === expected.leaderboardXp;
+}
+
+function recordScoreBand(policy: GamificationScoreSchedulePolicyRecord): ScoreBand {
+  return { totalXp: policy.total_xp, leaderboardXp: policy.leaderboard_xp };
+}
+
+function boothOutcomeBand(outcome: unknown): ScoreBand | undefined {
+  return isBoothOutcome(outcome) ? BOOTH_SCORE_BANDS[outcome] : undefined;
+}
+
+function communityOutcomeBand(outcome: unknown): ScoreBand | undefined {
+  return isCommunityPartnerOutcome(outcome) ? COMMUNITY_PARTNER_SCORE_BANDS[outcome] : undefined;
+}
+
+function communityScoreBand(
+  activity: GamificationActivityRecord,
+  approvedTwoCode: boolean,
+  twoCodeBands: Map<string, ScoreBand>,
+): ScoreBand | undefined {
+  if (approvedTwoCode) return twoCodeBands.get(activity.evidence_mode);
+  return activity.evidence_mode === "single_code" ? communityOutcomeBand(activity.outcome_key) : undefined;
+}
+
+function hasCapMemberships(memberships: unknown, required: CapRequirement[]): boolean {
+  const list: GamificationCapMembership[] = Array.isArray(memberships) ? memberships : [];
+  return required.every(([dimension, key]) =>
+    list.some((membership) => membership.dimension === dimension && membership.key === key)
+  );
+}
+
+function dayAndConferenceCaps(scoreDay: string | undefined): CapRequirement[] {
+  return [["conference_day", scoreDay || ""], ["conference", "conference"]];
+}
+
+function exceedsBoothCap(overrides: CapCeilingOverrides): boolean {
+  return Object.values(overrides || {}).some((override) =>
+    override ? override.total_xp_ceiling > BOOTH_CAP.totalXp || override.leaderboard_xp_ceiling > BOOTH_CAP.leaderboardXp : false
+  );
+}
+
+function recordCapOverrides(overrides: SeptemberScorePolicy["capCeilingOverrides"]): CapCeilingOverrides {
+  return Object.fromEntries(Object.entries(overrides || {}).map(([dimension, ceiling]) => [dimension, {
+    total_xp_ceiling: ceiling.totalXpCeiling,
+    leaderboard_xp_ceiling: ceiling.leaderboardXpCeiling,
+  }])) as CapCeilingOverrides;
+}
+
+function relatedGroupKey(policy: SeptemberScorePolicy): string | undefined {
+  return policy.capMembership.find((membership) => membership.dimension === "related_group")?.key;
+}
+
+/** Community one-code programmes share the ceiling of their highest scoring active outcome. */
+function highestCommunityGroupBand(policies: SeptemberScorePolicy[], groupKey: string | undefined): ScoreBand {
+  return policies
+    .filter((candidate) =>
+      candidate.kind === "community_partner" &&
+      candidate.capMembership.some((membership) => membership.dimension === "related_group" && membership.key === groupKey)
+    )
+    .reduce((current, candidate) =>
+      candidate.totalXp > current.totalXp
+        ? { totalXp: candidate.totalXp, leaderboardXp: candidate.leaderboardXp }
+        : current,
+    { totalXp: 0, leaderboardXp: 0 });
+}
+
+function isCanonicalBoothMission(mission: GamificationMissionRecord | undefined): mission is GamificationMissionRecord {
+  return mission !== undefined &&
+    isBoothMissionKey(mission.key) &&
+    Boolean(cleanText(mission.partner_key)) &&
+    mission.key.startsWith(`booth.${mission.partner_key}.`);
+}
+
+function isCanonicalCommunityPolicyMission(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+): mission is GamificationMissionRecord {
+  return Boolean(activity.partner) &&
+    activity.partner_kind === "community_partner" &&
+    mission !== undefined &&
+    mission.category === "community" &&
+    mission.partner === activity.partner &&
+    Boolean(cleanText(mission.partner_key)) &&
+    mission.key.startsWith(`community.${mission.partner_key}.`);
+}
+
+function hasValidCommunityGroupCeiling(
+  relatedOverride: NonNullable<CapCeilingOverrides>["related_group"],
+  approvedTwoCode: boolean,
+  expected: ScoreBand,
+): boolean {
+  if (!relatedOverride) return false;
+  if (approvedTwoCode) return relatedOverride.total_xp_ceiling === 40 && relatedOverride.leaderboard_xp_ceiling === 30;
+  return Object.values(COMMUNITY_PARTNER_SCORE_BANDS).some((band) =>
+    band.totalXp === relatedOverride.total_xp_ceiling && band.leaderboardXp === relatedOverride.leaderboard_xp_ceiling
+  ) &&
+    relatedOverride.total_xp_ceiling >= expected.totalXp &&
+    relatedOverride.leaderboard_xp_ceiling >= expected.leaderboardXp;
+}
+
+function isApprovedCommunityTwoCode(activity: GamificationActivityRecord, mission: GamificationMissionRecord | undefined): boolean {
+  return mission?.metadata?.community_two_code_approved === true &&
+    activity.metadata?.community_two_code_approved === true;
+}
+
+function hasCommunityPolicyCaps(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord,
+  input: AdminScorePolicyInput,
+): boolean {
+  return hasCapMemberships(input.capMembership, [
+    ["activity", activity.id],
+    ["related_group", mission.key],
+    ["partner", activity.partner || ""],
+    ["category", "community"],
+    ...dayAndConferenceCaps(input.scoreDay),
+  ]) && isISODate(input.scoreDay);
+}
+
+function hasConfiguredEventPolicyCaps(activity: GamificationActivityRecord, capGroupKey: string, input: AdminScorePolicyInput): boolean {
+  return Boolean(capGroupKey) &&
+    hasCapMemberships(input.capMembership, [
+      ["activity", activity.id],
+      ["related_group", capGroupKey],
+      ["category", activity.category],
+      ...dayAndConferenceCaps(input.scoreDay),
+    ]) &&
+    isISODate(input.scoreDay);
+}
+
+function matchesGroupCeiling(override: NonNullable<CapCeilingOverrides>["related_group"], expected: GroupedScoreBand): boolean {
+  return Boolean(override) &&
+    override!.total_xp_ceiling === expected.groupTotal &&
+    override!.leaderboard_xp_ceiling === expected.groupLeaderboard;
+}
+
+function hasPartnerCapMembership(memberships: unknown): boolean {
+  return Array.isArray(memberships) && memberships.some((membership: GamificationCapMembership) => membership.dimension === "partner");
+}
+
+function sameMembershipSet(memberships: GamificationCapMembership[], expected: string[]): boolean {
+  const actual = new Set(memberships.map((membership) => `${membership.dimension}:${membership.key}`));
+  return actual.size === new Set(expected).size && expected.every((membership) => actual.has(membership));
+}
+
+function scorePolicyInput(policy: GamificationScoreSchedulePolicyRecord): AdminScorePolicyInput {
+  return {
+    scheduleId: policy.schedule,
+    policyKey: policy.policy_key,
+    enabled: policy.active,
+    totalXp: policy.total_xp,
+    leaderboardXp: policy.leaderboard_xp,
+    capMembership: policy.cap_membership,
+    capCeilingOverrides: policy.cap_ceiling_overrides,
+    scoreDay: policy.score_day,
+  };
+}
+
+function policyAssertionErrors(
+  policies: GamificationScoreSchedulePolicyRecord[],
+  missingMessage: string,
+  fallbackMessage: string,
+  assertPolicy: (input: AdminScorePolicyInput) => void,
+): string[] {
+  const errors = policies.length === 0 ? [missingMessage] : [];
+  for (const policy of policies) {
+    try {
+      assertPolicy(scorePolicyInput(policy));
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : fallbackMessage);
+    }
+  }
+  return errors;
+}
+
+interface TwoCodeFlow {
+  start?: GamificationActivityRecord;
+  finish?: GamificationActivityRecord;
+  completion?: GamificationActivityRecord;
+  twoCode: boolean;
+}
+
+function twoCodeFlow(activities: GamificationActivityRecord[]): TwoCodeFlow {
+  const start = activities.find((candidate) => candidate.evidence_mode === "two_code_start");
+  const finish = activities.find((candidate) => candidate.evidence_mode === "two_code_finish");
+  const completion = activities.find((candidate) => candidate.evidence_mode === "derived_claim_set");
+  return { start, finish, completion, twoCode: activities.length === 3 && Boolean(start && finish && completion) };
+}
+
+function isCompletionOnlyMeta(flow: TwoCodeFlow, field: "event_meta_eligible" | "community_meta_eligible"): boolean {
+  return !flow.start?.[field] && !flow.finish?.[field] && typeof flow.completion?.[field] === "boolean";
+}
+
+function redeemableArtifactErrors(activity: GamificationActivityRecord, copy: { code: string; derived: string }): string[] {
+  if (REDEEMABLE_CODE_MODES.includes(activity.evidence_mode)) {
+    return isEvidenceChannel(activity.evidence_channel) && cleanText(activity.deployment_label) ? [] : [copy.code];
+  }
+  return activity.evidence_mode === "derived_claim_set" && (activity.evidence_channel || cleanText(activity.deployment_label))
+    ? [copy.derived]
+    : [];
+}
+
+function isHiddenEasterEggBadge(achievement: GamificationAchievementRecord): boolean {
+  return achievement.category === "easter_egg" &&
+    achievement.visibility === "hidden_until_unlocked" &&
+    safeUnlockRule(achievement.unlock_rule).kind === "activity_claim";
+}
+
+function isHiddenRelationFreeEasterEggMission(mission: GamificationMissionRecord): boolean {
+  return mission.category === "easter_egg" &&
+    mission.visibility === "hidden_until_unlocked" &&
+    !mission.suggested &&
+    !mission.partner &&
+    !mission.session &&
+    !safeEventRef(mission.event_ref);
+}
+
+function isEasterEggDiscoveryShape(activity: GamificationActivityRecord): boolean {
+  return activity.kind === "easter_egg" &&
+    activity.category === "easter_egg" &&
+    activity.outcome_key === "static_discovery" &&
+    activity.evidence_mode === "static_puzzle_code";
+}
+
+function isEasterEggDefinition(activity: GamificationActivityRecord): boolean {
+  return activity.kind === "easter_egg" || activity.category === "easter_egg";
+}
+
+function assertAchievementDraftInput(input: AdminAchievementDraftInput, key: string): void {
+  if (!key) throw new Error("Achievement key is required.");
+  if (input.category === "easter_egg" || key.startsWith("easter_egg.")) {
+    throw new Error("Configure Easter Egg Badges through the dedicated Easter Egg Mission operation.");
+  }
+  if (!isUnlockRuleKind(input.unlockRule?.kind)) throw new Error("Choose a valid Achievement unlock rule.");
+  if (!isCategory(input.category)) throw new Error("Choose a valid Achievement category.");
+  if (!cleanText(input.badgeName) || !cleanText(input.badgeDescription)) {
+    throw new Error("Badge name and description are required.");
+  }
+  if (!Number.isInteger(input.sortOrder)) throw new Error("Achievement sort order must be a whole number.");
+}
+
+function assertMissionDraftInput(input: AdminMissionDraftInput, key: string, slug: string): void {
+  if (!key || !slug) throw new Error("Mission key and slug are required.");
+  if (input.category === "easter_egg" || key.startsWith("easter_egg.")) {
+    throw new Error("Configure Easter Egg Missions through the dedicated Easter Egg Mission operation.");
+  }
+  if (!isCategory(input.category) || !cleanText(input.title) || !cleanText(input.summary)) {
+    throw new Error("Mission category, title, and summary are required.");
+  }
+  if (!Number.isInteger(input.sortOrder)) throw new Error("Mission sort order must be a whole number.");
+}
+
+function assertGenericMissionDraft(existing: GamificationMissionRecord | undefined, key: string): void {
+  if (existing?.category === "community" || key.startsWith("community.")) {
+    throw new Error("Configure Community Partner programmes through the dedicated Community Partner operation.");
+  }
+  if (existing && configuredEventReference(existing.event_ref)) {
+    throw new Error("Configured event Missions may only be changed through the dedicated event operation.");
+  }
+}
+
+function assertGenericActivityDraft(input: AdminActivityDraftInput): void {
+  if (input.kind === "session") {
+    throw new Error("Configure Session attendance through the dedicated Session Mission operation.");
+  }
+  if (isConfiguredEventActivityKind(input.kind)) {
+    throw new Error("Configure workshops and surrounding events through the dedicated event Mission operation.");
+  }
+  if (input.kind === "community_partner") {
+    throw new Error("Configure Community Partner Activities through the dedicated Community Partner operation.");
+  }
+  if (input.kind === "easter_egg" || input.category === "easter_egg" || cleanText(input.key).startsWith("easter_egg.")) {
+    throw new Error("Configure Easter Egg Activities through the dedicated Easter Egg Mission operation.");
+  }
+}
+
+function assertActivityDraftInput(input: AdminActivityDraftInput, key: string): void {
+  if (!key || !isCategory(input.category) || !isActivityKind(input.kind) || !isEvidenceMode(input.evidenceMode)) {
+    throw new Error("Activity key, category, kind, and evidence mode are required.");
+  }
+  if (!cleanText(input.outcomeKey) || !isPositiveInteger(input.perUserClaimLimit)) {
+    throw new Error("Activity outcome and per-User claim limit are required.");
+  }
+  if (input.kind === "qr" && (input.evidenceMode !== "single_code" || input.outcomeKey !== "completion")) {
+    throw new Error("QR Activities require single-code evidence and the completion outcome.");
+  }
+}
+
+interface CodeActivityDefinition {
+  key: string;
+  outcome: string;
+  evidenceMode: EvidenceMode;
+  deploymentLabel: string | undefined;
+  achievement: string | undefined;
+  metaEligible: boolean;
+  score: ScoreBand;
+}
+
+interface CommunityActivityDefinition extends CodeActivityDefinition {
+  followUp: { enabled: boolean; noticeVersion?: string };
+}
+
+const SESSION_EVIDENCE_COPY: CanonicalEvidenceCopy = {
+  window: "Session Mission evidence requires a valid independent active window.",
+  limits: "Session attendance supports one claim per User and requires a positive global claim limit.",
+  scoreDay: "Session scoring requires a configured conference score day.",
+  sortOrder: "Session Mission sort order must be a whole number.",
+};
+
+interface SessionAttendancePlan {
+  sessionId: string;
+  sessionKey: string;
+  missionKey: string;
+  activityKey: string;
+  slug: string;
+  missionTitle: string;
+  missionSummary: string;
+  deploymentLabel: string;
+}
+
+interface SessionAttendanceSources {
+  session: SessionRecord;
+  schedule: GamificationScoreScheduleRecord;
+  achievementId: string;
+}
+
+interface ExistingSessionAttendance {
+  mission: GamificationMissionRecord | undefined;
+  activity: GamificationActivityRecord | undefined;
+}
+
+function parseSessionAttendanceInput(input: AdminSessionAttendanceMissionDraftInput): SessionAttendancePlan {
+  const sessionId = cleanText(input.sessionId);
+  const sessionKey = cleanKey(input.sessionKey);
+  const missionKey = `session.${sessionKey}`;
+  const activityKey = `${missionKey}.attendance`;
+  const missionTitle = cleanText(input.title);
+  const missionSummary = cleanText(input.summary);
+  const deploymentLabel = safeOperationalLabel(input.deploymentLabel);
+  if (!sessionId || !isImmutableKey(sessionKey)) {
+    throw new Error("Choose a Session and provide an immutable lowercase Session key.");
+  }
+  assertPresentationCopy(
+    [[missionTitle, "Session Mission title"], [missionSummary, "Session Mission summary"]],
+    "Session Mission title and summary are required.",
+  );
+  assertMissionVisibility(input.visibility, "Choose a valid Session Mission visibility.");
+  if (!isEvidenceChannel(input.evidenceChannel)) {
+    throw new Error("Session Missions require a WTS-controlled deployment artifact and channel.");
+  }
+  assertCanonicalEvidenceLimits(input, SESSION_EVIDENCE_COPY);
+  return {
+    sessionId,
+    sessionKey,
+    missionKey,
+    activityKey,
+    slug: `session-${sessionKey}`,
+    missionTitle,
+    missionSummary,
+    deploymentLabel,
+  };
+}
+
+function resolveSessionAttendanceSources(
+  input: AdminSessionAttendanceMissionDraftInput,
+  plan: SessionAttendancePlan,
+  context: GamificationContext,
+): SessionAttendanceSources {
+  const session = context.sessions.find((candidate) => candidate.id === plan.sessionId);
+  if (!session?.published) throw new Error("Choose an existing published Session.");
+  const schedule = requireDraftSchedule(context, input.scoreScheduleId, "Choose a draft score schedule for the Session policy.");
+  const achievementId = cleanText(input.achievementId);
+  const achievement = context.achievements.find((candidate) => candidate.id === achievementId);
+  if (achievementId && !isDirectClaimBadge(achievement, plan.activityKey, "session")) {
+    throw new Error("A direct Session Badge must use a Session Activity-claim rule for this immutable Activity key.");
+  }
+  return { session, schedule, achievementId };
+}
+
+function sessionAttendanceAuditSummary(
+  input: AdminSessionAttendanceMissionDraftInput,
+  plan: SessionAttendancePlan,
+  sources: SessionAttendanceSources,
+): Record<string, unknown> {
+  return {
+    definition: "session_attendance",
+    sessionId: plan.sessionId,
+    sessionKey: plan.sessionKey,
+    missionKey: plan.missionKey,
+    activityKey: plan.activityKey,
+    title: plan.missionTitle,
+    summary: plan.missionSummary,
+    visibility: input.visibility,
+    evidenceChannel: input.evidenceChannel,
+    deploymentLabel: plan.deploymentLabel,
+    activeFrom: input.activeFrom,
+    activeUntil: input.activeUntil,
+    maxClaims: input.maxClaims,
+    achievementId: sources.achievementId || undefined,
+    metaEligible: Boolean(input.metaEligible),
+    scoreScheduleId: sources.schedule.id,
+    scoreDay: input.scoreDay,
+    sortOrder: input.sortOrder,
+  };
+}
+
+function sessionSourceMismatch(plan: SessionAttendancePlan, existing: ExistingSessionAttendance): boolean {
+  const { mission, activity } = existing;
+  return Boolean(
+    (mission && (mission.session !== plan.sessionId || mission.slug !== plan.slug)) ||
+    (activity && (activity.session !== plan.sessionId || activity.session_key !== plan.sessionKey)),
+  );
+}
+
+function sessionAttendanceConflicts(
+  auditExists: boolean,
+  plan: SessionAttendancePlan,
+  existing: ExistingSessionAttendance,
+  context: GamificationContext,
+): Check[] {
+  return [
+    [!auditExists && (existing.mission || existing.activity), "This immutable Session Mission key is already configured."],
+    [sessionSourceMismatch(plan, existing), "The interrupted Session Mission configuration does not match this immutable Session source."],
+    [
+      context.activities.some((activity) =>
+        activity.id !== existing.activity?.id &&
+        activity.kind === "session" &&
+        activity.session === plan.sessionId &&
+        activity.status !== "retired",
+      ),
+      "This Session already has a configured attendance Activity. Retire it before creating an audited successor.",
+    ],
+    [
+      context.missions.some((mission) => mission.id !== existing.mission?.id && mission.slug === plan.slug),
+      "This Session Mission slug is already in use.",
+    ],
+  ];
+}
+
+const CONFIGURED_EVENT_EVIDENCE_COPY: CanonicalEvidenceCopy = {
+  window: "Configured events require a valid independent operating window.",
+  limits: "Configured events support one claim per Activity and require a positive global claim limit.",
+  scoreDay: "Configured event scoring requires a score day.",
+  sortOrder: "Event Mission sort order must be a whole number.",
+};
+
+interface ConfiguredEventCopy {
+  eventKey: string;
+  title: string;
+  missionTitle: string;
+  summary: string;
+  attendanceDeploymentLabel: string;
+  finishDeploymentLabel: string | undefined;
+}
+
+interface ConfiguredEventPlan extends ConfiguredEventCopy {
+  schedule: GamificationScoreScheduleRecord;
+  hostPartnerId: string;
+  missionKey: string;
+  capGroupKey: string;
+  slug: string;
+  attendanceKey: string;
+  finishKey: string;
+  completionKey: string;
+  category: GamificationActivityRecord["category"];
+  activityKind: GamificationActivityRecord["kind"];
+  attendanceAchievement: GamificationAchievementRecord | undefined;
+  completionAchievement: GamificationAchievementRecord | undefined;
+  eventRef: ConfiguredEventReference;
+  activityKeys: string[];
+}
+
+function parseConfiguredEventInput(input: AdminConfiguredEventMissionDraftInput): ConfiguredEventCopy {
+  const eventKey = cleanKey(input.eventKey);
+  const title = cleanText(input.title);
+  const missionTitle = cleanText(input.missionTitle);
+  const summary = cleanText(input.summary);
+  if (!isImmutableKey(eventKey) || !isConfiguredEventKind(input.kind)) {
+    throw new Error("Provide an immutable lowercase event key and supported event kind.");
+  }
+  assertPresentationCopy(
+    [[title, "Event title"], [missionTitle, "Event Mission title"], [summary, "Event Mission summary"]],
+    "Event title, Mission title, and summary are required.",
+  );
+  assertMissionVisibility(input.visibility, "Choose a valid event Mission visibility.");
+  assertCodeFlow(input.flow, "Choose one-code attendance or two-code completion.");
+  if (input.flow === "two_code" && input.kind !== "workshop" && !input.relatedEventTwoCodeApproved) {
+    throw new Error("Two-code completion outside workshops requires explicit organizer approval.");
+  }
+  if (!isEvidenceChannel(input.evidenceChannel)) {
+    throw new Error("Configured events require a WTS-controlled QR, link, or manual-code artifact.");
+  }
+  const attendanceDeploymentLabel = safeOperationalLabel(input.attendanceDeploymentLabel);
+  const finishDeploymentLabel = input.flow === "two_code" ? safeOperationalLabel(input.finishDeploymentLabel) : undefined;
+  assertCanonicalEvidenceLimits(input, CONFIGURED_EVENT_EVIDENCE_COPY);
+  return { eventKey, title, missionTitle, summary, attendanceDeploymentLabel, finishDeploymentLabel };
+}
+
+function configuredEventAttendanceBadge(
+  input: AdminConfiguredEventMissionDraftInput,
+  attendanceKey: string,
+  category: string,
+  context: GamificationContext,
+): GamificationAchievementRecord | undefined {
+  const achievementId = cleanText(input.attendanceAchievementId);
+  const achievement = findAchievement(context, achievementId);
+  if (achievementId && !achievement) throw new Error("Choose an existing attendance Badge.");
+  if (achievement && !isDirectClaimBadge(achievement, attendanceKey, category)) {
+    throw new Error("The attendance Badge must use this event's direct Activity-claim rule.");
+  }
+  return achievement;
+}
+
+function configuredEventCompletionBadge(
+  input: AdminConfiguredEventMissionDraftInput,
+  claimSet: string[],
+  category: string,
+  context: GamificationContext,
+): GamificationAchievementRecord | undefined {
+  if (input.flow !== "two_code") return undefined;
+  const achievement = findAchievement(context, cleanText(input.completionAchievementId));
+  if (!isExactClaimSetBadge(achievement, claimSet, category)) {
+    throw new Error("Two-code completion requires a Badge with the exact configured start-and-finish claim set.");
+  }
+  return achievement;
+}
+
+function planConfiguredEvent(
+  input: AdminConfiguredEventMissionDraftInput,
+  copy: ConfiguredEventCopy,
+  context: GamificationContext,
+): ConfiguredEventPlan {
+  const schedule = requireDraftSchedule(context, input.scoreScheduleId, "Choose a draft score schedule for the configured event.");
+  const hostPartnerId = cleanText(input.hostPartnerId);
+  if (hostPartnerId && !context.partners.some((partner) => partner.id === hostPartnerId)) {
+    throw new Error("Choose an existing host partner or leave host attribution empty for a WTS-run event.");
+  }
+  const missionKey = configuredEventMissionKey(input.kind, copy.eventKey);
+  const capGroupKey = cleanKey(input.capGroupKey);
+  if (!capGroupKey) throw new Error("Configured events require an organizer-supplied cap group key.");
+  const attendanceKey = `${missionKey}.${input.flow === "one_code" ? "attendance" : "start"}`;
+  const finishKey = `${missionKey}.finish`;
+  const completionKey = `${missionKey}.completion`;
+  const category = configuredEventCategory(input.kind);
+  const attendanceAchievement = configuredEventAttendanceBadge(input, attendanceKey, category, context);
+  const completionAchievement = configuredEventCompletionBadge(input, [finishKey, attendanceKey], category, context);
+  return {
+    ...copy,
+    schedule,
+    hostPartnerId,
+    missionKey,
+    capGroupKey,
+    slug: `${input.kind}-${copy.eventKey}`,
+    attendanceKey,
+    finishKey,
+    completionKey,
+    category,
+    activityKind: configuredEventActivityKind(input.kind),
+    attendanceAchievement,
+    completionAchievement,
+    eventRef: {
+      eventKey: copy.eventKey,
+      kind: input.kind,
+      title: copy.title,
+      startsAt: input.activeFrom,
+      endsAt: input.activeUntil,
+      visibility: input.visibility,
+      locationLabel: cleanOptionalText(input.locationLabel),
+    },
+    activityKeys: input.flow === "one_code" ? [attendanceKey] : [attendanceKey, finishKey, completionKey],
+  };
+}
+
+function configuredEventAuditSummary(input: AdminConfiguredEventMissionDraftInput, plan: ConfiguredEventPlan): Record<string, unknown> {
+  return {
+    definition: "configured_event",
+    eventRef: plan.eventRef,
+    missionKey: plan.missionKey,
+    activityKeys: plan.activityKeys,
+    flow: input.flow,
+    hostPartnerId: plan.hostPartnerId || undefined,
+    capGroupKey: plan.capGroupKey,
+    metaEligible: Boolean(input.metaEligible),
+    scoreScheduleId: plan.schedule.id,
+    scoreDay: input.scoreDay,
+    request: {
+      title: plan.title,
+      missionTitle: plan.missionTitle,
+      summary: plan.summary,
+      visibility: input.visibility,
+      locationLabel: cleanOptionalText(input.locationLabel),
+      hostPartnerId: plan.hostPartnerId || undefined,
+      relatedEventTwoCodeApproved: Boolean(input.relatedEventTwoCodeApproved),
+      suggested: Boolean(input.suggested),
+      evidenceChannel: input.evidenceChannel,
+      attendanceDeploymentLabel: plan.attendanceDeploymentLabel,
+      finishDeploymentLabel: plan.finishDeploymentLabel || undefined,
+      activeFrom: input.activeFrom,
+      activeUntil: input.activeUntil,
+      perUserClaimLimit: input.perUserClaimLimit,
+      maxClaims: input.maxClaims,
+      attendanceAchievementId: plan.attendanceAchievement?.id,
+      completionAchievementId: plan.completionAchievement?.id,
+      sortOrder: input.sortOrder,
+    },
+  };
+}
+
+function configuredEventConflicts(
+  auditExists: boolean,
+  plan: ConfiguredEventPlan,
+  existingMission: GamificationMissionRecord | undefined,
+  existingActivities: GamificationActivityRecord[],
+): Check[] {
+  const missionMismatch = existingMission !== undefined && (
+    !sameConfiguredEventReference(existingMission.event_ref, plan.eventRef) || existingMission.slug !== plan.slug
+  );
+  return [
+    [!auditExists && (existingMission || existingActivities.length > 0), "This immutable event key is already configured."],
+    [
+      missionMismatch || existingActivities.some((activity) => !sameConfiguredEventReference(activity.event_ref, plan.eventRef)),
+      "The interrupted event configuration does not match this immutable event reference.",
+    ],
+  ];
+}
+
+function configuredEventActivityDefinitions(
+  input: AdminConfiguredEventMissionDraftInput,
+  plan: ConfiguredEventPlan,
+): CodeActivityDefinition[] {
+  if (input.flow === "one_code") {
+    return [{
+      key: plan.attendanceKey,
+      outcome: "attendance",
+      evidenceMode: "single_code",
+      deploymentLabel: plan.attendanceDeploymentLabel,
+      achievement: plan.attendanceAchievement?.id,
+      metaEligible: Boolean(input.metaEligible),
+      score: { totalXp: 30, leaderboardXp: 25 },
+    }];
+  }
+  return [
+    {
+      key: plan.attendanceKey,
+      outcome: "attendance",
+      evidenceMode: "two_code_start",
+      deploymentLabel: plan.attendanceDeploymentLabel,
+      achievement: plan.attendanceAchievement?.id,
+      metaEligible: false,
+      score: { totalXp: 10, leaderboardXp: 5 },
+    },
+    {
+      key: plan.finishKey,
+      outcome: "completion",
+      evidenceMode: "two_code_finish",
+      deploymentLabel: plan.finishDeploymentLabel,
+      achievement: undefined,
+      metaEligible: false,
+      score: { totalXp: 0, leaderboardXp: 0 },
+    },
+    {
+      key: plan.completionKey,
+      outcome: "completion",
+      evidenceMode: "derived_claim_set",
+      deploymentLabel: undefined,
+      achievement: plan.completionAchievement?.id,
+      metaEligible: Boolean(input.metaEligible),
+      score: { totalXp: 30, leaderboardXp: 25 },
+    },
+  ];
+}
+
+function configuredEventActivityRow(
+  input: AdminConfiguredEventMissionDraftInput,
+  plan: ConfiguredEventPlan,
+  definition: CodeActivityDefinition,
+  missionId: string,
+): Record<string, unknown> {
+  return {
+    key: definition.key,
+    mission: missionId,
+    kind: plan.activityKind,
+    category: plan.category,
+    outcome_key: definition.outcome,
+    evidence_mode: definition.evidenceMode,
+    evidence_channel: definition.evidenceMode === "derived_claim_set" ? "" : input.evidenceChannel,
+    deployment_label: definition.deploymentLabel || "",
+    achievement: definition.achievement || "",
+    partner: plan.hostPartnerId,
+    partner_kind: plan.hostPartnerId ? "workshop_host" : "",
+    event_ref: plan.eventRef,
+    event_meta_eligible: definition.metaEligible,
+    per_user_claim_limit: 1,
+    max_claims: input.maxClaims,
+    active_from: input.activeFrom,
+    active_until: input.activeUntil,
+    status: "draft",
+    enabled: true,
+    metadata: { cap_group_key: plan.capGroupKey },
+  };
+}
+
+function configuredEventScorePolicy(
+  input: AdminConfiguredEventMissionDraftInput,
+  plan: ConfiguredEventPlan,
+  definition: CodeActivityDefinition,
+  activityId: string,
+): AdminScorePolicyInput {
+  const oneCode = input.flow === "one_code";
+  return {
+    scheduleId: plan.schedule.id,
+    policyKey: definition.key,
+    enabled: true,
+    totalXp: definition.score.totalXp,
+    leaderboardXp: definition.score.leaderboardXp,
+    capMembership: [
+      { dimension: "activity", key: activityId },
+      { dimension: "related_group", key: plan.capGroupKey },
+      { dimension: "category", key: plan.category },
+      { dimension: "conference_day", key: input.scoreDay },
+      { dimension: "conference", key: "conference" },
+    ],
+    capCeilingOverrides: {
+      related_group: {
+        total_xp_ceiling: oneCode ? 30 : 40,
+        leaderboard_xp_ceiling: oneCode ? 25 : 30,
+      },
+    },
+    scoreDay: input.scoreDay,
+  };
+}
+
+const COMMUNITY_PARTNER_EVIDENCE_COPY: CanonicalEvidenceCopy = {
+  window: "Community Partner programmes require a valid independent operating window.",
+  limits: "Community Partner Activities support one claim per User and require a positive global claim limit.",
+  scoreDay: "Community Partner scoring requires a score day.",
+  sortOrder: "Community Partner Mission sort order must be a whole number.",
+};
+
+interface CommunityPartnerIdentity {
+  partnerId: string;
+  partnerKey: string;
+  programmeKey: string;
+  missionTitle: string;
+  summary: string;
+}
+
+interface CommunityPartnerDeploymentLabels {
+  primaryDeploymentLabel: string | undefined;
+  outcomeDeploymentLabels: Map<CommunityPartnerOutcome, string>;
+  finishDeploymentLabel: string | undefined;
+}
+
+interface CommunityPartnerCopy extends CommunityPartnerIdentity, CommunityPartnerDeploymentLabels {
+  selectedOutcomes: CommunityOutcomeInput[];
+}
+
+type CommunityOutcomeDefinition = CommunityOutcomeInput & { key: string; achievement: GamificationAchievementRecord };
+
+interface CommunityPartnerPlan extends CommunityPartnerCopy {
+  schedule: GamificationScoreScheduleRecord;
+  missionKey: string;
+  slug: string;
+  directKey: string;
+  finishKey: string;
+  completionKey: string;
+  directAchievement: GamificationAchievementRecord | undefined;
+  oneCodeDefinitions: CommunityOutcomeDefinition[];
+  completionAchievement: GamificationAchievementRecord | undefined;
+  activityKeys: string[];
+}
+
+function parseCommunityPartnerIdentity(input: AdminCommunityPartnerMissionDraftInput): CommunityPartnerIdentity {
+  const partnerId = cleanText(input.partnerId);
+  const partnerKey = cleanKey(input.partnerKey);
+  const programmeKey = cleanKey(input.activityKey);
+  if (!partnerId || !isImmutableKey(partnerKey) || !isImmutableKey(programmeKey)) {
+    throw new Error("Choose an existing partner and provide immutable lowercase partner and programme keys.");
+  }
+  const missionTitle = cleanText(input.missionTitle);
+  const summary = cleanText(input.summary);
+  assertPresentationCopy(
+    [[missionTitle, "Community Partner Mission title"], [summary, "Community Partner Mission summary"]],
+    "Community Partner Mission title and summary are required.",
+  );
+  assertMissionVisibility(input.visibility, "Choose a valid Community Partner Mission visibility.");
+  assertCodeFlow(input.flow, "Choose a one-code or explicitly approved two-code programme.");
+  return { partnerId, partnerKey, programmeKey, missionTitle, summary };
+}
+
+function isCommunityOutcomeSelection(outcomes: CommunityOutcomeInput[]): boolean {
+  return outcomes.length >= 1 && outcomes.length <= 3 &&
+    outcomes.every((definition) => isCommunityPartnerOutcome(definition.outcome)) &&
+    uniqueKeys(outcomes.map((definition) => definition.outcome));
+}
+
+function assertCommunityOutcomeSelection(flow: AdminCommunityPartnerMissionDraftInput["flow"], outcomes: CommunityOutcomeInput[]): void {
+  if (flow === "one_code" && !isCommunityOutcomeSelection(outcomes)) {
+    throw new Error("Choose each Community Partner attendance, participation, or completion outcome at most once.");
+  }
+  if (outcomes.filter((definition) => definition.metaEligible).length > 1) {
+    throw new Error("At most one qualifying Activity per Community Partner programme may register with Meta rules.");
+  }
+  if (outcomes.some((definition) => definition.partnerFollowUp.enabled && !cleanText(definition.partnerFollowUp.noticeVersion))) {
+    throw new Error("Enabled Community Partner follow-up requires a notice version.");
+  }
+}
+
+function communityDeploymentLabels(
+  input: AdminCommunityPartnerMissionDraftInput,
+  selectedOutcomes: CommunityOutcomeInput[],
+): CommunityPartnerDeploymentLabels {
+  const twoCode = input.flow === "two_code";
+  const primaryDeploymentLabel = twoCode ? safeOperationalLabel(input.primaryDeploymentLabel) : undefined;
+  const outcomeDeploymentLabels = new Map(selectedOutcomes.map((definition) => [definition.outcome, safeOperationalLabel(definition.deploymentLabel)]));
+  const finishDeploymentLabel = twoCode ? safeOperationalLabel(input.finishDeploymentLabel) : undefined;
+  return { primaryDeploymentLabel, outcomeDeploymentLabels, finishDeploymentLabel };
+}
+
+function parseCommunityPartnerInput(input: AdminCommunityPartnerMissionDraftInput): CommunityPartnerCopy {
+  const identity = parseCommunityPartnerIdentity(input);
+  const selectedOutcomes = input.flow === "one_code" && Array.isArray(input.outcomes) ? input.outcomes : [];
+  assertCommunityOutcomeSelection(input.flow, selectedOutcomes);
+  if (input.flow === "two_code" && !input.communityTwoCodeApproved) {
+    throw new Error("Community Partner two-code completion requires explicit organizer approval.");
+  }
+  if (!isEvidenceChannel(input.evidenceChannel)) {
+    throw new Error("Community Partner Activities require a WTS-controlled QR, link, manual, or static-code artifact.");
+  }
+  const labels = communityDeploymentLabels(input, selectedOutcomes);
+  assertCanonicalEvidenceLimits(input, COMMUNITY_PARTNER_EVIDENCE_COPY);
+  if (input.flow === "two_code" && input.partnerFollowUp.enabled && !cleanText(input.partnerFollowUp.noticeVersion)) {
+    throw new Error("Enabled Community Partner follow-up requires a notice version.");
+  }
+  return { ...identity, selectedOutcomes, ...labels };
+}
+
+function communityDirectBadge(
+  input: AdminCommunityPartnerMissionDraftInput,
+  directKey: string,
+  context: GamificationContext,
+): GamificationAchievementRecord | undefined {
+  if (input.flow !== "two_code") return undefined;
+  const achievement = findAchievement(context, cleanText(input.directAchievementId));
+  if (!achievement || achievement.category !== "community") {
+    throw new Error("Community Partner programmes require a distinct Community Badge for their direct Activity.");
+  }
+  if (!isDirectClaimRule(safeUnlockRule(achievement.unlock_rule), directKey)) {
+    throw new Error("The direct Community Badge must use this programme's Activity-claim rule.");
+  }
+  return achievement;
+}
+
+function communityOutcomeDefinition(
+  definition: CommunityOutcomeInput,
+  missionKey: string,
+  context: GamificationContext,
+): CommunityOutcomeDefinition {
+  const key = communityPartnerActivityKey(missionKey, definition.outcome);
+  const achievement = context.achievements.find((candidate) => candidate.id === cleanText(definition.achievementId));
+  if (!isDirectClaimBadge(achievement, key, "community")) {
+    throw new Error(`The ${definition.outcome} Community Badge must use that outcome's direct Activity-claim rule.`);
+  }
+  return { ...definition, key, achievement };
+}
+
+function communityCompletionBadge(
+  input: AdminCommunityPartnerMissionDraftInput,
+  claimSet: string[],
+  context: GamificationContext,
+): GamificationAchievementRecord | undefined {
+  if (input.flow !== "two_code") return undefined;
+  const achievement = findAchievement(context, cleanText(input.completionAchievementId));
+  if (!isExactClaimSetBadge(achievement, claimSet, "community")) {
+    throw new Error("Community Partner two-code completion requires a distinct Badge with the exact start-and-finish claim set.");
+  }
+  return achievement;
+}
+
+function planCommunityPartnerProgramme(
+  input: AdminCommunityPartnerMissionDraftInput,
+  copy: CommunityPartnerCopy,
+  context: GamificationContext,
+): CommunityPartnerPlan {
+  // Public partner type/tier is intentionally not consulted here.
+  if (!context.partners.some((partner) => partner.id === copy.partnerId)) throw new Error("Choose an existing Community Partner record.");
+  const schedule = requireDraftSchedule(context, input.scoreScheduleId, "Choose a draft score schedule for the Community Partner programme.");
+  const missionKey = communityPartnerMissionKey(copy.partnerKey, copy.programmeKey);
+  const directKey = communityPartnerActivityKey(missionKey, "start");
+  const finishKey = communityPartnerActivityKey(missionKey, "finish");
+  const completionKey = communityPartnerActivityKey(missionKey, "completion");
+  const directAchievement = communityDirectBadge(input, directKey, context);
+  const oneCodeDefinitions = copy.selectedOutcomes.map((definition) => communityOutcomeDefinition(definition, missionKey, context));
+  const completionAchievement = communityCompletionBadge(input, [directKey, finishKey], context);
+  return {
+    ...copy,
+    schedule,
+    missionKey,
+    slug: `community-${copy.partnerKey}-${copy.programmeKey}`,
+    directKey,
+    finishKey,
+    completionKey,
+    directAchievement,
+    oneCodeDefinitions,
+    completionAchievement,
+    activityKeys: input.flow === "one_code" ? oneCodeDefinitions.map((definition) => definition.key) : [directKey, finishKey, completionKey],
+  };
+}
+
+function communityPartnerAuditRequest(input: AdminCommunityPartnerMissionDraftInput, plan: CommunityPartnerPlan): Record<string, unknown> {
+  return {
+    missionTitle: plan.missionTitle,
+    summary: plan.summary,
+    visibility: input.visibility,
+    suggested: Boolean(input.suggested),
+    communityTwoCodeApproved: Boolean(input.communityTwoCodeApproved),
+    evidenceChannel: input.evidenceChannel,
+    primaryDeploymentLabel: plan.primaryDeploymentLabel || undefined,
+    finishDeploymentLabel: plan.finishDeploymentLabel || undefined,
+    activeFrom: input.activeFrom,
+    activeUntil: input.activeUntil,
+    perUserClaimLimit: input.perUserClaimLimit,
+    maxClaims: input.maxClaims,
+    directAchievementId: plan.directAchievement?.id,
+    completionAchievementId: plan.completionAchievement?.id,
+    partnerFollowUp: input.partnerFollowUp,
+    outcomes: plan.oneCodeDefinitions.map((definition) => ({
+      outcome: definition.outcome,
+      deploymentLabel: cleanText(definition.deploymentLabel),
+      achievementId: definition.achievement.id,
+      metaEligible: Boolean(definition.metaEligible),
+      partnerFollowUp: definition.partnerFollowUp,
+    })),
+    sortOrder: input.sortOrder,
+  };
+}
+
+function communityPartnerAuditSummary(input: AdminCommunityPartnerMissionDraftInput, plan: CommunityPartnerPlan): Record<string, unknown> {
+  const oneCode = input.flow === "one_code";
+  return {
+    definition: "community_partner_programme",
+    partnerId: plan.partnerId,
+    partnerKey: plan.partnerKey,
+    missionKey: plan.missionKey,
+    activityKeys: plan.activityKeys,
+    flow: input.flow,
+    outcomes: oneCode ? plan.oneCodeDefinitions.map((definition) => definition.outcome) : ["completion"],
+    metaEligible: oneCode ? plan.oneCodeDefinitions.some((definition) => definition.metaEligible) : Boolean(input.metaEligible),
+    scoreScheduleId: plan.schedule.id,
+    scoreDay: input.scoreDay,
+    request: communityPartnerAuditRequest(input, plan),
+  };
+}
+
+function communityProgrammeMismatch(
+  plan: CommunityPartnerPlan,
+  existingMission: GamificationMissionRecord | undefined,
+  existingActivities: GamificationActivityRecord[],
+): boolean {
+  const missionMismatch = existingMission !== undefined && (
+    existingMission.partner !== plan.partnerId ||
+    existingMission.partner_key !== plan.partnerKey ||
+    existingMission.slug !== plan.slug
+  );
+  return missionMismatch || existingActivities.some((activity) =>
+    activity.partner !== plan.partnerId || activity.mission !== existingMission?.id
+  );
+}
+
+function communityPartnerConflicts(
+  auditExists: boolean,
+  plan: CommunityPartnerPlan,
+  existingMission: GamificationMissionRecord | undefined,
+  existingActivities: GamificationActivityRecord[],
+): Check[] {
+  return [
+    [!auditExists && (existingMission || existingActivities.length > 0), "This immutable Community Partner programme key is already configured."],
+    [
+      communityProgrammeMismatch(plan, existingMission, existingActivities),
+      "The interrupted Community Partner configuration does not match this immutable partner programme.",
+    ],
+  ];
+}
+
+function communityPartnerActivityDefinitions(
+  input: AdminCommunityPartnerMissionDraftInput,
+  plan: CommunityPartnerPlan,
+): CommunityActivityDefinition[] {
+  if (input.flow === "one_code") {
+    return plan.oneCodeDefinitions.map((definition) => ({
+      key: definition.key,
+      outcome: definition.outcome,
+      evidenceMode: "single_code",
+      deploymentLabel: plan.outcomeDeploymentLabels.get(definition.outcome),
+      achievement: definition.achievement.id,
+      metaEligible: Boolean(definition.metaEligible),
+      followUp: definition.partnerFollowUp,
+      score: COMMUNITY_PARTNER_SCORE_BANDS[definition.outcome],
+    }));
+  }
+  return [
+    {
+      key: plan.directKey,
+      outcome: "attendance",
+      evidenceMode: "two_code_start",
+      deploymentLabel: plan.primaryDeploymentLabel,
+      achievement: plan.directAchievement!.id,
+      metaEligible: false,
+      followUp: { enabled: false },
+      score: { totalXp: 10, leaderboardXp: 5 },
+    },
+    {
+      key: plan.finishKey,
+      outcome: "completion",
+      evidenceMode: "two_code_finish",
+      deploymentLabel: plan.finishDeploymentLabel,
+      achievement: undefined,
+      metaEligible: false,
+      followUp: { enabled: false },
+      score: { totalXp: 0, leaderboardXp: 0 },
+    },
+    {
+      key: plan.completionKey,
+      outcome: "completion",
+      evidenceMode: "derived_claim_set",
+      deploymentLabel: undefined,
+      achievement: plan.completionAchievement!.id,
+      metaEligible: Boolean(input.metaEligible),
+      followUp: input.partnerFollowUp,
+      score: COMMUNITY_PARTNER_SCORE_BANDS.completion,
+    },
+  ];
+}
+
+function communityProgrammeMetadata(input: AdminCommunityPartnerMissionDraftInput, plan: CommunityPartnerPlan): Record<string, unknown> {
+  return {
+    community_programme: true,
+    community_two_code_approved: input.flow === "two_code",
+    cap_group_key: plan.missionKey,
+  };
+}
+
+function communityPartnerActivityRow(
+  input: AdminCommunityPartnerMissionDraftInput,
+  plan: CommunityPartnerPlan,
+  definition: CommunityActivityDefinition,
+  missionId: string,
+): Record<string, unknown> {
+  return {
+    key: definition.key,
+    mission: missionId,
+    kind: "community_partner",
+    category: "community",
+    outcome_key: definition.outcome,
+    evidence_mode: definition.evidenceMode,
+    evidence_channel: definition.evidenceMode === "derived_claim_set" ? "" : input.evidenceChannel,
+    deployment_label: definition.deploymentLabel || "",
+    achievement: definition.achievement || "",
+    partner: plan.partnerId,
+    partner_kind: "community_partner",
+    community_meta_eligible: definition.metaEligible,
+    per_user_claim_limit: 1,
+    max_claims: input.maxClaims,
+    active_from: input.activeFrom,
+    active_until: input.activeUntil,
+    status: "draft",
+    enabled: true,
+    partner_follow_up_enabled: Boolean(definition.followUp.enabled),
+    partner_follow_up_notice_version: cleanText("noticeVersion" in definition.followUp ? definition.followUp.noticeVersion : undefined),
+    metadata: communityProgrammeMetadata(input, plan),
+  };
+}
+
+function communityRelatedGroupCeiling(
+  input: AdminCommunityPartnerMissionDraftInput,
+  plan: CommunityPartnerPlan,
+): { total_xp_ceiling: number; leaderboard_xp_ceiling: number } {
+  if (input.flow === "two_code") return { total_xp_ceiling: 40, leaderboard_xp_ceiling: 30 };
+  const ceiling = plan.oneCodeDefinitions.reduce(
+    (current, definition) => ({
+      totalXp: Math.max(current.totalXp, COMMUNITY_PARTNER_SCORE_BANDS[definition.outcome].totalXp),
+      leaderboardXp: Math.max(current.leaderboardXp, COMMUNITY_PARTNER_SCORE_BANDS[definition.outcome].leaderboardXp),
+    }),
+    { totalXp: 0, leaderboardXp: 0 },
+  );
+  return { total_xp_ceiling: ceiling.totalXp, leaderboard_xp_ceiling: ceiling.leaderboardXp };
+}
+
+function communityPartnerScorePolicy(
+  input: AdminCommunityPartnerMissionDraftInput,
+  plan: CommunityPartnerPlan,
+  definition: CommunityActivityDefinition,
+  activityId: string,
+): AdminScorePolicyInput {
+  return {
+    scheduleId: plan.schedule.id,
+    policyKey: definition.key,
+    enabled: true,
+    totalXp: definition.score.totalXp,
+    leaderboardXp: definition.score.leaderboardXp,
+    capMembership: [
+      { dimension: "activity", key: activityId },
+      { dimension: "related_group", key: plan.missionKey },
+      { dimension: "partner", key: plan.partnerId },
+      { dimension: "category", key: "community" },
+      { dimension: "conference_day", key: input.scoreDay },
+      { dimension: "conference", key: "conference" },
+    ],
+    capCeilingOverrides: { related_group: communityRelatedGroupCeiling(input, plan) },
+    scoreDay: input.scoreDay,
+  };
+}
+
+interface EasterEggCopy {
+  eggKey: string;
+  missionKey: string;
+  activityKey: string;
+  missionTitle: string;
+  missionSummary: string;
+  badgeName: string;
+  badgeDescription: string;
+  deploymentNote: string;
+}
+
+interface ExistingEasterEgg {
+  achievement: GamificationAchievementRecord | undefined;
+  mission: GamificationMissionRecord | undefined;
+  activity: GamificationActivityRecord | undefined;
+}
+
+function parseEasterEggInput(input: AdminEasterEggMissionDraftInput): EasterEggCopy {
+  const eggKey = cleanKey(input.eggKey);
+  if (!isImmutableKey(eggKey)) {
+    throw new Error("Provide an immutable lowercase easter egg key without discovery details.");
+  }
+  const missionKey = `easter_egg.${eggKey}`;
+  const missionTitle = cleanText(input.missionTitle);
+  const missionSummary = cleanText(input.missionSummary);
+  const badgeName = cleanText(input.badgeName);
+  const badgeDescription = cleanText(input.badgeDescription);
+  assertPresentationCopy(
+    [
+      [missionTitle, "Easter egg Mission titles"],
+      [missionSummary, "Easter egg Mission summaries"],
+      [badgeName, "Easter egg Badge names"],
+      [badgeDescription, "Easter egg Badge descriptions"],
+    ],
+    "Easter egg Mission and spoiler-safe post-unlock Badge copy are required.",
+  );
+  assertNoSecretText(cleanText(input.badgeIcon), "Easter egg Badge icons");
+  if (!BADGE_RARITIES.includes(input.badgeRarity)) {
+    throw new Error("Choose a valid Easter Egg Badge rarity.");
+  }
+  if (!EASTER_EGG_EVIDENCE_CHANNELS.includes(input.evidenceChannel)) {
+    throw new Error("Easter egg discovery requires a WTS-controlled static QR, fragment link, or manually entered code.");
+  }
+  const deploymentNote = safeDiscoveryDeploymentNote(input.deploymentNote);
+  if (!hasValidWindow(input.activeFrom, input.activeUntil)) {
+    throw new Error("Easter egg discovery requires a valid active start and end window.");
+  }
+  if (!isPositiveInteger(input.maxClaims)) {
+    throw new Error("Easter egg discovery requires a positive global claim limit.");
+  }
+  if (!Number.isInteger(input.sortOrder)) throw new Error("Easter egg Mission sort order must be a whole number.");
+  return {
+    eggKey,
+    missionKey,
+    activityKey: `${missionKey}.discovery`,
+    missionTitle,
+    missionSummary,
+    badgeName,
+    badgeDescription,
+    deploymentNote,
+  };
+}
+
+function easterEggAuditSummary(
+  input: AdminEasterEggMissionDraftInput,
+  copy: EasterEggCopy,
+  schedule: GamificationScoreScheduleRecord,
+): Record<string, unknown> {
+  return {
+    definition: "easter_egg_discovery",
+    missionKey: copy.missionKey,
+    activityKey: copy.activityKey,
+    missionTitle: copy.missionTitle,
+    missionSummary: copy.missionSummary,
+    badgeName: copy.badgeName,
+    badgeDescription: copy.badgeDescription,
+    badgeIcon: cleanOptionalText(input.badgeIcon),
+    badgeRarity: input.badgeRarity,
+    evidenceChannel: input.evidenceChannel,
+    deploymentNote: copy.deploymentNote,
+    activeFrom: input.activeFrom,
+    activeUntil: input.activeUntil,
+    maxClaims: input.maxClaims,
+    scoreScheduleId: schedule.id,
+    sortOrder: input.sortOrder,
+  };
+}
+
+function matchesCanonicalEasterEggShape(existing: ExistingEasterEgg): boolean {
+  return (!existing.achievement || isHiddenEasterEggBadge(existing.achievement)) &&
+    (!existing.mission || isHiddenRelationFreeEasterEggMission(existing.mission)) &&
+    (!existing.activity || isEasterEggDiscoveryShape(existing.activity));
+}
+
+function codeRegistrationReceipt(
+  config: CodeGenerationConfig,
+  identities: CodeIdentity[],
+  records: GamificationCodeRecord[],
+): AdminCodeRegistrationResult {
+  const ordered = identities.map((identity) => records.find((record) =>
+    record.lookup_prefix === identity.lookupPrefix && record.code_hash === identity.codeHash && record.activity === config.activityId
+  ));
+  if (records.length !== identities.length || ordered.some((record) => !record)) {
+    throw new Error("The prior registration is incomplete. Contact an administrator.");
+  }
+  return {
+    batch: { id: config.operationId, label: config.label, activityId: config.activityId, quantity: identities.length, committed: true, secretsAvailable: false },
+    codes: ordered.map((record) => ({ id: record!.id, label: config.label, lookupPrefix: record!.lookup_prefix })),
+  };
+}
+
+function codeRegistrationRows(
+  config: CodeGenerationConfig,
+  identities: CodeIdentity[],
+  actor: AdminOperationActor,
+): Record<string, unknown>[] {
+  return identities.map((identity) => ({
+    key: `code-${randomUUID()}`,
+    batch_id: config.operationId,
+    label: config.label,
+    activity: config.activityId,
+    lookup_prefix: identity.lookupPrefix,
+    code_hash: identity.codeHash,
+    hash_version: MISSION_CODE_HASH_VERSION,
+    evidence_role: config.evidenceRole,
+    status: "active",
+    enabled: true,
+    starts_at: config.startsAt,
+    ends_at: config.endsAt,
+    max_redemptions: config.maxRedemptions,
+    per_user_limit: config.perUserLimit,
+    total_redemptions_cached: 0,
+    created_by: actor.id,
+    reissued_from: "",
+  }));
+}
+
+interface CodeProgrammeReadinessCopy {
+  mission: string;
+  activities: string;
+  badges: string;
+}
+
+const CONFIGURED_EVENT_CODE_READINESS: CodeProgrammeReadinessCopy = {
+  mission: "Activate the configured event Mission before generating its codes.",
+  activities: "Activate every Activity in the configured event flow before generating its codes.",
+  badges: "Activate every linked configured event Badge before generating its codes.",
+};
+
+const COMMUNITY_PARTNER_CODE_READINESS: CodeProgrammeReadinessCopy = {
+  mission: "Activate the Community Partner Mission before generating its codes.",
+  activities: "Activate every Activity in the Community Partner programme before generating its codes.",
+  badges: "Activate every linked Community Partner Badge before generating its codes.",
+};
+
+/** A multi-Activity programme issues codes only once its Mission, every Activity, and every linked Badge are live. */
+function assertProgrammeReadyForCodes(
+  activity: GamificationActivityRecord,
+  context: GamificationContext,
+  belongsToProgramme: (candidate: GamificationActivityRecord) => boolean,
+  copy: CodeProgrammeReadinessCopy,
+): void {
+  const mission = missionFor(activity, context);
+  if (!mission || mission.status !== "active") throw new Error(copy.mission);
+  const programmeActivities = context.activities.filter((candidate) =>
+    candidate.mission === activity.mission && belongsToProgramme(candidate) && candidate.status !== "retired",
+  );
+  if (programmeActivities.some((candidate) => candidate.status !== "active" || !candidate.enabled)) {
+    throw new Error(copy.activities);
+  }
+  const linkedAchievements = programmeActivities
+    .flatMap((candidate) => candidate.achievement ? [context.achievements.find((achievement) => achievement.id === candidate.achievement)] : [])
+    .filter((achievement): achievement is GamificationAchievementRecord => Boolean(achievement));
+  if (linkedAchievements.some((achievement) => achievement.status !== "active")) {
+    throw new Error(copy.badges);
+  }
+}
+
+function hasEffectiveScorePolicy(activity: GamificationActivityRecord, startsAt: string, context: GamificationContext): boolean {
+  return context.policies.some((policy) =>
+    policy.activity === activity.id &&
+    policy.active &&
+    context.schedules.some((schedule) =>
+      schedule.id === policy.schedule &&
+      schedule.status === "active" &&
+      Date.parse(schedule.effective_at) <= Date.parse(startsAt)
+    )
+  );
+}
+
+interface ReissuableCode {
+  original: GamificationCodeRecord;
+  label: string;
+  activity: GamificationActivityRecord;
+  priorReplacement: GamificationCodeRecord | undefined;
+}
+
+function requireReissuableCode(input: AdminCodeReissueInput, context: GamificationContext): ReissuableCode {
+  const original = context.codes.find((candidate) => candidate.id === input.codeId);
+  if (!original) throw new Error("Code was not found.");
+  const label = hasValue(input.label) ? safeOperationalLabel(input.label) : safeOperationalLabel(original.label);
+  if (!original.invalidated_at || original.status !== "disabled") {
+    throw new Error("Invalidate the original code before issuing a replacement.");
+  }
+  const activity = context.activities.find((candidate) => candidate.id === original.activity);
+  if (!activity || activity.status !== "active" || !activity.enabled) throw new Error("The original code's Activity is not active.");
+  const priorReplacement = context.codes.find((code) => code.batch_id === input.operationId && code.reissued_from === original.id);
+  if (!priorReplacement && context.codes.some((code) => code.reissued_from === original.id && code.status === "active" && code.enabled)) {
+    throw new Error("This invalidated code already has an active replacement. Invalidate that replacement before reissuing it.");
+  }
+  return { original, label, activity, priorReplacement };
+}
+
+function replacementCodeRow(
+  input: AdminCodeReissueInput,
+  code: ReissuableCode,
+  definition: ReturnType<typeof createMissionCodeGeneration>["definition"],
+  actor: AdminOperationActor,
+): Record<string, unknown> {
+  const { original, activity } = code;
+  return {
+    key: `code-${randomUUID()}`,
+    batch_id: input.operationId,
+    label: code.label,
+    activity: activity.id,
+    lookup_prefix: definition.lookupPrefix,
+    code_hash: definition.codeHash,
+    hash_version: definition.hashVersion,
+    evidence_role: original.evidence_role,
+    status: "active",
+    enabled: true,
+    starts_at: original.starts_at || activity.active_from || "",
+    ends_at: original.ends_at || activity.active_until || "",
+    max_redemptions: original.max_redemptions,
+    // The Activity-wide limit blocks a second award through any replacement code.
+    per_user_limit: activity.per_user_claim_limit,
+    total_redemptions_cached: 0,
+    created_by: actor.id,
+    reissued_from: original.id,
+  };
+}
+
+type UnlockRuleRecord = GamificationAchievementRecord["unlock_rule"];
+
+function metaRuleErrors(rule: UnlockRuleRecord, sourceKeys: string[], selectedSources: GamificationActivityRecord[]): string[] {
+  const breadth = metaRuleSourceBreadth(rule);
+  return failedChecks([
+    [sourceKeys.length === 0, "Meta Achievements require selected qualifying source Activities."],
+    [!breadth || breadth < 2, "Meta Achievements require at least two qualifying source entities."],
+    [rule.kind === "claim_set" && sourceKeys.length !== breadth, "Meta claim sets must name each exact qualifying Activity once."],
+    [
+      rule.kind === "claim_count" && (!isPositiveInteger(rule.count) || rule.count! > sourceKeys.length),
+      "Meta claim counts require a positive count within the selected source Activities.",
+    ],
+    [selectedSources.length !== sourceKeys.length, "Every Meta source Activity must be configured exactly once."],
+  ]);
+}
+
+function requiredMetaDiversity(sources: GamificationActivityRecord[]): GamificationMetaSourceDiversity | undefined {
+  if (sources.length < 2) return undefined;
+  return META_DIVERSITY_SOURCE_KINDS.find(([, kind]) => sources.every((activity) => activity.kind === kind))?.[0];
+}
+
+function metaDiversityErrors(rule: UnlockRuleRecord, sources: GamificationActivityRecord[]): string[] {
+  const diversity = metaRuleDiversity(rule);
+  const requiredDiversity = requiredMetaDiversity(sources);
+  const errors = requiredDiversity && diversity !== requiredDiversity
+    ? [`Cross-${requiredDiversity} Meta Achievements require explicit ${requiredDiversity} source diversity.`]
+    : [];
+  if (!diversity) return errors;
+  const entityKeys = sources.map((activity) => metaSourceEntityKey(activity, diversity));
+  if (entityKeys.some((key) => !key)) {
+    errors.push(`Meta ${diversity} diversity sources require the matching configured source reference.`);
+  } else if (new Set(entityKeys).size !== entityKeys.length) {
+    errors.push(`Meta ${diversity} diversity cannot count multiple Activities from one source entity.`);
+  }
+  return errors;
+}
+
+function isCanonicalMetaActivity(activity: GamificationActivityRecord): boolean {
+  return activity.category === "meta" &&
+    activity.outcome_key === "meta" &&
+    activity.evidence_mode === "meta_rule" &&
+    !activity.mission &&
+    activity.per_user_claim_limit === 1 &&
+    activity.status === "active" &&
+    Boolean(activity.enabled);
+}
+
+function metaPolicyBandErrors(expectedBand: ScoreBand | undefined, policies: GamificationScoreSchedulePolicyRecord[]): string[] {
+  if (!expectedBand || policies.length === 0) return ["Meta Achievements require an active fixed-band score policy."];
+  return policies.some((policy) => !matchesScoreBand(recordScoreBand(policy), expectedBand))
+    ? [`Meta source breadth requires the ${expectedBand.totalXp}/${expectedBand.leaderboardXp} total/Leaderboard XP band.`]
+    : [];
+}
+
+function metaLinkedActivityErrors(
+  achievement: GamificationAchievementRecord,
+  rule: UnlockRuleRecord,
+  context: GamificationContext,
+): string[] {
+  const linkedActivities = context.activities.filter((activity) => activity.achievement === achievement.id);
+  const metaActivities = linkedActivities.filter((activity) => activity.kind === "meta");
+  if (linkedActivities.length !== 1 || metaActivities.length !== 1) {
+    return ["Meta Achievements require exactly one linked Meta Activity and no direct source Activity."];
+  }
+  const metaActivity = metaActivities[0];
+  return [
+    ...failedChecks([
+      [metaActivity.key !== `meta.${achievement.key}`, "Meta Activity key must be the canonical meta.{achievementKey} value."],
+      [!isCanonicalMetaActivity(metaActivity), "The linked Meta Activity must be active, missionless, one-per-User, meta-rule evidence."],
+    ]),
+    ...metaPolicyBandErrors(metaScoreBandForRule(rule), activePoliciesFor(metaActivity.id, context)),
+  ];
+}
+
+interface ConfiguredEventFlow extends TwoCodeFlow {
+  activities: GamificationActivityRecord[];
+  oneCode: boolean;
+}
+
+function configuredEventFlow(activity: GamificationActivityRecord, context: GamificationContext): ConfiguredEventFlow {
+  const activities = context.activities.filter((candidate) =>
+    candidate.mission === activity.mission &&
+    candidate.status !== "retired" &&
+    isConfiguredEventActivityKind(candidate.kind),
+  );
+  return {
+    ...twoCodeFlow(activities),
+    activities,
+    oneCode: activities.length === 1 && activities[0].evidence_mode === "single_code",
+  };
+}
+
+function matchesConfiguredEventIdentity(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  eventRef: ConfiguredEventReference,
+): boolean {
+  const expectedCategory = configuredEventCategory(eventRef.kind);
+  return activity.kind === configuredEventActivityKind(eventRef.kind) &&
+    activity.category === expectedCategory &&
+    mission !== undefined &&
+    mission.key === configuredEventMissionKey(eventRef.kind, eventRef.eventKey) &&
+    mission.category === expectedCategory &&
+    sameConfiguredEventReference(mission.event_ref, eventRef);
+}
+
+function matchesConfiguredEventWindow(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  eventRef: ConfiguredEventReference,
+): boolean {
+  return activity.active_from === eventRef.startsAt &&
+    activity.active_until === eventRef.endsAt &&
+    mission?.starts_at === eventRef.startsAt &&
+    mission?.ends_at === eventRef.endsAt &&
+    mission?.visibility === eventRef.visibility;
+}
+
+function configuredEventReferenceErrors(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  eventRef: ConfiguredEventReference,
+): string[] {
+  const identityErrors = failedChecks([
+    [!matchesConfiguredEventIdentity(activity, mission, eventRef), "Configured event Mission and Activity references, kinds, and categories must match."],
+    [
+      !matchesConfiguredEventWindow(activity, mission, eventRef),
+      "Configured event operating windows and visibility must match the immutable event reference.",
+    ],
+  ]);
+  const capGroupKey = cleanKey(activity.metadata?.cap_group_key);
+  return [
+    ...identityErrors,
+    ...failedChecks([
+      [
+        !capGroupKey || capGroupKey !== cleanKey(mission?.metadata?.cap_group_key),
+        "Configured event Mission and Activities require one matching immutable cap group key.",
+      ],
+      [typeof activity.event_meta_eligible !== "boolean", "Configured event Activities must explicitly register Meta eligibility."],
+    ]),
+  ];
+}
+
+function configuredEventHostErrors(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  context: GamificationContext,
+): string[] {
+  if (activity.partner || mission?.partner) {
+    const validHost = Boolean(activity.partner) &&
+      activity.partner === mission?.partner &&
+      activity.partner_kind === "workshop_host" &&
+      context.partners.some((partner) => partner.id === activity.partner);
+    return validHost ? [] : ["Optional event host attribution must use the same existing host partner on the Mission and Activities."];
+  }
+  return activity.partner_kind ? ["WTS-run events must not have a partner kind without a host relation."] : [];
+}
+
+function expectedConfiguredEventKey(activity: GamificationActivityRecord, eventRef: ConfiguredEventReference): string {
+  const keySuffix = CONFIGURED_EVENT_KEY_SUFFIXES.get(activity.evidence_mode);
+  return keySuffix ? `${configuredEventMissionKey(eventRef.kind, eventRef.eventKey)}.${keySuffix}` : "";
+}
+
+/** Workshops are two-code by design; other configured events need recorded organizer approval. */
+function hasApprovedEventTwoCode(mission: GamificationMissionRecord | undefined, eventRef: ConfiguredEventReference): boolean {
+  return eventRef.kind === "workshop" || mission?.metadata?.related_event_two_code_approved === true;
+}
+
+function configuredEventFlowErrors(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  eventRef: ConfiguredEventReference,
+  flow: ConfiguredEventFlow,
+): string[] {
+  const expectedKey = expectedConfiguredEventKey(activity, eventRef);
+  return [
+    ...failedChecks([
+      [
+        !flow.oneCode && !flow.twoCode,
+        "Configured events require either one attendance Activity or one start, finish, and derived completion Activity.",
+      ],
+      [
+        flow.twoCode && !hasApprovedEventTwoCode(mission, eventRef),
+        "Two-code completion outside workshops requires recorded explicit organizer approval.",
+      ],
+      [!expectedKey || activity.key !== expectedKey, "Configured event Activity key does not match its immutable event outcome."],
+    ]),
+    ...redeemableArtifactErrors(activity, {
+      code: "Configured event code Activities require a WTS-controlled evidence channel and deployment artifact.",
+      derived: "Derived event completion must not have a redeemable artifact.",
+    }),
+    ...failedChecks([
+      [
+        flow.oneCode && activity.event_meta_eligible !== true && flow.activities.some((candidate) => candidate.event_meta_eligible),
+        "One-code events may register only their attendance Activity for Meta.",
+      ],
+      [
+        flow.twoCode && !isCompletionOnlyMeta(flow, "event_meta_eligible"),
+        "Two-code events may register only their derived completion Activity for Meta.",
+      ],
+    ]),
+  ];
+}
+
+function configuredEventBadgeErrors(flow: ConfiguredEventFlow, context: GamificationContext): string[] {
+  const completionAchievement = findAchievement(context, flow.completion?.achievement);
+  const directActivity = flow.oneCode ? flow.activities[0] : flow.start;
+  return failedChecks([
+    [
+      flow.twoCode && !isExactClaimSetBadge(completionAchievement, [flow.start?.key, flow.finish?.key]),
+      "Derived event completion requires the exact start-and-finish Achievement claim set.",
+    ],
+    [
+      directActivity?.achievement &&
+        !isDirectClaimBadge(findAchievement(context, directActivity.achievement), directActivity.key),
+      "Configured event attendance Badges require the direct attendance/start Activity-claim rule.",
+    ],
+  ]);
+}
+
+interface CommunityProgrammeFlow extends TwoCodeFlow {
+  activities: GamificationActivityRecord[];
+  oneCode: boolean;
+}
+
+function isCommunityOneCodeProgramme(activities: GamificationActivityRecord[]): boolean {
+  return activities.length >= 1 && activities.length <= 3 &&
+    activities.every((candidate) => candidate.evidence_mode === "single_code") &&
+    activities.every((candidate) => isCommunityPartnerOutcome(candidate.outcome_key)) &&
+    uniqueKeys(activities.map((candidate) => candidate.outcome_key));
+}
+
+function communityProgrammeFlow(mission: GamificationMissionRecord, context: GamificationContext): CommunityProgrammeFlow {
+  const activities = context.activities.filter((candidate) =>
+    candidate.mission === mission.id && candidate.kind === "community_partner" && candidate.status !== "retired",
+  );
+  return { ...twoCodeFlow(activities), activities, oneCode: isCommunityOneCodeProgramme(activities) };
+}
+
+function isCanonicalCommunityActivity(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  context: GamificationContext,
+): mission is GamificationMissionRecord {
+  const partnerKey = cleanKey(mission?.partner_key);
+  return activity.category === "community" &&
+    activity.partner_kind === "community_partner" &&
+    Boolean(activity.partner) &&
+    context.partners.some((partner) => partner.id === activity.partner) &&
+    mission !== undefined &&
+    mission.category === "community" &&
+    mission.partner === activity.partner &&
+    Boolean(partnerKey) &&
+    mission.key.startsWith(`community.${partnerKey}.`);
+}
+
+function expectedCommunityActivityKey(activity: GamificationActivityRecord, missionKey: string, oneCode: boolean): string {
+  if (oneCode && isCommunityPartnerOutcome(activity.outcome_key)) return communityPartnerActivityKey(missionKey, activity.outcome_key);
+  const keySuffix = TWO_CODE_KEY_SUFFIXES.get(activity.evidence_mode);
+  return keySuffix ? communityPartnerActivityKey(missionKey, keySuffix) : "";
+}
+
+function communityProgrammeShapeErrors(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord,
+  flow: CommunityProgrammeFlow,
+): string[] {
+  const expectedKey = expectedCommunityActivityKey(activity, mission.key, flow.oneCode);
+  return [
+    ...failedChecks([
+      [mission.visibility !== "public" && mission.suggested, "Only explicitly public Community Partner Missions may be suggested."],
+      [typeof activity.community_meta_eligible !== "boolean", "Community Partner Activities must explicitly register Meta eligibility."],
+      [
+        !flow.oneCode && !flow.twoCode,
+        "Community Partner programmes require one selected outcome or one approved start, finish, and derived completion flow.",
+      ],
+      [
+        flow.twoCode && mission.metadata?.community_two_code_approved !== true,
+        "Community Partner two-code completion requires recorded explicit organizer approval.",
+      ],
+      [
+        flow.oneCode && !isCommunityPartnerOutcome(activity.outcome_key),
+        "Community Partner one-code Activities support attendance, participation, or completion only.",
+      ],
+      [!expectedKey || activity.key !== expectedKey, "Community Partner Activity key does not match its immutable programme outcome."],
+    ]),
+    ...redeemableArtifactErrors(activity, {
+      code: "Community Partner code Activities require a WTS-controlled evidence channel and deployment artifact.",
+      derived: "Derived Community Partner completion must not have a redeemable artifact.",
+    }),
+  ];
+}
+
+function communityProgrammeMetaErrors(flow: CommunityProgrammeFlow): string[] {
+  const metaActivities = flow.activities.filter((candidate) => candidate.community_meta_eligible === true);
+  return failedChecks([
+    [
+      metaActivities.length > 1 || (flow.twoCode && metaActivities.some((candidate) => candidate.id !== flow.completion?.id)),
+      "At most one designated qualifying Activity per Community Partner programme may register with Meta rules.",
+    ],
+    [
+      flow.twoCode && !isCompletionOnlyMeta(flow, "community_meta_eligible"),
+      "Community Partner two-code programmes may register only derived completion with Meta rules.",
+    ],
+  ]);
+}
+
+function communityProgrammeBadgeErrors(flow: CommunityProgrammeFlow, context: GamificationContext): string[] {
+  const completionAchievement = findAchievement(context, flow.completion?.achievement);
+  const errors = failedChecks([[
+    flow.twoCode && !isExactClaimSetBadge(completionAchievement, [flow.start?.key, flow.finish?.key], "community"),
+    "Derived Community Partner completion requires the exact start-and-finish Community Badge claim set.",
+  ]]);
+  const directActivities = flow.oneCode ? flow.activities : flow.start ? [flow.start] : [];
+  for (const directActivity of directActivities) {
+    if (!isDirectClaimBadge(findAchievement(context, directActivity.achievement), directActivity.key, "community")) {
+      errors.push("Community Partner direct Activities require distinct Community Activity-claim Badges.");
+    }
+  }
+  return errors;
+}
+
+function communityProgrammeFollowUpErrors(flow: CommunityProgrammeFlow): string[] {
+  const followUpActivities = flow.activities.filter((candidate) => candidate.partner_follow_up_enabled);
+  const misplaced = !flow.oneCode && followUpActivities.some((candidate) => candidate.id !== flow.completion?.id);
+  return misplaced || followUpActivities.some((candidate) => !cleanText(candidate.partner_follow_up_notice_version))
+    ? ["Community Partner follow-up may be configured only on the programme's qualifying outcome with a notice version."]
+    : [];
+}
+
+function communityProgrammeCeilingErrors(flow: CommunityProgrammeFlow, context: GamificationContext): string[] {
+  if (!flow.oneCode) return [];
+  const ceiling = flow.activities.reduce((current, candidate) => {
+    const band = communityOutcomeBand(candidate.outcome_key);
+    return band && band.totalXp > current.totalXp ? band : current;
+  }, { totalXp: 0, leaderboardXp: 0 });
+  const programmePolicies = context.policies.filter((policy) =>
+    flow.activities.some((candidate) => candidate.id === policy.activity) && policy.active
+  );
+  return programmePolicies.some((policy) =>
+    policy.cap_ceiling_overrides?.related_group?.total_xp_ceiling !== ceiling.totalXp ||
+    policy.cap_ceiling_overrides?.related_group?.leaderboard_xp_ceiling !== ceiling.leaderboardXp
+  )
+    ? ["Every Community Partner programme policy must share its highest active outcome ceiling."]
+    : [];
+}
+
+function isCanonicalEasterEggDiscoveryMission(
+  mission: GamificationMissionRecord | undefined,
+  expectedMissionKey: string,
+  activity: GamificationActivityRecord,
+): boolean {
+  return mission !== undefined &&
+    mission.key === expectedMissionKey &&
+    isHiddenRelationFreeEasterEggMission(mission) &&
+    mission.primary_achievement === activity.achievement &&
+    !cleanText(mission.partner_key);
+}
+
+function hasSingleDiscoveryActivity(
+  mission: GamificationMissionRecord | undefined,
+  activity: GamificationActivityRecord,
+  context: GamificationContext,
+): boolean {
+  const missionActivities = mission ? context.activities.filter((candidate) =>
+    candidate.mission === mission.id && candidate.status !== "retired"
+  ) : [];
+  return missionActivities.length === 1 && missionActivities[0]?.id === activity.id;
+}
+
+function isCanonicalEasterEggDiscoveryBadge(achievement: GamificationAchievementRecord | undefined, expectedMissionKey: string): boolean {
+  return achievement !== undefined &&
+    achievement.key === expectedMissionKey &&
+    isHiddenEasterEggBadge(achievement) &&
+    !cleanText(achievement.locked_teaser);
+}
+
+function sharesEasterEggWindow(
+  mission: GamificationMissionRecord,
+  activity: GamificationActivityRecord,
+  achievement: GamificationAchievementRecord | undefined,
+): boolean {
+  return mission.starts_at === activity.active_from &&
+    mission.ends_at === activity.active_until &&
+    (!achievement || (achievement.active_from === activity.active_from && achievement.active_until === activity.active_until));
+}
+
+function easterEggDiscoveryErrors(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  context: GamificationContext,
+): string[] {
+  const match = EASTER_EGG_DISCOVERY_KEY.exec(activity.key);
+  const expectedMissionKey = match ? `easter_egg.${match[1]}` : "";
+  const achievement = findAchievement(context, activity.achievement);
+  return failedChecks([
+    [
+      !isEasterEggDiscoveryShape(activity) || !match,
+      "Easter egg Activities require the canonical easter_egg.{eggKey}.discovery static-discovery shape.",
+    ],
+    [
+      !isCanonicalEasterEggDiscoveryMission(mission, expectedMissionKey, activity),
+      "Easter egg discovery requires one hidden, unsuggested, relation-free canonical Mission.",
+    ],
+    [!hasSingleDiscoveryActivity(mission, activity, context), "Each Easter Egg Mission requires exactly one non-retired discovery Activity."],
+    [
+      !isCanonicalEasterEggDiscoveryBadge(achievement, expectedMissionKey),
+      "Easter egg discovery requires its hidden-until-unlocked direct Activity-claim Badge without locked teaser copy.",
+    ],
+    [
+      !EASTER_EGG_EVIDENCE_CHANNELS.includes(activity.evidence_channel || "") || !cleanText(activity.deployment_label),
+      "Easter egg discovery requires a WTS-controlled static QR, fragment link, or manual-code surface and private deployment note.",
+    ],
+    [
+      activity.partner || activity.partner_kind || activity.session || safeEventRef(activity.event_ref),
+      "Easter egg discovery must not carry partner, staff, Session, or event privileges or relations.",
+    ],
+    [
+      mission && !sharesEasterEggWindow(mission, activity, achievement),
+      "Easter egg Mission, discovery Activity, and Badge must share one active window.",
+    ],
+  ]);
+}
+
+function inactiveDependencyErrors(activityKeys: string[], context: GamificationContext): string[] {
+  return activityKeys
+    .filter((activityKey) => {
+      const activity = context.activities.find((candidate) => candidate.id === activityKey || candidate.key === activityKey);
+      return !activity || activity.status !== "active" || !activity.enabled;
+    })
+    .map((activityKey) => `Achievement dependency ${activityKey} is not active.`);
+}
+
+function easterEggBadgeActivationErrors(
+  achievement: GamificationAchievementRecord,
+  rule: AdminUnlockRuleInput,
+  context: GamificationContext,
+): string[] {
+  const mission = context.missions.find((candidate) => candidate.primary_achievement === achievement.id && candidate.status !== "retired");
+  const activity = context.activities.find((candidate) => candidate.achievement === achievement.id && candidate.status !== "retired");
+  const canonical = EASTER_EGG_KEY.test(achievement.key) &&
+    achievement.visibility === "hidden_until_unlocked" &&
+    !cleanText(achievement.locked_teaser) &&
+    rule.kind === "activity_claim" &&
+    mission !== undefined &&
+    activity !== undefined &&
+    mission.key === achievement.key &&
+    activity.key === `${achievement.key}.discovery`;
+  return canonical
+    ? []
+    : ["Easter egg Badges require one matching hidden Mission and direct static-discovery Activity with spoiler-safe post-unlock copy."];
+}
+
+function claimRuleActivationErrors(rule: AdminUnlockRuleInput, activityKeys: string[]): string[] {
+  return failedChecks([
+    [rule.kind === "claim_set" && activityKeys.length < 2, "Claim-set Achievements require at least two Activities."],
+    [
+      rule.kind === "claim_count" && (!isPositiveInteger(rule.count) || (!rule.category && activityKeys.length === 0)),
+      "Claim-count Achievements require a positive count and qualifying Activities or category.",
+    ],
+  ]);
+}
+
+function missionPresentationErrors(mission: GamificationMissionRecord): string[] {
+  const errors = failedChecks([
+    [!cleanText(mission.title) || !cleanText(mission.summary), "Mission title and summary are required."],
+  ]);
+  hasRequiredWindow(mission.starts_at, mission.ends_at, "Mission", errors);
+  return errors;
+}
+
+function missionPrimaryAchievementErrors(mission: GamificationMissionRecord, context: GamificationContext): string[] {
+  if (!mission.primary_achievement) return [];
+  const achievement = context.achievements.find((candidate) => candidate.id === mission.primary_achievement);
+  return failedChecks([
+    [!achievement || achievement.status !== "active", "Mission primary Achievement must be active."],
+    [achievement && achievement.category !== mission.category, "Mission and primary Achievement categories must match."],
+  ]);
+}
+
+function matchesConfiguredEventMission(mission: GamificationMissionRecord, eventRef: ConfiguredEventReference): boolean {
+  return mission.key === configuredEventMissionKey(eventRef.kind, eventRef.eventKey) &&
+    mission.category === configuredEventCategory(eventRef.kind) &&
+    mission.starts_at === eventRef.startsAt &&
+    mission.ends_at === eventRef.endsAt &&
+    mission.visibility === eventRef.visibility;
+}
+
+function configuredEventMissionErrors(mission: GamificationMissionRecord): string[] {
+  const eventRef = configuredEventReference(mission.event_ref);
+  if (!eventRef) return [];
+  return failedChecks([
+    [!matchesConfiguredEventMission(mission, eventRef), "Configured event Mission must match its immutable reference, window, and visibility."],
+    [mission.visibility !== "public" && mission.suggested, "Internal or unannounced event Missions cannot be public suggestions."],
+  ]);
+}
+
+function isCanonicalCommunityMission(mission: GamificationMissionRecord, context: GamificationContext): boolean {
+  return mission.category === "community" &&
+    Boolean(mission.partner) &&
+    context.partners.some((partner) => partner.id === mission.partner) &&
+    Boolean(cleanText(mission.partner_key)) &&
+    mission.key.startsWith(`community.${mission.partner_key}.`);
+}
+
+function communityMissionErrors(mission: GamificationMissionRecord, context: GamificationContext): string[] {
+  if (mission.category !== "community" && !mission.key.startsWith("community.")) return [];
+  return failedChecks([
+    [
+      !isCanonicalCommunityMission(mission, context),
+      "Community Partner Missions require an existing partner and immutable community.{partnerKey}.{activityKey} key.",
+    ],
+    [mission.visibility !== "public" && mission.suggested, "Only explicitly public Community Partner Missions may be suggested."],
+  ]);
+}
+
+function easterEggMissionErrors(mission: GamificationMissionRecord, context: GamificationContext): string[] {
+  if (mission.category !== "easter_egg" && !mission.key.startsWith("easter_egg.")) return [];
+  const missionActivities = context.activities.filter((candidate) => candidate.mission === mission.id && candidate.status !== "retired");
+  const canonical = EASTER_EGG_KEY.test(mission.key) &&
+    isHiddenRelationFreeEasterEggMission(mission) &&
+    !cleanText(mission.partner_key) &&
+    missionActivities.length === 1 &&
+    missionActivities[0]?.key === `${mission.key}.discovery`;
+  return canonical ? [] : ["Easter egg Missions require one hidden, unsuggested, relation-free canonical discovery Activity."];
+}
+
+function missionActivationErrors(mission: GamificationMissionRecord, context: GamificationContext): string[] {
+  return [
+    ...missionPresentationErrors(mission),
+    ...missionPrimaryAchievementErrors(mission, context),
+    ...configuredEventMissionErrors(mission),
+    ...communityMissionErrors(mission, context),
+    ...easterEggMissionErrors(mission, context),
+  ];
+}
+
+function activityEvidenceKindErrors(activity: GamificationActivityRecord): string[] {
+  const hieventsEvidence = activity.evidence_mode === "hievents_ticket" || activity.evidence_mode === "hievents_checkin";
+  return failedChecks([
+    [
+      activity.kind === "qr" && (activity.evidence_mode !== "single_code" || activity.outcome_key !== "completion"),
+      "QR Activities require single-code evidence and the completion outcome.",
+    ],
+    [hieventsEvidence && activity.kind !== "hievents", "Only Hi.Events Activities may use Hi.Events evidence."],
+    [activity.kind === "hievents" && !hieventsEvidence, "Hi.Events Activities require ticket or check-in evidence."],
+    [
+      expectedCodeRole(activity.evidence_mode) && ["hievents", "admin_manual", "meta"].includes(activity.kind),
+      "This Activity kind cannot use redeemable code evidence.",
+    ],
+  ]);
+}
+
+function activityBasicsErrors(activity: GamificationActivityRecord): string[] {
+  const errors = failedChecks([
+    [!cleanText(activity.outcome_key), "Activity outcome is required."],
+    [activity.per_user_claim_limit !== 1, "September Activities must have a per-User claim limit of one."],
+    [!isPositiveInteger(Number(activity.max_claims)), "Activity global claim limit is required."],
+  ]);
+  hasRequiredWindow(activity.active_from, activity.active_until, "Activity", errors);
+  return [...errors, ...activityEvidenceKindErrors(activity)];
+}
+
+/** Programme Activities may activate before their draft Badge; other Activities need an active Badge. */
+function hasActivatableAchievementStatus(activity: GamificationActivityRecord, achievement: GamificationAchievementRecord): boolean {
+  return activity.kind === "meta" || activity.kind === "community_partner" || isConfiguredEventActivityKind(activity.kind)
+    ? ["draft", "active"].includes(achievement.status)
+    : achievement.status === "active";
+}
+
+function activityAchievementErrors(activity: GamificationActivityRecord, context: GamificationContext): string[] {
+  if (!activity.achievement) return [];
+  const achievement = context.achievements.find((candidate) => candidate.id === activity.achievement);
+  return failedChecks([
+    [!achievement || !hasActivatableAchievementStatus(activity, achievement), "Related Achievement must be active."],
+    [achievement && achievement.category !== activity.category, "Activity and Achievement categories must match."],
+  ]);
+}
+
+function activityRelationErrors(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  context: GamificationContext,
+): string[] {
+  return [
+    ...failedChecks([
+      [activity.evidence_mode.includes("code") && (!mission || mission.status !== "active"), "Code Activities require an active Mission."],
+      [mission && mission.status !== "active", "Related Mission must be active."],
+      [mission && mission.category !== activity.category, "Activity and Mission categories must match."],
+    ]),
+    ...activityAchievementErrors(activity, context),
+  ];
+}
+
+function isSessionAttendanceShape(activity: GamificationActivityRecord): boolean {
+  return activity.category === "session" &&
+    activity.outcome_key === "attendance" &&
+    activity.evidence_mode === "single_code" &&
+    isEvidenceChannel(activity.evidence_channel) &&
+    Boolean(cleanText(activity.deployment_label));
+}
+
+function usesSessionAttendanceKeys(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  sessionKey: string | undefined,
+): boolean {
+  const expectedMissionKey = sessionKey ? `session.${sessionKey}` : "";
+  const expectedActivityKey = expectedMissionKey ? `${expectedMissionKey}.attendance` : "";
+  return mission !== undefined &&
+    mission.session === activity.session &&
+    mission.key === expectedMissionKey &&
+    activity.key === expectedActivityKey;
+}
+
+function sessionPolicyErrors(activity: GamificationActivityRecord, context: GamificationContext): string[] {
+  const policies = activePoliciesFor(activity.id, context);
+  const errors = policies.length === 0 ? ["Session Activities require an active direct score policy."] : [];
+  for (const policy of policies) {
+    errors.push(...failedChecks([
+      [policy.total_xp !== 20 || policy.leaderboard_xp !== 15, "Session direct score policies must use the fixed 20/15 total/Leaderboard XP band."],
+      [
+        !hasCapMemberships(policy.cap_membership, [
+          ["activity", activity.id],
+          ["category", "session"],
+          ...dayAndConferenceCaps(policy.score_day),
+        ]) || !isISODate(policy.score_day),
+        "Session direct score policies require Activity, session category, day, and conference caps.",
+      ],
+    ]));
+  }
+  return errors;
+}
+
+function sessionActivityErrors(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  context: GamificationContext,
+): string[] {
+  const session = context.sessions.find((candidate) => candidate.id === activity.session);
+  const sessionKey = cleanOptionalText(activity.session_key);
+  const directAchievement = findAchievement(context, activity.achievement);
+  return [
+    ...failedChecks([
+      [!session?.published, "Session Activities require a published Session reference."],
+      [!sessionKey || !isImmutableKey(sessionKey), "Session Activities require an immutable Session key."],
+      [!safeSessionDisplaySnapshot(activity.session_display_snapshot), "Session Activities require a safe Session display snapshot."],
+      [typeof activity.session_meta_eligible !== "boolean", "Session Activities must explicitly configure Meta eligibility."],
+      [
+        !isSessionAttendanceShape(activity),
+        "Session Activities require Session attendance, WTS-controlled single-code evidence, and a deployment artifact.",
+      ],
+      [
+        !usesSessionAttendanceKeys(activity, mission, sessionKey),
+        "Session Mission and Activity keys must use the immutable session.{sessionKey}.attendance form.",
+      ],
+      [
+        context.activities.some((candidate) =>
+          candidate.id !== activity.id &&
+          candidate.kind === "session" &&
+          candidate.session === activity.session &&
+          candidate.status !== "retired",
+        ),
+        "Only one non-retired Session attendance Activity may be configured for a Session.",
+      ],
+      [
+        directAchievement && !isDirectClaimBadge(directAchievement, activity.key),
+        "A direct Session Badge must use this Activity's direct Activity-claim rule.",
+      ],
+    ]),
+    ...sessionPolicyErrors(activity, context),
+  ];
+}
+
+function partnerReferenceErrors(activity: GamificationActivityRecord, context: GamificationContext): string[] {
+  if (!["booth", "community_partner"].includes(activity.kind)) return [];
+  return failedChecks([[
+    !activity.partner || !context.partners.some((partner) => partner.id === activity.partner) || !activity.partner_kind,
+    "Partner Activities require an existing partner and partner kind.",
+  ]]);
+}
+
+function boothMissionErrors(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  partner: PartnerRecord,
+  outcome: BoothOutcome,
+  context: GamificationContext,
+): string[] {
+  const expectedKey = mission ? boothActivityKey(mission.key, outcome) : "";
+  return failedChecks([
+    [!isCanonicalBoothMission(mission), "Booth Mission key must use the immutable booth.{partnerKey}.{activityKey} form."],
+    [activity.key !== expectedKey, `Booth Activity key must be the immutable ${expectedKey} value.`],
+    [!mission || mission.partner !== partner.id, "Booth Mission must reference the same sponsor partner."],
+    [
+      mission && context.missions.some((candidate) =>
+        candidate.id !== mission.id &&
+        candidate.partner === partner.id &&
+        cleanText(candidate.partner_key) &&
+        candidate.partner_key !== mission.partner_key,
+      ),
+      "Booth Missions for one sponsor must use the same immutable sponsor key.",
+    ],
+  ]);
+}
+
+function boothPolicyErrors(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  outcome: BoothOutcome | undefined,
+  policy: GamificationScoreSchedulePolicyRecord,
+): string[] {
+  const expected = outcome ? BOOTH_SCORE_BANDS[outcome] : undefined;
+  return failedChecks([
+    [!matchesScoreBand(recordScoreBand(policy), expected), "Booth direct score policy does not match its fixed outcome band."],
+    [
+      !activity.partner || !hasCapMemberships(policy.cap_membership, [
+        ["activity", activity.id],
+        ["related_group", mission ? boothCapGroupKey(mission.key) : ""],
+        ["partner", activity.partner],
+        ["category", "booth"],
+        ...dayAndConferenceCaps(policy.score_day),
+      ]),
+      "Booth direct score policy must include Activity, booth-group, sponsor partner, category, day, and conference caps.",
+    ],
+    [!isISODate(policy.score_day), "Booth direct score policy requires a conference day for derived category/day/conference caps."],
+    [exceedsBoothCap(policy.cap_ceiling_overrides), "Booth cap ceilings cannot exceed 35 total XP or 25 Leaderboard XP."],
+  ]);
+}
+
+function boothPoliciesErrors(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  outcome: BoothOutcome | undefined,
+  context: GamificationContext,
+): string[] {
+  const policies = activePoliciesFor(activity.id, context);
+  const errors = policies.length === 0 ? ["Booth Activities require an active direct score policy."] : [];
+  for (const policy of policies) errors.push(...boothPolicyErrors(activity, mission, outcome, policy));
+  return errors;
+}
+
+function boothActivityErrors(
+  activity: GamificationActivityRecord,
+  mission: GamificationMissionRecord | undefined,
+  context: GamificationContext,
+): string[] {
+  const partner = context.partners.find((candidate) => candidate.id === activity.partner);
+  const outcome = isBoothOutcome(activity.outcome_key) ? activity.outcome_key : undefined;
+  return [
+    ...failedChecks([
+      [
+        activity.category !== "booth" || !outcome,
+        "Booth Activities support only the booth category and visit, participation, completion, win, or high_score outcomes.",
+      ],
+      [
+        !partner || partner.type !== "sponsor" || activity.partner_kind !== "sponsor",
+        "Booth Activities require an existing sponsor partner with partner kind sponsor.",
+      ],
+      [
+        activity.evidence_mode !== "single_code" || !isEvidenceChannel(activity.evidence_channel),
+        "Booth Activities require a WTS-controlled single-code evidence channel.",
+      ],
+      [!cleanText(activity.deployment_label), "Booth Activities require a WTS artifact deployment label before activation."],
+    ]),
+    ...(partner && outcome ? boothMissionErrors(activity, mission, partner, outcome, context) : []),
+    ...failedChecks([
+      [
+        context.activities.some((candidate) =>
+          candidate.id !== activity.id &&
+          candidate.kind === "booth" &&
+          candidate.mission === activity.mission &&
+          candidate.outcome_key === activity.outcome_key &&
+          candidate.status !== "retired",
+        ),
+        "Only one non-retired Booth Activity may be configured for each sponsor outcome.",
+      ],
+      [
+        !isDirectClaimBadge(findAchievement(context, activity.achievement), activity.key),
+        "Booth Activities require an active direct Activity-claim Achievement rule.",
+      ],
+      [
+        activity.partner_follow_up_enabled && !cleanText(activity.partner_follow_up_notice_version),
+        "Enabled partner follow-up requires a notice version.",
+      ],
+    ]),
+    ...boothPoliciesErrors(activity, mission, outcome, context),
+  ];
+}
+
+function hieventsSourceErrors(activity: GamificationActivityRecord): string[] {
+  const eventRef = safeEventRef(activity.event_ref);
+  return !eventRef?.eventKey && !eventRef?.eventId ? ["This Activity requires an event source reference."] : [];
+}
+
+function metaActivityActivationErrors(activity: GamificationActivityRecord, context: GamificationContext): string[] {
+  const evidenceErrors = failedChecks([
+    [activity.kind === "meta" && activity.evidence_mode !== "meta_rule", "Meta Activities require meta-rule evidence."],
+    [activity.kind !== "meta" && activity.evidence_mode === "meta_rule", "Only Meta Activities may use meta-rule evidence."],
+  ]);
+  if (activity.kind !== "meta") return evidenceErrors;
+  const achievement = context.achievements.find((candidate) => candidate.id === activity.achievement);
+  return [
+    ...evidenceErrors,
+    ...failedChecks([
+      [activity.category !== "meta" || activity.outcome_key !== "meta", "Meta Activities require the meta category and outcome."],
+      [activity.mission, "Meta Activities cannot belong to a redeemable Mission."],
+      [!achievement || achievement.category !== "meta", "Meta Activities require a linked Meta Achievement."],
+      [
+        achievement && achievement.unlock_rule.kind !== "claim_set" && achievement.unlock_rule.kind !== "claim_count",
+        "Meta Activities require a claim-set or selected-source claim-count Achievement rule.",
+      ],
+    ]),
+  ];
+}
+
+function scheduledMetaPolicyErrors(
+  policy: SeptemberScorePolicy,
+  activity: GamificationActivityRecord,
+  context: GamificationContext,
+): string[] {
+  const achievement = context.achievements.find((candidate) => candidate.id === activity.achievement);
+  const expectedBand = achievement ? metaScoreBandForRule(achievement.unlock_rule) : undefined;
+  return failedChecks([
+    [!matchesScoreBand(policy, expectedBand), `Meta score policy ${policy.key} does not match its required fixed score band.`],
+    [
+      !hasCapMemberships(policy.capMembership, [["category", "meta"], ...dayAndConferenceCaps(policy.scoreDay)]) || !policy.scoreDay,
+      `Meta score policy ${policy.key} must include meta category, day, and conference caps.`,
+    ],
+  ]);
+}
+
+function scheduledBoothPolicyErrors(
+  policy: SeptemberScorePolicy,
+  activity: GamificationActivityRecord,
+  context: GamificationContext,
+): string[] {
+  const groupKey = activity.mission
+    ? boothCapGroupKey(context.missions.find((candidate) => candidate.id === activity.mission)?.key || "")
+    : "";
+  return failedChecks([
+    [!matchesScoreBand(policy, boothOutcomeBand(activity.outcome_key)), `Booth score policy ${policy.key} does not match its fixed outcome band.`],
+    [
+      !activity.partner || !hasCapMemberships(policy.capMembership, [
+        ["related_group", groupKey],
+        ["partner", activity.partner],
+        ["category", "booth"],
+        ...dayAndConferenceCaps(policy.scoreDay),
+      ]),
+      `Booth score policy ${policy.key} must include booth-group, partner, category, day, and conference caps.`,
+    ],
+    [!policy.scoreDay, `Booth score policy ${policy.key} requires a conference day.`],
+  ]);
+}
+
+function matchesCalculatedCeiling(
+  override: NonNullable<SeptemberScorePolicy["capCeilingOverrides"]>["related_group"],
+  ceiling: ScoreBand,
+): boolean {
+  return Boolean(override) &&
+    override!.totalXpCeiling === ceiling.totalXp &&
+    override!.leaderboardXpCeiling === ceiling.leaderboardXp;
+}
+
+function scheduledCommunityPolicyErrors(
+  policy: SeptemberScorePolicy,
+  activity: GamificationActivityRecord,
+  policies: SeptemberScorePolicy[],
+  context: GamificationContext,
+): string[] {
+  const mission = missionFor(activity, context);
+  const approvedTwoCode = mission?.metadata?.community_two_code_approved === true;
+  const groupKey = relatedGroupKey(policy);
+  const programmeCeiling = approvedTwoCode
+    ? { totalXp: 40, leaderboardXp: 30 }
+    : highestCommunityGroupBand(policies, groupKey);
+  const expected = communityScoreBand(activity, approvedTwoCode, SCORING_TWO_CODE_BANDS);
+  return failedChecks([
+    [!matchesScoreBand(policy, expected), `Community Partner score policy ${policy.key} does not match its fixed outcome band.`],
+    [
+      !mission || !activity.partner || !hasCapMemberships(policy.capMembership, [
+        ["related_group", mission.key],
+        ["partner", activity.partner],
+        ["category", "community"],
+        ...dayAndConferenceCaps(policy.scoreDay),
+      ]) || !policy.scoreDay,
+      `Community Partner score policy ${policy.key} must include programme, partner, category, day, and conference caps.`,
+    ],
+    [
+      expected && !matchesCalculatedCeiling(policy.capCeilingOverrides?.related_group, programmeCeiling),
+      `Community Partner score policy ${policy.key} has an invalid programme ceiling.`,
+    ],
+  ]);
+}
+
+function scheduledSessionPolicyErrors(policy: SeptemberScorePolicy): string[] {
+  return failedChecks([
+    [policy.totalXp !== 20 || policy.leaderboardXp !== 15, `Session score policy ${policy.key} does not match the fixed 20/15 score band.`],
+    [
+      !hasCapMemberships(policy.capMembership, [["category", "session"], ...dayAndConferenceCaps(policy.scoreDay)]) || !policy.scoreDay,
+      `Session score policy ${policy.key} must include session category, day, and conference caps.`,
+    ],
+  ]);
+}
+
+function capMembershipErrors(
+  policy: SeptemberScorePolicy,
+  activity: GamificationActivityRecord | undefined,
+  membership: GamificationCapMembership,
+): string[] {
+  return failedChecks([
+    [
+      !(CAP_DIMENSIONS as readonly string[]).includes(membership.dimension) || !cleanText(membership.key),
+      `Score policy ${policy.key} has an invalid cap membership.`,
+    ],
+    [
+      !["activity", "related_group", "partner", "category", "conference_day", "conference"].includes(membership.dimension),
+      `Score policy ${policy.key} has an unsupported cap membership.`,
+    ],
+    [
+      membership.dimension === "partner" && activity?.partner !== membership.key,
+      `Score policy ${policy.key} partner cap must match the Activity partner.`,
+    ],
+    [
+      membership.dimension === "category" && activity?.category !== membership.key,
+      `Score policy ${policy.key} category cap must match the Activity category.`,
+    ],
+    [
+      membership.dimension === "conference_day" && policy.scoreDay !== membership.key,
+      `Score policy ${policy.key} conference-day cap must match its score day.`,
+    ],
+    [
+      membership.dimension === "conference" && membership.key !== "conference",
+      `Score policy ${policy.key} conference cap must use the conference key.`,
+    ],
+  ]);
+}
+
+function scheduledPolicyCapErrors(policy: SeptemberScorePolicy, activity: GamificationActivityRecord | undefined): string[] {
+  const memberships = policy.capMembership || [];
+  const errors = failedChecks([
+    [policy.scoreDay && !isISODate(policy.scoreDay), `Score policy ${policy.key} has an invalid score day.`],
+    [
+      !memberships.some((membership) => membership.dimension === "activity" && membership.key === policy.activityId),
+      `Score policy ${policy.key} must include its Activity cap membership.`,
+    ],
+    [
+      !uniqueKeys(memberships.map((membership) => `${membership.dimension}:${membership.key}`)),
+      `Score policy ${policy.key} repeats a cap membership.`,
+    ],
+  ]);
+  for (const membership of memberships) errors.push(...capMembershipErrors(policy, activity, membership));
+  return errors;
+}
+
 /** Server-only configuration and code lifecycle service. It returns only explicit admin DTOs. */
 export class GamificationOperationsService {
   constructor(
@@ -1038,32 +3523,19 @@ export class GamificationOperationsService {
   private async saveAchievementDraftNow(input: AdminAchievementDraftInput, actor: AdminOperationActor): Promise<AdminAchievementDto> {
     assertNoSecretInput(input, "Achievement configuration");
     const key = cleanKey(input.key);
-    if (!key) throw new Error("Achievement key is required.");
-    if (input.category === "easter_egg" || key.startsWith("easter_egg.")) {
-      throw new Error("Configure Easter Egg Badges through the dedicated Easter Egg Mission operation.");
-    }
-    if (!isUnlockRuleKind(input.unlockRule?.kind)) throw new Error("Choose a valid Achievement unlock rule.");
-    if (!isCategory(input.category)) throw new Error("Choose a valid Achievement category.");
-    if (!cleanText(input.badgeName) || !cleanText(input.badgeDescription)) {
-      throw new Error("Badge name and description are required.");
-    }
-    if (!Number.isInteger(input.sortOrder)) throw new Error("Achievement sort order must be a whole number.");
+    assertAchievementDraftInput(input, key);
     const context = await this.context();
     const existing = input.id ? this.requireDefinition("achievement", input.id, context) as GamificationAchievementRecord : undefined;
     await this.assertConfigurationOperationAvailable(GAMIFICATION_COLLECTIONS.achievements, existing?.id, input.operationId);
-    if (existing?.status !== undefined && existing.status !== "draft") {
-      throw new Error("Only draft Achievements can be edited. Retire used definitions and create successors.");
-    }
-    if (existing && await this.definitionHasAccounting("achievement", existing.id, context)) {
-      throw new Error("This Achievement has Badge history. Retire it and create an audited successor instead.");
-    }
-    await this.validateSuccessor(input.successorOf, "achievement", context);
+    await this.assertEditableDraft("achievement", existing, input.successorOf, context);
     if (context.achievements.some((achievement) => achievement.key === key && achievement.id !== existing?.id)) {
       throw new Error("Achievement key is already in use.");
     }
-    const record = existing
-      ? await this.store.update<GamificationAchievementRecord>(GAMIFICATION_COLLECTIONS.achievements, existing.id, this.achievementBody(input, key, "draft"))
-      : await this.store.create<GamificationAchievementRecord>(GAMIFICATION_COLLECTIONS.achievements, this.achievementBody(input, key, "draft"));
+    const record = await this.saveDraftRecord<GamificationAchievementRecord>(
+      GAMIFICATION_COLLECTIONS.achievements,
+      existing?.id,
+      this.achievementBody(input, key, "draft"),
+    );
     await this.recordCompletedAudit(actor, "configuration_change", GAMIFICATION_COLLECTIONS.achievements, record.id, input.operationId, input.reason, {
       definition: "achievement",
       result: definitionSummary(record),
@@ -1086,39 +3558,23 @@ export class GamificationOperationsService {
     assertNoSecretInput(input, "Mission configuration");
     const key = cleanKey(input.key);
     const slug = cleanKey(input.slug);
-    if (!key || !slug) throw new Error("Mission key and slug are required.");
-    if (input.category === "easter_egg" || key.startsWith("easter_egg.")) {
-      throw new Error("Configure Easter Egg Missions through the dedicated Easter Egg Mission operation.");
-    }
-    if (!isCategory(input.category) || !cleanText(input.title) || !cleanText(input.summary)) {
-      throw new Error("Mission category, title, and summary are required.");
-    }
-    if (!Number.isInteger(input.sortOrder)) throw new Error("Mission sort order must be a whole number.");
+    assertMissionDraftInput(input, key, slug);
     const context = await this.context();
     const existing = input.id ? this.requireDefinition("mission", input.id, context) as GamificationMissionRecord : undefined;
-    if (existing?.category === "community" || key.startsWith("community.")) {
-      throw new Error("Configure Community Partner programmes through the dedicated Community Partner operation.");
-    }
-    if (existing && configuredEventReference(existing.event_ref)) {
-      throw new Error("Configured event Missions may only be changed through the dedicated event operation.");
-    }
+    assertGenericMissionDraft(existing, key);
     await this.assertConfigurationOperationAvailable(GAMIFICATION_COLLECTIONS.missions, existing?.id, input.operationId);
-    if (existing?.status !== undefined && existing.status !== "draft") {
-      throw new Error("Only draft Missions can be edited. Retire used definitions and create successors.");
-    }
-    if (existing && await this.definitionHasAccounting("mission", existing.id, context)) {
-      throw new Error("This Mission has accepted evidence. Retire it and create an audited successor instead.");
-    }
-    await this.validateSuccessor(input.successorOf, "mission", context);
+    await this.assertEditableDraft("mission", existing, input.successorOf, context);
     if (context.missions.some((mission) => mission.key === key && mission.id !== existing?.id)) {
       throw new Error("Mission key is already in use.");
     }
     if (context.missions.some((mission) => mission.slug === slug && mission.id !== existing?.id)) {
       throw new Error("Mission slug is already in use.");
     }
-    const record = existing
-      ? await this.store.update<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, existing.id, this.missionBody(input, key, slug, "draft"))
-      : await this.store.create<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, this.missionBody(input, key, slug, "draft"));
+    const record = await this.saveDraftRecord<GamificationMissionRecord>(
+      GAMIFICATION_COLLECTIONS.missions,
+      existing?.id,
+      this.missionBody(input, key, slug, "draft"),
+    );
     await this.recordCompletedAudit(actor, "configuration_change", GAMIFICATION_COLLECTIONS.missions, record.id, input.operationId, input.reason, {
       definition: "mission",
       result: definitionSummary(record),
@@ -1139,41 +3595,21 @@ export class GamificationOperationsService {
 
   private async saveActivityDraftNow(input: AdminActivityDraftInput, actor: AdminOperationActor): Promise<AdminActivityDto> {
     assertNoSecretInput(input, "Activity configuration");
-    if (input.kind === "session") {
-      throw new Error("Configure Session attendance through the dedicated Session Mission operation.");
-    }
-    if (isConfiguredEventActivityKind(input.kind)) {
-      throw new Error("Configure workshops and surrounding events through the dedicated event Mission operation.");
-    }
-    if (input.kind === "community_partner") {
-      throw new Error("Configure Community Partner Activities through the dedicated Community Partner operation.");
-    }
-    if (input.kind === "easter_egg" || input.category === "easter_egg" || cleanText(input.key).startsWith("easter_egg.")) {
-      throw new Error("Configure Easter Egg Activities through the dedicated Easter Egg Mission operation.");
-    }
+    assertGenericActivityDraft(input);
     const key = cleanKey(input.key);
-    if (!key || !isCategory(input.category) || !isActivityKind(input.kind) || !isEvidenceMode(input.evidenceMode)) {
-      throw new Error("Activity key, category, kind, and evidence mode are required.");
-    }
-    if (!cleanText(input.outcomeKey) || !isPositiveInteger(input.perUserClaimLimit)) {
-      throw new Error("Activity outcome and per-User claim limit are required.");
-    }
+    assertActivityDraftInput(input, key);
     const context = await this.context();
     const existing = input.id ? this.requireDefinition("activity", input.id, context) as GamificationActivityRecord : undefined;
     await this.assertConfigurationOperationAvailable(GAMIFICATION_COLLECTIONS.activities, existing?.id, input.operationId);
-    if (existing?.status !== undefined && existing.status !== "draft") {
-      throw new Error("Only draft Activities can be edited. Retire used definitions and create successors.");
-    }
-    if (existing && await this.definitionHasAccounting("activity", existing.id, context)) {
-      throw new Error("This Activity has accepted evidence. Retire it and create an audited successor instead.");
-    }
-    await this.validateSuccessor(input.successorOf, "activity", context);
+    await this.assertEditableDraft("activity", existing, input.successorOf, context);
     if (context.activities.some((activity) => activity.key === key && activity.id !== existing?.id)) {
       throw new Error("Activity key is already in use.");
     }
-    const record = existing
-      ? await this.store.update<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, existing.id, this.activityBody(input, key, "draft"))
-      : await this.store.create<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, this.activityBody(input, key, "draft"));
+    const record = await this.saveDraftRecord<GamificationActivityRecord>(
+      GAMIFICATION_COLLECTIONS.activities,
+      existing?.id,
+      this.activityBody(input, key, "draft"),
+    );
     if (input.scorePolicy) await this.saveScorePolicy(record, input.scorePolicy, context);
     else if (existing) await this.disableDraftPolicies(record.id, context);
     await this.recordCompletedAudit(actor, "configuration_change", GAMIFICATION_COLLECTIONS.activities, record.id, input.operationId, input.reason, {
@@ -1195,178 +3631,96 @@ export class GamificationOperationsService {
     actor: AdminOperationActor,
   ): Promise<{ mission: AdminMissionDto; activity: AdminActivityDto }> {
     assertNoSecretInput(input, "Session Mission configuration");
-    const sessionId = cleanText(input.sessionId);
-    const sessionKey = cleanKey(input.sessionKey);
-    const missionKey = `session.${sessionKey}`;
-    const activityKey = `${missionKey}.attendance`;
-    const missionTitle = cleanText(input.title);
-    const missionSummary = cleanText(input.summary);
-    const deploymentLabel = safeOperationalLabel(input.deploymentLabel);
-    if (!sessionId || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(sessionKey)) {
-      throw new Error("Choose a Session and provide an immutable lowercase Session key.");
-    }
-    if (!missionTitle || !missionSummary) {
-      throw new Error("Session Mission title and summary are required.");
-    }
-    assertNoSecretText(missionTitle, "Session Mission title");
-    assertNoSecretText(missionSummary, "Session Mission summary");
-    if (!["public", "hidden_until_unlocked", "admin_only"].includes(input.visibility)) {
-      throw new Error("Choose a valid Session Mission visibility.");
-    }
-    if (!isEvidenceChannel(input.evidenceChannel)) {
-      throw new Error("Session Missions require a WTS-controlled deployment artifact and channel.");
-    }
-    if (!validDate(input.activeFrom) || !validDate(input.activeUntil) || Date.parse(input.activeFrom) >= Date.parse(input.activeUntil)) {
-      throw new Error("Session Mission evidence requires a valid independent active window.");
-    }
-    if (input.perUserClaimLimit !== 1 || !isPositiveInteger(input.maxClaims)) {
-      throw new Error("Session attendance supports one claim per User and requires a positive global claim limit.");
-    }
-    if (!isISODate(input.scoreDay)) throw new Error("Session scoring requires a configured conference score day.");
-    if (!Number.isInteger(input.sortOrder)) throw new Error("Session Mission sort order must be a whole number.");
-
+    const plan = parseSessionAttendanceInput(input);
     const context = await this.context();
-    const session = context.sessions.find((candidate) => candidate.id === sessionId);
-    if (!session?.published) throw new Error("Choose an existing published Session.");
-    const slug = `session-${sessionKey}`;
-    const schedule = context.schedules.find((candidate) => candidate.id === cleanText(input.scoreScheduleId));
-    if (!schedule || schedule.status !== "draft") throw new Error("Choose a draft score schedule for the Session policy.");
-    const achievementId = cleanText(input.achievementId);
-    if (achievementId) {
-      const achievement = context.achievements.find((candidate) => candidate.id === achievementId);
-      const rule = achievement && safeUnlockRule(achievement.unlock_rule);
-      if (
-        !achievement ||
-        achievement.category !== "session" ||
-        rule?.kind !== "activity_claim" ||
-        ((rule.activityKeys?.length || 0) > 0 && !rule.activityKeys?.includes(activityKey))
-      ) {
-        throw new Error("A direct Session Badge must use a Session Activity-claim rule for this immutable Activity key.");
-      }
-    }
-
-    const auditSummary = {
-      definition: "session_attendance",
-      sessionId,
-      sessionKey,
-      missionKey,
-      activityKey,
-      title: missionTitle,
-      summary: missionSummary,
-      visibility: input.visibility,
-      evidenceChannel: input.evidenceChannel,
-      deploymentLabel,
-      activeFrom: input.activeFrom,
-      activeUntil: input.activeUntil,
-      maxClaims: input.maxClaims,
-      achievementId: achievementId || undefined,
-      metaEligible: Boolean(input.metaEligible),
-      scoreScheduleId: schedule.id,
-      scoreDay: input.scoreDay,
-      sortOrder: input.sortOrder,
-    };
+    const sources = resolveSessionAttendanceSources(input, plan, context);
     // The immutable Activity key is the durable operation target before an ID exists.
     const audit = await this.beginAudit(
       actor,
       "configuration_change",
       GAMIFICATION_COLLECTIONS.activities,
-      activityKey,
+      plan.activityKey,
       input.operationId,
       safeReason(input.reason),
-      auditSummary,
+      sessionAttendanceAuditSummary(input, plan, sources),
     );
-    const existingMission = context.missions.find((mission) => mission.key === missionKey);
-    const existingActivity = context.activities.find((activity) => activity.key === activityKey);
+    const existing: ExistingSessionAttendance = {
+      mission: context.missions.find((mission) => mission.key === plan.missionKey),
+      activity: context.activities.find((activity) => activity.key === plan.activityKey),
+    };
     if (audit.replayed) {
-      if (!existingMission || !existingActivity) throw new Error("The prior Session Mission configuration is incomplete. Contact an administrator.");
-      return { mission: safeMission(existingMission), activity: safeActivity(existingActivity, context) };
+      if (!existing.mission || !existing.activity) throw new Error("The prior Session Mission configuration is incomplete. Contact an administrator.");
+      return { mission: safeMission(existing.mission), activity: safeActivity(existing.activity, context) };
     }
-    if (audit.failed) await this.resumeAudit(audit.record.id);
-    if (!audit.existing && (existingMission || existingActivity)) {
-      await this.failAudit(audit.record.id);
-      throw new Error("This immutable Session Mission key is already configured.");
-    }
-    if (
-      (existingMission && (existingMission.session !== sessionId || existingMission.slug !== slug)) ||
-      (existingActivity && (existingActivity.session !== sessionId || existingActivity.session_key !== sessionKey))
-    ) {
-      await this.failAudit(audit.record.id);
-      throw new Error("The interrupted Session Mission configuration does not match this immutable Session source.");
-    }
-    if (context.activities.some((activity) =>
-      activity.id !== existingActivity?.id &&
-      activity.kind === "session" &&
-      activity.session === sessionId &&
-      activity.status !== "retired",
-    )) {
-      await this.failAudit(audit.record.id);
-      throw new Error("This Session already has a configured attendance Activity. Retire it before creating an audited successor.");
-    }
-    if (context.missions.some((mission) => mission.id !== existingMission?.id && mission.slug === slug)) {
-      await this.failAudit(audit.record.id);
-      throw new Error("This Session Mission slug is already in use.");
-    }
-
-    try {
-      const mission = existingMission || await this.store.create<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, {
-        key: missionKey,
-        slug,
-        title: missionTitle,
-        summary: missionSummary,
-        category: "session",
-        visibility: input.visibility,
-        status: "draft",
-        starts_at: input.activeFrom,
-        ends_at: input.activeUntil,
-        primary_achievement: achievementId,
-        session: sessionId,
-        suggested: input.visibility === "public",
-        sort_order: input.sortOrder,
-        metadata: { session_key: sessionKey },
-      });
-      const activity = existingActivity || await this.store.create<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, {
-        key: activityKey,
-        mission: mission.id,
-        kind: "session",
-        category: "session",
-        outcome_key: "attendance",
-        evidence_mode: "single_code",
-        evidence_channel: input.evidenceChannel,
-        deployment_label: deploymentLabel,
-        achievement: achievementId,
-        session: sessionId,
-        session_key: sessionKey,
-        session_display_snapshot: sessionDisplaySnapshot(session),
-        session_meta_eligible: Boolean(input.metaEligible),
-        per_user_claim_limit: 1,
-        max_claims: input.maxClaims,
-        active_from: input.activeFrom,
-        active_until: input.activeUntil,
-        status: "draft",
-        enabled: true,
-        metadata: {},
-      });
-      await this.saveScorePolicy(activity, {
-        scheduleId: schedule.id,
-        policyKey: activityKey,
-        enabled: true,
-        totalXp: 20,
-        leaderboardXp: 15,
-        capMembership: [
-          { dimension: "activity", key: activity.id },
-          { dimension: "category", key: "session" },
-          { dimension: "conference_day", key: input.scoreDay },
-          { dimension: "conference", key: "conference" },
-        ],
-        scoreDay: input.scoreDay,
-      }, context);
+    await this.resumeCanonicalAudit(audit, sessionAttendanceConflicts(audit.existing, plan, existing, context));
+    return this.failingAudit(audit.record.id, async () => {
+      const { mission, activity } = await this.createSessionAttendanceRecords(input, plan, sources, existing, context);
       await this.completeAudit(audit.record.id);
       const completedContext = await this.context();
       return { mission: safeMission(mission), activity: safeActivity(activity, completedContext) };
-    } catch (error) {
-      await this.failAudit(audit.record.id);
-      throw error;
-    }
+    });
+  }
+
+  private async createSessionAttendanceRecords(
+    input: AdminSessionAttendanceMissionDraftInput,
+    plan: SessionAttendancePlan,
+    sources: SessionAttendanceSources,
+    existing: ExistingSessionAttendance,
+    context: GamificationContext,
+  ): Promise<{ mission: GamificationMissionRecord; activity: GamificationActivityRecord }> {
+    const mission = existing.mission || await this.store.create<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, {
+      key: plan.missionKey,
+      slug: plan.slug,
+      title: plan.missionTitle,
+      summary: plan.missionSummary,
+      category: "session",
+      visibility: input.visibility,
+      status: "draft",
+      starts_at: input.activeFrom,
+      ends_at: input.activeUntil,
+      primary_achievement: sources.achievementId,
+      session: plan.sessionId,
+      suggested: input.visibility === "public",
+      sort_order: input.sortOrder,
+      metadata: { session_key: plan.sessionKey },
+    });
+    const activity = existing.activity || await this.store.create<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, {
+      key: plan.activityKey,
+      mission: mission.id,
+      kind: "session",
+      category: "session",
+      outcome_key: "attendance",
+      evidence_mode: "single_code",
+      evidence_channel: input.evidenceChannel,
+      deployment_label: plan.deploymentLabel,
+      achievement: sources.achievementId,
+      session: plan.sessionId,
+      session_key: plan.sessionKey,
+      session_display_snapshot: sessionDisplaySnapshot(sources.session),
+      session_meta_eligible: Boolean(input.metaEligible),
+      per_user_claim_limit: 1,
+      max_claims: input.maxClaims,
+      active_from: input.activeFrom,
+      active_until: input.activeUntil,
+      status: "draft",
+      enabled: true,
+      metadata: {},
+    });
+    await this.saveScorePolicy(activity, {
+      scheduleId: sources.schedule.id,
+      policyKey: plan.activityKey,
+      enabled: true,
+      totalXp: 20,
+      leaderboardXp: 15,
+      capMembership: [
+        { dimension: "activity", key: activity.id },
+        { dimension: "category", key: "session" },
+        { dimension: "conference_day", key: input.scoreDay },
+        { dimension: "conference", key: "conference" },
+      ],
+      scoreDay: input.scoreDay,
+    }, context);
+    return { mission, activity };
   }
 
   /** Creates the canonical local-code inventory for one configured non-Session event. */
@@ -1375,139 +3729,22 @@ export class GamificationOperationsService {
     actor: AdminOperationActor,
   ): Promise<{ mission: AdminMissionDto; activities: AdminActivityDto[] }> {
     assertNoSecretInput(input, "Event Mission configuration");
-    const eventKey = cleanKey(input.eventKey);
-    const title = cleanText(input.title);
-    const missionTitle = cleanText(input.missionTitle);
-    const summary = cleanText(input.summary);
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(eventKey) || !isConfiguredEventKind(input.kind)) {
-      throw new Error("Provide an immutable lowercase event key and supported event kind.");
-    }
-    if (!title || !missionTitle || !summary) throw new Error("Event title, Mission title, and summary are required.");
-    assertNoSecretText(title, "Event title");
-    assertNoSecretText(missionTitle, "Event Mission title");
-    assertNoSecretText(summary, "Event Mission summary");
-    if (!["public", "hidden_until_unlocked", "admin_only"].includes(input.visibility)) {
-      throw new Error("Choose a valid event Mission visibility.");
-    }
-    if (input.flow !== "one_code" && input.flow !== "two_code") throw new Error("Choose one-code attendance or two-code completion.");
-    if (input.flow === "two_code" && input.kind !== "workshop" && !input.relatedEventTwoCodeApproved) {
-      throw new Error("Two-code completion outside workshops requires explicit organizer approval.");
-    }
-    if (!isEvidenceChannel(input.evidenceChannel)) {
-      throw new Error("Configured events require a WTS-controlled QR, link, or manual-code artifact.");
-    }
-    const attendanceDeploymentLabel = safeOperationalLabel(input.attendanceDeploymentLabel);
-    const finishDeploymentLabel = input.flow === "two_code" ? safeOperationalLabel(input.finishDeploymentLabel) : undefined;
-    if (!validDate(input.activeFrom) || !validDate(input.activeUntil) || Date.parse(input.activeFrom) >= Date.parse(input.activeUntil)) {
-      throw new Error("Configured events require a valid independent operating window.");
-    }
-    if (input.perUserClaimLimit !== 1 || !isPositiveInteger(input.maxClaims)) {
-      throw new Error("Configured events support one claim per Activity and require a positive global claim limit.");
-    }
-    if (!isISODate(input.scoreDay)) throw new Error("Configured event scoring requires a score day.");
-    if (!Number.isInteger(input.sortOrder)) throw new Error("Event Mission sort order must be a whole number.");
-
+    const copy = parseConfiguredEventInput(input);
     const context = await this.context();
-    const schedule = context.schedules.find((candidate) => candidate.id === cleanText(input.scoreScheduleId));
-    if (!schedule || schedule.status !== "draft") throw new Error("Choose a draft score schedule for the configured event.");
-    const hostPartnerId = cleanText(input.hostPartnerId);
-    if (hostPartnerId && !context.partners.some((partner) => partner.id === hostPartnerId)) {
-      throw new Error("Choose an existing host partner or leave host attribution empty for a WTS-run event.");
-    }
-    const missionKey = configuredEventMissionKey(input.kind, eventKey);
-    const capGroupKey = cleanKey(input.capGroupKey);
-    if (!capGroupKey) throw new Error("Configured events require an organizer-supplied cap group key.");
-    const slug = `${input.kind}-${eventKey}`;
-    const attendanceKey = `${missionKey}.${input.flow === "one_code" ? "attendance" : "start"}`;
-    const finishKey = `${missionKey}.finish`;
-    const completionKey = `${missionKey}.completion`;
-    const category = configuredEventCategory(input.kind);
-    const activityKind = configuredEventActivityKind(input.kind);
-    const attendanceAchievement = cleanText(input.attendanceAchievementId)
-      ? context.achievements.find((achievement) => achievement.id === cleanText(input.attendanceAchievementId))
-      : undefined;
-    if (cleanText(input.attendanceAchievementId) && !attendanceAchievement) throw new Error("Choose an existing attendance Badge.");
-    if (attendanceAchievement) {
-      const rule = safeUnlockRule(attendanceAchievement.unlock_rule);
-      if (
-        attendanceAchievement.category !== category ||
-        rule.kind !== "activity_claim" ||
-        ((rule.activityKeys?.length || 0) > 0 && !rule.activityKeys?.includes(attendanceKey))
-      ) {
-        throw new Error("The attendance Badge must use this event's direct Activity-claim rule.");
-      }
-    }
-    const completionAchievement = input.flow === "two_code" && cleanText(input.completionAchievementId)
-      ? context.achievements.find((achievement) => achievement.id === cleanText(input.completionAchievementId))
-      : undefined;
-    if (input.flow === "two_code") {
-      const rule = completionAchievement && safeUnlockRule(completionAchievement.unlock_rule);
-      if (
-        !completionAchievement ||
-        completionAchievement.category !== category ||
-        rule?.kind !== "claim_set" ||
-        JSON.stringify([...(rule.activityKeys || [])].sort()) !== JSON.stringify([finishKey, attendanceKey].sort())
-      ) {
-        throw new Error("Two-code completion requires a Badge with the exact configured start-and-finish claim set.");
-      }
-    }
-
-    const eventRef: ConfiguredEventReference = {
-      eventKey,
-      kind: input.kind,
-      title,
-      startsAt: input.activeFrom,
-      endsAt: input.activeUntil,
-      visibility: input.visibility,
-      locationLabel: cleanOptionalText(input.locationLabel),
-    };
-    const activityKeys = input.flow === "one_code"
-      ? [attendanceKey]
-      : [attendanceKey, finishKey, completionKey];
+    const plan = planConfiguredEvent(input, copy, context);
     const audit = await this.beginAudit(
       actor,
       "configuration_change",
       GAMIFICATION_COLLECTIONS.activities,
-      missionKey,
+      plan.missionKey,
       input.operationId,
       safeReason(input.reason),
-      {
-        definition: "configured_event",
-        eventRef,
-        missionKey,
-        activityKeys,
-        flow: input.flow,
-        hostPartnerId: hostPartnerId || undefined,
-        capGroupKey,
-        metaEligible: Boolean(input.metaEligible),
-        scoreScheduleId: schedule.id,
-        scoreDay: input.scoreDay,
-        request: {
-          title,
-          missionTitle,
-          summary,
-          visibility: input.visibility,
-          locationLabel: cleanOptionalText(input.locationLabel),
-          hostPartnerId: hostPartnerId || undefined,
-          relatedEventTwoCodeApproved: Boolean(input.relatedEventTwoCodeApproved),
-          suggested: Boolean(input.suggested),
-          evidenceChannel: input.evidenceChannel,
-          attendanceDeploymentLabel,
-          finishDeploymentLabel: finishDeploymentLabel || undefined,
-          activeFrom: input.activeFrom,
-          activeUntil: input.activeUntil,
-          perUserClaimLimit: input.perUserClaimLimit,
-          maxClaims: input.maxClaims,
-          attendanceAchievementId: attendanceAchievement?.id,
-          completionAchievementId: completionAchievement?.id,
-          sortOrder: input.sortOrder,
-        },
-      },
+      configuredEventAuditSummary(input, plan),
     );
-    const existingMission = context.missions.find((mission) => mission.key === missionKey);
-    const existingActivities = context.activities.filter((activity) => activityKeys.includes(activity.key));
+    const existingMission = context.missions.find((mission) => mission.key === plan.missionKey);
+    const existingActivities = context.activities.filter((activity) => plan.activityKeys.includes(activity.key));
     if (audit.replayed) {
-      if (!existingMission || existingActivities.length !== activityKeys.length) {
+      if (!existingMission || existingActivities.length !== plan.activityKeys.length) {
         throw new Error("The prior configured event operation is incomplete. Contact an administrator.");
       }
       return {
@@ -1515,127 +3752,18 @@ export class GamificationOperationsService {
         activities: existingActivities.map((activity) => safeActivity(activity, context)),
       };
     }
-    if (audit.failed) await this.resumeAudit(audit.record.id);
-    if (!audit.existing && (existingMission || existingActivities.length > 0)) {
-      await this.failAudit(audit.record.id);
-      throw new Error("This immutable event key is already configured.");
-    }
-    if (
-      (existingMission && (!sameConfiguredEventReference(existingMission.event_ref, eventRef) || existingMission.slug !== slug)) ||
-      existingActivities.some((activity) => !sameConfiguredEventReference(activity.event_ref, eventRef))
-    ) {
-      await this.failAudit(audit.record.id);
-      throw new Error("The interrupted event configuration does not match this immutable event reference.");
-    }
-
-    try {
-      const mission = existingMission || await this.store.create<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, {
-        key: missionKey,
-        slug,
-        title: missionTitle,
-        summary,
-        category,
-        visibility: input.visibility,
-        status: "draft",
-        starts_at: input.activeFrom,
-        ends_at: input.activeUntil,
-        primary_achievement: "",
-        partner: hostPartnerId,
-        partner_key: "",
-        event_ref: eventRef,
-        suggested: input.visibility === "public" && Boolean(input.suggested),
-        sort_order: input.sortOrder,
-        metadata: {
-          cap_group_key: capGroupKey,
-          related_event_two_code_approved: input.kind !== "workshop" && input.flow === "two_code",
-        },
-      });
-      const definitions = input.flow === "one_code"
-        ? [{
-            key: attendanceKey,
-            outcome: "attendance",
-            evidenceMode: "single_code" as EvidenceMode,
-            deploymentLabel: attendanceDeploymentLabel,
-            achievement: attendanceAchievement?.id,
-            metaEligible: Boolean(input.metaEligible),
-            score: { totalXp: 30, leaderboardXp: 25 },
-          }]
-        : [
-            {
-              key: attendanceKey,
-              outcome: "attendance",
-              evidenceMode: "two_code_start" as EvidenceMode,
-              deploymentLabel: attendanceDeploymentLabel,
-              achievement: attendanceAchievement?.id,
-              metaEligible: false,
-              score: { totalXp: 10, leaderboardXp: 5 },
-            },
-            {
-              key: finishKey,
-              outcome: "completion",
-              evidenceMode: "two_code_finish" as EvidenceMode,
-              deploymentLabel: finishDeploymentLabel,
-              achievement: undefined,
-              metaEligible: false,
-              score: { totalXp: 0, leaderboardXp: 0 },
-            },
-            {
-              key: completionKey,
-              outcome: "completion",
-              evidenceMode: "derived_claim_set" as EvidenceMode,
-              deploymentLabel: undefined,
-              achievement: completionAchievement?.id,
-              metaEligible: Boolean(input.metaEligible),
-              score: { totalXp: 30, leaderboardXp: 25 },
-            },
-          ];
+    await this.resumeCanonicalAudit(audit, configuredEventConflicts(audit.existing, plan, existingMission, existingActivities));
+    return this.failingAudit(audit.record.id, async () => {
+      const mission = existingMission || await this.createConfiguredEventMission(input, plan);
       const activities: GamificationActivityRecord[] = [];
-      for (const definition of definitions) {
+      for (const definition of configuredEventActivityDefinitions(input, plan)) {
         const existing = existingActivities.find((activity) => activity.key === definition.key);
-        const activity = existing || await this.store.create<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, {
-          key: definition.key,
-          mission: mission.id,
-          kind: activityKind,
-          category,
-          outcome_key: definition.outcome,
-          evidence_mode: definition.evidenceMode,
-          evidence_channel: definition.evidenceMode === "derived_claim_set" ? "" : input.evidenceChannel,
-          deployment_label: definition.deploymentLabel || "",
-          achievement: definition.achievement || "",
-          partner: hostPartnerId,
-          partner_kind: hostPartnerId ? "workshop_host" : "",
-          event_ref: eventRef,
-          event_meta_eligible: definition.metaEligible,
-          per_user_claim_limit: 1,
-          max_claims: input.maxClaims,
-          active_from: input.activeFrom,
-          active_until: input.activeUntil,
-          status: "draft",
-          enabled: true,
-          metadata: { cap_group_key: capGroupKey },
-        });
+        const activity = existing || await this.store.create<GamificationActivityRecord>(
+          GAMIFICATION_COLLECTIONS.activities,
+          configuredEventActivityRow(input, plan, definition, mission.id),
+        );
         activities.push(activity);
-        await this.saveScorePolicy(activity, {
-          scheduleId: schedule.id,
-          policyKey: definition.key,
-          enabled: true,
-          totalXp: definition.score.totalXp,
-          leaderboardXp: definition.score.leaderboardXp,
-          capMembership: [
-            { dimension: "activity", key: activity.id },
-            { dimension: "related_group", key: capGroupKey },
-            { dimension: "category", key: category },
-            { dimension: "conference_day", key: input.scoreDay },
-            { dimension: "conference", key: "conference" },
-          ],
-          capCeilingOverrides: {
-            related_group: {
-              total_xp_ceiling: input.flow === "one_code" ? 30 : 40,
-              leaderboard_xp_ceiling: input.flow === "one_code" ? 25 : 30,
-            },
-          },
-          scoreDay: input.scoreDay,
-        }, context);
+        await this.saveScorePolicy(activity, configuredEventScorePolicy(input, plan, definition, activity.id), context);
       }
       await this.completeAudit(audit.record.id);
       const completedContext = await this.context();
@@ -1643,10 +3771,31 @@ export class GamificationOperationsService {
         mission: safeMission(mission),
         activities: activities.map((activity) => safeActivity(activity, completedContext)),
       };
-    } catch (error) {
-      await this.failAudit(audit.record.id);
-      throw error;
-    }
+    });
+  }
+
+  private createConfiguredEventMission(input: AdminConfiguredEventMissionDraftInput, plan: ConfiguredEventPlan): Promise<GamificationMissionRecord> {
+    return this.store.create<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, {
+      key: plan.missionKey,
+      slug: plan.slug,
+      title: plan.missionTitle,
+      summary: plan.summary,
+      category: plan.category,
+      visibility: input.visibility,
+      status: "draft",
+      starts_at: input.activeFrom,
+      ends_at: input.activeUntil,
+      primary_achievement: "",
+      partner: plan.hostPartnerId,
+      partner_key: "",
+      event_ref: plan.eventRef,
+      suggested: input.visibility === "public" && Boolean(input.suggested),
+      sort_order: input.sortOrder,
+      metadata: {
+        cap_group_key: plan.capGroupKey,
+        related_event_two_code_approved: input.kind !== "workshop" && input.flow === "two_code",
+      },
+    });
   }
 
   /** Creates one canonical Community Partner programme without deriving classification from public partner data. */
@@ -1655,309 +3804,63 @@ export class GamificationOperationsService {
     actor: AdminOperationActor,
   ): Promise<{ mission: AdminMissionDto; activities: AdminActivityDto[] }> {
     assertNoSecretInput(input, "Community Partner Mission configuration");
-    const partnerId = cleanText(input.partnerId);
-    const partnerKey = cleanKey(input.partnerKey);
-    const programmeKey = cleanKey(input.activityKey);
-    if (
-      !partnerId ||
-      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(partnerKey) ||
-      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(programmeKey)
-    ) {
-      throw new Error("Choose an existing partner and provide immutable lowercase partner and programme keys.");
-    }
-    const missionTitle = cleanText(input.missionTitle);
-    const summary = cleanText(input.summary);
-    if (!missionTitle || !summary) throw new Error("Community Partner Mission title and summary are required.");
-    assertNoSecretText(missionTitle, "Community Partner Mission title");
-    assertNoSecretText(summary, "Community Partner Mission summary");
-    if (!["public", "hidden_until_unlocked", "admin_only"].includes(input.visibility)) {
-      throw new Error("Choose a valid Community Partner Mission visibility.");
-    }
-    if (input.flow !== "one_code" && input.flow !== "two_code") throw new Error("Choose a one-code or explicitly approved two-code programme.");
-    const selectedOutcomes = input.flow === "one_code" && Array.isArray(input.outcomes) ? input.outcomes : [];
-    if (
-      input.flow === "one_code" &&
-      (selectedOutcomes.length < 1 || selectedOutcomes.length > 3 ||
-        selectedOutcomes.some((definition) => !isCommunityPartnerOutcome(definition.outcome)) ||
-        !uniqueKeys(selectedOutcomes.map((definition) => definition.outcome)))
-    ) {
-      throw new Error("Choose each Community Partner attendance, participation, or completion outcome at most once.");
-    }
-    if (selectedOutcomes.filter((definition) => definition.metaEligible).length > 1) {
-      throw new Error("At most one qualifying Activity per Community Partner programme may register with Meta rules.");
-    }
-    if (selectedOutcomes.some((definition) => definition.partnerFollowUp.enabled && !cleanText(definition.partnerFollowUp.noticeVersion))) {
-      throw new Error("Enabled Community Partner follow-up requires a notice version.");
-    }
-    if (input.flow === "two_code" && !input.communityTwoCodeApproved) {
-      throw new Error("Community Partner two-code completion requires explicit organizer approval.");
-    }
-    if (!isEvidenceChannel(input.evidenceChannel)) {
-      throw new Error("Community Partner Activities require a WTS-controlled QR, link, manual, or static-code artifact.");
-    }
-    const primaryDeploymentLabel = input.flow === "two_code" ? safeOperationalLabel(input.primaryDeploymentLabel) : undefined;
-    const outcomeDeploymentLabels = new Map(selectedOutcomes.map((definition) => [definition.outcome, safeOperationalLabel(definition.deploymentLabel)]));
-    const finishDeploymentLabel = input.flow === "two_code" ? safeOperationalLabel(input.finishDeploymentLabel) : undefined;
-    if (!validDate(input.activeFrom) || !validDate(input.activeUntil) || Date.parse(input.activeFrom) >= Date.parse(input.activeUntil)) {
-      throw new Error("Community Partner programmes require a valid independent operating window.");
-    }
-    if (input.perUserClaimLimit !== 1 || !isPositiveInteger(input.maxClaims)) {
-      throw new Error("Community Partner Activities support one claim per User and require a positive global claim limit.");
-    }
-    if (!isISODate(input.scoreDay)) throw new Error("Community Partner scoring requires a score day.");
-    if (!Number.isInteger(input.sortOrder)) throw new Error("Community Partner Mission sort order must be a whole number.");
-    if (input.flow === "two_code" && input.partnerFollowUp.enabled && !cleanText(input.partnerFollowUp.noticeVersion)) {
-      throw new Error("Enabled Community Partner follow-up requires a notice version.");
-    }
-
+    const copy = parseCommunityPartnerInput(input);
     const context = await this.context();
-    // Public partner type/tier is intentionally not consulted here.
-    if (!context.partners.some((partner) => partner.id === partnerId)) throw new Error("Choose an existing Community Partner record.");
-    const schedule = context.schedules.find((candidate) => candidate.id === cleanText(input.scoreScheduleId));
-    if (!schedule || schedule.status !== "draft") throw new Error("Choose a draft score schedule for the Community Partner programme.");
-    const missionKey = communityPartnerMissionKey(partnerKey, programmeKey);
-    const slug = `community-${partnerKey}-${programmeKey}`;
-    const directKey = communityPartnerActivityKey(missionKey, "start");
-    const finishKey = communityPartnerActivityKey(missionKey, "finish");
-    const completionKey = communityPartnerActivityKey(missionKey, "completion");
-    const directAchievement = input.flow === "two_code" && cleanText(input.directAchievementId)
-      ? context.achievements.find((achievement) => achievement.id === cleanText(input.directAchievementId))
-      : undefined;
-    if (input.flow === "two_code" && (!directAchievement || directAchievement.category !== "community")) {
-      throw new Error("Community Partner programmes require a distinct Community Badge for their direct Activity.");
-    }
-    const directRule = directAchievement && safeUnlockRule(directAchievement.unlock_rule);
-    if (input.flow === "two_code" && (directRule?.kind !== "activity_claim" || ((directRule.activityKeys?.length || 0) > 0 && !directRule.activityKeys?.includes(directKey)))) {
-      throw new Error("The direct Community Badge must use this programme's Activity-claim rule.");
-    }
-    const oneCodeDefinitions = selectedOutcomes.map((definition) => {
-      const key = communityPartnerActivityKey(missionKey, definition.outcome);
-      const achievement = context.achievements.find((candidate) => candidate.id === cleanText(definition.achievementId));
-      const rule = achievement && safeUnlockRule(achievement.unlock_rule);
-      if (
-        !achievement ||
-        achievement.category !== "community" ||
-        rule?.kind !== "activity_claim" ||
-        ((rule.activityKeys?.length || 0) > 0 && !rule.activityKeys?.includes(key))
-      ) {
-        throw new Error(`The ${definition.outcome} Community Badge must use that outcome's direct Activity-claim rule.`);
-      }
-      return { ...definition, key, achievement };
-    });
-    const completionAchievement = input.flow === "two_code" && cleanText(input.completionAchievementId)
-      ? context.achievements.find((achievement) => achievement.id === cleanText(input.completionAchievementId))
-      : undefined;
-    if (input.flow === "two_code") {
-      const rule = completionAchievement && safeUnlockRule(completionAchievement.unlock_rule);
-      if (
-        !completionAchievement ||
-        completionAchievement.category !== "community" ||
-        rule?.kind !== "claim_set" ||
-        JSON.stringify([...(rule.activityKeys || [])].sort()) !== JSON.stringify([directKey, finishKey].sort())
-      ) {
-        throw new Error("Community Partner two-code completion requires a distinct Badge with the exact start-and-finish claim set.");
-      }
-    }
-    const activityKeys = input.flow === "one_code" ? oneCodeDefinitions.map((definition) => definition.key) : [directKey, finishKey, completionKey];
+    const plan = planCommunityPartnerProgramme(input, copy, context);
     const audit = await this.beginAudit(
       actor,
       "configuration_change",
       GAMIFICATION_COLLECTIONS.activities,
-      missionKey,
+      plan.missionKey,
       input.operationId,
       safeReason(input.reason),
-      {
-        definition: "community_partner_programme",
-        partnerId,
-        partnerKey,
-        missionKey,
-        activityKeys,
-        flow: input.flow,
-        outcomes: input.flow === "one_code" ? oneCodeDefinitions.map((definition) => definition.outcome) : ["completion"],
-        metaEligible: input.flow === "one_code" ? oneCodeDefinitions.some((definition) => definition.metaEligible) : Boolean(input.metaEligible),
-        scoreScheduleId: schedule.id,
-        scoreDay: input.scoreDay,
-        request: {
-          missionTitle,
-          summary,
-          visibility: input.visibility,
-          suggested: Boolean(input.suggested),
-          communityTwoCodeApproved: Boolean(input.communityTwoCodeApproved),
-          evidenceChannel: input.evidenceChannel,
-          primaryDeploymentLabel: primaryDeploymentLabel || undefined,
-          finishDeploymentLabel: finishDeploymentLabel || undefined,
-          activeFrom: input.activeFrom,
-          activeUntil: input.activeUntil,
-          perUserClaimLimit: input.perUserClaimLimit,
-          maxClaims: input.maxClaims,
-          directAchievementId: directAchievement?.id,
-          completionAchievementId: completionAchievement?.id,
-          partnerFollowUp: input.partnerFollowUp,
-          outcomes: oneCodeDefinitions.map((definition) => ({
-            outcome: definition.outcome,
-            deploymentLabel: cleanText(definition.deploymentLabel),
-            achievementId: definition.achievement.id,
-            metaEligible: Boolean(definition.metaEligible),
-            partnerFollowUp: definition.partnerFollowUp,
-          })),
-          sortOrder: input.sortOrder,
-        },
-      },
+      communityPartnerAuditSummary(input, plan),
     );
-    const existingMission = context.missions.find((mission) => mission.key === missionKey);
-    const existingActivities = context.activities.filter((activity) => activityKeys.includes(activity.key));
+    const existingMission = context.missions.find((mission) => mission.key === plan.missionKey);
+    const existingActivities = context.activities.filter((activity) => plan.activityKeys.includes(activity.key));
     if (audit.replayed) {
-      if (!existingMission || existingActivities.length !== activityKeys.length) {
+      if (!existingMission || existingActivities.length !== plan.activityKeys.length) {
         throw new Error("The prior Community Partner configuration is incomplete. Contact an administrator.");
       }
       return { mission: safeMission(existingMission), activities: existingActivities.map((activity) => safeActivity(activity, context)) };
     }
-    if (audit.failed) await this.resumeAudit(audit.record.id);
-    if (!audit.existing && (existingMission || existingActivities.length > 0)) {
-      await this.failAudit(audit.record.id);
-      throw new Error("This immutable Community Partner programme key is already configured.");
-    }
-    if (
-      (existingMission && (existingMission.partner !== partnerId || existingMission.partner_key !== partnerKey || existingMission.slug !== slug)) ||
-      existingActivities.some((activity) => activity.partner !== partnerId || activity.mission !== existingMission?.id)
-    ) {
-      await this.failAudit(audit.record.id);
-      throw new Error("The interrupted Community Partner configuration does not match this immutable partner programme.");
-    }
-
-    try {
-      const mission = existingMission || await this.store.create<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, {
-        key: missionKey,
-        slug,
-        title: missionTitle,
-        summary,
-        category: "community",
-        visibility: input.visibility,
-        status: "draft",
-        starts_at: input.activeFrom,
-        ends_at: input.activeUntil,
-        primary_achievement: "",
-        partner: partnerId,
-        partner_key: partnerKey,
-        suggested: input.visibility === "public" && Boolean(input.suggested),
-        sort_order: input.sortOrder,
-        metadata: {
-          community_programme: true,
-          community_two_code_approved: input.flow === "two_code",
-          cap_group_key: missionKey,
-        },
-      });
-      const oneCodeCeiling = oneCodeDefinitions.reduce(
-        (ceiling, definition) => ({
-          totalXp: Math.max(ceiling.totalXp, COMMUNITY_PARTNER_SCORE_BANDS[definition.outcome].totalXp),
-          leaderboardXp: Math.max(ceiling.leaderboardXp, COMMUNITY_PARTNER_SCORE_BANDS[definition.outcome].leaderboardXp),
-        }),
-        { totalXp: 0, leaderboardXp: 0 },
-      );
-      const definitions = input.flow === "one_code"
-        ? oneCodeDefinitions.map((definition) => ({
-            key: definition.key,
-            outcome: definition.outcome,
-            evidenceMode: "single_code" as EvidenceMode,
-            deploymentLabel: outcomeDeploymentLabels.get(definition.outcome),
-            achievement: definition.achievement.id,
-            metaEligible: Boolean(definition.metaEligible),
-            followUp: definition.partnerFollowUp,
-            score: COMMUNITY_PARTNER_SCORE_BANDS[definition.outcome],
-          }))
-        : [
-            {
-              key: directKey,
-              outcome: "attendance",
-              evidenceMode: "two_code_start" as EvidenceMode,
-              deploymentLabel: primaryDeploymentLabel,
-              achievement: directAchievement!.id,
-              metaEligible: false,
-              followUp: { enabled: false },
-              score: { totalXp: 10, leaderboardXp: 5 },
-            },
-            {
-              key: finishKey,
-              outcome: "completion",
-              evidenceMode: "two_code_finish" as EvidenceMode,
-              deploymentLabel: finishDeploymentLabel,
-              achievement: undefined,
-              metaEligible: false,
-              followUp: { enabled: false },
-              score: { totalXp: 0, leaderboardXp: 0 },
-            },
-            {
-              key: completionKey,
-              outcome: "completion",
-              evidenceMode: "derived_claim_set" as EvidenceMode,
-              deploymentLabel: undefined,
-              achievement: completionAchievement!.id,
-              metaEligible: Boolean(input.metaEligible),
-              followUp: input.partnerFollowUp,
-              score: COMMUNITY_PARTNER_SCORE_BANDS.completion,
-            },
-          ];
+    await this.resumeCanonicalAudit(audit, communityPartnerConflicts(audit.existing, plan, existingMission, existingActivities));
+    return this.failingAudit(audit.record.id, async () => {
+      const mission = existingMission || await this.createCommunityPartnerMission(input, plan);
       const activities: GamificationActivityRecord[] = [];
-      for (const definition of definitions) {
+      for (const definition of communityPartnerActivityDefinitions(input, plan)) {
         const existing = existingActivities.find((activity) => activity.key === definition.key);
-        const activity = existing || await this.store.create<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, {
-          key: definition.key,
-          mission: mission.id,
-          kind: "community_partner",
-          category: "community",
-          outcome_key: definition.outcome,
-          evidence_mode: definition.evidenceMode,
-          evidence_channel: definition.evidenceMode === "derived_claim_set" ? "" : input.evidenceChannel,
-          deployment_label: definition.deploymentLabel || "",
-          achievement: definition.achievement || "",
-          partner: partnerId,
-          partner_kind: "community_partner",
-          community_meta_eligible: definition.metaEligible,
-          per_user_claim_limit: 1,
-          max_claims: input.maxClaims,
-          active_from: input.activeFrom,
-          active_until: input.activeUntil,
-          status: "draft",
-          enabled: true,
-          partner_follow_up_enabled: Boolean(definition.followUp.enabled),
-          partner_follow_up_notice_version: cleanText("noticeVersion" in definition.followUp ? definition.followUp.noticeVersion : undefined),
-          metadata: {
-            community_programme: true,
-            community_two_code_approved: input.flow === "two_code",
-            cap_group_key: missionKey,
-          },
-        });
+        const activity = existing || await this.store.create<GamificationActivityRecord>(
+          GAMIFICATION_COLLECTIONS.activities,
+          communityPartnerActivityRow(input, plan, definition, mission.id),
+        );
         activities.push(activity);
-        await this.saveScorePolicy(activity, {
-          scheduleId: schedule.id,
-          policyKey: definition.key,
-          enabled: true,
-          totalXp: definition.score.totalXp,
-          leaderboardXp: definition.score.leaderboardXp,
-          capMembership: [
-            { dimension: "activity", key: activity.id },
-            { dimension: "related_group", key: missionKey },
-            { dimension: "partner", key: partnerId },
-            { dimension: "category", key: "community" },
-            { dimension: "conference_day", key: input.scoreDay },
-            { dimension: "conference", key: "conference" },
-          ],
-          capCeilingOverrides: {
-            related_group: {
-              total_xp_ceiling: input.flow === "two_code" ? 40 : oneCodeCeiling.totalXp,
-              leaderboard_xp_ceiling: input.flow === "two_code" ? 30 : oneCodeCeiling.leaderboardXp,
-            },
-          },
-          scoreDay: input.scoreDay,
-        }, await this.context());
+        await this.saveScorePolicy(activity, communityPartnerScorePolicy(input, plan, definition, activity.id), await this.context());
       }
       await this.completeAudit(audit.record.id);
       const completedContext = await this.context();
       return { mission: safeMission(mission), activities: activities.map((activity) => safeActivity(activity, completedContext)) };
-    } catch (error) {
-      await this.failAudit(audit.record.id);
-      throw error;
-    }
+    });
+  }
+
+  private createCommunityPartnerMission(input: AdminCommunityPartnerMissionDraftInput, plan: CommunityPartnerPlan): Promise<GamificationMissionRecord> {
+    return this.store.create<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, {
+      key: plan.missionKey,
+      slug: plan.slug,
+      title: plan.missionTitle,
+      summary: plan.summary,
+      category: "community",
+      visibility: input.visibility,
+      status: "draft",
+      starts_at: input.activeFrom,
+      ends_at: input.activeUntil,
+      primary_achievement: "",
+      partner: plan.partnerId,
+      partner_key: plan.partnerKey,
+      suggested: input.visibility === "public" && Boolean(input.suggested),
+      sort_order: input.sortOrder,
+      metadata: communityProgrammeMetadata(input, plan),
+    });
   }
 
   /** Creates the only supported September easter-egg inventory shape. */
@@ -1965,181 +3868,45 @@ export class GamificationOperationsService {
     input: AdminEasterEggMissionDraftInput,
     actor: AdminOperationActor,
   ): Promise<{ achievement: AdminAchievementDto; mission: AdminMissionDto; activity: AdminActivityDto }> {
-    const eggKey = cleanKey(input.eggKey);
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(eggKey)) {
-      throw new Error("Provide an immutable lowercase easter egg key without discovery details.");
-    }
-    const missionKey = `easter_egg.${eggKey}`;
-    const activityKey = `${missionKey}.discovery`;
-    const missionTitle = cleanText(input.missionTitle);
-    const missionSummary = cleanText(input.missionSummary);
-    const badgeName = cleanText(input.badgeName);
-    const badgeDescription = cleanText(input.badgeDescription);
-    if (!missionTitle || !missionSummary || !badgeName || !badgeDescription) {
-      throw new Error("Easter egg Mission and spoiler-safe post-unlock Badge copy are required.");
-    }
-    assertNoSecretText(missionTitle, "Easter egg Mission titles");
-    assertNoSecretText(missionSummary, "Easter egg Mission summaries");
-    assertNoSecretText(badgeName, "Easter egg Badge names");
-    assertNoSecretText(badgeDescription, "Easter egg Badge descriptions");
-    assertNoSecretText(cleanText(input.badgeIcon), "Easter egg Badge icons");
-    if (!(["common", "uncommon", "rare", "epic", "legendary"] as string[]).includes(input.badgeRarity)) {
-      throw new Error("Choose a valid Easter Egg Badge rarity.");
-    }
-    if (!(["wts_qr", "wts_link", "wts_manual_code"] as string[]).includes(input.evidenceChannel)) {
-      throw new Error("Easter egg discovery requires a WTS-controlled static QR, fragment link, or manually entered code.");
-    }
-    const deploymentNote = safeDiscoveryDeploymentNote(input.deploymentNote);
-    if (!validDate(input.activeFrom) || !validDate(input.activeUntil) || Date.parse(input.activeFrom) >= Date.parse(input.activeUntil)) {
-      throw new Error("Easter egg discovery requires a valid active start and end window.");
-    }
-    if (!isPositiveInteger(input.maxClaims)) {
-      throw new Error("Easter egg discovery requires a positive global claim limit.");
-    }
-    if (!Number.isInteger(input.sortOrder)) throw new Error("Easter egg Mission sort order must be a whole number.");
-
+    const copy = parseEasterEggInput(input);
     const context = await this.context();
-    const schedule = context.schedules.find((candidate) => candidate.id === cleanText(input.scoreScheduleId));
-    if (!schedule || schedule.status !== "draft") throw new Error("Choose a draft score schedule for the Easter Egg discovery policy.");
-    const existingAchievement = context.achievements.find((achievement) => achievement.key === missionKey);
-    const existingMission = context.missions.find((mission) => mission.key === missionKey);
-    const existingActivity = context.activities.find((activity) => activity.key === activityKey);
+    const schedule = requireDraftSchedule(context, input.scoreScheduleId, "Choose a draft score schedule for the Easter Egg discovery policy.");
+    const existing: ExistingEasterEgg = {
+      achievement: context.achievements.find((achievement) => achievement.key === copy.missionKey),
+      mission: context.missions.find((mission) => mission.key === copy.missionKey),
+      activity: context.activities.find((activity) => activity.key === copy.activityKey),
+    };
     const audit = await this.beginAudit(
       actor,
       "configuration_change",
       GAMIFICATION_COLLECTIONS.activities,
-      activityKey,
+      copy.activityKey,
       input.operationId,
       safeReason(input.reason),
-      {
-        definition: "easter_egg_discovery",
-        missionKey,
-        activityKey,
-        missionTitle,
-        missionSummary,
-        badgeName,
-        badgeDescription,
-        badgeIcon: cleanOptionalText(input.badgeIcon),
-        badgeRarity: input.badgeRarity,
-        evidenceChannel: input.evidenceChannel,
-        deploymentNote,
-        activeFrom: input.activeFrom,
-        activeUntil: input.activeUntil,
-        maxClaims: input.maxClaims,
-        scoreScheduleId: schedule.id,
-        sortOrder: input.sortOrder,
-      },
+      easterEggAuditSummary(input, copy, schedule),
     );
     if (audit.replayed) {
-      if (!existingAchievement || !existingMission || !existingActivity) {
+      if (!existing.achievement || !existing.mission || !existing.activity) {
         throw new Error("The prior Easter Egg Mission configuration is incomplete. Contact an administrator.");
       }
       return {
-        achievement: safeAchievement(existingAchievement),
-        mission: safeMission(existingMission),
-        activity: safeActivity(existingActivity, context),
+        achievement: safeAchievement(existing.achievement),
+        mission: safeMission(existing.mission),
+        activity: safeActivity(existing.activity, context),
       };
     }
-    if (audit.failed) await this.resumeAudit(audit.record.id);
-    if (!audit.existing && (existingAchievement || existingMission || existingActivity)) {
-      await this.failAudit(audit.record.id);
-      throw new Error("This immutable Easter Egg Mission key is already configured.");
-    }
-    if (
-      (existingAchievement && (
-        existingAchievement.category !== "easter_egg" ||
-        existingAchievement.visibility !== "hidden_until_unlocked" ||
-        safeUnlockRule(existingAchievement.unlock_rule).kind !== "activity_claim"
-      )) ||
-      (existingMission && (
-        existingMission.category !== "easter_egg" ||
-        existingMission.visibility !== "hidden_until_unlocked" ||
-        existingMission.suggested ||
-        existingMission.partner ||
-        existingMission.session ||
-        safeEventRef(existingMission.event_ref)
-      )) ||
-      (existingActivity && (
-        existingActivity.kind !== "easter_egg" ||
-        existingActivity.category !== "easter_egg" ||
-        existingActivity.outcome_key !== "static_discovery" ||
-        existingActivity.evidence_mode !== "static_puzzle_code"
-      ))
-    ) {
-      await this.failAudit(audit.record.id);
-      throw new Error("The interrupted Easter Egg configuration does not match the canonical hidden static-discovery shape.");
-    }
-
-    try {
-      const achievement = existingAchievement || await this.store.create<GamificationAchievementRecord>(GAMIFICATION_COLLECTIONS.achievements, {
-        key: missionKey,
-        badge_name: badgeName,
-        badge_description: badgeDescription,
-        locked_teaser: "",
-        icon: cleanText(input.badgeIcon),
-        category: "easter_egg",
-        rarity: input.badgeRarity,
-        visibility: "hidden_until_unlocked",
-        status: "draft",
-        unlock_rule: { kind: "activity_claim" },
-        active_from: input.activeFrom,
-        active_until: input.activeUntil,
-        sort_order: input.sortOrder,
-        metadata: { spoiler_safe_post_unlock_copy: true },
-      });
-      const mission = existingMission || await this.store.create<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, {
-        key: missionKey,
-        slug: `easter-egg-${eggKey}`,
-        title: missionTitle,
-        summary: missionSummary,
-        category: "easter_egg",
-        visibility: "hidden_until_unlocked",
-        status: "draft",
-        starts_at: input.activeFrom,
-        ends_at: input.activeUntil,
-        primary_achievement: achievement.id,
-        partner: "",
-        partner_key: "",
-        session: "",
-        event_ref: {},
-        suggested: false,
-        sort_order: input.sortOrder,
-        metadata: { safe_static_discovery: true },
-      });
-      const activity = existingActivity || await this.store.create<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, {
-        key: activityKey,
-        mission: mission.id,
-        kind: "easter_egg",
-        category: "easter_egg",
-        outcome_key: "static_discovery",
-        evidence_mode: "static_puzzle_code",
-        evidence_channel: input.evidenceChannel,
-        deployment_label: deploymentNote,
-        achievement: achievement.id,
-        partner: "",
-        partner_kind: "",
-        session: "",
-        event_ref: {},
-        per_user_claim_limit: 1,
-        max_claims: input.maxClaims,
-        active_from: input.activeFrom,
-        active_until: input.activeUntil,
-        status: "draft",
-        enabled: true,
-        metadata: { safe_static_discovery: true },
-      });
-      await this.saveScorePolicy(activity, {
-        scheduleId: schedule.id,
-        policyKey: activityKey,
-        enabled: true,
-        totalXp: 10,
-        leaderboardXp: 0,
-        capMembership: [
-          { dimension: "activity", key: activity.id },
-          { dimension: "category", key: "easter_egg" },
-          { dimension: "conference", key: "conference" },
-        ],
-      }, await this.context());
+    await this.resumeCanonicalAudit(audit, [
+      [
+        !audit.existing && (existing.achievement || existing.mission || existing.activity),
+        "This immutable Easter Egg Mission key is already configured.",
+      ],
+      [
+        !matchesCanonicalEasterEggShape(existing),
+        "The interrupted Easter Egg configuration does not match the canonical hidden static-discovery shape.",
+      ],
+    ]);
+    return this.failingAudit(audit.record.id, async () => {
+      const { achievement, mission, activity } = await this.createEasterEggRecords(input, copy, schedule, existing);
       await this.completeAudit(audit.record.id);
       const completedContext = await this.context();
       return {
@@ -2147,10 +3914,85 @@ export class GamificationOperationsService {
         mission: safeMission(mission),
         activity: safeActivity(activity, completedContext),
       };
-    } catch (error) {
-      await this.failAudit(audit.record.id);
-      throw error;
-    }
+    });
+  }
+
+  private async createEasterEggRecords(
+    input: AdminEasterEggMissionDraftInput,
+    copy: EasterEggCopy,
+    schedule: GamificationScoreScheduleRecord,
+    existing: ExistingEasterEgg,
+  ): Promise<{ achievement: GamificationAchievementRecord; mission: GamificationMissionRecord; activity: GamificationActivityRecord }> {
+    const achievement = existing.achievement || await this.store.create<GamificationAchievementRecord>(GAMIFICATION_COLLECTIONS.achievements, {
+      key: copy.missionKey,
+      badge_name: copy.badgeName,
+      badge_description: copy.badgeDescription,
+      locked_teaser: "",
+      icon: cleanText(input.badgeIcon),
+      category: "easter_egg",
+      rarity: input.badgeRarity,
+      visibility: "hidden_until_unlocked",
+      status: "draft",
+      unlock_rule: { kind: "activity_claim" },
+      active_from: input.activeFrom,
+      active_until: input.activeUntil,
+      sort_order: input.sortOrder,
+      metadata: { spoiler_safe_post_unlock_copy: true },
+    });
+    const mission = existing.mission || await this.store.create<GamificationMissionRecord>(GAMIFICATION_COLLECTIONS.missions, {
+      key: copy.missionKey,
+      slug: `easter-egg-${copy.eggKey}`,
+      title: copy.missionTitle,
+      summary: copy.missionSummary,
+      category: "easter_egg",
+      visibility: "hidden_until_unlocked",
+      status: "draft",
+      starts_at: input.activeFrom,
+      ends_at: input.activeUntil,
+      primary_achievement: achievement.id,
+      partner: "",
+      partner_key: "",
+      session: "",
+      event_ref: {},
+      suggested: false,
+      sort_order: input.sortOrder,
+      metadata: { safe_static_discovery: true },
+    });
+    const activity = existing.activity || await this.store.create<GamificationActivityRecord>(GAMIFICATION_COLLECTIONS.activities, {
+      key: copy.activityKey,
+      mission: mission.id,
+      kind: "easter_egg",
+      category: "easter_egg",
+      outcome_key: "static_discovery",
+      evidence_mode: "static_puzzle_code",
+      evidence_channel: input.evidenceChannel,
+      deployment_label: copy.deploymentNote,
+      achievement: achievement.id,
+      partner: "",
+      partner_kind: "",
+      session: "",
+      event_ref: {},
+      per_user_claim_limit: 1,
+      max_claims: input.maxClaims,
+      active_from: input.activeFrom,
+      active_until: input.activeUntil,
+      status: "draft",
+      enabled: true,
+      metadata: { safe_static_discovery: true },
+    });
+    await this.saveScorePolicy(activity, {
+      scheduleId: schedule.id,
+      policyKey: copy.activityKey,
+      enabled: true,
+      totalXp: 10,
+      leaderboardXp: 0,
+      capMembership: [
+        { dimension: "activity", key: activity.id },
+        { dimension: "category", key: "easter_egg" },
+        { dimension: "conference", key: "conference" },
+      ],
+    }, await this.context());
+    return { achievement, mission, activity };
   }
 
   async createScoreScheduleDraft(input: AdminScoreScheduleDraftInput, actor: AdminOperationActor): Promise<AdminScoreScheduleDto> {
@@ -2182,6 +4024,10 @@ export class GamificationOperationsService {
   }
 
   async activateDefinition(kind: GamificationDefinitionKind, input: AdminLifecycleInput, actor: AdminOperationActor): Promise<{ id: string; status: "active" }> {
+    return withGamificationLocks(this.store, [BOOTH_SETUP_LOCK], () => this.activateDefinitionNow(kind, input, actor));
+  }
+
+  private async activateDefinitionNow(kind: GamificationDefinitionKind, input: AdminLifecycleInput, actor: AdminOperationActor): Promise<{ id: string; status: "active" }> {
     this.requireConfirmation(input.confirmation, "Activation");
     const reason = requiredReason(input.reason);
     const context = await this.context();
@@ -2208,6 +4054,10 @@ export class GamificationOperationsService {
   }
 
   async retireDefinition(kind: GamificationDefinitionKind, input: AdminLifecycleInput, actor: AdminOperationActor): Promise<{ id: string; status: "retired" }> {
+    return withGamificationLocks(this.store, [BOOTH_SETUP_LOCK], () => this.retireDefinitionNow(kind, input, actor));
+  }
+
+  private async retireDefinitionNow(kind: GamificationDefinitionKind, input: AdminLifecycleInput, actor: AdminOperationActor): Promise<{ id: string; status: "retired" }> {
     this.requireConfirmation(input.confirmation, "Retirement");
     const reason = requiredReason(input.reason);
     const context = await this.context();
@@ -2264,21 +4114,7 @@ export class GamificationOperationsService {
     }
     if (audit.failed) await this.resumeAudit(audit.record.id);
     try {
-      const policies = this.activePoliciesForSchedule(schedule.id, context);
-      if (policies.length === 0) throw new Error("Add at least one active score-bearing policy for an active Activity before activation.");
-      const policyActivityIds = new Set(policies.map((policy) => policy.activityId));
-      const omittedEasterEgg = context.activities.find((activity) =>
-        activity.kind === "easter_egg" &&
-        activity.category === "easter_egg" &&
-        activity.status === "active" &&
-        activity.enabled &&
-        !policyActivityIds.has(activity.id)
-      );
-      if (omittedEasterEgg) {
-        throw new Error(`Active Easter Egg discovery ${omittedEasterEgg.key} requires its fixed 10/0 policy on every successor score schedule.`);
-      }
-      const errors = this.validatePolicies(policies, context);
-      if (errors.length > 0) throw new Error(errors.join(" "));
+      const policies = this.policiesReadyForActivation(schedule.id, context);
       const calculated = calculateSeptemberScoreSchedule(policies);
       const priorActiveScheduleIds = context.schedules
         .filter((candidate) => candidate.status === "active")
@@ -2305,94 +4141,181 @@ export class GamificationOperationsService {
     }
   }
 
+  private policiesReadyForActivation(scheduleId: string, context: GamificationContext): SeptemberScorePolicy[] {
+    const policies = this.activePoliciesForSchedule(scheduleId, context);
+    if (policies.length === 0) throw new Error("Add at least one active score-bearing policy for an active Activity before activation.");
+    const policyActivityIds = new Set(policies.map((policy) => policy.activityId));
+    const omittedEasterEgg = context.activities.find((activity) =>
+      activity.kind === "easter_egg" &&
+      activity.category === "easter_egg" &&
+      activity.status === "active" &&
+      activity.enabled &&
+      !policyActivityIds.has(activity.id)
+    );
+    if (omittedEasterEgg) {
+      throw new Error(`Active Easter Egg discovery ${omittedEasterEgg.key} requires its fixed 10/0 policy on every successor score schedule.`);
+    }
+    const errors = this.validatePolicies(policies, context);
+    if (errors.length > 0) throw new Error(errors.join(" "));
+    return policies;
+  }
+
   async generateCodes(input: AdminCodeGenerationInput, actor: AdminOperationActor): Promise<AdminCodeBatchResult> {
-    return withGamificationLocks(this.store, [`code-operation:${operationId(input.operationId)}`], () =>
+    return withGamificationLocks(this.store, ["code-inventory", `code-operation:${operationId(input.operationId)}`], () =>
       this.generateCodesNow(input, actor)
     );
   }
 
-  private async generateCodesNow(input: AdminCodeGenerationInput, actor: AdminOperationActor): Promise<AdminCodeBatchResult> {
-    const config = this.validateCodeGenerationInput(input);
+  async registerCodes(input: AdminCodeRegistrationInput, actor: AdminOperationActor): Promise<AdminCodeRegistrationResult> {
+    // Parse and snapshot before awaiting a lock; never put caller-supplied secrets in audit data.
+    if (!Array.isArray(input.rawCodes) || input.rawCodes.length < 1 || input.rawCodes.length > 100) {
+      throw new Error("Register between 1 and 100 codes per batch.");
+    }
+    const parsed = input.rawCodes.map((rawCode) => parseMissionCode(rawCode));
+    if (parsed.some((code) => !code)) throw new Error("Every supplied Mission code must have a valid format.");
+    const identities = parsed.map((code) => ({
+      lookupPrefix: code!.lookupPrefix,
+      codeHash: hashNormalizedMissionCode(code!.normalizedCode, this.codePepper),
+    }));
+    if (!uniqueKeys(identities.map((code) => code.lookupPrefix)) || !uniqueKeys(identities.map((code) => code.codeHash))) {
+      throw new Error("Supplied Mission codes and lookup prefixes must be unique.");
+    }
+    const config = this.validateCodeGenerationInput({
+      activityId: input.activityId,
+      label: input.label,
+      quantity: identities.length,
+      evidenceRole: input.evidenceRole,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
+      maxRedemptions: input.maxRedemptions,
+      perUserLimit: input.perUserLimit,
+      operationId: input.operationId,
+    });
+    assertNoSecretInput(config, "Code registration configuration");
+    // Domain separation and base64url keep this opaque payload commitment distinct from stored code hashes.
+    const payloadDigest = createHmac("sha256", this.codePepper)
+      .update(`mission-code-registration:v1:${JSON.stringify({ config, identities })}`)
+      .digest("base64url");
+    return withGamificationLocks(this.store, ["code-inventory", "configuration:gamification", `code-operation:${config.operationId}`], () =>
+      this.registerCodesNow(config, identities, payloadDigest, actor)
+    );
+  }
+
+  private async registerCodesNow(
+    config: CodeGenerationConfig,
+    identities: CodeIdentity[],
+    payloadDigest: string,
+    actor: AdminOperationActor,
+  ): Promise<AdminCodeRegistrationResult> {
+    if (!this.store.createManyAtomic) throw new Error("Code registration requires atomic batch storage.");
     const context = await this.context();
+    const priorBatch = context.codes.filter((code) => code.batch_id === config.operationId);
+    const priorAudit = await this.store.findOne(GAMIFICATION_COLLECTIONS.adminActions, { idempotency_key: auditIdempotencyKey("code_generation", config.operationId) });
+    // Reconcile existing commands first, but validation failures are not Admin Actions.
+    if (!priorAudit) {
+      if (priorBatch.length > 0) throw new Error("This batch ID belongs to another operation.");
+      this.assertCodesRegistrable(config, identities, context);
+    }
+    // Reuse the existing audit action enum; the operation kind and reason distinguish registration.
+    const audit = await this.beginAudit(actor, "code_generation", GAMIFICATION_COLLECTIONS.codes, config.operationId, config.operationId,
+      "Registered preprinted Mission code batch.", { operation: "code_registration", ...config, payloadDigest });
+    const replayed = await this.replayCodeRegistration(audit, config, identities, priorBatch);
+    if (replayed) return replayed;
+    try {
+      if (priorAudit) this.assertCodesRegistrable(config, identities, context);
+      if (audit.failed) await this.resumeAudit(audit.record.id);
+      await this.store.createManyAtomic<GamificationCodeRecord>(GAMIFICATION_COLLECTIONS.codes, codeRegistrationRows(config, identities, actor));
+    } catch (error) {
+      return this.recoverCodeRegistration(config, identities, audit.record.id, error);
+    }
+    const result = codeRegistrationReceipt(
+      config,
+      identities,
+      await this.store.list<GamificationCodeRecord>(GAMIFICATION_COLLECTIONS.codes, { batch_id: config.operationId }),
+    );
+    await this.completeAudit(audit.record.id);
+    return result;
+  }
+
+  private assertCodesRegistrable(config: CodeGenerationConfig, identities: CodeIdentity[], context: GamificationContext): void {
+    this.requireCodeGenerationActivity(config, context);
+    const prefixes = new Set(identities.map((code) => code.lookupPrefix));
+    const hashes = new Set(identities.map((code) => code.codeHash));
+    if (context.codes.some((code) => prefixes.has(code.lookup_prefix) || hashes.has(code.code_hash))) {
+      throw new Error("A supplied Mission code or lookup prefix is already registered. No codes were registered.");
+    }
+  }
+
+  private async replayCodeRegistration(
+    audit: AuditStart,
+    config: CodeGenerationConfig,
+    identities: CodeIdentity[],
+    priorBatch: GamificationCodeRecord[],
+  ): Promise<AdminCodeRegistrationResult | undefined> {
+    if ((!audit.existing || audit.failed) && priorBatch.length > 0) {
+      await this.failAudit(audit.record.id);
+      throw new Error("This batch ID belongs to another operation.");
+    }
+    if (!audit.replayed && priorBatch.length === 0) return undefined;
+    const result = codeRegistrationReceipt(config, identities, priorBatch);
+    if (!audit.replayed) await this.completeAudit(audit.record.id);
+    return result;
+  }
+
+  private async recoverCodeRegistration(
+    config: CodeGenerationConfig,
+    identities: CodeIdentity[],
+    auditId: string,
+    error: unknown,
+  ): Promise<AdminCodeRegistrationResult> {
+    // A lost atomic response may still represent a full commit. Read back exact identities.
+    const persisted = await this.store.list<GamificationCodeRecord>(GAMIFICATION_COLLECTIONS.codes, { batch_id: config.operationId });
+    if (persisted.length > 0) {
+      const result = codeRegistrationReceipt(config, identities, persisted);
+      await this.completeAudit(auditId);
+      return result;
+    }
+    await this.failAudit(auditId);
+    throw error;
+  }
+
+  private requireCodeGenerationActivity(config: AdminCodeGenerationInput, context: GamificationContext): GamificationActivityRecord {
     const activity = context.activities.find((candidate) => candidate.id === config.activityId);
     if (!activity || activity.status !== "active" || !activity.enabled) throw new Error("Choose an active enabled Activity.");
-    if (isConfiguredEventActivityKind(activity.kind) && configuredEventReference(activity.event_ref)) {
-      const mission = activity.mission ? context.missions.find((candidate) => candidate.id === activity.mission) : undefined;
-      if (!mission || mission.status !== "active") {
-        throw new Error("Activate the configured event Mission before generating its codes.");
-      }
-      const eventActivities = context.activities.filter((candidate) =>
-        candidate.mission === activity.mission && isConfiguredEventActivityKind(candidate.kind) && candidate.status !== "retired",
-      );
-      if (eventActivities.some((candidate) => candidate.status !== "active" || !candidate.enabled)) {
-        throw new Error("Activate every Activity in the configured event flow before generating its codes.");
-      }
-      const linkedAchievements = eventActivities
-        .flatMap((candidate) => candidate.achievement ? [context.achievements.find((achievement) => achievement.id === candidate.achievement)] : [])
-        .filter((achievement): achievement is GamificationAchievementRecord => Boolean(achievement));
-      if (linkedAchievements.some((achievement) => achievement.status !== "active")) {
-        throw new Error("Activate every linked configured event Badge before generating its codes.");
-      }
-      const scorePolicy = context.policies.find((policy) => policy.activity === activity.id && policy.active);
-      const scoreSchedule = scorePolicy
-        ? context.schedules.find((schedule) => schedule.id === scorePolicy.schedule)
-        : undefined;
-      if (!scorePolicy || scoreSchedule?.status !== "active" || Date.parse(scoreSchedule.effective_at) > Date.parse(config.startsAt)) {
-        throw new Error("Activate an applicable configured event score schedule before generating codes.");
-      }
-    }
-    if (activity.kind === "community_partner") {
-      const mission = activity.mission ? context.missions.find((candidate) => candidate.id === activity.mission) : undefined;
-      if (!mission || mission.status !== "active") {
-        throw new Error("Activate the Community Partner Mission before generating its codes.");
-      }
-      const programmeActivities = context.activities.filter((candidate) =>
-        candidate.mission === mission.id && candidate.kind === "community_partner" && candidate.status !== "retired",
-      );
-      if (programmeActivities.some((candidate) => candidate.status !== "active" || !candidate.enabled)) {
-        throw new Error("Activate every Activity in the Community Partner programme before generating its codes.");
-      }
-      const linkedAchievements = programmeActivities
-        .flatMap((candidate) => candidate.achievement ? [context.achievements.find((achievement) => achievement.id === candidate.achievement)] : [])
-        .filter((achievement): achievement is GamificationAchievementRecord => Boolean(achievement));
-      if (linkedAchievements.some((achievement) => achievement.status !== "active")) {
-        throw new Error("Activate every linked Community Partner Badge before generating its codes.");
-      }
-      const scorePolicy = context.policies.find((policy) => policy.activity === activity.id && policy.active);
-      const scoreSchedule = scorePolicy ? context.schedules.find((schedule) => schedule.id === scorePolicy.schedule) : undefined;
-      if (!scorePolicy || scoreSchedule?.status !== "active" || Date.parse(scoreSchedule.effective_at) > Date.parse(config.startsAt)) {
-        throw new Error("Activate an applicable Community Partner score schedule before generating codes.");
-      }
-    }
-    if (activity.kind === "easter_egg" || activity.category === "easter_egg") {
-      const mission = activity.mission ? context.missions.find((candidate) => candidate.id === activity.mission) : undefined;
-      const achievement = activity.achievement ? context.achievements.find((candidate) => candidate.id === activity.achievement) : undefined;
-      const validationErrors = this.validateEasterEggActivity(activity, mission, context);
-      if (validationErrors.length > 0 || mission?.status !== "active" || achievement?.status !== "active") {
-        throw new Error(validationErrors.join(" ") || "Activate the canonical hidden Easter Egg Mission and Badge before generating codes.");
-      }
-      const scorePolicy = context.policies.find((policy) => policy.activity === activity.id && policy.active);
-      const scoreSchedule = scorePolicy ? context.schedules.find((schedule) => schedule.id === scorePolicy.schedule) : undefined;
-      if (!scorePolicy || scoreSchedule?.status !== "active" || Date.parse(scoreSchedule.effective_at) > Date.parse(config.startsAt)) {
-        throw new Error("Activate an applicable Easter Egg score schedule before generating codes.");
-      }
-    }
-    const effectivePolicy = context.policies.find((policy) =>
-      policy.activity === activity.id &&
-      policy.active &&
-      context.schedules.some((schedule) =>
-        schedule.id === policy.schedule &&
-        schedule.status === "active" &&
-        Date.parse(schedule.effective_at) <= Date.parse(config.startsAt)
-      )
-    );
-    if (!effectivePolicy) {
+    this.assertCodeProgrammeReady(activity, context);
+    if (!hasEffectiveScorePolicy(activity, config.startsAt, context)) {
       throw new Error("Activate an applicable score schedule before generating codes for this Activity.");
     }
     if (expectedCodeRole(activity.evidence_mode) !== config.evidenceRole) {
       throw new Error("Code evidence role must match the configured Activity evidence mode.");
     }
     this.assertCodeWindowInsideActivity(config.startsAt, config.endsAt, activity);
+    return activity;
+  }
+
+  private assertCodeProgrammeReady(activity: GamificationActivityRecord, context: GamificationContext): void {
+    if (isConfiguredEventActivityKind(activity.kind) && configuredEventReference(activity.event_ref)) {
+      assertProgrammeReadyForCodes(activity, context, (candidate) => isConfiguredEventActivityKind(candidate.kind), CONFIGURED_EVENT_CODE_READINESS);
+    }
+    if (activity.kind === "community_partner") {
+      assertProgrammeReadyForCodes(activity, context, (candidate) => candidate.kind === "community_partner", COMMUNITY_PARTNER_CODE_READINESS);
+    }
+    if (isEasterEggDefinition(activity)) this.assertEasterEggReadyForCodes(activity, context);
+  }
+
+  private assertEasterEggReadyForCodes(activity: GamificationActivityRecord, context: GamificationContext): void {
+    const mission = missionFor(activity, context);
+    const achievement = findAchievement(context, activity.achievement);
+    const validationErrors = this.validateEasterEggActivity(activity, mission, context);
+    if (validationErrors.length > 0 || mission?.status !== "active" || achievement?.status !== "active") {
+      throw new Error(validationErrors.join(" ") || "Activate the canonical hidden Easter Egg Mission and Badge before generating codes.");
+    }
+  }
+
+  private async generateCodesNow(input: AdminCodeGenerationInput, actor: AdminOperationActor): Promise<AdminCodeBatchResult> {
+    const config = this.validateCodeGenerationInput(input);
+    const context = await this.context();
+    const activity = this.requireCodeGenerationActivity(config, context);
     const audit = await this.beginAudit(actor, "code_generation", GAMIFICATION_COLLECTIONS.codes, config.operationId, config.operationId, "Generated Mission code batch.", {
       batchId: config.operationId,
       activity: definitionSummary(activity),
@@ -2526,7 +4449,7 @@ export class GamificationOperationsService {
   }
 
   async reissueCode(input: AdminCodeReissueInput, actor: AdminOperationActor): Promise<AdminCodeBatchResult> {
-    return withGamificationLocks(this.store, [`code:${cleanText(input.codeId)}`], () =>
+    return withGamificationLocks(this.store, ["code-inventory", `code:${cleanText(input.codeId)}`], () =>
       this.reissueCodeNow(input, actor)
     );
   }
@@ -2535,18 +4458,8 @@ export class GamificationOperationsService {
     this.requireConfirmation(input.confirmation, "Code reissue");
     const reason = requiredReason(input.reason);
     const context = await this.context();
-    const original = context.codes.find((candidate) => candidate.id === input.codeId);
-    if (!original) throw new Error("Code was not found.");
-    const label = hasValue(input.label) ? safeOperationalLabel(input.label) : safeOperationalLabel(original.label);
-    if (!original.invalidated_at || original.status !== "disabled") {
-      throw new Error("Invalidate the original code before issuing a replacement.");
-    }
-    const activity = context.activities.find((candidate) => candidate.id === original.activity);
-    if (!activity || activity.status !== "active" || !activity.enabled) throw new Error("The original code's Activity is not active.");
-    const priorReplacement = context.codes.find((code) => code.batch_id === input.operationId && code.reissued_from === original.id);
-    if (!priorReplacement && context.codes.some((code) => code.reissued_from === original.id && code.status === "active" && code.enabled)) {
-      throw new Error("This invalidated code already has an active replacement. Invalidate that replacement before reissuing it.");
-    }
+    const code = requireReissuableCode(input, context);
+    const { original, label, activity, priorReplacement } = code;
     const audit = await this.beginAudit(actor, "code_reissue", GAMIFICATION_COLLECTIONS.codes, original.id, input.operationId, reason, {
       originalCode: { id: original.id, label: original.label, lookupPrefix: original.lookup_prefix },
       activity: definitionSummary(activity),
@@ -2559,45 +4472,33 @@ export class GamificationOperationsService {
       return this.committedLostBatch(input.operationId, priorReplacement.label, activity.id);
     }
     if (audit.failed) await this.resumeAudit(audit.record.id);
+    return this.failingAudit(audit.record.id, () => this.createReplacementCode(input, code, actor, audit.record.id));
+  }
+
+  private async createReplacementCode(
+    input: AdminCodeReissueInput,
+    code: ReissuableCode,
+    actor: AdminOperationActor,
+    auditId: string,
+  ): Promise<AdminCodeBatchResult> {
+    const generated = createMissionCodeGeneration(this.codePepper);
+    const record = await this.store.create<GamificationCodeRecord>(
+      GAMIFICATION_COLLECTIONS.codes,
+      replacementCodeRow(input, code, generated.definition, actor),
+    );
     try {
-      const generated = createMissionCodeGeneration(this.codePepper);
-      const record = await this.store.create<GamificationCodeRecord>(GAMIFICATION_COLLECTIONS.codes, {
-        key: `code-${randomUUID()}`,
-        batch_id: input.operationId,
-        label,
-        activity: activity.id,
-        lookup_prefix: generated.definition.lookupPrefix,
-        code_hash: generated.definition.codeHash,
-        hash_version: generated.definition.hashVersion,
-        evidence_role: original.evidence_role,
-        status: "active",
-        enabled: true,
-        starts_at: original.starts_at || activity.active_from || "",
-        ends_at: original.ends_at || activity.active_until || "",
-        max_redemptions: original.max_redemptions,
-        // The Activity-wide limit blocks a second award through any replacement code.
-        per_user_limit: activity.per_user_claim_limit,
-        total_redemptions_cached: 0,
-        created_by: actor.id,
-        reissued_from: original.id,
-      });
-      try {
-        await this.completeAudit(audit.record.id);
-      } catch {
-        // The replacement exists but its one-time secret cannot be recovered after an interrupted response.
-        return this.committedLostBatch(input.operationId, record.label, activity.id);
-      }
-      const redemptionUrl = `/missions/redeem#code=${generated.rawCode}`;
-      const oneTimeCode = { id: record.id, label: record.label, rawCode: generated.rawCode, redemptionUrl, qrLink: redemptionUrl };
-      return {
-        batch: { id: input.operationId, label: record.label, activityId: activity.id, quantity: 1, committed: true, secretsAvailable: true },
-        codes: [oneTimeCode],
-        csvExport: this.codeCsv([oneTimeCode]),
-      };
-    } catch (error) {
-      await this.failAudit(audit.record.id);
-      throw error;
+      await this.completeAudit(auditId);
+    } catch {
+      // The replacement exists but its one-time secret cannot be recovered after an interrupted response.
+      return this.committedLostBatch(input.operationId, record.label, code.activity.id);
     }
+    const redemptionUrl = `/missions/redeem#code=${generated.rawCode}`;
+    const oneTimeCode = { id: record.id, label: record.label, rawCode: generated.rawCode, redemptionUrl, qrLink: redemptionUrl };
+    return {
+      batch: { id: input.operationId, label: record.label, activityId: code.activity.id, quantity: 1, committed: true, secretsAvailable: true },
+      codes: [oneTimeCode],
+      csvExport: this.codeCsv([oneTimeCode]),
+    };
   }
 
   async lookupCodes(input: AdminCodeLookupInput): Promise<AdminCodeDto[]> {
@@ -2762,14 +4663,7 @@ export class GamificationOperationsService {
     this.assertSessionScorePolicy(activity, input);
     this.assertConfiguredEventScorePolicy(activity, input);
     this.assertEasterEggScorePolicy(activity, input);
-    if (activity.kind === "meta") {
-      const achievement = context.achievements.find((candidate) => candidate.id === activity.achievement);
-      const expectedBand = achievement ? metaScoreBandForRule(achievement.unlock_rule) : undefined;
-      if (!expectedBand) throw new Error("Meta Activities require an Achievement rule with at least two qualifying source entities.");
-      if (input.totalXp !== expectedBand.totalXp || input.leaderboardXp !== expectedBand.leaderboardXp) {
-        throw new Error(`This Meta Activity requires the ${expectedBand.totalXp}/${expectedBand.leaderboardXp} total/Leaderboard XP band.`);
-      }
-    }
+    this.assertMetaScorePolicy(activity, input, context);
     const body = {
       schedule: schedule.id,
       activity: activity.id,
@@ -2810,36 +4704,28 @@ export class GamificationOperationsService {
     context: GamificationContext,
   ): void {
     if (activity.kind !== "booth") return;
-    const outcome = isBoothOutcome(activity.outcome_key) ? activity.outcome_key : undefined;
-    const expected = outcome ? BOOTH_SCORE_BANDS[outcome] : undefined;
-    if (!expected || input.totalXp !== expected.totalXp || input.leaderboardXp !== expected.leaderboardXp) {
+    if (!matchesScoreBand(input, boothOutcomeBand(activity.outcome_key))) {
       throw new Error("Booth visit, participation, completion, win, and high-score policies require fixed 5/5, 10/10, 20/15, 30/25, and 35/25 total/Leaderboard XP bands.");
     }
     if (!activity.partner) throw new Error("Booth score policies require a sponsor partner.");
-    const mission = activity.mission ? context.missions.find((candidate) => candidate.id === activity.mission) : undefined;
-    if (!mission || !isBoothMissionKey(mission.key) || !cleanText(mission.partner_key) || !mission.key.startsWith(`booth.${mission.partner_key}.`)) {
+    const mission = missionFor(activity, context);
+    if (!isCanonicalBoothMission(mission)) {
       throw new Error("Booth score policies require a canonical Mission matching its immutable sponsor key.");
     }
-    const memberships = Array.isArray(input.capMembership) ? input.capMembership : [];
-    const hasMembership = (dimension: GamificationCapMembership["dimension"], key: string) =>
-      memberships.some((membership) => membership.dimension === dimension && membership.key === key);
-    if (
-      !hasMembership("activity", activity.id) ||
-      !hasMembership("related_group", boothCapGroupKey(mission.key)) ||
-      !hasMembership("partner", activity.partner) ||
-      !hasMembership("category", "booth") ||
-      !hasMembership("conference_day", input.scoreDay || "") ||
-      !hasMembership("conference", "conference")
-    ) {
+    if (!hasCapMemberships(input.capMembership, [
+      ["activity", activity.id],
+      ["related_group", boothCapGroupKey(mission.key)],
+      ["partner", activity.partner],
+      ["category", "booth"],
+      ...dayAndConferenceCaps(input.scoreDay),
+    ])) {
       throw new Error("Booth score policies require Activity, booth-group, sponsor partner, category, day, and conference cap membership.");
     }
     if (!isISODate(input.scoreDay)) {
       throw new Error("Booth score policies require a conference day; category, day, and conference caps are then derived from the configured membership.");
     }
-    for (const override of Object.values(input.capCeilingOverrides || {})) {
-      if (override && (override.total_xp_ceiling > BOOTH_CAP.totalXp || override.leaderboard_xp_ceiling > BOOTH_CAP.leaderboardXp)) {
-        throw new Error("Booth cap ceilings cannot exceed 35 total XP or 25 Leaderboard XP.");
-      }
+    if (exceedsBoothCap(input.capCeilingOverrides)) {
+      throw new Error("Booth cap ceilings cannot exceed 35 total XP or 25 Leaderboard XP.");
     }
   }
 
@@ -2849,81 +4735,30 @@ export class GamificationOperationsService {
     context: GamificationContext,
   ): void {
     if (activity.kind !== "community_partner") return;
-    const mission = activity.mission ? context.missions.find((candidate) => candidate.id === activity.mission) : undefined;
-    const approvedTwoCode = mission?.metadata?.community_two_code_approved === true &&
-      activity.metadata?.community_two_code_approved === true;
-    const directBand = isCommunityPartnerOutcome(activity.outcome_key)
-      ? COMMUNITY_PARTNER_SCORE_BANDS[activity.outcome_key]
-      : undefined;
-    const expected = approvedTwoCode
-      ? activity.evidence_mode === "two_code_start"
-        ? { totalXp: 10, leaderboardXp: 5, groupTotal: 40, groupLeaderboard: 30 }
-        : activity.evidence_mode === "two_code_finish"
-        ? { totalXp: 0, leaderboardXp: 0, groupTotal: 40, groupLeaderboard: 30 }
-        : activity.evidence_mode === "derived_claim_set"
-        ? { totalXp: 30, leaderboardXp: 25, groupTotal: 40, groupLeaderboard: 30 }
-        : undefined
-      : activity.evidence_mode === "single_code" && directBand
-      ? { ...directBand, groupTotal: directBand.totalXp, groupLeaderboard: directBand.leaderboardXp }
-      : undefined;
-    if (!expected || input.totalXp !== expected.totalXp || input.leaderboardXp !== expected.leaderboardXp) {
+    const mission = missionFor(activity, context);
+    const approvedTwoCode = isApprovedCommunityTwoCode(activity, mission);
+    const expected = communityScoreBand(activity, approvedTwoCode, TWO_CODE_SCORE_BANDS);
+    if (!expected || !matchesScoreBand(input, expected)) {
       throw new Error("Community Partner policies require fixed 20/15 attendance, 25/20 participation, 30/25 completion, or approved shared two-code score bands.");
     }
-    if (
-      !activity.partner ||
-      activity.partner_kind !== "community_partner" ||
-      !mission ||
-      mission.category !== "community" ||
-      mission.partner !== activity.partner ||
-      !cleanText(mission.partner_key) ||
-      !mission.key.startsWith(`community.${mission.partner_key}.`)
-    ) {
+    if (!isCanonicalCommunityPolicyMission(activity, mission)) {
       throw new Error("Community Partner score policies require a canonical Mission and explicit gamification partner classification.");
     }
-    const memberships = Array.isArray(input.capMembership) ? input.capMembership : [];
-    const hasMembership = (dimension: GamificationCapMembership["dimension"], key: string) =>
-      memberships.some((membership) => membership.dimension === dimension && membership.key === key);
-    if (
-      !hasMembership("activity", activity.id) ||
-      !hasMembership("related_group", mission.key) ||
-      !hasMembership("partner", activity.partner) ||
-      !hasMembership("category", "community") ||
-      !hasMembership("conference_day", input.scoreDay || "") ||
-      !hasMembership("conference", "conference") ||
-      !isISODate(input.scoreDay)
-    ) {
+    if (!hasCommunityPolicyCaps(activity, mission, input)) {
       throw new Error("Community Partner score policies require Activity, programme, partner, category, day, and conference cap membership.");
     }
-    const relatedOverride = input.capCeilingOverrides?.related_group;
-    const validOneCodeCeiling = !approvedTwoCode && relatedOverride &&
-      Object.values(COMMUNITY_PARTNER_SCORE_BANDS).some((band) =>
-        band.totalXp === relatedOverride.total_xp_ceiling && band.leaderboardXp === relatedOverride.leaderboard_xp_ceiling
-      ) &&
-      relatedOverride.total_xp_ceiling >= expected.totalXp &&
-      relatedOverride.leaderboard_xp_ceiling >= expected.leaderboardXp;
-    if (
-      !relatedOverride ||
-      (approvedTwoCode
-        ? relatedOverride.total_xp_ceiling !== 40 || relatedOverride.leaderboard_xp_ceiling !== 30
-        : !validOneCodeCeiling)
-    ) {
+    if (!hasValidCommunityGroupCeiling(input.capCeilingOverrides?.related_group, approvedTwoCode, expected)) {
       throw new Error(`Community Partner programme scoring requires a valid shared related-group ceiling for its highest configured outcome.`);
     }
   }
 
   private assertSessionScorePolicy(activity: GamificationActivityRecord, input: AdminScorePolicyInput): void {
     if (activity.kind !== "session") return;
-    const memberships = Array.isArray(input.capMembership) ? input.capMembership : [];
-    const hasMembership = (dimension: GamificationCapMembership["dimension"], key: string) =>
-      memberships.some((membership) => membership.dimension === dimension && membership.key === key);
     if (input.totalXp !== 20 || input.leaderboardXp !== 15) {
       throw new Error("Session attendance policies require the fixed 20/15 total/Leaderboard XP band.");
     }
     if (
-      !hasMembership("activity", activity.id) ||
-      !hasMembership("category", "session") ||
-      !hasMembership("conference_day", input.scoreDay || "") ||
-      !hasMembership("conference", "conference") ||
+      !hasCapMemberships(input.capMembership, [["activity", activity.id], ["category", "session"], ...dayAndConferenceCaps(input.scoreDay)]) ||
       !isISODate(input.scoreDay)
     ) {
       throw new Error("Session attendance policies require Activity, session category, day, and conference cap membership.");
@@ -2932,60 +4767,29 @@ export class GamificationOperationsService {
 
   private assertConfiguredEventScorePolicy(activity: GamificationActivityRecord, input: AdminScorePolicyInput): void {
     if (!isConfiguredEventActivityKind(activity.kind) || !configuredEventReference(activity.event_ref)) return;
-    const expected = activity.evidence_mode === "single_code"
-      ? { totalXp: 30, leaderboardXp: 25, groupTotal: 30, groupLeaderboard: 25 }
-      : activity.evidence_mode === "two_code_start"
-      ? { totalXp: 10, leaderboardXp: 5, groupTotal: 40, groupLeaderboard: 30 }
-      : activity.evidence_mode === "two_code_finish"
-      ? { totalXp: 0, leaderboardXp: 0, groupTotal: 40, groupLeaderboard: 30 }
-      : activity.evidence_mode === "derived_claim_set"
-      ? { totalXp: 30, leaderboardXp: 25, groupTotal: 40, groupLeaderboard: 30 }
-      : undefined;
-    if (!expected || input.totalXp !== expected.totalXp || input.leaderboardXp !== expected.leaderboardXp) {
+    const expected = CONFIGURED_EVENT_SCORE_BANDS.get(activity.evidence_mode);
+    if (!expected || !matchesScoreBand(input, expected)) {
       throw new Error("Configured event policies require fixed 30/25 attendance, 10/5 start, 0/0 finish, and 30/25 derived completion bands.");
     }
-    const eventRef = configuredEventReference(activity.event_ref)!;
     const capGroupKey = cleanKey(activity.metadata?.cap_group_key);
-    const memberships = Array.isArray(input.capMembership) ? input.capMembership : [];
-    const hasMembership = (dimension: GamificationCapMembership["dimension"], key: string) =>
-      memberships.some((membership) => membership.dimension === dimension && membership.key === key);
-    if (
-      !hasMembership("activity", activity.id) ||
-      !capGroupKey ||
-      !hasMembership("related_group", capGroupKey) ||
-      !hasMembership("category", activity.category) ||
-      !hasMembership("conference_day", input.scoreDay || "") ||
-      !hasMembership("conference", "conference") ||
-      !isISODate(input.scoreDay)
-    ) {
+    if (!hasConfiguredEventPolicyCaps(activity, capGroupKey, input)) {
       throw new Error("Configured event policies require Activity, related-event, category, day, and conference cap membership.");
     }
-    if (memberships.some((membership) => membership.dimension === "partner")) {
+    if (hasPartnerCapMembership(input.capMembership)) {
       throw new Error("Optional event host attribution must not create Partner Activity scoring.");
     }
-    const relatedOverride = input.capCeilingOverrides?.related_group;
-    if (
-      !relatedOverride ||
-      relatedOverride.total_xp_ceiling !== expected.groupTotal ||
-      relatedOverride.leaderboard_xp_ceiling !== expected.groupLeaderboard
-    ) {
+    if (!matchesGroupCeiling(input.capCeilingOverrides?.related_group, expected)) {
       throw new Error(`Configured event related-group scoring requires the ${expected.groupTotal}/${expected.groupLeaderboard} ceiling.`);
     }
   }
 
   private assertEasterEggScorePolicy(activity: GamificationActivityRecord, input: AdminScorePolicyInput): void {
-    if (activity.kind !== "easter_egg" && activity.category !== "easter_egg") return;
+    if (!isEasterEggDefinition(activity)) return;
     if (input.totalXp !== 10 || input.leaderboardXp !== 0) {
       throw new Error("Easter egg discovery policies require the fixed 10/0 total/Leaderboard XP band.");
     }
     const memberships = Array.isArray(input.capMembership) ? input.capMembership : [];
-    const expected = new Set([
-      `activity:${activity.id}`,
-      "category:easter_egg",
-      "conference:conference",
-    ]);
-    const actual = new Set(memberships.map((membership) => `${membership.dimension}:${membership.key}`));
-    if (actual.size !== expected.size || [...expected].some((membership) => !actual.has(membership))) {
+    if (!sameMembershipSet(memberships, [`activity:${activity.id}`, "category:easter_egg", "conference:conference"])) {
       throw new Error("Easter egg discovery policies require only Activity, easter-egg category, and conference cap membership.");
     }
     if (input.scoreDay || Object.keys(input.capCeilingOverrides || {}).length > 0) {
@@ -2993,78 +4797,32 @@ export class GamificationOperationsService {
     }
   }
 
+  private assertMetaScorePolicy(activity: GamificationActivityRecord, input: AdminScorePolicyInput, context: GamificationContext): void {
+    if (activity.kind !== "meta") return;
+    const achievement = context.achievements.find((candidate) => candidate.id === activity.achievement);
+    const expectedBand = achievement ? metaScoreBandForRule(achievement.unlock_rule) : undefined;
+    if (!expectedBand) throw new Error("Meta Activities require an Achievement rule with at least two qualifying source entities.");
+    if (input.totalXp !== expectedBand.totalXp || input.leaderboardXp !== expectedBand.leaderboardXp) {
+      throw new Error(`This Meta Activity requires the ${expectedBand.totalXp}/${expectedBand.leaderboardXp} total/Leaderboard XP band.`);
+    }
+  }
+
   private validateMetaAchievement(achievement: GamificationAchievementRecord, context: GamificationContext): string[] {
-    const errors: string[] = [];
     const rule = achievement.unlock_rule;
     const sourceKeys = metaRuleActivityKeys(rule);
     if (rule.kind !== "claim_set" && rule.kind !== "claim_count") {
-      errors.push("Meta Achievements support only claim-set or selected-source claim-count rules.");
-      return errors;
-    }
-    if (sourceKeys.length === 0) errors.push("Meta Achievements require selected qualifying source Activities.");
-    const breadth = metaRuleSourceBreadth(rule);
-    if (!breadth || breadth < 2) errors.push("Meta Achievements require at least two qualifying source entities.");
-    if (rule.kind === "claim_set" && sourceKeys.length !== breadth) {
-      errors.push("Meta claim sets must name each exact qualifying Activity once.");
-    }
-    if (rule.kind === "claim_count" && (!isPositiveInteger(rule.count) || rule.count! > sourceKeys.length)) {
-      errors.push("Meta claim counts require a positive count within the selected source Activities.");
+      return ["Meta Achievements support only claim-set or selected-source claim-count rules."];
     }
     const selectedSources = selectedMetaSourceActivities(rule, context.activities);
-    if (selectedSources.length !== sourceKeys.length) errors.push("Every Meta source Activity must be configured exactly once.");
-    const diversity = metaRuleDiversity(rule);
-    const requiredDiversity = selectedSources.length >= 2 && selectedSources.every((activity) => activity.kind === "session")
-      ? "session"
-      : selectedSources.length >= 2 && selectedSources.every((activity) => activity.kind === "booth")
-      ? "booth"
-      : selectedSources.length >= 2 && selectedSources.every((activity) => activity.kind === "community_partner")
-      ? "community"
-      : undefined;
-    if (requiredDiversity && diversity !== requiredDiversity) {
-      errors.push(`Cross-${requiredDiversity} Meta Achievements require explicit ${requiredDiversity} source diversity.`);
-    }
-    if (diversity) {
-      const entityKeys = selectedSources.map((activity) => metaSourceEntityKey(activity, diversity));
-      if (entityKeys.some((key) => !key)) {
-        errors.push(`Meta ${diversity} diversity sources require the matching configured source reference.`);
-      } else if (new Set(entityKeys).size !== entityKeys.length) {
-        errors.push(`Meta ${diversity} diversity cannot count multiple Activities from one source entity.`);
-      }
-    }
-    if (context.missions.some((mission) => mission.primary_achievement === achievement.id)) {
-      errors.push("Meta Achievements cannot be attached to a redeemable Mission.");
-    }
-    const linkedActivities = context.activities.filter((activity) => activity.achievement === achievement.id);
-    const metaActivities = linkedActivities.filter((activity) => activity.kind === "meta");
-    if (linkedActivities.length !== 1 || metaActivities.length !== 1) {
-      errors.push("Meta Achievements require exactly one linked Meta Activity and no direct source Activity.");
-      return errors;
-    }
-    const metaActivity = metaActivities[0];
-    if (metaActivity.key !== `meta.${achievement.key}`) {
-      errors.push("Meta Activity key must be the canonical meta.{achievementKey} value.");
-    }
-    if (
-      metaActivity.category !== "meta" ||
-      metaActivity.outcome_key !== "meta" ||
-      metaActivity.evidence_mode !== "meta_rule" ||
-      metaActivity.mission ||
-      metaActivity.per_user_claim_limit !== 1 ||
-      metaActivity.status !== "active" ||
-      !metaActivity.enabled
-    ) {
-      errors.push("The linked Meta Activity must be active, missionless, one-per-User, meta-rule evidence.");
-    }
-    const expectedBand = metaScoreBandForRule(rule);
-    const policies = context.policies.filter((policy) => policy.activity === metaActivity.id && policy.active);
-    if (!expectedBand || policies.length === 0) {
-      errors.push("Meta Achievements require an active fixed-band score policy.");
-    } else if (policies.some((policy) =>
-      policy.total_xp !== expectedBand.totalXp || policy.leaderboard_xp !== expectedBand.leaderboardXp,
-    )) {
-      errors.push(`Meta source breadth requires the ${expectedBand.totalXp}/${expectedBand.leaderboardXp} total/Leaderboard XP band.`);
-    }
-    return errors;
+    return [
+      ...metaRuleErrors(rule, sourceKeys, selectedSources),
+      ...metaDiversityErrors(rule, selectedSources),
+      ...failedChecks([[
+        context.missions.some((mission) => mission.primary_achievement === achievement.id),
+        "Meta Achievements cannot be attached to a redeemable Mission.",
+      ]]),
+      ...metaLinkedActivityErrors(achievement, rule, context),
+    ];
   }
 
   private validateConfiguredEventActivity(
@@ -3072,131 +4830,21 @@ export class GamificationOperationsService {
     mission: GamificationMissionRecord | undefined,
     context: GamificationContext,
   ): string[] {
-    const errors: string[] = [];
     const eventRef = configuredEventReference(activity.event_ref);
     if (!eventRef) return ["Configured event Activities require a complete immutable event reference."];
-    const expectedKind = configuredEventActivityKind(eventRef.kind);
-    const expectedCategory = configuredEventCategory(eventRef.kind);
-    const missionKey = configuredEventMissionKey(eventRef.kind, eventRef.eventKey);
-    if (
-      activity.kind !== expectedKind ||
-      activity.category !== expectedCategory ||
-      !mission ||
-      mission.key !== missionKey ||
-      mission.category !== expectedCategory ||
-      !sameConfiguredEventReference(mission.event_ref, eventRef)
-    ) {
-      errors.push("Configured event Mission and Activity references, kinds, and categories must match.");
-    }
-    if (
-      activity.active_from !== eventRef.startsAt ||
-      activity.active_until !== eventRef.endsAt ||
-      mission?.starts_at !== eventRef.startsAt ||
-      mission?.ends_at !== eventRef.endsAt ||
-      mission?.visibility !== eventRef.visibility
-    ) {
-      errors.push("Configured event operating windows and visibility must match the immutable event reference.");
-    }
-    const capGroupKey = cleanKey(activity.metadata?.cap_group_key);
-    if (!capGroupKey || capGroupKey !== cleanKey(mission?.metadata?.cap_group_key)) {
-      errors.push("Configured event Mission and Activities require one matching immutable cap group key.");
-    }
-    if (typeof activity.event_meta_eligible !== "boolean") {
-      errors.push("Configured event Activities must explicitly register Meta eligibility.");
-    }
-    if (activity.partner || mission?.partner) {
-      if (
-        !activity.partner ||
-        activity.partner !== mission?.partner ||
-        activity.partner_kind !== "workshop_host" ||
-        !context.partners.some((partner) => partner.id === activity.partner)
-      ) {
-        errors.push("Optional event host attribution must use the same existing host partner on the Mission and Activities.");
-      }
-    } else if (activity.partner_kind) {
-      errors.push("WTS-run events must not have a partner kind without a host relation.");
-    }
-    const eventActivities = context.activities.filter((candidate) =>
-      candidate.mission === activity.mission &&
-      candidate.status !== "retired" &&
-      isConfiguredEventActivityKind(candidate.kind),
-    );
-    const oneCode = eventActivities.length === 1 && eventActivities[0].evidence_mode === "single_code";
-    const start = eventActivities.find((candidate) => candidate.evidence_mode === "two_code_start");
-    const finish = eventActivities.find((candidate) => candidate.evidence_mode === "two_code_finish");
-    const completion = eventActivities.find((candidate) => candidate.evidence_mode === "derived_claim_set");
-    const twoCode = eventActivities.length === 3 && Boolean(start && finish && completion);
-    if (!oneCode && !twoCode) errors.push("Configured events require either one attendance Activity or one start, finish, and derived completion Activity.");
-    if (twoCode && eventRef.kind !== "workshop" && mission?.metadata?.related_event_two_code_approved !== true) {
-      errors.push("Two-code completion outside workshops requires recorded explicit organizer approval.");
-    }
-    const expectedKey = activity.evidence_mode === "single_code"
-      ? `${missionKey}.attendance`
-      : activity.evidence_mode === "two_code_start"
-      ? `${missionKey}.start`
-      : activity.evidence_mode === "two_code_finish"
-      ? `${missionKey}.finish`
-      : activity.evidence_mode === "derived_claim_set" ? `${missionKey}.completion` : "";
-    if (!expectedKey || activity.key !== expectedKey) errors.push("Configured event Activity key does not match its immutable event outcome.");
-    if (activity.evidence_mode === "single_code" || activity.evidence_mode === "two_code_start" || activity.evidence_mode === "two_code_finish") {
-      if (!isEvidenceChannel(activity.evidence_channel) || !cleanText(activity.deployment_label)) {
-        errors.push("Configured event code Activities require a WTS-controlled evidence channel and deployment artifact.");
-      }
-    } else if (activity.evidence_mode === "derived_claim_set") {
-      if (activity.evidence_channel || cleanText(activity.deployment_label)) {
-        errors.push("Derived event completion must not have a redeemable artifact.");
-      }
-    }
-    if (oneCode && activity.event_meta_eligible !== true && eventActivities.some((candidate) => candidate.event_meta_eligible)) {
-      errors.push("One-code events may register only their attendance Activity for Meta.");
-    }
-    if (twoCode) {
-      if (start?.event_meta_eligible || finish?.event_meta_eligible || typeof completion?.event_meta_eligible !== "boolean") {
-        errors.push("Two-code events may register only their derived completion Activity for Meta.");
-      }
-      const achievement = completion?.achievement
-        ? context.achievements.find((candidate) => candidate.id === completion.achievement)
-        : undefined;
-      const rule = achievement && safeUnlockRule(achievement.unlock_rule);
-      if (
-        !achievement ||
-        rule?.kind !== "claim_set" ||
-        JSON.stringify([...(rule.activityKeys || [])].sort()) !== JSON.stringify([start?.key, finish?.key].sort())
-      ) {
-        errors.push("Derived event completion requires the exact start-and-finish Achievement claim set.");
-      }
-    }
-    const directActivity = oneCode ? eventActivities[0] : start;
-    if (directActivity?.achievement) {
-      const achievement = context.achievements.find((candidate) => candidate.id === directActivity.achievement);
-      const rule = achievement && safeUnlockRule(achievement.unlock_rule);
-      if (
-        !achievement ||
-        rule?.kind !== "activity_claim" ||
-        ((rule.activityKeys?.length || 0) > 0 && !rule.activityKeys?.includes(directActivity.key))
-      ) {
-        errors.push("Configured event attendance Badges require the direct attendance/start Activity-claim rule.");
-      }
-    }
-    const policies = context.policies.filter((policy) => policy.activity === activity.id && policy.active);
-    if (policies.length === 0) errors.push("Configured event Activities require an active score policy.");
-    for (const policy of policies) {
-      try {
-        this.assertConfiguredEventScorePolicy(activity, {
-          scheduleId: policy.schedule,
-          policyKey: policy.policy_key,
-          enabled: policy.active,
-          totalXp: policy.total_xp,
-          leaderboardXp: policy.leaderboard_xp,
-          capMembership: policy.cap_membership,
-          capCeilingOverrides: policy.cap_ceiling_overrides,
-          scoreDay: policy.score_day,
-        });
-      } catch (error) {
-        errors.push(error instanceof Error ? error.message : "Configured event score policy is invalid.");
-      }
-    }
-    return errors;
+    const flow = configuredEventFlow(activity, context);
+    return [
+      ...configuredEventReferenceErrors(activity, mission, eventRef),
+      ...configuredEventHostErrors(activity, mission, context),
+      ...configuredEventFlowErrors(activity, mission, eventRef, flow),
+      ...configuredEventBadgeErrors(flow, context),
+      ...policyAssertionErrors(
+        activePoliciesFor(activity.id, context),
+        "Configured event Activities require an active score policy.",
+        "Configured event score policy is invalid.",
+        (input) => this.assertConfiguredEventScorePolicy(activity, input),
+      ),
+    ];
   }
 
   private validateCommunityPartnerActivity(
@@ -3204,140 +4852,23 @@ export class GamificationOperationsService {
     mission: GamificationMissionRecord | undefined,
     context: GamificationContext,
   ): string[] {
-    const errors: string[] = [];
-    const partnerKey = cleanKey(mission?.partner_key);
-    if (
-      activity.category !== "community" ||
-      activity.partner_kind !== "community_partner" ||
-      !activity.partner ||
-      !context.partners.some((partner) => partner.id === activity.partner) ||
-      !mission ||
-      mission.category !== "community" ||
-      mission.partner !== activity.partner ||
-      !partnerKey ||
-      !mission.key.startsWith(`community.${partnerKey}.`)
-    ) {
-      errors.push("Community Partner Activities require a canonical Community Mission and explicit gamification partner classification.");
-      return errors;
+    if (!isCanonicalCommunityActivity(activity, mission, context)) {
+      return ["Community Partner Activities require a canonical Community Mission and explicit gamification partner classification."];
     }
-    if (mission.visibility !== "public" && mission.suggested) {
-      errors.push("Only explicitly public Community Partner Missions may be suggested.");
-    }
-    if (typeof activity.community_meta_eligible !== "boolean") {
-      errors.push("Community Partner Activities must explicitly register Meta eligibility.");
-    }
-    const programmeActivities = context.activities.filter((candidate) =>
-      candidate.mission === mission.id && candidate.kind === "community_partner" && candidate.status !== "retired",
-    );
-    const oneCode = programmeActivities.length >= 1 && programmeActivities.length <= 3 &&
-      programmeActivities.every((candidate) => candidate.evidence_mode === "single_code") &&
-      programmeActivities.every((candidate) => isCommunityPartnerOutcome(candidate.outcome_key)) &&
-      uniqueKeys(programmeActivities.map((candidate) => candidate.outcome_key));
-    const start = programmeActivities.find((candidate) => candidate.evidence_mode === "two_code_start");
-    const finish = programmeActivities.find((candidate) => candidate.evidence_mode === "two_code_finish");
-    const completion = programmeActivities.find((candidate) => candidate.evidence_mode === "derived_claim_set");
-    const twoCode = programmeActivities.length === 3 && Boolean(start && finish && completion);
-    if (!oneCode && !twoCode) {
-      errors.push("Community Partner programmes require one selected outcome or one approved start, finish, and derived completion flow.");
-    }
-    if (twoCode && mission.metadata?.community_two_code_approved !== true) {
-      errors.push("Community Partner two-code completion requires recorded explicit organizer approval.");
-    }
-    if (oneCode && !isCommunityPartnerOutcome(activity.outcome_key)) {
-      errors.push("Community Partner one-code Activities support attendance, participation, or completion only.");
-    }
-    const expectedKey = oneCode && isCommunityPartnerOutcome(activity.outcome_key)
-      ? communityPartnerActivityKey(mission.key, activity.outcome_key)
-      : activity.evidence_mode === "two_code_start"
-      ? communityPartnerActivityKey(mission.key, "start")
-      : activity.evidence_mode === "two_code_finish"
-      ? communityPartnerActivityKey(mission.key, "finish")
-      : activity.evidence_mode === "derived_claim_set" ? communityPartnerActivityKey(mission.key, "completion") : "";
-    if (!expectedKey || activity.key !== expectedKey) errors.push("Community Partner Activity key does not match its immutable programme outcome.");
-    if (["single_code", "two_code_start", "two_code_finish"].includes(activity.evidence_mode)) {
-      if (!isEvidenceChannel(activity.evidence_channel) || !cleanText(activity.deployment_label)) {
-        errors.push("Community Partner code Activities require a WTS-controlled evidence channel and deployment artifact.");
-      }
-    } else if (activity.evidence_mode === "derived_claim_set" && (activity.evidence_channel || cleanText(activity.deployment_label))) {
-      errors.push("Derived Community Partner completion must not have a redeemable artifact.");
-    }
-    const metaActivities = programmeActivities.filter((candidate) => candidate.community_meta_eligible === true);
-    if (metaActivities.length > 1 || (twoCode && metaActivities.some((candidate) => candidate.id !== completion?.id))) {
-      errors.push("At most one designated qualifying Activity per Community Partner programme may register with Meta rules.");
-    }
-    if (twoCode && (start?.community_meta_eligible || finish?.community_meta_eligible || typeof completion?.community_meta_eligible !== "boolean")) {
-      errors.push("Community Partner two-code programmes may register only derived completion with Meta rules.");
-    }
-    if (twoCode) {
-      const achievement = completion?.achievement
-        ? context.achievements.find((candidate) => candidate.id === completion.achievement)
-        : undefined;
-      const rule = achievement && safeUnlockRule(achievement.unlock_rule);
-      if (
-        !achievement ||
-        achievement.category !== "community" ||
-        rule?.kind !== "claim_set" ||
-        JSON.stringify([...(rule.activityKeys || [])].sort()) !== JSON.stringify([start?.key, finish?.key].sort())
-      ) {
-        errors.push("Derived Community Partner completion requires the exact start-and-finish Community Badge claim set.");
-      }
-    }
-    const directActivities = oneCode ? programmeActivities : start ? [start] : [];
-    for (const directActivity of directActivities) {
-      const directAchievement = directActivity.achievement
-        ? context.achievements.find((candidate) => candidate.id === directActivity.achievement)
-        : undefined;
-      const directRule = directAchievement && safeUnlockRule(directAchievement.unlock_rule);
-      if (
-        !directAchievement ||
-        directAchievement.category !== "community" ||
-        directRule?.kind !== "activity_claim" ||
-        ((directRule.activityKeys?.length || 0) > 0 && !directRule.activityKeys?.includes(directActivity.key))
-      ) {
-        errors.push("Community Partner direct Activities require distinct Community Activity-claim Badges.");
-      }
-    }
-    const followUpActivities = programmeActivities.filter((candidate) => candidate.partner_follow_up_enabled);
-    if (
-      (!oneCode && followUpActivities.some((candidate) => candidate.id !== completion?.id)) ||
-      followUpActivities.some((candidate) => !cleanText(candidate.partner_follow_up_notice_version))
-    ) {
-      errors.push("Community Partner follow-up may be configured only on the programme's qualifying outcome with a notice version.");
-    }
-    if (oneCode) {
-      const ceiling = programmeActivities.reduce((current, candidate) => {
-        const band = isCommunityPartnerOutcome(candidate.outcome_key) ? COMMUNITY_PARTNER_SCORE_BANDS[candidate.outcome_key] : undefined;
-        return band && band.totalXp > current.totalXp ? band : current;
-      }, { totalXp: 0, leaderboardXp: 0 });
-      const programmePolicies = context.policies.filter((policy) =>
-        programmeActivities.some((candidate) => candidate.id === policy.activity) && policy.active
-      );
-      if (programmePolicies.some((policy) =>
-        policy.cap_ceiling_overrides?.related_group?.total_xp_ceiling !== ceiling.totalXp ||
-        policy.cap_ceiling_overrides?.related_group?.leaderboard_xp_ceiling !== ceiling.leaderboardXp
-      )) {
-        errors.push("Every Community Partner programme policy must share its highest active outcome ceiling.");
-      }
-    }
-    const policies = context.policies.filter((policy) => policy.activity === activity.id && policy.active);
-    if (policies.length === 0) errors.push("Community Partner Activities require an active direct score policy.");
-    for (const policy of policies) {
-      try {
-        this.assertCommunityPartnerScorePolicy(activity, {
-          scheduleId: policy.schedule,
-          policyKey: policy.policy_key,
-          enabled: policy.active,
-          totalXp: policy.total_xp,
-          leaderboardXp: policy.leaderboard_xp,
-          capMembership: policy.cap_membership,
-          capCeilingOverrides: policy.cap_ceiling_overrides,
-          scoreDay: policy.score_day,
-        }, context);
-      } catch (error) {
-        errors.push(error instanceof Error ? error.message : "Community Partner score policy is invalid.");
-      }
-    }
-    return errors;
+    const flow = communityProgrammeFlow(mission, context);
+    return [
+      ...communityProgrammeShapeErrors(activity, mission, flow),
+      ...communityProgrammeMetaErrors(flow),
+      ...communityProgrammeBadgeErrors(flow, context),
+      ...communityProgrammeFollowUpErrors(flow),
+      ...communityProgrammeCeilingErrors(flow, context),
+      ...policyAssertionErrors(
+        activePoliciesFor(activity.id, context),
+        "Community Partner Activities require an active direct score policy.",
+        "Community Partner score policy is invalid.",
+        (input) => this.assertCommunityPartnerScorePolicy(activity, input, context),
+      ),
+    ];
   }
 
   private validateEasterEggActivity(
@@ -3345,397 +4876,91 @@ export class GamificationOperationsService {
     mission: GamificationMissionRecord | undefined,
     context: GamificationContext,
   ): string[] {
-    const errors: string[] = [];
-    const match = /^easter_egg\.([a-z0-9]+(?:-[a-z0-9]+)*)\.discovery$/.exec(activity.key);
-    const expectedMissionKey = match ? `easter_egg.${match[1]}` : "";
-    const achievement = activity.achievement
-      ? context.achievements.find((candidate) => candidate.id === activity.achievement)
-      : undefined;
-    if (
-      activity.kind !== "easter_egg" ||
-      activity.category !== "easter_egg" ||
-      activity.outcome_key !== "static_discovery" ||
-      activity.evidence_mode !== "static_puzzle_code" ||
-      !match
-    ) {
-      errors.push("Easter egg Activities require the canonical easter_egg.{eggKey}.discovery static-discovery shape.");
-    }
-    if (
-      !mission ||
-      mission.key !== expectedMissionKey ||
-      mission.category !== "easter_egg" ||
-      mission.visibility !== "hidden_until_unlocked" ||
-      mission.suggested ||
-      mission.primary_achievement !== activity.achievement ||
-      mission.partner ||
-      cleanText(mission.partner_key) ||
-      mission.session ||
-      safeEventRef(mission.event_ref)
-    ) {
-      errors.push("Easter egg discovery requires one hidden, unsuggested, relation-free canonical Mission.");
-    }
-    const missionActivities = mission ? context.activities.filter((candidate) =>
-      candidate.mission === mission.id && candidate.status !== "retired"
-    ) : [];
-    if (missionActivities.length !== 1 || missionActivities[0]?.id !== activity.id) {
-      errors.push("Each Easter Egg Mission requires exactly one non-retired discovery Activity.");
-    }
-    const rule = achievement && safeUnlockRule(achievement.unlock_rule);
-    if (
-      !achievement ||
-      achievement.key !== expectedMissionKey ||
-      achievement.category !== "easter_egg" ||
-      achievement.visibility !== "hidden_until_unlocked" ||
-      cleanText(achievement.locked_teaser) ||
-      rule?.kind !== "activity_claim"
-    ) {
-      errors.push("Easter egg discovery requires its hidden-until-unlocked direct Activity-claim Badge without locked teaser copy.");
-    }
-    if (
-      !(["wts_qr", "wts_link", "wts_manual_code"] as string[]).includes(activity.evidence_channel || "") ||
-      !cleanText(activity.deployment_label)
-    ) {
-      errors.push("Easter egg discovery requires a WTS-controlled static QR, fragment link, or manual-code surface and private deployment note.");
-    }
-    if (activity.partner || activity.partner_kind || activity.session || safeEventRef(activity.event_ref)) {
-      errors.push("Easter egg discovery must not carry partner, staff, Session, or event privileges or relations.");
-    }
-    if (
-      mission && (
-        mission.starts_at !== activity.active_from ||
-        mission.ends_at !== activity.active_until ||
-        achievement && (achievement.active_from !== activity.active_from || achievement.active_until !== activity.active_until)
-      )
-    ) {
-      errors.push("Easter egg Mission, discovery Activity, and Badge must share one active window.");
-    }
-    const policies = context.policies.filter((policy) => policy.activity === activity.id && policy.active);
-    if (policies.length === 0) errors.push("Easter egg discovery requires an active fixed score policy.");
-    for (const policy of policies) {
-      try {
-        this.assertEasterEggScorePolicy(activity, {
-          scheduleId: policy.schedule,
-          policyKey: policy.policy_key,
-          enabled: policy.active,
-          totalXp: policy.total_xp,
-          leaderboardXp: policy.leaderboard_xp,
-          capMembership: policy.cap_membership,
-          capCeilingOverrides: policy.cap_ceiling_overrides,
-          scoreDay: policy.score_day,
-        });
-      } catch (error) {
-        errors.push(error instanceof Error ? error.message : "Easter egg score policy is invalid.");
-      }
-    }
-    return errors;
+    return [
+      ...easterEggDiscoveryErrors(activity, mission, context),
+      ...policyAssertionErrors(
+        activePoliciesFor(activity.id, context),
+        "Easter egg discovery requires an active fixed score policy.",
+        "Easter egg score policy is invalid.",
+        (input) => this.assertEasterEggScorePolicy(activity, input),
+      ),
+    ];
   }
 
   private validateForActivation(kind: GamificationDefinitionKind, id: string, context: GamificationContext): string[] {
-    const errors: string[] = [];
     if (kind === "achievement") {
-      const achievement = context.achievements.find((candidate) => candidate.id === id)!;
-      if (!cleanText(achievement.badge_name) || !cleanText(achievement.badge_description)) errors.push("Badge presentation is incomplete.");
-      hasRequiredWindow(achievement.active_from, achievement.active_until, "Achievement", errors);
-      const rule = safeUnlockRule(achievement.unlock_rule);
-      if (!isUnlockRuleKind(rule.kind)) errors.push("Achievement unlock rule is invalid.");
-      const activityKeys = rule.activityKeys || [];
-      if (!uniqueKeys(activityKeys)) errors.push("Achievement unlock rule repeats an Activity.");
-      if (achievement.category === "meta") {
-        errors.push(...this.validateMetaAchievement(achievement, context));
-      } else if (achievement.category === "easter_egg" || achievement.key.startsWith("easter_egg.")) {
-        const mission = context.missions.find((candidate) => candidate.primary_achievement === achievement.id && candidate.status !== "retired");
-        const activity = context.activities.find((candidate) => candidate.achievement === achievement.id && candidate.status !== "retired");
-        if (
-          !/^easter_egg\.[a-z0-9]+(?:-[a-z0-9]+)*$/.test(achievement.key) ||
-          achievement.visibility !== "hidden_until_unlocked" ||
-          cleanText(achievement.locked_teaser) ||
-          rule.kind !== "activity_claim" ||
-          !mission ||
-          !activity ||
-          mission.key !== achievement.key ||
-          activity.key !== `${achievement.key}.discovery`
-        ) {
-          errors.push("Easter egg Badges require one matching hidden Mission and direct static-discovery Activity with spoiler-safe post-unlock copy.");
-        }
-      } else {
-        if (rule.kind === "claim_set" && activityKeys.length < 2) errors.push("Claim-set Achievements require at least two Activities.");
-        if (rule.kind === "claim_count" && (!isPositiveInteger(rule.count) || (!rule.category && activityKeys.length === 0))) {
-          errors.push("Claim-count Achievements require a positive count and qualifying Activities or category.");
-        }
-      }
-      for (const activityKey of activityKeys) {
-        const activity = context.activities.find((candidate) => candidate.id === activityKey || candidate.key === activityKey);
-        if (!activity || activity.status !== "active" || !activity.enabled) {
-          errors.push(`Achievement dependency ${activityKey} is not active.`);
-        }
-      }
-      return errors;
+      return this.validateAchievementForActivation(context.achievements.find((candidate) => candidate.id === id)!, context);
     }
-    if (kind === "mission") {
-      const mission = context.missions.find((candidate) => candidate.id === id)!;
-      if (!cleanText(mission.title) || !cleanText(mission.summary)) errors.push("Mission title and summary are required.");
-      hasRequiredWindow(mission.starts_at, mission.ends_at, "Mission", errors);
-      if (mission.primary_achievement) {
-        const achievement = context.achievements.find((candidate) => candidate.id === mission.primary_achievement);
-        if (!achievement || achievement.status !== "active") errors.push("Mission primary Achievement must be active.");
-        if (achievement && achievement.category !== mission.category) errors.push("Mission and primary Achievement categories must match.");
-      }
-      const eventRef = configuredEventReference(mission.event_ref);
-      if (eventRef) {
-        if (
-          mission.key !== configuredEventMissionKey(eventRef.kind, eventRef.eventKey) ||
-          mission.category !== configuredEventCategory(eventRef.kind) ||
-          mission.starts_at !== eventRef.startsAt ||
-          mission.ends_at !== eventRef.endsAt ||
-          mission.visibility !== eventRef.visibility
-        ) {
-          errors.push("Configured event Mission must match its immutable reference, window, and visibility.");
-        }
-        if (mission.visibility !== "public" && mission.suggested) {
-          errors.push("Internal or unannounced event Missions cannot be public suggestions.");
-        }
-      }
-      if (mission.category === "community" || mission.key.startsWith("community.")) {
-        if (
-          mission.category !== "community" ||
-          !mission.partner ||
-          !context.partners.some((partner) => partner.id === mission.partner) ||
-          !cleanText(mission.partner_key) ||
-          !mission.key.startsWith(`community.${mission.partner_key}.`)
-        ) {
-          errors.push("Community Partner Missions require an existing partner and immutable community.{partnerKey}.{activityKey} key.");
-        }
-        if (mission.visibility !== "public" && mission.suggested) {
-          errors.push("Only explicitly public Community Partner Missions may be suggested.");
-        }
-      }
-      if (mission.category === "easter_egg" || mission.key.startsWith("easter_egg.")) {
-        const activity = context.activities.find((candidate) => candidate.mission === mission.id && candidate.status !== "retired");
-        const missionActivities = context.activities.filter((candidate) => candidate.mission === mission.id && candidate.status !== "retired");
-        if (
-          !/^easter_egg\.[a-z0-9]+(?:-[a-z0-9]+)*$/.test(mission.key) ||
-          mission.category !== "easter_egg" ||
-          mission.visibility !== "hidden_until_unlocked" ||
-          mission.suggested ||
-          mission.partner ||
-          cleanText(mission.partner_key) ||
-          mission.session ||
-          safeEventRef(mission.event_ref) ||
-          missionActivities.length !== 1 ||
-          activity?.key !== `${mission.key}.discovery`
-        ) {
-          errors.push("Easter egg Missions require one hidden, unsuggested, relation-free canonical discovery Activity.");
-        }
-      }
-      return errors;
+    if (kind === "mission") return missionActivationErrors(context.missions.find((candidate) => candidate.id === id)!, context);
+    return this.validateActivityForActivation(context.activities.find((candidate) => candidate.id === id)!, context);
+  }
+
+  private validateAchievementForActivation(achievement: GamificationAchievementRecord, context: GamificationContext): string[] {
+    const errors = failedChecks([
+      [!cleanText(achievement.badge_name) || !cleanText(achievement.badge_description), "Badge presentation is incomplete."],
+    ]);
+    hasRequiredWindow(achievement.active_from, achievement.active_until, "Achievement", errors);
+    const rule = safeUnlockRule(achievement.unlock_rule);
+    const activityKeys = rule.activityKeys || [];
+    return [
+      ...errors,
+      ...failedChecks([
+        [!isUnlockRuleKind(rule.kind), "Achievement unlock rule is invalid."],
+        [!uniqueKeys(activityKeys), "Achievement unlock rule repeats an Activity."],
+      ]),
+      ...this.achievementCategoryErrors(achievement, rule, activityKeys, context),
+      ...inactiveDependencyErrors(activityKeys, context),
+    ];
+  }
+
+  private achievementCategoryErrors(
+    achievement: GamificationAchievementRecord,
+    rule: AdminUnlockRuleInput,
+    activityKeys: string[],
+    context: GamificationContext,
+  ): string[] {
+    if (achievement.category === "meta") return this.validateMetaAchievement(achievement, context);
+    if (achievement.category === "easter_egg" || achievement.key.startsWith("easter_egg.")) {
+      return easterEggBadgeActivationErrors(achievement, rule, context);
     }
-    const activity = context.activities.find((candidate) => candidate.id === id)!;
-    if (!cleanText(activity.outcome_key)) errors.push("Activity outcome is required.");
-    if (activity.per_user_claim_limit !== 1) errors.push("September Activities must have a per-User claim limit of one.");
-    if (!isPositiveInteger(Number(activity.max_claims))) errors.push("Activity global claim limit is required.");
-    hasRequiredWindow(activity.active_from, activity.active_until, "Activity", errors);
-    const hieventsEvidence = activity.evidence_mode === "hievents_ticket" || activity.evidence_mode === "hievents_checkin";
-    if (hieventsEvidence && activity.kind !== "hievents") errors.push("Only Hi.Events Activities may use Hi.Events evidence.");
-    if (activity.kind === "hievents" && !hieventsEvidence) errors.push("Hi.Events Activities require ticket or check-in evidence.");
-    if (expectedCodeRole(activity.evidence_mode) && ["hievents", "admin_manual", "meta"].includes(activity.kind)) {
-      errors.push("This Activity kind cannot use redeemable code evidence.");
-    }
-    const mission = activity.mission ? context.missions.find((candidate) => candidate.id === activity.mission) : undefined;
-    if (activity.evidence_mode.includes("code") && (!mission || mission.status !== "active")) {
-      errors.push("Code Activities require an active Mission.");
-    }
-    if (mission && mission.status !== "active") errors.push("Related Mission must be active.");
-    if (mission && mission.category !== activity.category) errors.push("Activity and Mission categories must match.");
-    if (activity.achievement) {
-      const achievement = context.achievements.find((candidate) => candidate.id === activity.achievement);
-      if (!achievement || (
-        activity.kind === "meta" || activity.kind === "community_partner" || isConfiguredEventActivityKind(activity.kind)
-          ? !["draft", "active"].includes(achievement.status)
-          : achievement.status !== "active"
-      )) {
-        errors.push("Related Achievement must be active.");
-      }
-      if (achievement && achievement.category !== activity.category) errors.push("Activity and Achievement categories must match.");
-    }
-    if (activity.kind === "session") {
-      const session = context.sessions.find((candidate) => candidate.id === activity.session);
-      if (!session?.published) errors.push("Session Activities require a published Session reference.");
-      const sessionKey = cleanOptionalText(activity.session_key);
-      const snapshot = safeSessionDisplaySnapshot(activity.session_display_snapshot);
-      if (!sessionKey || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(sessionKey)) {
-        errors.push("Session Activities require an immutable Session key.");
-      }
-      if (!snapshot) errors.push("Session Activities require a safe Session display snapshot.");
-      if (typeof activity.session_meta_eligible !== "boolean") {
-        errors.push("Session Activities must explicitly configure Meta eligibility.");
-      }
-      const expectedMissionKey = sessionKey ? `session.${sessionKey}` : "";
-      const expectedActivityKey = expectedMissionKey ? `${expectedMissionKey}.attendance` : "";
-      if (
-        activity.category !== "session" ||
-        activity.outcome_key !== "attendance" ||
-        activity.evidence_mode !== "single_code" ||
-        !isEvidenceChannel(activity.evidence_channel) ||
-        !cleanText(activity.deployment_label)
-      ) {
-        errors.push("Session Activities require Session attendance, WTS-controlled single-code evidence, and a deployment artifact.");
-      }
-      if (!mission || mission.session !== activity.session || mission.key !== expectedMissionKey || activity.key !== expectedActivityKey) {
-        errors.push("Session Mission and Activity keys must use the immutable session.{sessionKey}.attendance form.");
-      }
-      if (context.activities.some((candidate) =>
-        candidate.id !== activity.id &&
-        candidate.kind === "session" &&
-        candidate.session === activity.session &&
-        candidate.status !== "retired",
-      )) {
-        errors.push("Only one non-retired Session attendance Activity may be configured for a Session.");
-      }
-      const directAchievement = activity.achievement
-        ? context.achievements.find((candidate) => candidate.id === activity.achievement)
-        : undefined;
-      const directRule = directAchievement && safeUnlockRule(directAchievement.unlock_rule);
-      if (
-        directAchievement &&
-        (directRule?.kind !== "activity_claim" ||
-          ((directRule.activityKeys?.length || 0) > 0 && !directRule.activityKeys?.includes(activity.key)))
-      ) {
-        errors.push("A direct Session Badge must use this Activity's direct Activity-claim rule.");
-      }
-      const policies = context.policies.filter((policy) => policy.activity === activity.id && policy.active);
-      if (policies.length === 0) errors.push("Session Activities require an active direct score policy.");
-      for (const policy of policies) {
-        const memberships = Array.isArray(policy.cap_membership) ? policy.cap_membership : [];
-        const hasMembership = (dimension: GamificationCapMembership["dimension"], key: string) =>
-          memberships.some((membership) => membership.dimension === dimension && membership.key === key);
-        if (policy.total_xp !== 20 || policy.leaderboard_xp !== 15) {
-          errors.push("Session direct score policies must use the fixed 20/15 total/Leaderboard XP band.");
-        }
-        if (
-          !hasMembership("activity", activity.id) ||
-          !hasMembership("category", "session") ||
-          !hasMembership("conference_day", policy.score_day || "") ||
-          !hasMembership("conference", "conference") ||
-          !isISODate(policy.score_day)
-        ) {
-          errors.push("Session direct score policies require Activity, session category, day, and conference caps.");
-        }
-      }
-    }
-    if (["booth", "community_partner"].includes(activity.kind)) {
-      if (!activity.partner || !context.partners.some((partner) => partner.id === activity.partner) || !activity.partner_kind) {
-        errors.push("Partner Activities require an existing partner and partner kind.");
-      }
-    }
-    if (activity.kind === "booth") {
-      const partner = context.partners.find((candidate) => candidate.id === activity.partner);
-      const outcome = isBoothOutcome(activity.outcome_key) ? activity.outcome_key : undefined;
-      if (activity.category !== "booth" || !outcome) {
-        errors.push("Booth Activities support only the booth category and visit, participation, completion, win, or high_score outcomes.");
-      }
-      if (!partner || partner.type !== "sponsor" || activity.partner_kind !== "sponsor") {
-        errors.push("Booth Activities require an existing sponsor partner with partner kind sponsor.");
-      }
-      if (activity.evidence_mode !== "single_code" || !isEvidenceChannel(activity.evidence_channel)) {
-        errors.push("Booth Activities require a WTS-controlled single-code evidence channel.");
-      }
-      if (!cleanText(activity.deployment_label)) {
-        errors.push("Booth Activities require a WTS artifact deployment label before activation.");
-      }
-      if (partner && outcome) {
-        const expectedKey = mission ? boothActivityKey(mission.key, outcome) : "";
-        if (!mission || !isBoothMissionKey(mission.key) || !cleanText(mission.partner_key) || !mission.key.startsWith(`booth.${mission.partner_key}.`)) {
-          errors.push("Booth Mission key must use the immutable booth.{partnerKey}.{activityKey} form.");
-        }
-        if (activity.key !== expectedKey) {
-          errors.push(`Booth Activity key must be the immutable ${expectedKey} value.`);
-        }
-        if (!mission || mission.partner !== partner.id) {
-          errors.push("Booth Mission must reference the same sponsor partner.");
-        }
-        if (mission && context.missions.some((candidate) =>
-          candidate.id !== mission.id &&
-          candidate.partner === partner.id &&
-          cleanText(candidate.partner_key) &&
-          candidate.partner_key !== mission.partner_key,
-        )) {
-          errors.push("Booth Missions for one sponsor must use the same immutable sponsor key.");
-        }
-      }
-      if (context.activities.some((candidate) =>
-        candidate.id !== activity.id &&
-        candidate.kind === "booth" &&
-        candidate.mission === activity.mission &&
-        candidate.outcome_key === activity.outcome_key &&
-        candidate.status !== "retired",
-      )) {
-        errors.push("Only one non-retired Booth Activity may be configured for each sponsor outcome.");
-      }
-      const achievement = activity.achievement ? context.achievements.find((candidate) => candidate.id === activity.achievement) : undefined;
-      const directRule = achievement && safeUnlockRule(achievement.unlock_rule);
-      if (!achievement || directRule?.kind !== "activity_claim" || ((directRule.activityKeys?.length || 0) > 0 && !directRule.activityKeys?.includes(activity.key))) {
-        errors.push("Booth Activities require an active direct Activity-claim Achievement rule.");
-      }
-      if (activity.partner_follow_up_enabled && !cleanText(activity.partner_follow_up_notice_version)) {
-        errors.push("Enabled partner follow-up requires a notice version.");
-      }
-      const policies = context.policies.filter((policy) => policy.activity === activity.id && policy.active);
-      if (policies.length === 0) {
-        errors.push("Booth Activities require an active direct score policy.");
-      }
-      for (const policy of policies) {
-        const expected = outcome ? BOOTH_SCORE_BANDS[outcome] : undefined;
-        const memberships = Array.isArray(policy.cap_membership) ? policy.cap_membership : [];
-        const hasMembership = (dimension: GamificationCapMembership["dimension"], key: string) =>
-          memberships.some((membership) => membership.dimension === dimension && membership.key === key);
-        if (!expected || policy.total_xp !== expected.totalXp || policy.leaderboard_xp !== expected.leaderboardXp) {
-          errors.push("Booth direct score policy does not match its fixed outcome band.");
-        }
-        if (
-          !activity.partner ||
-          !hasMembership("activity", activity.id) ||
-          !hasMembership("related_group", mission ? boothCapGroupKey(mission.key) : "") ||
-          !hasMembership("partner", activity.partner) ||
-          !hasMembership("category", "booth") ||
-          !hasMembership("conference_day", policy.score_day || "") ||
-          !hasMembership("conference", "conference")
-        ) {
-          errors.push("Booth direct score policy must include Activity, booth-group, sponsor partner, category, day, and conference caps.");
-        }
-        if (!isISODate(policy.score_day)) errors.push("Booth direct score policy requires a conference day for derived category/day/conference caps.");
-        for (const override of Object.values(policy.cap_ceiling_overrides || {})) {
-          if (override && (override.total_xp_ceiling > BOOTH_CAP.totalXp || override.leaderboard_xp_ceiling > BOOTH_CAP.leaderboardXp)) {
-            errors.push("Booth cap ceilings cannot exceed 35 total XP or 25 Leaderboard XP.");
-            break;
-          }
-        }
-      }
-    } else if (activity.kind === "community_partner") {
-      errors.push(...this.validateCommunityPartnerActivity(activity, mission, context));
-    } else if (activity.partner_follow_up_enabled || cleanText(activity.partner_follow_up_notice_version)) {
-      errors.push("Partner follow-up consent may only be configured for sponsor Booth or Community Partner Activities.");
-    }
-    if (isConfiguredEventActivityKind(activity.kind)) {
-      errors.push(...this.validateConfiguredEventActivity(activity, mission, context));
-    } else if (activity.kind === "hievents") {
-      const eventRef = safeEventRef(activity.event_ref);
-      if (!eventRef?.eventKey && !eventRef?.eventId) errors.push("This Activity requires an event source reference.");
-    }
-    if (activity.kind === "easter_egg" || activity.category === "easter_egg" || activity.key.startsWith("easter_egg.")) {
-      errors.push(...this.validateEasterEggActivity(activity, mission, context));
-    }
-    if (activity.kind === "meta" && activity.evidence_mode !== "meta_rule") errors.push("Meta Activities require meta-rule evidence.");
-    if (activity.kind !== "meta" && activity.evidence_mode === "meta_rule") errors.push("Only Meta Activities may use meta-rule evidence.");
-    if (activity.kind === "meta") {
-      if (activity.category !== "meta" || activity.outcome_key !== "meta") errors.push("Meta Activities require the meta category and outcome.");
-      if (activity.mission) errors.push("Meta Activities cannot belong to a redeemable Mission.");
-      const achievement = context.achievements.find((candidate) => candidate.id === activity.achievement);
-      if (!achievement || achievement.category !== "meta") errors.push("Meta Activities require a linked Meta Achievement.");
-      if (achievement && achievement.unlock_rule.kind !== "claim_set" && achievement.unlock_rule.kind !== "claim_count") {
-        errors.push("Meta Activities require a claim-set or selected-source claim-count Achievement rule.");
-      }
-    }
-    return errors;
+    return claimRuleActivationErrors(rule, activityKeys);
+  }
+
+  private validateActivityForActivation(activity: GamificationActivityRecord, context: GamificationContext): string[] {
+    const mission = missionFor(activity, context);
+    return [
+      ...activityBasicsErrors(activity),
+      ...activityRelationErrors(activity, mission, context),
+      ...(activity.kind === "session" ? sessionActivityErrors(activity, mission, context) : []),
+      ...partnerReferenceErrors(activity, context),
+      ...this.partnerProgrammeErrors(activity, mission, context),
+      ...this.eventSourceErrors(activity, mission, context),
+      ...(isEasterEggDefinition(activity) || activity.key.startsWith("easter_egg.")
+        ? this.validateEasterEggActivity(activity, mission, context)
+        : []),
+      ...metaActivityActivationErrors(activity, context),
+    ];
+  }
+
+  private partnerProgrammeErrors(
+    activity: GamificationActivityRecord,
+    mission: GamificationMissionRecord | undefined,
+    context: GamificationContext,
+  ): string[] {
+    if (activity.kind === "booth") return boothActivityErrors(activity, mission, context);
+    if (activity.kind === "community_partner") return this.validateCommunityPartnerActivity(activity, mission, context);
+    return activity.partner_follow_up_enabled || cleanText(activity.partner_follow_up_notice_version)
+      ? ["Partner follow-up consent may only be configured for sponsor Booth or Community Partner Activities."]
+      : [];
+  }
+
+  private eventSourceErrors(
+    activity: GamificationActivityRecord,
+    mission: GamificationMissionRecord | undefined,
+    context: GamificationContext,
+  ): string[] {
+    if (isConfiguredEventActivityKind(activity.kind)) return this.validateConfiguredEventActivity(activity, mission, context);
+    return activity.kind === "hievents" ? hieventsSourceErrors(activity) : [];
   }
 
   private activePoliciesForSchedule(scheduleId: string, context: GamificationContext): SeptemberScorePolicy[] {
@@ -3762,16 +4987,7 @@ export class GamificationOperationsService {
       const activity = activitiesById.get(policy.activityId);
       const mission = activity?.mission ? context.missions.find((candidate) => candidate.id === activity.mission) : undefined;
       if (activity?.kind !== "community_partner" || mission?.metadata?.community_two_code_approved === true) continue;
-      const groupKey = policy.capMembership.find((membership) => membership.dimension === "related_group")?.key;
-      const activeGroup = policies.filter((candidate) =>
-        candidate.kind === "community_partner" &&
-        candidate.capMembership.some((membership) => membership.dimension === "related_group" && membership.key === groupKey)
-      );
-      const ceiling = activeGroup.reduce((current, candidate) =>
-        candidate.totalXp > current.totalXp
-          ? { totalXp: candidate.totalXp, leaderboardXp: candidate.leaderboardXp }
-          : current,
-      { totalXp: 0, leaderboardXp: 0 });
+      const ceiling = highestCommunityGroupBand(policies, relatedGroupKey(policy));
       policy.capCeilingOverrides = {
         ...policy.capCeilingOverrides,
         related_group: { totalXpCeiling: ceiling.totalXp, leaderboardXpCeiling: ceiling.leaderboardXp },
@@ -3781,172 +4997,64 @@ export class GamificationOperationsService {
   }
 
   private validatePolicies(policies: SeptemberScorePolicy[], context: GamificationContext): string[] {
-    const errors: string[] = [];
     const activitiesById = new Map(context.activities.map((activity) => [activity.id, activity]));
-    if (!uniqueKeys(policies.map((policy) => policy.key))) errors.push("Score policy keys must be unique.");
+    const errors = uniqueKeys(policies.map((policy) => policy.key)) ? [] : ["Score policy keys must be unique."];
     for (const policy of policies) {
-      const activity = activitiesById.get(policy.activityId);
-      if (!activity || activity.status !== "active" || !activity.enabled) errors.push(`Score policy ${policy.key} has an inactive Activity.`);
-      if (!finiteNonNegative(policy.totalXp) || !finiteNonNegative(policy.leaderboardXp) || policy.leaderboardXp > policy.totalXp) {
-        errors.push(`Score policy ${policy.key} has incompatible total and Leaderboard XP.`);
-      }
-      if (activity?.kind === "meta") {
-        const achievement = context.achievements.find((candidate) => candidate.id === activity.achievement);
-        const expectedBand = achievement ? metaScoreBandForRule(achievement.unlock_rule) : undefined;
-        if (!expectedBand || policy.totalXp !== expectedBand.totalXp || policy.leaderboardXp !== expectedBand.leaderboardXp) {
-          errors.push(`Meta score policy ${policy.key} does not match its required fixed score band.`);
-        }
-        const memberships = policy.capMembership || [];
-        const hasMembership = (dimension: GamificationCapMembership["dimension"], key: string) =>
-          memberships.some((membership) => membership.dimension === dimension && membership.key === key);
-        if (
-          !hasMembership("category", "meta") ||
-          !hasMembership("conference_day", policy.scoreDay || "") ||
-          !hasMembership("conference", "conference") ||
-          !policy.scoreDay
-        ) {
-          errors.push(`Meta score policy ${policy.key} must include meta category, day, and conference caps.`);
-        }
-      }
-      if (activity?.kind === "booth" && isEvidenceChannel(activity.evidence_channel)) {
-        const outcome = isBoothOutcome(activity.outcome_key) ? activity.outcome_key : undefined;
-        const expected = outcome ? BOOTH_SCORE_BANDS[outcome] : undefined;
-        if (!expected || policy.totalXp !== expected.totalXp || policy.leaderboardXp !== expected.leaderboardXp) {
-          errors.push(`Booth score policy ${policy.key} does not match its fixed outcome band.`);
-        }
-        const memberships = policy.capMembership || [];
-        const hasMembership = (dimension: GamificationCapMembership["dimension"], key: string) =>
-          memberships.some((membership) => membership.dimension === dimension && membership.key === key);
-        if (
-          !activity.partner ||
-          !hasMembership("related_group", activity.mission ? boothCapGroupKey(context.missions.find((candidate) => candidate.id === activity.mission)?.key || "") : "") ||
-          !hasMembership("partner", activity.partner) ||
-          !hasMembership("category", "booth") ||
-          !hasMembership("conference_day", policy.scoreDay || "") ||
-          !hasMembership("conference", "conference")
-        ) {
-          errors.push(`Booth score policy ${policy.key} must include booth-group, partner, category, day, and conference caps.`);
-        }
-        if (!policy.scoreDay) errors.push(`Booth score policy ${policy.key} requires a conference day.`);
-      }
-      if (activity?.kind === "community_partner") {
-        const mission = activity.mission ? context.missions.find((candidate) => candidate.id === activity.mission) : undefined;
-        const approvedTwoCode = mission?.metadata?.community_two_code_approved === true;
-        const directBand = isCommunityPartnerOutcome(activity.outcome_key)
-          ? COMMUNITY_PARTNER_SCORE_BANDS[activity.outcome_key]
-          : undefined;
-        const relatedGroupKey = policy.capMembership.find((membership) => membership.dimension === "related_group")?.key;
-        const activeProgrammePolicies = policies.filter((candidate) =>
-          candidate.kind === "community_partner" &&
-          candidate.capMembership.some((membership) => membership.dimension === "related_group" && membership.key === relatedGroupKey)
-        );
-        const programmeCeiling = approvedTwoCode
-          ? { totalXp: 40, leaderboardXp: 30 }
-          : activeProgrammePolicies.reduce((current, candidate) =>
-            candidate.totalXp > current.totalXp
-              ? { totalXp: candidate.totalXp, leaderboardXp: candidate.leaderboardXp }
-              : current,
-          { totalXp: 0, leaderboardXp: 0 });
-        const expected = approvedTwoCode
-          ? activity.evidence_mode === "two_code_start"
-            ? { totalXp: 10, leaderboardXp: 5 }
-            : activity.evidence_mode === "derived_claim_set"
-            ? { totalXp: 30, leaderboardXp: 25 }
-            : undefined
-          : activity.evidence_mode === "single_code" && directBand
-          ? directBand
-          : undefined;
-        if (!expected || policy.totalXp !== expected.totalXp || policy.leaderboardXp !== expected.leaderboardXp) {
-          errors.push(`Community Partner score policy ${policy.key} does not match its fixed outcome band.`);
-        }
-        const memberships = policy.capMembership || [];
-        const hasMembership = (dimension: GamificationCapMembership["dimension"], key: string) =>
-          memberships.some((membership) => membership.dimension === dimension && membership.key === key);
-        if (
-          !mission ||
-          !activity.partner ||
-          !hasMembership("related_group", mission.key) ||
-          !hasMembership("partner", activity.partner) ||
-          !hasMembership("category", "community") ||
-          !hasMembership("conference_day", policy.scoreDay || "") ||
-          !hasMembership("conference", "conference") ||
-          !policy.scoreDay
-        ) {
-          errors.push(`Community Partner score policy ${policy.key} must include programme, partner, category, day, and conference caps.`);
-        }
-        const relatedOverride = policy.capCeilingOverrides?.related_group;
-        if (
-          expected &&
-          (!relatedOverride || relatedOverride.totalXpCeiling !== programmeCeiling.totalXp || relatedOverride.leaderboardXpCeiling !== programmeCeiling.leaderboardXp)
-        ) {
-          errors.push(`Community Partner score policy ${policy.key} has an invalid programme ceiling.`);
-        }
-      }
-      if (activity?.kind === "session") {
-        const memberships = policy.capMembership || [];
-        const hasMembership = (dimension: GamificationCapMembership["dimension"], key: string) =>
-          memberships.some((membership) => membership.dimension === dimension && membership.key === key);
-        if (policy.totalXp !== 20 || policy.leaderboardXp !== 15) {
-          errors.push(`Session score policy ${policy.key} does not match the fixed 20/15 score band.`);
-        }
-        if (
-          !hasMembership("category", "session") ||
-          !hasMembership("conference_day", policy.scoreDay || "") ||
-          !hasMembership("conference", "conference") ||
-          !policy.scoreDay
-        ) {
-          errors.push(`Session score policy ${policy.key} must include session category, day, and conference caps.`);
-        }
-      }
-      if (activity?.kind === "easter_egg" || activity?.category === "easter_egg") {
-        try {
-          this.assertEasterEggScorePolicy(activity, {
-            scheduleId: "",
-            policyKey: policy.key,
-            enabled: policy.active,
-            totalXp: policy.totalXp,
-            leaderboardXp: policy.leaderboardXp,
-            capMembership: policy.capMembership,
-            capCeilingOverrides: Object.fromEntries(Object.entries(policy.capCeilingOverrides || {}).map(([dimension, ceiling]) => [dimension, {
-              total_xp_ceiling: ceiling.totalXpCeiling,
-              leaderboard_xp_ceiling: ceiling.leaderboardXpCeiling,
-            }])) as GamificationScoreSchedulePolicyRecord["cap_ceiling_overrides"],
-            scoreDay: policy.scoreDay,
-          });
-        } catch (error) {
-          errors.push(error instanceof Error ? `Easter egg score policy ${policy.key} is invalid: ${error.message}` : `Easter egg score policy ${policy.key} is invalid.`);
-        }
-      }
-      if (policy.scoreDay && !isISODate(policy.scoreDay)) errors.push(`Score policy ${policy.key} has an invalid score day.`);
-      const memberships = policy.capMembership || [];
-      if (!memberships.some((membership) => membership.dimension === "activity" && membership.key === policy.activityId)) {
-        errors.push(`Score policy ${policy.key} must include its Activity cap membership.`);
-      }
-      if (!uniqueKeys(memberships.map((membership) => `${membership.dimension}:${membership.key}`))) {
-        errors.push(`Score policy ${policy.key} repeats a cap membership.`);
-      }
-      for (const membership of memberships) {
-        if (!(CAP_DIMENSIONS as readonly string[]).includes(membership.dimension) || !cleanText(membership.key)) {
-          errors.push(`Score policy ${policy.key} has an invalid cap membership.`);
-        }
-        if (!["activity", "related_group", "partner", "category", "conference_day", "conference"].includes(membership.dimension)) {
-          errors.push(`Score policy ${policy.key} has an unsupported cap membership.`);
-        }
-        if (membership.dimension === "partner" && activity?.partner !== membership.key) {
-          errors.push(`Score policy ${policy.key} partner cap must match the Activity partner.`);
-        }
-        if (membership.dimension === "category" && activity?.category !== membership.key) {
-          errors.push(`Score policy ${policy.key} category cap must match the Activity category.`);
-        }
-        if (membership.dimension === "conference_day" && policy.scoreDay !== membership.key) {
-          errors.push(`Score policy ${policy.key} conference-day cap must match its score day.`);
-        }
-        if (membership.dimension === "conference" && membership.key !== "conference") {
-          errors.push(`Score policy ${policy.key} conference cap must use the conference key.`);
-        }
-      }
+      errors.push(...this.scheduledPolicyErrors(policy, activitiesById.get(policy.activityId), policies, context));
     }
     return errors;
+  }
+
+  private scheduledPolicyErrors(
+    policy: SeptemberScorePolicy,
+    activity: GamificationActivityRecord | undefined,
+    policies: SeptemberScorePolicy[],
+    context: GamificationContext,
+  ): string[] {
+    return [
+      ...failedChecks([
+        [!activity || activity.status !== "active" || !activity.enabled, `Score policy ${policy.key} has an inactive Activity.`],
+        [
+          !finiteNonNegative(policy.totalXp) || !finiteNonNegative(policy.leaderboardXp) || policy.leaderboardXp > policy.totalXp,
+          `Score policy ${policy.key} has incompatible total and Leaderboard XP.`,
+        ],
+      ]),
+      ...(activity ? this.scheduledKindPolicyErrors(policy, activity, policies, context) : []),
+      ...scheduledPolicyCapErrors(policy, activity),
+    ];
+  }
+
+  private scheduledKindPolicyErrors(
+    policy: SeptemberScorePolicy,
+    activity: GamificationActivityRecord,
+    policies: SeptemberScorePolicy[],
+    context: GamificationContext,
+  ): string[] {
+    return [
+      ...(activity.kind === "meta" ? scheduledMetaPolicyErrors(policy, activity, context) : []),
+      ...(activity.kind === "booth" && isEvidenceChannel(activity.evidence_channel) ? scheduledBoothPolicyErrors(policy, activity, context) : []),
+      ...(activity.kind === "community_partner" ? scheduledCommunityPolicyErrors(policy, activity, policies, context) : []),
+      ...(activity.kind === "session" ? scheduledSessionPolicyErrors(policy) : []),
+      ...(isEasterEggDefinition(activity) ? this.scheduledEasterEggPolicyErrors(policy, activity) : []),
+    ];
+  }
+
+  private scheduledEasterEggPolicyErrors(policy: SeptemberScorePolicy, activity: GamificationActivityRecord): string[] {
+    try {
+      this.assertEasterEggScorePolicy(activity, {
+        scheduleId: "",
+        policyKey: policy.key,
+        enabled: policy.active,
+        totalXp: policy.totalXp,
+        leaderboardXp: policy.leaderboardXp,
+        capMembership: policy.capMembership,
+        capCeilingOverrides: recordCapOverrides(policy.capCeilingOverrides),
+        scoreDay: policy.scoreDay,
+      });
+      return [];
+    } catch (error) {
+      return [error instanceof Error ? `Easter egg score policy ${policy.key} is invalid: ${error.message}` : `Easter egg score policy ${policy.key} is invalid.`];
+    }
   }
 
   private async saveCalculatedCaps(scheduleId: string, caps: CalculatedScoreCap[], context: GamificationContext): Promise<void> {
@@ -4109,7 +5217,7 @@ export class GamificationOperationsService {
       ) {
         throw new Error("This admin operation ID belongs to another operation.");
       }
-      if (JSON.stringify(existing.after_summary || {}) !== JSON.stringify(afterSummary)) {
+      if (!samePersistedJson(existing.after_summary || {}, afterSummary)) {
         throw new Error("This admin operation ID belongs to a different request.");
       }
       return { record: existing, replayed: existing.status === "applied", failed: existing.status === "failed", existing: true };
@@ -4157,7 +5265,7 @@ export class GamificationOperationsService {
         existing.reason !== safeReason(reason) ||
         existing.related_collection !== collection ||
         existing.related_record_id !== recordId ||
-        JSON.stringify(existing.after_summary || {}) !== JSON.stringify(afterSummary)
+        !samePersistedJson(existing.after_summary || {}, afterSummary)
       ) {
         throw new Error("This admin operation ID belongs to another operation.");
       }
@@ -4203,6 +5311,39 @@ export class GamificationOperationsService {
       await this.store.update(GAMIFICATION_COLLECTIONS.adminActions, id, { status: "failed" });
     } catch {
       // Keep the source operation error if recording the failure also fails.
+    }
+  }
+
+  private async assertEditableDraft(
+    kind: GamificationDefinitionKind,
+    existing: { id: string; status?: string } | undefined,
+    successorOf: string | undefined,
+    context: GamificationContext,
+  ): Promise<void> {
+    if (existing?.status !== undefined && existing.status !== "draft") throw new Error(DRAFT_EDIT_COPY[kind].notDraft);
+    if (existing && await this.definitionHasAccounting(kind, existing.id, context)) throw new Error(DRAFT_EDIT_COPY[kind].hasAccounting);
+    await this.validateSuccessor(successorOf, kind, context);
+  }
+
+  private saveDraftRecord<T>(collection: string, existingId: string | undefined, body: Record<string, unknown>): Promise<T> {
+    return existingId ? this.store.update<T>(collection, existingId, body) : this.store.create<T>(collection, body);
+  }
+
+  /** Resumes an interrupted canonical operation, or fails its audit on the first conflicting persisted shape. */
+  private async resumeCanonicalAudit(audit: AuditStart, conflicts: Check[]): Promise<void> {
+    if (audit.failed) await this.resumeAudit(audit.record.id);
+    const conflict = conflicts.find(([present]) => present);
+    if (!conflict) return;
+    await this.failAudit(audit.record.id);
+    throw new Error(conflict[1]);
+  }
+
+  private async failingAudit<T>(auditId: string, operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      await this.failAudit(auditId);
+      throw error;
     }
   }
 }

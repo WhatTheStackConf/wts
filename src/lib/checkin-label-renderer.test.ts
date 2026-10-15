@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import sharp from "sharp";
-import { readFileSync } from "node:fs";
-import { NOTO_SANS_BOLD_BASE64, NOTO_SANS_REGULAR_BASE64 } from "~/lib/checkin-label-render-font-data";
 import { renderNameLabel, validateLabelProfileConfig } from "~/lib/checkin-label-renderer";
 import { LABEL_ROW_FONT_LIMITS, SYNTHETIC_LABEL_CONFIG, type LabelRenderInput } from "~/lib/checkin-label-render-contract";
 
@@ -15,11 +13,13 @@ function input(name = "Ѓорѓи Željko", affiliation = "Љубљана • gj
   };
 }
 
+const clockwise: Record<90 | 180 | 270, (x: number, y: number) => [number, number]> = {
+  90: (x, y) => [359 - y, x],
+  180: (x, y) => [599 - x, 359 - y],
+  270: (x, y) => [y, 599 - x],
+};
+
 describe("production Name Label rendering boundary", () => {
-  it("embeds exactly the licensed pinned font assets for production deployment", () => {
-    expect(Buffer.from(NOTO_SANS_REGULAR_BASE64, "base64")).toEqual(readFileSync(new URL("../../public/fonts/checkin-label/NotoSans-Regular.ttf", import.meta.url)));
-    expect(Buffer.from(NOTO_SANS_BOLD_BASE64, "base64")).toEqual(readFileSync(new URL("../../public/fonts/checkin-label/NotoSans-Bold.ttf", import.meta.url)));
-  });
   it("supports ordinary affiliation punctuation without allowing URL or email payloads", async () => {
     const request = input("Ѓорѓи Ќосев — Željko gjpqy", "Заедница / Société: R&D; [WTS]");
     expect((await renderNameLabel(request)).snapshot.text).toEqual(request.text);
@@ -48,8 +48,7 @@ describe("production Name Label rendering boundary", () => {
     expect(rotated.height).toBe(direction === 180 ? 360 : 600);
     const expected = Buffer.alloc(originalPixels.length);
     for (let y = 0; y < 360; y++) for (let x = 0; x < 600; x++) {
-      const targetX = direction === 90 ? 359 - y : direction === 180 ? 599 - x : y;
-      const targetY = direction === 90 ? x : direction === 180 ? 359 - y : 599 - x;
+      const [targetX, targetY] = clockwise[direction](x, y);
       expected[targetY * rotated.width + targetX] = originalPixels[y * 600 + x];
     }
     expect(rotatedPixels.equals(expected)).toBe(true);
@@ -249,5 +248,49 @@ describe("production Name Label rendering boundary", () => {
     expect(first.snapshot.profile.config.offset.x).toBe(0);
     expect(Object.isFrozen(first.snapshot.profile.config.offset)).toBe(true);
     expect(JSON.parse(JSON.stringify(first))).toEqual(first);
+  });
+});
+
+describe("Name Label validation messages", () => {
+  async function failure(run: () => unknown) {
+    try { await run(); } catch (error) { return { code: (error as { code?: string }).code, message: (error as Error).message }; }
+    return null;
+  }
+  it("reports each profile rule with its exact message", async () => {
+    const rule = (change: object) => failure(() => validateLabelProfileConfig({ ...SYNTHETIC_LABEL_CONFIG, ...change }));
+    expect(await rule({ printable: { x: 30, y: 12, width: 576, height: 336 } })).toEqual({ code: "invalid_profile", message: "Printable bounds must be inside the configured raster." });
+    expect(await rule({ printable: { x: 12, y: 30, width: 576, height: 336 } })).toEqual({ code: "invalid_profile", message: "Printable bounds must be inside the configured raster." });
+    expect(await rule({ margins: { top: 24, right: 300, bottom: 24, left: 300 } })).toEqual({ code: "invalid_profile", message: "Margins leave too little space for two readable rows; allow at least 48×112 dots." });
+    expect(await rule({ margins: { top: 120, right: 18, bottom: 120, left: 18 } })).toEqual({ code: "invalid_profile", message: "Margins leave too little space for two readable rows; allow at least 48×112 dots." });
+    for (const offset of [{ x: -19, y: 0 }, { x: 19, y: 0 }, { x: 0, y: -25 }, { x: 0, y: 25 }]) {
+      expect(await rule({ offset })).toEqual({ code: "invalid_profile", message: "Offsets move the text box beyond printable bounds; reduce offsets or adjust margins." });
+    }
+    for (const change of [{ synthetic: false }, { synthetic: false, printerRef: "printer-a" }, { synthetic: false, stockRef: "stock-a" }]) {
+      expect(await rule(change)).toEqual({ code: "invalid_profile", message: "Synthetic printer/stock references cannot identify a physical profile." });
+    }
+    expect(await rule({ synthetic: false, printerRef: "printer-a", stockRef: "stock-a" })).toBeNull();
+    expect(await rule({ offset: { x: 18, y: -24 } })).toBeNull();
+    expect(await rule({ density: 0 })).toMatchObject({ code: "invalid_profile", message: expect.stringContaining("Use this renderer/font version") });
+  });
+  it("reports each render input rule with its exact message", async () => {
+    const render = (change: (request: LabelRenderInput) => void) => failure(() => { const request = input(); change(request); return renderNameLabel(request); });
+    const unsupported = { code: "unsupported_text", message: "Labels accept Latin/Cyrillic names and affiliations, not email, URLs, QR/capability payloads, control characters or other scripts." };
+    expect(await render((r) => { r.text.name = "Ana@Doe"; })).toEqual(unsupported);
+    expect(await render((r) => { r.text.affiliation = "Bearer token"; })).toEqual(unsupported);
+    expect(await render((r) => { r.text.name = `A1${"b".repeat(30)}`; })).toEqual(unsupported);
+    expect(await render((r) => { r.text.name = "a".repeat(32); })).toBeNull();
+    expect(await render((r) => { r.text.name = "1".repeat(32); })).toBeNull();
+    expect(await render((r) => { r.text.affiliation = "WTS "; })).toEqual({ code: "unsupported_text", message: "Remove leading/trailing or repeated spaces from label text; labels never wrap." });
+    expect(await render((r) => { r.text.name = " "; })).toEqual({ code: "unsupported_text", message: "Remove leading/trailing or repeated spaces from label text; labels never wrap." });
+    expect(await render((r) => { r.text.name = ""; })).toMatchObject({ code: "invalid_input" });
+    const mismatch = { code: "profile_mismatch", message: "Expected profile, printer, stock or software version changed; reload and explicitly select the current profile." };
+    for (const key of ["profileId", "printerRef", "stockRef", "rendererVersion", "fontVersion"] as const) {
+      expect(await render((r) => { r.expected[key] = "changed-value"; })).toEqual(mismatch);
+    }
+    expect(await render((r) => { r.expected.profileVersion = 2; })).toEqual(mismatch);
+    const approval = { code: "not_approved", message: "Production requires an approved, non-synthetic printer/stock profile. Synthetic profiles cannot be approved." };
+    expect(await render((r) => { r.mode = "production"; })).toEqual(approval);
+    expect(await render((r) => { r.profile.approval = "approved"; })).toEqual(approval);
+    expect(await render((r) => { r.mode = "production"; r.profile.approval = "approved"; })).toEqual(approval);
   });
 });

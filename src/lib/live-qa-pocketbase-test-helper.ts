@@ -8,9 +8,46 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import PocketBase from 'pocketbase';
 
+type LiveQaSessionOptions = {
+  slug?: string; title?: string; startAt?: string; endAt?: string; published?: boolean;
+  mainDay?: boolean; dayKey?: string; eventId?: string;
+  stageKey?: string; stageName?: string; locationLabel?: string; displayOrder?: number;
+  programmeId?: string; trackId?: string;
+};
+
+const localDateOf = (value: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Skopje', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value));
+
+function sessionTimes(options: LiveQaSessionOptions, now: string) {
+  const minuteAgo = new Date(Date.parse(now) - 60_000).toISOString();
+  // Leave one millisecond for the ordered-earlier-slot fixture at midnight.
+  const startAt = options.startAt ?? (localDateOf(minuteAgo) === localDateOf(now) ? minuteAgo : new Date(Date.parse(now) + 1).toISOString());
+  const endAt = options.endAt ?? new Date(new Date(startAt).getTime() + 3_600_000).toISOString();
+  return { startAt, endAt, localDate: localDateOf(startAt) };
+}
+
+async function findOrCreateDay(pb: PocketBase, dayKey: string, localDate: string) {
+  const days = await pb.collection('conference_days').getList(1, 1, { filter: pb.filter('key = {:key}', { key: dayKey }) });
+  return days.items[0] ?? await pb.collection('conference_days').create({ key: dayKey, local_date: localDate, title: 'Synthetic Day', published: true });
+}
+
+async function sessionProgramme(pb: PocketBase, options: LiveQaSessionOptions, dayId: string, eventId: string) {
+  const programmes = await pb.collection('event_programmes').getList(1, 1, { filter: pb.filter('day = {:day} && appearance_event = {:event}', { day: dayId, event: eventId }) });
+  if (options.programmeId) return pb.collection('event_programmes').getOne(options.programmeId);
+  return programmes.items[0] ?? await pb.collection('event_programmes').create({ day: dayId, appearance_event: eventId });
+}
+
+async function sessionTrack(pb: PocketBase, options: LiveQaSessionOptions, programmeId: string, slug: string) {
+  if (options.trackId === '') return null;
+  if (options.trackId) return pb.collection('agenda_tracks').getOne(options.trackId);
+  return pb.collection('agenda_tracks').create({
+    programme: programmeId, key: options.stageKey ?? slug, name: options.stageName ?? 'Synthetic Stage',
+    location_label: options.locationLabel ?? 'Synthetic Hall', display_order: options.displayOrder ?? 0,
+  });
+}
+
 /** Synthetic loopback-only DB. Relevant real migrations/hooks are copied unchanged.
  * Never reads .env or existing pb_data; excludes mail, cron and outbound hooks. */
-export async function startLiveQaPocketBase(options: { workspace?: boolean } = {}) {
+export async function startLiveQaPocketBase(options: { workspace?: boolean; binary?: string } = {}) {
   // All default slots in this disposable programme share an anchor, even if
   // setup or a restart crosses local midnight while the test is running.
   const fixtureInstant = new Date().toISOString();
@@ -36,6 +73,7 @@ export async function startLiveQaPocketBase(options: { workspace?: boolean } = {
       '1767175796_updated_cfp_applicants.js', '1767175834_updated_cfp_submissions.js',
       '1767297280_updated_cfp_submissions.js',
       '1780000000_create_conference_config.js',
+      '1790200000_add_conference_capability_availability.js',
       '1782000000_create_partners.js', '1782000001_remove_bank_partner_tier.js',
       '1783000000_create_mcp_tokens.js',
       ...readdirSync(join(source, 'pb_migrations')).filter(name => name.startsWith('17860000')),
@@ -48,14 +86,15 @@ export async function startLiveQaPocketBase(options: { workspace?: boolean } = {
   const hooks = readdirSync(join(source, 'pb_hooks')).filter(name => name.startsWith('live-qa') || [
     'users_role_guard.pb.js', 'agenda_constraints.pb.js', 'appearance_event_constraints.pb.js', 'programme_public_fields.pb.js',
     ...(options.workspace ? [
-      'gamification_accounting_constraints.pb.js', 'partner_administration.pb.js',
+      'gamification_accounting_constraints.pb.js', 'gamification_questions.pb.js', 'partner_administration.pb.js',
       'admin_action_ledger.pb.js', 'mcp_token_administration.pb.js', 'cfp_close_guard.pb.js',
+      'capability_availability.pb.js', 'capability-availability.js',
     ] : []),
   ].includes(name));
   for (const name of migrations) copyFileSync(join(source, 'pb_migrations', name), join(migrationsDir, name));
   for (const name of hooks) copyFileSync(join(source, 'pb_hooks', name), join(hooksDir, name));
   const hookHashes = Object.fromEntries(hooks.map(name => [name, createHash('sha256').update(readFileSync(join(hooksDir, name))).digest('hex')]));
-  const binary = join(source, 'pocketbase');
+  const binary = options.binary || process.env.WTS_TEST_POCKETBASE_BINARY || join(source, 'pocketbase');
   const args = [`--dir=${dataDir}`, `--migrationsDir=${migrationsDir}`, `--hooksDir=${hooksDir}`];
   function run(command: string[]) {
     const result = spawnSync(binary, [...command, ...args], { encoding: 'utf8' });
@@ -145,32 +184,16 @@ export async function startLiveQaPocketBase(options: { workspace?: boolean } = {
         await client.collection('users').authWithPassword(email, password);
         return { record, client };
       },
-      async session(options: {
-        slug?: string; title?: string; startAt?: string; endAt?: string; published?: boolean;
-        mainDay?: boolean; dayKey?: string; eventId?: string;
-        stageKey?: string; stageName?: string; locationLabel?: string; displayOrder?: number;
-        programmeId?: string; trackId?: string;
-      } = {}) {
+      async session(options: LiveQaSessionOptions = {}) {
         const slug = options.slug ?? `session-${crypto.randomUUID()}`;
-        const localDateOf = (value: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Skopje', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value));
-        const now = fixtureInstant;
-        const minuteAgo = new Date(Date.parse(now) - 60_000).toISOString();
-        // Leave one millisecond for the ordered-earlier-slot fixture at midnight.
-        const startAt = options.startAt ?? (localDateOf(minuteAgo) === localDateOf(now) ? minuteAgo : new Date(Date.parse(now) + 1).toISOString());
-        const endAt = options.endAt ?? new Date(new Date(startAt).getTime() + 3_600_000).toISOString();
-        const localDate = localDateOf(startAt);
+        const { startAt, endAt, localDate } = sessionTimes(options, fixtureInstant);
         const dayKey = options.dayKey ?? (options.mainDay === false ? slug : 'main-day');
         const eventId = options.eventId ?? 'wts2026appevent';
         const appearanceEvent = await pb.collection('appearance_events').getOne(eventId);
-        const days = await pb.collection('conference_days').getList(1, 1, { filter: pb.filter('key = {:key}', { key: dayKey }) });
-        let day = days.items[0] ?? await pb.collection('conference_days').create({ key: dayKey, local_date: localDate, title: 'Synthetic Day', published: true });
-        const programmes = await pb.collection('event_programmes').getList(1, 1, { filter: pb.filter('day = {:day} && appearance_event = {:event}', { day: day.id, event: eventId }) });
-        const programme = options.programmeId ? await pb.collection('event_programmes').getOne(options.programmeId) : programmes.items[0] ?? await pb.collection('event_programmes').create({ day: day.id, appearance_event: eventId });
-        day = await pb.collection('conference_days').getOne(programme.day);
-        const track = options.trackId === '' ? null : options.trackId ? await pb.collection('agenda_tracks').getOne(options.trackId) : await pb.collection('agenda_tracks').create({
-          programme: programme.id, key: options.stageKey ?? slug, name: options.stageName ?? 'Synthetic Stage',
-          location_label: options.locationLabel ?? 'Synthetic Hall', display_order: options.displayOrder ?? 0,
-        });
+        const syntheticDay = await findOrCreateDay(pb, dayKey, localDate);
+        const programme = await sessionProgramme(pb, options, syntheticDay.id, eventId);
+        const day = await pb.collection('conference_days').getOne(programme.day);
+        const track = await sessionTrack(pb, options, programme.id, slug);
         const session = await pb.collection('sessions').create({ slug, title: options.title ?? `Session ${slug}`, abstract: '<p>Synthetic abstract</p>', published: false });
         const slot = await pb.collection('agenda_slots').create({ programme: programme.id, track: track?.id ?? '', session: session.id, kind: 'session', start_at: startAt, end_at: endAt, published: false });
         const publish = async (published: boolean) => {

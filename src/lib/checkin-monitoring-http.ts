@@ -1,33 +1,44 @@
+import type { z } from "zod";
 import type { MonitoringServiceContract } from "~/lib/checkin-monitoring-contract";
 import { monitoringRequestSchema, monitoringAdminSchema, monitoringOperatorSchema, monitoringConfigSchema, monitoringAckSchema } from "~/lib/checkin-monitoring-validation";
 import { CheckinError } from "~/lib/checkin-service";
 import { protectCheckinResponse } from "~/lib/checkin-privacy";
 import { isSameOriginMutation } from "~/lib/session-policy";
+import { authenticateCheckinActor, checkinClientCookies, readCheckinCommand } from "~/lib/checkin-http-request";
 interface Actor { id: string; role: string }
 export interface CheckinMonitoringHttpDependencies { authenticate(): Promise<Actor>; service(actor: Actor): Promise<MonitoringServiceContract> }
 function response(value: unknown, status = 200) { return protectCheckinResponse(new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } })); }
+type Command = z.infer<typeof monitoringRequestSchema>;
+interface Call { service: MonitoringServiceContract; actor: Actor; token: string | null }
+type Operation<K extends Command["operation"]> = (call: Call, command: Extract<Command, { operation: K }>) => Promise<unknown>;
+const operations: { [K in Command["operation"]]: Operation<K> } = {
+  dashboard: async ({ service, actor, token }, command) => (actor.role === "admin" ? monitoringAdminSchema : monitoringOperatorSchema).parse(await service.dashboard(token, command.offset || 0)),
+  configure: async ({ service }, command) => monitoringConfigSchema.parse(await service.configure(command.command)),
+  acknowledge: async ({ service, token }, command) => {
+    const result = monitoringAckSchema.parse(await service.acknowledge(command.incidentId, token));
+    if (result.incidentId !== command.incidentId) throw new Error();
+    return result;
+  },
+};
+const REJECTIONS = { 413: "Command too large.", 400: "Invalid monitoring command." } as const;
+function permits(actor: Actor, command: Command) { return command.operation !== "configure" || actor.role === "admin"; }
+function monitoringFailure(error: unknown) {
+  if (error instanceof CheckinError) return response({ code: error.code, error: "Monitoring command rejected." }, error.status);
+  return response({ error: "Monitoring service unavailable." }, 503);
+}
 export async function handleCheckinMonitoringRequest(request: Request, deps: CheckinMonitoringHttpDependencies): Promise<Response> {
   if (!isSameOriginMutation(request)) return response({ error: "Monitoring access denied." }, 403);
-  let actor: Actor;
-  try { actor = await deps.authenticate(); if (!["admin", "checkin_operator"].includes(actor.role)) throw new Error(); }
-  catch { return response({ error: "Monitoring access denied." }, 403); }
+  const actor = await authenticateCheckinActor(() => deps.authenticate(), (candidate) => ["admin", "checkin_operator"].includes(candidate.role));
+  if (!actor) return response({ error: "Monitoring access denied." }, 403);
   if (!request.headers.get("content-type")?.startsWith("application/json")) return response({ error: "Use JSON." }, 415);
-  let body;
-  try {
-    const reader = request.body?.getReader(); const chunks: Uint8Array[] = []; let size = 0;
-    if (reader) { try { while (true) { const { done, value } = await reader.read(); if (done) break; size += value.byteLength; if (size > 8192) { void reader.cancel().catch(() => undefined); return response({ error: "Command too large." }, 413); } chunks.push(value); } } finally { reader.releaseLock(); } }
-    body = monitoringRequestSchema.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-  } catch { return response({ error: "Invalid monitoring command." }, 400); }
-  if (body.operation === "configure" && actor.role !== "admin") return response({ error: "Admin required." }, 403);
-  const cookies = (request.headers.get("cookie") || "").split(";").map((v) => v.trim()).filter((v) => v.startsWith("wts_checkin_client="));
-  if (cookies.length > 1) return response({ error: "Invalid station binding." }, 400);
-  const token = cookies[0]?.slice("wts_checkin_client=".length) || null;
+  const read = await readCheckinCommand(request, 8192, (value) => monitoringRequestSchema.parse(value));
+  if (!read.ok) return response({ error: REJECTIONS[read.status] }, read.status);
+  if (!permits(actor, read.command)) return response({ error: "Admin required." }, 403);
+  const tokens = checkinClientCookies(request);
+  if (tokens.length > 1) return response({ error: "Invalid station binding." }, 400);
   try {
     const service = await deps.service(actor);
-    if (body.operation === "dashboard") return response((actor.role === "admin" ? monitoringAdminSchema : monitoringOperatorSchema).parse(await service.dashboard(token, body.offset || 0)));
-    if (body.operation === "configure") return response(monitoringConfigSchema.parse(await service.configure(body.command)));
-    const result = monitoringAckSchema.parse(await service.acknowledge(body.incidentId, token));
-    if (result.incidentId !== body.incidentId) throw new Error();
-    return response(result);
-  } catch (error) { if (error instanceof CheckinError) return response({ code: error.code, error: "Monitoring command rejected." }, error.status); return response({ error: "Monitoring service unavailable." }, 503); }
+    const run = operations[read.command.operation] as Operation<Command["operation"]>;
+    return response(await run({ service, actor, token: tokens[0] || null }, read.command));
+  } catch (error) { return monitoringFailure(error); }
 }

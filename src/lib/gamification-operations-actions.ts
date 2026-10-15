@@ -5,6 +5,7 @@ import {
   type AdminActivityDraftInput,
   type AdminAchievementDraftInput,
   type AdminCodeGenerationInput,
+  type AdminCodeRegistrationInput,
   type AdminCodeInvalidationInput,
   type AdminCodeLookupInput,
   type AdminCodeReissueInput,
@@ -153,6 +154,18 @@ export const adminGenerateGamificationCodes = async (input: AdminCodeGenerationI
   "use server";
   try {
     return { success: true, data: await withAdmin((service, actor) => service.generateCodes(input, actor)) };
+  } catch (error) {
+    return { success: false, error: actionError(error) };
+  }
+};
+
+export const adminRegisterGamificationCodes = async (input: AdminCodeRegistrationInput, expectedUserId: string) => {
+  "use server";
+  try {
+    return { success: true, data: await withAdmin((service, actor) => {
+      if (!expectedUserId || expectedUserId !== actor.id) throw new Error("Your signed-in User changed. Reload before registering codes.");
+      return service.registerCodes(input, actor);
+    }) };
   } catch (error) {
     return { success: false, error: actionError(error) };
   }

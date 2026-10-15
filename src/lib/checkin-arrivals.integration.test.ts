@@ -108,6 +108,19 @@ function sql(t: Fixture, statement: string, ...values: (string | number)[]) {
 async function noEffects(t: Fixture) {
   for (const collection of ["checkin_arrival_workflows", "checkin_agent_attempts", "checkin_agent_authorizations"]) expect(await t.pb.collection(collection).getFullList()).toEqual([]);
 }
+async function pagedHistory(service: CheckinArrivalService, token: string, max: number) {
+  const paged: string[] = []; let cursor: string | undefined;
+  do {
+    const page = await service.history(token, { limit: 1, cursor });
+    paged.push(...page.items.map((item) => item.operationId));
+    expect(paged.length).toBeLessThanOrEqual(max);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor);
+  return paged;
+}
+async function expectUnchanged(t: Fixture, collection: string, originals: { id: string }[]) {
+  for (const original of originals) expect(await t.pb.collection(collection).getOne(original.id)).toEqual(original);
+}
 const changes = ["role", "verification", "binding", "rebind", "system", "station", "event", "selection", "agent", "profile", "heartbeat"] as const;
 for (const phase of ["before", "affiliation"] as const) {
   for (const change of changes) {
@@ -116,36 +129,35 @@ for (const phase of ["before", "affiliation"] as const) {
       try {
         await runtime.heartbeat();
         const command = { ...t.command(), context: await context(t) };
-        const mutate = async () => {
-          if (change === "role") await t.pb.collection("users").update(t.operator.record.id, { role: "user" });
-          if (change === "verification") await t.pb.collection("users").update(t.operator.record.id, { verified: false });
-          if (change === "binding") await t.control.adminControl({ operation: "revoke_binding", operationId: crypto.randomUUID(), bindingId: command.context.bindingId, expectedVersion: command.context.bindingVersion, reason: "security" });
-          if (change === "rebind") {
+        const station = () => t.pb.collection("checkin_stations").getOne(command.context.stationId);
+        const mutations: Record<typeof change, () => Promise<unknown>> = {
+          role: () => t.pb.collection("users").update(t.operator.record.id, { role: "user" }),
+          verification: () => t.pb.collection("users").update(t.operator.record.id, { verified: false }),
+          binding: () => t.control.adminControl({ operation: "revoke_binding", operationId: crypto.randomUUID(), bindingId: command.context.bindingId, expectedVersion: command.context.bindingVersion, reason: "security" }),
+          rebind: async () => {
             const stationId = "wts2026station2";
             await t.control.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), stationId, expectedVersion: 1, enabled: true, reason: "configuration" });
             const code = (await t.control.adminControl({ operation: "rotate_provision_code", operationId: crypto.randomUUID(), stationId, expectedVersion: 2, reason: "configuration" })).provisionCode!;
             await t.control.bind(code, t.token, (await t.control.preview(code, t.token)).confirmation);
-          }
-          if (change === "system") {
+          },
+          system: async () => {
             const system = await t.pb.collection("checkin_system").getOne("wts2026system00");
             await t.control.adminControl({ operation: "set_system_enabled", operationId: crypto.randomUUID(), expectedVersion: system.version, enabled: false, reason: "maintenance" });
-          }
-          if (change === "station") {
-            const station = await t.pb.collection("checkin_stations").getOne(command.context.stationId);
-            await t.control.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), stationId: command.context.stationId, expectedVersion: station.version, enabled: false, reason: "maintenance" });
-          }
-          if (change === "event") await new CheckinEventService(t.pb, t.admin.actor, events).configure({ operationId: crypto.randomUUID(), expectedGeneration: 1, upstreamEventId: "101", member: true, enabled: false, listId: "201", affiliation: null, reason: "configuration" });
-          if (change === "selection") await context(t);
-          if (change === "agent") {
-            const station = await t.pb.collection("checkin_stations").getOne(command.context.stationId);
-            await new CheckinAgentService(t.pb, t.admin.actor).revoke({ operationId: crypto.randomUUID(), stationId: command.context.stationId, expectedStationVersion: station.version, agentId: runtime.issued.station.agentId!, reason: "security", note: "Synthetic revocation" });
-          }
-          if (change === "profile") {
-            const station = await t.pb.collection("checkin_stations").getOne(command.context.stationId);
-            await new CheckinLabelProfileService(t.pb, t.admin.actor).configure({ operationId: crypto.randomUUID(), stationId: command.context.stationId, expectedVersion: 1, expectedStationVersion: station.version, reason: "configuration", note: "Synthetic replacement", config: { ...SYNTHETIC_LABEL_CONFIG, synthetic: false, printerRef: "test-printer", stockRef: "replacement-stock" } });
-          }
-          if (change === "heartbeat") sql(t, "UPDATE checkin_agents SET last_heartbeat_at = '2000-01-01 00:00:00.000Z'");
+          },
+          station: async () => {
+            await t.control.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), stationId: command.context.stationId, expectedVersion: (await station()).version, enabled: false, reason: "maintenance" });
+          },
+          event: () => new CheckinEventService(t.pb, t.admin.actor, events).configure({ operationId: crypto.randomUUID(), expectedGeneration: 1, upstreamEventId: "101", member: true, enabled: false, listId: "201", affiliation: null, reason: "configuration" }),
+          selection: () => context(t),
+          agent: async () => {
+            await new CheckinAgentService(t.pb, t.admin.actor).revoke({ operationId: crypto.randomUUID(), stationId: command.context.stationId, expectedStationVersion: (await station()).version, agentId: runtime.issued.station.agentId!, reason: "security", note: "Synthetic revocation" });
+          },
+          profile: async () => {
+            await new CheckinLabelProfileService(t.pb, t.admin.actor).configure({ operationId: crypto.randomUUID(), stationId: command.context.stationId, expectedVersion: 1, expectedStationVersion: (await station()).version, reason: "configuration", note: "Synthetic replacement", config: { ...SYNTHETIC_LABEL_CONFIG, synthetic: false, printerRef: "test-printer", stockRef: "replacement-stock" } });
+          },
+          heartbeat: async () => sql(t, "UPDATE checkin_agents SET last_heartbeat_at = '2000-01-01 00:00:00.000Z'"),
         };
+        const mutate = async () => { await mutations[change](); };
         let reads = 0;
         const source: CheckinArrivalSource = { ...t.source, resolve: async (...args) => { reads++; return t.source.resolve(...args); }, affiliation: async (...args) => { if (phase === "affiliation") await mutate(); return t.source.affiliation(...args); } };
         if (phase === "before") await mutate();
@@ -242,21 +254,15 @@ for (const outcome of ["retry", "blank", "rejected"] as const) {
       expect(result.state).toBe(outcome === "rejected" ? "rejected" : "reserved");
       if (result.state === "reserved") expect(result.workflow.affiliation).toBe(outcome === "blank" ? "" : "Test organisation");
       const history = await service.history(t.token);
-      const paged: string[] = []; let cursor: string | undefined;
-      do {
-        const page = await service.history(t.token, { limit: 1, cursor });
-        paged.push(...page.items.map((item) => item.operationId));
-        expect(paged.length).toBeLessThanOrEqual(3);
-        cursor = page.nextCursor ?? undefined;
-      } while (cursor);
+      const paged = await pagedHistory(service, t.token, 3);
       expect(paged.sort()).toEqual([first.operationId, second.operationId, last.operationId].sort());
       for (const previous of [first, second]) {
         expect(history.items.find((item) => item.operationId === previous.operationId)).toMatchObject({ resolvedByOperationId: last.operationId, completedAt: expect.any(String), stationId: first.context.stationId });
       }
       expect(history.items.find((item) => item.operationId === first.operationId)?.result).toEqual({ state: "dependency_unavailable" });
       expect(history.items.find((item) => item.operationId === second.operationId)?.result).toEqual({ state: "needs_affiliation_choice" });
-      for (const original of originals) expect(await t.pb.collection("checkin_arrival_commands").getOne(original.id)).toEqual(original);
-      for (const original of audit) expect(await t.pb.collection("checkin_audit_events").getOne(original.id)).toEqual(original);
+      await expectUnchanged(t, "checkin_arrival_commands", originals);
+      await expectUnchanged(t, "checkin_audit_events", audit);
       await t.restart();
       expect(await service.preflight(t.token, first)).toEqual({ ...failed, replayed: true });
       expect(await service.preflight(t.token, second)).toEqual({ ...choice, replayed: true });

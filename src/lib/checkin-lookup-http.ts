@@ -11,6 +11,7 @@ export interface CheckinLookupServiceContract extends CheckinLookupRecoveryServi
 import { CheckinError } from "~/lib/checkin-service";
 import { protectCheckinResponse } from "~/lib/checkin-privacy";
 import { isSameOriginMutation } from "~/lib/session-policy";
+import { authenticateCheckinActor, checkinClientCookies, readCheckinCommand } from "~/lib/checkin-http-request";
 
 
 
@@ -28,45 +29,36 @@ export interface CheckinLookupHttpDependencies {
 function response(body: unknown, status = 200) {
   return protectCheckinResponse(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
 }
+type Command = z.infer<typeof schema>;
+type Operation<K extends Command["operation"]> = (service: CheckinLookupServiceContract, token: string, input: Extract<Command, { operation: K }>["input"]) => Promise<unknown>;
+const operations: { [K in Command["operation"]]: Operation<K> } = {
+  confirm: async (service, token, input) => parseCheckinLookupConfirmResult(await service.confirm(token, input), input),
+  recovery_get: async (service, token, input) => parseCheckinLookupRecovery(await service.getRecovery(token, input.operationId), input.operationId),
+  recover: async (service, token, input) => {
+    const original = parseCheckinLookupRecovery(await service.getRecovery(token, input.operationId), input.operationId);
+    const expected = { context: original.context, operationId: input.action === "replay" ? input.operationId : input.nextOperationId };
+    return parseCheckinLookupConfirmResult(await service.recover(token, input), expected);
+  },
+  search: async (service, token, input) => parseCheckinLookupSearchResult(await service.search(token, input), input),
+};
+const REJECTIONS = { 413: "Lookup command too large.", 400: "Invalid lookup command." } as const;
+function stationToken(request: Request): string | null {
+  const tokens = checkinClientCookies(request);
+  return tokens.length === 1 && /^[a-f0-9]{64}$/.test(tokens[0]) ? tokens[0] : null;
+}
 export async function handleCheckinLookupRequest(request: Request, deps: CheckinLookupHttpDependencies): Promise<Response> {
   if (!isSameOriginMutation(request)) return response({ error: "Check-in access denied." }, 403);
-  let actor: Actor;
-  try {
-    actor = await deps.authenticate();
-    if (!actor.id || !["admin", "checkin_operator"].includes(actor.role)) return response({ error: "Check-in access denied." }, 403);
-  } catch { return response({ error: "Check-in access denied." }, 403); }
+  const actor = await authenticateCheckinActor(() => deps.authenticate(), (candidate) => !!candidate.id && ["admin", "checkin_operator"].includes(candidate.role));
+  if (!actor) return response({ error: "Check-in access denied." }, 403);
   if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type") ?? "")) return response({ error: "Use a JSON lookup command." }, 415);
-  let command: z.infer<typeof schema>;
-  try {
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    const reader = request.body?.getReader();
-    if (reader) {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          size += value.byteLength;
-          if (size > 8192) { void reader.cancel().catch(() => undefined); return response({ error: "Lookup command too large." }, 413); }
-          chunks.push(value);
-        }
-      } finally { reader.releaseLock(); }
-    }
-    command = schema.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-  } catch { return response({ error: "Invalid lookup command." }, 400); }
-  const cookies = (request.headers.get("cookie") ?? "").split(";").map((part) => part.trim()).filter((part) => part.startsWith("wts_checkin_client="));
-  const token = cookies[0]?.slice("wts_checkin_client=".length);
-  if (cookies.length !== 1 || !token || !/^[a-f0-9]{64}$/.test(token)) return response({ error: "Invalid station client identity." }, 403);
+  const read = await readCheckinCommand(request, 8192, (value) => schema.parse(value));
+  if (!read.ok) return response({ error: REJECTIONS[read.status] }, read.status);
+  const token = stationToken(request);
+  if (!token) return response({ error: "Invalid station client identity." }, 403);
   try {
     const service = await deps.service(actor);
-    if (command.operation === "confirm") return response(parseCheckinLookupConfirmResult(await service.confirm(token, command.input), command.input));
-    if (command.operation === "recovery_get") return response(parseCheckinLookupRecovery(await service.getRecovery(token, command.input.operationId), command.input.operationId));
-    if (command.operation === "recover") {
-      const original = parseCheckinLookupRecovery(await service.getRecovery(token, command.input.operationId), command.input.operationId);
-      const expected = { context: original.context, operationId: command.input.action === "replay" ? command.input.operationId : command.input.nextOperationId };
-      return response(parseCheckinLookupConfirmResult(await service.recover(token, command.input), expected));
-    }
-    return response(parseCheckinLookupSearchResult(await service.search(token, command.input), command.input));
+    const run = operations[read.command.operation] as Operation<Command["operation"]>;
+    return response(await run(service, token, read.command.input));
   } catch (error) {
     // Reconstruct even known errors: do not trust a mutable Error.message.
     if (error instanceof CheckinError) return response({ code: error.code, error: new CheckinError(error.code, error.status).message }, error.status);

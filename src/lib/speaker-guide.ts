@@ -1,4 +1,4 @@
-import { speakerGuide } from ".velite";
+import speakerGuide from "../../content/speaker-guide.mdx?content";
 import { hasValidSpeakerGuidePassword } from "~/lib/speaker-guide-access";
 
 export interface SpeakerGuideContent {

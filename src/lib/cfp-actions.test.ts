@@ -44,20 +44,35 @@ describe("CFP submission server policy", () => {
     mocks.requireAuth.mockResolvedValue({ id: "user-00000000001" });
   });
 
-  it("rejects writes when the CFP is closed", async () => {
-    mocks.fetchAllRecords.mockResolvedValueOnce([{
-      cfp_open: false,
-      cfp_deadline: "2099-07-30T23:59:59Z",
-    }]);
+  it("rejects participant operations while availability is disabled before identity or CFP reads", async () => {
+    mocks.fetchAllRecords.mockResolvedValue([{ availability: { cfp: false, review: true }, cfp_open: true }]);
 
-    await expect(saveMyCfpSubmission(input)).rejects.toThrow("The CFP is closed.");
+    await expect(saveMyCfpSubmission(input)).rejects.toMatchObject({
+      message: "CFP is unavailable.",
+      status: 404,
+      code: "capability_unavailable",
+    });
+    expect(mocks.requireAuth).not.toHaveBeenCalled();
     expect(mocks.createRecord).not.toHaveBeenCalled();
     expect(mocks.updateRecord).not.toHaveBeenCalled();
+    expect(mocks.fetchAllRecords).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when the capability configuration cannot be read", async () => {
+    mocks.fetchAllRecords.mockRejectedValue(new Error("PocketBase unavailable."));
+
+    await expect(saveMyCfpSubmission(input)).rejects.toMatchObject({
+      message: "CFP is unavailable.",
+      status: 404,
+      code: "capability_unavailable",
+    });
+    expect(mocks.requireAuth).not.toHaveBeenCalled();
+    expect(mocks.createRecord).not.toHaveBeenCalled();
   });
 
   it("rejects edits to finalized submissions", async () => {
     mocks.fetchAllRecords
-      .mockResolvedValueOnce([{ cfp_open: true, cfp_deadline: "2099-07-30T23:59:59Z" }])
+      .mockResolvedValueOnce([{ availability: { cfp: true, review: false }, cfp_open: true }])
       .mockResolvedValueOnce([{ id: applicantId, user: "user-00000000001" }]);
     mocks.fetchRecordById.mockResolvedValue({
       id: submissionId,
@@ -70,9 +85,9 @@ describe("CFP submission server policy", () => {
     expect(mocks.updateRecord).not.toHaveBeenCalled();
   });
 
-  it("creates pending submissions while the CFP is open", async () => {
+  it("creates pending submissions only under explicit synthetic activation", async () => {
     mocks.fetchAllRecords
-      .mockResolvedValueOnce([{ cfp_open: true, cfp_deadline: "2099-07-30T23:59:59Z" }])
+      .mockResolvedValueOnce([{ availability: { cfp: true, review: false }, cfp_open: true }])
       .mockResolvedValueOnce([{ id: applicantId, user: "user-00000000001" }]);
     mocks.createRecord.mockResolvedValue({
       id: submissionId,

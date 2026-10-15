@@ -55,6 +55,8 @@ export interface CheckinPreviewDTO {
   confirmation: CheckinConfirmation;
   canBind: boolean;
 }
+/** Operator-safe printer choices. No provisioning capability is disclosed. */
+export interface CheckinPrinterCatalogueDTO { printers: CheckinPreviewDTO[] }
 /** Server-only return: route sets the HttpOnly persistent cookie and MUST NOT
  * serialize bindingToken in its JSON response. Existing identity stays unchanged. */
 export interface CheckinBindResult { status: CheckinStatusDTO; bindingToken: string }
@@ -107,6 +109,8 @@ export interface CheckinAdminResult {
 export type CheckinErrorCode = "forbidden" | "invalid_input" | "invalid_code" | "invalid_binding" | "revoked_binding" | "disabled" | "conflict" | "unavailable";
 export interface CheckinServiceContract {
   status(bindingToken?: string | null): Promise<CheckinStatusDTO>;
+  printers(bindingToken?: string | null): Promise<CheckinPrinterCatalogueDTO>;
+  selectPrinter(bindingToken: string | null | undefined, confirmation: CheckinConfirmation): Promise<CheckinBindResult>;
   preview(code: string, bindingToken?: string): Promise<CheckinPreviewDTO>;
   bind(code: string, bindingToken: string | null | undefined, confirmation: CheckinConfirmation): Promise<CheckinBindResult>;
   adminList(query?: { bindingPage?: number; auditPage?: number }): Promise<CheckinAdminDTO>;

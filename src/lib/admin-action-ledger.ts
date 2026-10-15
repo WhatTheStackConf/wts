@@ -244,12 +244,25 @@ function assertSafeValue(
     throw new Error(`${label} must be ${maximumBytes.toLocaleString("en-US")} bytes or smaller.`);
   }
   if (depth > 6) throw new Error(`${label} is too deeply nested.`);
+  assertSafeScalar(value, label);
+  assertSafeChildren(value, label, maximumBytes, depth);
+}
+
+function assertSafeScalar(value: AdminActionValue, label: string): void {
   if (typeof value === "string" && containsAdminActionSecretMaterial(value)) {
     throw new Error(`${label} contains credential or hash material.`);
   }
   if (typeof value === "number" && !Number.isFinite(value)) {
     throw new Error(`${label} contains a non-finite number.`);
   }
+}
+
+function assertSafeChildren(
+  value: AdminActionValue,
+  label: string,
+  maximumBytes: number,
+  depth: number,
+): void {
   if (Array.isArray(value)) {
     if (value.length > 50) throw new Error(`${label} contains too many values.`);
     for (const item of value) assertSafeValue(item, label, maximumBytes, depth + 1);

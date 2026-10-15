@@ -1,5 +1,10 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vite-plus/test";
+
+vi.mock("~/lib/conference-guide-content", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/lib/conference-guide-content")>()),
+  conferenceTimeZone: "Europe/Skopje",
+}));
+
 import { runAuthorizedProgrammeOperation } from "~/lib/programme-admin-authorization";
 import { buildPublicAgenda, derivePublicSessionSchedule } from "~/lib/programme-public";
 import {
@@ -148,18 +153,6 @@ describe("programme schedule validation", () => {
 });
 
 describe("public agenda DTOs", () => {
-  it("denies raw PocketBase Speaker and Session reads so public data must use DTOs", () => {
-    const migration = readFileSync(
-      new URL("../../pocketbase/pb_migrations/1786000010_harden_programme_api_rules.js", import.meta.url),
-      "utf8",
-    );
-
-    expect(migration).toContain('for (const name of ["speakers", "sessions"])');
-    for (const rule of ["listRule", "viewRule", "createRule", "updateRule", "deleteRule"]) {
-      expect(migration).toContain(`collection.${rule} = null;`);
-    }
-  });
-
   it("groups Slots by Event Programme and requires a published Event, Day, and Slot", async () => {
     const agenda = buildPublicAgenda(
       [

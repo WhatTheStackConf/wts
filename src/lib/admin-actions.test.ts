@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
   const createRecord = vi.fn();
   const updateRecord = vi.fn();
   const getInstance = vi.fn();
+  const requireCapability = vi.fn().mockResolvedValue(undefined);
   return {
     fetchAllRecords,
     fetchRecordById,
@@ -19,9 +20,15 @@ const mocks = vi.hoisted(() => {
       updateRecord,
       getInstance,
     },
+    requireCapability,
   };
 });
 
+vi.mock("~/lib/capability-availability", () => ({
+  capabilityAvailable: vi.fn().mockResolvedValue(false),
+  capabilityUnavailableMetadata: () => ({}),
+  requireCapability: mocks.requireCapability,
+}));
 import {
   buildSpeakerProfileUpdateBody,
   createOrReuseCfpSpeakerFromApplicant,

@@ -126,9 +126,43 @@ function finiteDate(value: unknown): string | undefined {
   return candidate && Number.isFinite(Date.parse(candidate)) ? candidate : undefined;
 }
 
+function firstText(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const candidate = text(value);
+    if (candidate) return candidate;
+  }
+  return undefined;
+}
+
 function numberValue(value: unknown): number | undefined {
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
+}
+
+/** The first non-zero number; otherwise the last value's number, so a trailing zero survives. */
+function firstNumber(...values: unknown[]): number | undefined {
+  let candidate: number | undefined;
+  for (const value of values) {
+    candidate = numberValue(value);
+    if (candidate) return candidate;
+  }
+  return candidate;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
+function recordOrEmpty(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function hasKeys(value: Record<string, unknown>): boolean {
+  return Object.keys(value).length > 0;
 }
 
 function flag(value: unknown): boolean {
@@ -148,32 +182,46 @@ export function normalizeHiEventsEmail(email: string | undefined): string {
   return email?.trim().toLocaleLowerCase() || "";
 }
 
-function isUsableHiEventsEmail(value: string): boolean {
-  if (!value || value.length > 254 || /\s/.test(value)) return false;
-  const parts = value.split("@");
-  if (parts.length !== 2) return false;
-  const [local, domain] = parts;
-  if (!local || local.length > 64 || local.startsWith(".") || local.endsWith(".") || local.includes("..")) return false;
+function isUsableLocalPart(local: string): boolean {
+  return Boolean(local) && local.length <= 64 && !local.startsWith(".") && !local.endsWith(".") && !local.includes("..");
+}
+
+function isUsableDomain(domain: string): boolean {
   const labels = domain.split(".");
   return labels.length >= 2 && labels.every((label) =>
     label.length > 0 && label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label)
   );
 }
 
-async function getAuthToken(baseUrl: string, fetcher: typeof fetch, timeoutMs: number): Promise<string | null> {
-  if (process.env.HIEVENTS_API_KEY) return process.env.HIEVENTS_API_KEY;
+function isUsableHiEventsEmail(value: string): boolean {
+  if (!value || value.length > 254 || /\s/.test(value)) return false;
+  const parts = value.split("@");
+  if (parts.length !== 2) return false;
+  const [local, domain] = parts;
+  return isUsableLocalPart(local) && isUsableDomain(domain);
+}
 
+type HiEventsLogin = { email: string; password: string; account_id: string };
+
+function loginCredentials(): HiEventsLogin | null {
   const email = process.env.HIEVENTS_EMAIL;
   const password = process.env.HIEVENTS_PASSWORD;
   const accountId = process.env.HIEVENTS_ACCOUNT_ID;
   if (!email || !password || !accountId) return null;
+  return { email, password, account_id: accountId };
+}
 
-  if (cachedToken && tokenExpiry && Date.now() < tokenExpiry) return cachedToken;
+async function loginToken(
+  baseUrl: string,
+  fetcher: typeof fetch,
+  timeoutMs: number,
+  credentials: HiEventsLogin,
+): Promise<string | null> {
   try {
     const response = await fetcher(`${getApiBaseUrl(baseUrl)}/auth/login`, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, account_id: accountId }),
+      body: JSON.stringify(credentials),
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) return null;
@@ -188,14 +236,28 @@ async function getAuthToken(baseUrl: string, fetcher: typeof fetch, timeoutMs: n
   }
 }
 
+async function getAuthToken(baseUrl: string, fetcher: typeof fetch, timeoutMs: number): Promise<string | null> {
+  if (process.env.HIEVENTS_API_KEY) return process.env.HIEVENTS_API_KEY;
+
+  const credentials = loginCredentials();
+  if (!credentials) return null;
+
+  if (cachedToken && tokenExpiry && Date.now() < tokenExpiry) return cachedToken;
+  return loginToken(baseUrl, fetcher, timeoutMs, credentials);
+}
+
+const CANCELLATION_FLAGS = ["cancelled", "is_cancelled", "refunded", "is_refunded"];
+const INELIGIBLE_STATUSES = new Set(["cancelled", "canceled", "refunded", "transferred", "transferred_away", "voided", "deleted", "inactive", "ineligible"]);
+const ELIGIBLE_STATUSES = new Set(["active", "confirmed", "completed", "paid", "valid", "issued", "checked_in"]);
+
 function eligibilityFor(raw: Record<string, unknown>): { eligibility: HiEventsAttendeeEligibility; sourceStatus?: string } {
-  const sourceStatus = text(raw.status) || text(raw.order_status) || text(raw.ticket_status);
+  const sourceStatus = firstText(raw.status, raw.order_status, raw.ticket_status);
   const status = sourceStatus?.toLocaleLowerCase();
-  const explicitlyIneligible = raw.cancelled === true || raw.is_cancelled === true || raw.refunded === true || raw.is_refunded === true ||
-    ["cancelled", "canceled", "refunded", "transferred", "transferred_away", "voided", "deleted", "inactive", "ineligible"].includes(status || "");
+  const explicitlyIneligible = CANCELLATION_FLAGS.some((key) => raw[key] === true) ||
+    INELIGIBLE_STATUSES.has(status || "");
   if (explicitlyIneligible) return { eligibility: "ineligible", sourceStatus };
   // Older Hi.Events attendee responses omit status. Being present in that response is its supported eligibility signal.
-  if (!status || ["active", "confirmed", "completed", "paid", "valid", "issued", "checked_in"].includes(status)) {
+  if (!status || ELIGIBLE_STATUSES.has(status)) {
     return { eligibility: "eligible", sourceStatus };
   }
   return { eligibility: "unknown", sourceStatus };
@@ -224,25 +286,28 @@ function checkInFor(raw: Record<string, unknown>): { checkedIn: boolean; checkIn
   return { checkedIn: Boolean(first || checkedInAt), checkInStableId: first?.stableId, checkedInAt };
 }
 
+// Hi.Events returns numeric IDs. Do not lose them or repair malformed tokens
+// before consumers decide which admission a ticket actually grants.
+function productIdFor(value: unknown): string | undefined {
+  if (typeof value === "number") return Number.isSafeInteger(value) && value > 0 ? String(value) : undefined;
+  return typeof value === "string" && /^[1-9]\d*$/.test(value) ? value : undefined;
+}
+
+function attendeeEligibility(raw: Record<string, unknown>, normalizedEmail: string): ReturnType<typeof eligibilityFor> {
+  const sourceEligibility = eligibilityFor(raw);
+  return !normalizedEmail && sourceEligibility.eligibility === "eligible"
+    ? { ...sourceEligibility, eligibility: "unknown" as const }
+    : sourceEligibility;
+}
+
 function sourceAttendee(raw: Record<string, unknown>, eventId: string): HiEventsSourceAttendee {
   const email = text(raw.email) || "";
   const normalizedCandidate = normalizeHiEventsEmail(email);
   const normalizedEmail = isUsableHiEventsEmail(normalizedCandidate) ? normalizedCandidate : "";
-  const sourceEligibility = eligibilityFor(raw);
-  const eligibility = !normalizedEmail && sourceEligibility.eligibility === "eligible"
-    ? { ...sourceEligibility, eligibility: "unknown" as const }
-    : sourceEligibility;
+  const eligibility = attendeeEligibility(raw, normalizedEmail);
   const checkIn = checkInFor(raw);
-  // Hi.Events returns numeric IDs. Do not lose them or repair malformed tokens
-  // before consumers decide which admission a ticket actually grants.
-  const productId = typeof raw.product_id === "number" && Number.isSafeInteger(raw.product_id) && raw.product_id > 0
-    ? String(raw.product_id)
-    : typeof raw.product_id === "string" && /^[1-9]\d*$/.test(raw.product_id)
-      ? raw.product_id
-      : undefined;
-  const product = raw.product && typeof raw.product === "object" && !Array.isArray(raw.product)
-    ? raw.product as Record<string, unknown>
-    : {};
+  const productId = productIdFor(raw.product_id);
+  const product = recordOrEmpty(raw.product);
   return {
     stableId: stableIdFor(raw, eventId, normalizedEmail),
     email,
@@ -299,35 +364,206 @@ async function fetchWithRetry(
   throw lastError;
 }
 
+const PAGINATION_KEYS = ["last_page", "total_pages", "current_page", "next_page_url"];
+
+function pageNumbersAgree(currentPage: number, reportedPage?: number, totalPages?: number): boolean {
+  if (reportedPage !== undefined && reportedPage !== currentPage) return false;
+  return totalPages === undefined || Number.isInteger(totalPages) && totalPages >= currentPage;
+}
+
 function pageInfo(json: Record<string, unknown>, currentPage: number): { totalPages?: number; nextUrl?: string; malformed: boolean } {
-  const data = json.data && typeof json.data === "object" && !Array.isArray(json.data)
-    ? json.data as Record<string, unknown>
-    : {};
-  const meta = json.meta && typeof json.meta === "object" && !Array.isArray(json.meta) ? json.meta as Record<string, unknown> : {};
-  const nestedMeta = data.meta && typeof data.meta === "object" && !Array.isArray(data.meta)
-    ? data.meta as Record<string, unknown>
-    : {};
-  const pagination = meta.pagination && typeof meta.pagination === "object" && !Array.isArray(meta.pagination)
-    ? meta.pagination as Record<string, unknown>
-    : json.pagination && typeof json.pagination === "object" && !Array.isArray(json.pagination)
-    ? json.pagination as Record<string, unknown>
-    : Object.keys(nestedMeta).length > 0 ? nestedMeta : data;
-  const totalPages = numberValue(meta.last_page) || numberValue(meta.total_pages) || numberValue(pagination.last_page) || numberValue(pagination.total_pages);
-  const reportedPage = numberValue(meta.current_page) || numberValue(pagination.current_page);
-  const links = json.links && typeof json.links === "object" && !Array.isArray(json.links) ? json.links as Record<string, unknown> : {};
-  const nextUrl = text(links.next) || text(meta.next_page_url) || text(pagination.next_page_url);
-  const paginationKnown = Object.keys(meta).length > 0 ||
-    Object.keys(nestedMeta).length > 0 ||
-    Object.keys(links).length > 0 ||
-    ["last_page", "total_pages", "current_page", "next_page_url"].some((key) => key in pagination);
-  if (
-    !paginationKnown ||
-    reportedPage !== undefined && reportedPage !== currentPage ||
-    totalPages !== undefined && (!Number.isInteger(totalPages) || totalPages < currentPage)
-  ) {
+  const data = recordOrEmpty(json.data);
+  const meta = recordOrEmpty(json.meta);
+  const nestedMeta = recordOrEmpty(data.meta);
+  const pagination = objectRecord(meta.pagination) ??
+    objectRecord(json.pagination) ??
+    (hasKeys(nestedMeta) ? nestedMeta : data);
+  const totalPages = firstNumber(meta.last_page, meta.total_pages, pagination.last_page, pagination.total_pages);
+  const reportedPage = firstNumber(meta.current_page, pagination.current_page);
+  const links = recordOrEmpty(json.links);
+  const nextUrl = firstText(links.next, meta.next_page_url, pagination.next_page_url);
+  const paginationKnown = [meta, nestedMeta, links].some(hasKeys) ||
+    PAGINATION_KEYS.some((key) => key in pagination);
+  if (!paginationKnown || !pageNumbersAgree(currentPage, reportedPage, totalPages)) {
     return { malformed: true };
   }
   return { totalPages, nextUrl, malformed: false };
+}
+
+function configuredNumber(option: number | undefined, environment: string | undefined, fallback: number): number {
+  return Number(option ?? environment ?? fallback);
+}
+
+function requestSettings(options: HiEventsAdapterOptions): { timeoutMs: number; maxRetries: number; retryBaseMs: number } {
+  const timeoutMs = configuredNumber(options.timeoutMs, process.env.HIEVENTS_REQUEST_TIMEOUT_MS, 10000);
+  const maxRetries = configuredNumber(options.maxRetries, process.env.HIEVENTS_MAX_RETRIES, 2);
+  const retryBaseMs = configuredNumber(options.retryBaseMs, process.env.HIEVENTS_RETRY_BASE_MS, 200);
+  return {
+    timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10000,
+    maxRetries: Number.isInteger(maxRetries) ? Math.min(3, Math.max(0, maxRetries)) : 2,
+    retryBaseMs: Number.isFinite(retryBaseMs) ? Math.min(1000, Math.max(10, retryBaseMs)) : 200,
+  };
+}
+
+type AttendeeRequest = ReturnType<typeof requestSettings> & { fetcher: typeof fetch; headers: HeadersInit };
+
+type AttendeeRoute = {
+  apiUrl: string;
+  origin: string;
+  path: string;
+  pageUrl(page: number): string;
+};
+
+function attendeeRoute(rawApiUrl: string, eventId: string): AttendeeRoute {
+  const apiUrl = getApiBaseUrl(rawApiUrl);
+  const attendeesUrl = `${apiUrl}/events/${encodeURIComponent(eventId)}/attendees`;
+  return {
+    apiUrl,
+    origin: new URL(apiUrl).origin,
+    path: `${new URL(apiUrl).pathname.replace(/\/$/, "")}/events/${encodeURIComponent(eventId)}/attendees`,
+    pageUrl: (page) => `${attendeesUrl}?page=${page}&per_page=100`,
+  };
+}
+
+/** Mutable page counters for one traversal; failures snapshot them as they stand. */
+type AttendeeTraversal = {
+  eventId: string;
+  fetchedAt: string;
+  requestedPages: number;
+  completedPages: number;
+  totalPages?: number;
+};
+
+type TraversalFailureReason = HiEventsAttendeeSnapshotPartial["reason"];
+
+function partialSnapshot(traversal: AttendeeTraversal, reason: TraversalFailureReason): HiEventsAttendeeSnapshotPartial {
+  const { eventId, fetchedAt, requestedPages, completedPages, totalPages } = traversal;
+  return { state: "partial", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason };
+}
+
+/** A failure before any completed page means nothing was read, so the source is unavailable. */
+function failedSnapshot(
+  traversal: AttendeeTraversal,
+  firstPageReason: HiEventsAdapterFailureReason,
+  laterPageReason: TraversalFailureReason,
+): HiEventsAttendeeSnapshot {
+  if (traversal.completedPages !== 0) return partialSnapshot(traversal, laterPageReason);
+  const { eventId, fetchedAt, requestedPages, completedPages, totalPages } = traversal;
+  return { state: "unavailable", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: firstPageReason };
+}
+
+async function readAttendeePage(
+  traversal: AttendeeTraversal,
+  request: AttendeeRequest,
+  url: string,
+): Promise<{ json: Record<string, unknown> } | { failure: HiEventsAttendeeSnapshot }> {
+  let response: Response;
+  try {
+    response = await fetchWithRetry(
+      request.fetcher,
+      url,
+      { headers: request.headers },
+      request.timeoutMs,
+      request.maxRetries,
+      request.retryBaseMs,
+    );
+  } catch {
+    return { failure: failedSnapshot(traversal, "request", "request") };
+  }
+  if (!response.ok) {
+    const reason: HiEventsAdapterFailureReason = response.status === 401 || response.status === 403 ? "authentication" : "request";
+    return { failure: failedSnapshot(traversal, reason, "request") };
+  }
+  try {
+    const json = objectRecord(await response.json());
+    if (json) return { json };
+  } catch {
+    // Unparseable bodies are malformed data, the same as non-object bodies.
+  }
+  return { failure: failedSnapshot(traversal, "malformed_data", "malformed_data") };
+}
+
+function attendeeRows(json: Record<string, unknown>): unknown[] | undefined {
+  if (Array.isArray(json.data)) return json.data;
+  const nested = json.data && typeof json.data === "object" ? (json.data as Record<string, unknown>).data : undefined;
+  return Array.isArray(nested) ? nested : undefined;
+}
+
+function attendeePage(
+  json: Record<string, unknown>,
+  currentPage: number,
+): { failure: TraversalFailureReason } | { rows: Record<string, unknown>[]; totalPages?: number; nextUrl?: string } {
+  const rows = attendeeRows(json);
+  if (!rows) return { failure: "malformed_pagination" };
+  const info = pageInfo(json, currentPage);
+  if (info.malformed) return { failure: "malformed_pagination" };
+  if (!rows.every(isRecord)) return { failure: "malformed_data" };
+  return { rows, totalPages: info.totalPages, nextUrl: info.nextUrl };
+}
+
+/** Linked cursors are followed only within the attendee route, and only until a page total is known. */
+function nextPage(
+  route: AttendeeRoute,
+  linkedUrl: string | undefined,
+  totalPages: number | undefined,
+  currentPage: number,
+): { malformed: true } | { malformed: false; url?: string } {
+  if (linkedUrl) {
+    const candidate = new URL(linkedUrl, route.apiUrl);
+    if (candidate.origin !== route.origin) return { malformed: true };
+    if (!totalPages) {
+      return candidate.pathname === route.path ? { malformed: false, url: candidate.toString() } : { malformed: true };
+    }
+  }
+  if (totalPages && currentPage < totalPages) return { malformed: false, url: route.pageUrl(currentPage + 1) };
+  return { malformed: false };
+}
+
+function latestSourceUpdate(attendees: HiEventsSourceAttendee[]): string | undefined {
+  return attendees
+    .map((attendee) => attendee.sourceUpdatedAt)
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0];
+}
+
+async function traverseAttendees(
+  route: AttendeeRoute,
+  request: AttendeeRequest,
+  traversal: AttendeeTraversal,
+): Promise<HiEventsAttendeeSnapshot> {
+  const attendees: HiEventsSourceAttendee[] = [];
+  let currentPage = 1;
+  let nextUrl: string | undefined = route.pageUrl(1);
+  const seenUrls = new Set<string>();
+
+  while (nextUrl) {
+    if (seenUrls.has(nextUrl) || traversal.requestedPages >= 10000) {
+      return partialSnapshot(traversal, "malformed_pagination");
+    }
+    seenUrls.add(nextUrl);
+    traversal.requestedPages += 1;
+    const response = await readAttendeePage(traversal, request, nextUrl);
+    if ("failure" in response) return response.failure;
+    const page = attendeePage(response.json, currentPage);
+    if ("failure" in page) return partialSnapshot(traversal, page.failure);
+    attendees.push(...page.rows.map((row) => sourceAttendee(row, traversal.eventId)));
+    traversal.completedPages += 1;
+    traversal.totalPages = page.totalPages || traversal.totalPages;
+    const next = nextPage(route, page.nextUrl, traversal.totalPages, currentPage);
+    if (next.malformed) return partialSnapshot(traversal, "malformed_pagination");
+    if (next.url) currentPage += 1;
+    nextUrl = next.url;
+  }
+
+  const { eventId, fetchedAt, requestedPages, completedPages, totalPages } = traversal;
+  return {
+    state: "success",
+    eventId,
+    fetchedAt,
+    pagination: pageState(requestedPages, completedPages, totalPages || completedPages, true),
+    attendees,
+    sourceUpdatedAt: latestSourceUpdate(attendees),
+  };
 }
 
 /**
@@ -339,120 +575,47 @@ export async function fetchHiEventsAttendeeSnapshot(options: HiEventsAdapterOpti
   const rawApiUrl = options.apiUrl || process.env.HIEVENTS_API_URL;
   const eventId = options.eventId || process.env.HIEVENTS_EVENT_ID;
   const fetcher = options.fetcher || fetch;
-  const configuredTimeout = Number(options.timeoutMs ?? process.env.HIEVENTS_REQUEST_TIMEOUT_MS ?? 10000);
-  const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 10000;
-  const configuredRetries = Number(options.maxRetries ?? process.env.HIEVENTS_MAX_RETRIES ?? 2);
-  const maxRetries = Number.isInteger(configuredRetries) ? Math.min(3, Math.max(0, configuredRetries)) : 2;
-  const configuredRetryBaseMs = Number(options.retryBaseMs ?? process.env.HIEVENTS_RETRY_BASE_MS ?? 200);
-  const retryBaseMs = Number.isFinite(configuredRetryBaseMs) ? Math.min(1000, Math.max(10, configuredRetryBaseMs)) : 200;
+  const settings = requestSettings(options);
   if (!rawApiUrl || !eventId) {
     return { state: "unavailable", fetchedAt, pagination: pageState(0, 0), reason: "configuration" };
   }
-  const token = options.accessToken || await getAuthToken(rawApiUrl, fetcher, timeoutMs);
+  const token = options.accessToken || await getAuthToken(rawApiUrl, fetcher, settings.timeoutMs);
   if (!token) {
     return { state: "unavailable", eventId, fetchedAt, pagination: pageState(0, 0), reason: "authentication" };
   }
 
   const headers: HeadersInit = { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-  const apiUrl = getApiBaseUrl(rawApiUrl);
-  const apiOrigin = new URL(apiUrl).origin;
-  const attendeePath = `${new URL(apiUrl).pathname.replace(/\/$/, "")}/events/${encodeURIComponent(eventId)}/attendees`;
-  const attendees: HiEventsSourceAttendee[] = [];
-  let requestedPages = 0;
-  let completedPages = 0;
-  let totalPages: number | undefined;
-  let currentPage = 1;
-  let nextUrl: string | undefined = `${apiUrl}/events/${encodeURIComponent(eventId)}/attendees?page=1&per_page=100`;
-  const seenUrls = new Set<string>();
+  return traverseAttendees(
+    attendeeRoute(rawApiUrl, eventId),
+    { ...settings, fetcher, headers },
+    { eventId, fetchedAt, requestedPages: 0, completedPages: 0 },
+  );
+}
 
-  while (nextUrl) {
-    if (seenUrls.has(nextUrl) || requestedPages >= 10000) {
-      return { state: "partial", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "malformed_pagination" };
-    }
-    seenUrls.add(nextUrl);
-    requestedPages += 1;
-    let response: Response;
-    try {
-      response = await fetchWithRetry(
-        fetcher,
-        nextUrl,
-        { headers },
-        timeoutMs,
-        maxRetries,
-        retryBaseMs,
-      );
-    } catch {
-      return completedPages === 0
-        ? { state: "unavailable", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "request" }
-        : { state: "partial", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "request" };
-    }
-    if (!response.ok) {
-      const reason: HiEventsAdapterFailureReason = response.status === 401 || response.status === 403 ? "authentication" : "request";
-      return completedPages === 0
-        ? { state: "unavailable", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason }
-        : { state: "partial", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "request" };
-    }
-    let json: Record<string, unknown>;
-    try {
-      const value = await response.json();
-      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Malformed response");
-      json = value as Record<string, unknown>;
-    } catch {
-      return completedPages === 0
-        ? { state: "unavailable", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "malformed_data" }
-        : { state: "partial", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "malformed_data" };
-    }
-    const rows = Array.isArray(json.data)
-      ? json.data
-      : json.data && typeof json.data === "object" && Array.isArray((json.data as Record<string, unknown>).data)
-      ? (json.data as Record<string, unknown>).data as unknown[]
-      : undefined;
-    if (!rows) {
-      return { state: "partial", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "malformed_pagination" };
-    }
-    const info = pageInfo(json, currentPage);
-    if (info.malformed) {
-      return { state: "partial", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "malformed_pagination" };
-    }
-    if (rows.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
-      return { state: "partial", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "malformed_data" };
-    }
-    attendees.push(...(rows as Record<string, unknown>[]).map((row) => sourceAttendee(row, eventId)));
-    completedPages += 1;
-    totalPages = info.totalPages || totalPages;
-    if (info.nextUrl) {
-      const candidate = new URL(info.nextUrl, apiUrl);
-      if (candidate.origin !== apiOrigin) {
-        return { state: "partial", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "malformed_pagination" };
-      }
-      if (!totalPages) {
-        if (candidate.pathname !== attendeePath) {
-          return { state: "partial", eventId, fetchedAt, pagination: pageState(requestedPages, completedPages, totalPages), reason: "malformed_pagination" };
-        }
-        nextUrl = candidate.toString();
-        currentPage += 1;
-        continue;
-      }
-    }
-    if (totalPages && currentPage < totalPages) {
-      currentPage += 1;
-      nextUrl = `${apiUrl}/events/${encodeURIComponent(eventId)}/attendees?page=${currentPage}&per_page=100`;
-      continue;
-    }
-    nextUrl = undefined;
-  }
+type HiEventsEventResponse = { data?: { product_categories?: Array<{ products?: unknown[] }>; slug?: string } };
 
-  const sourceUpdatedAt = attendees
-    .map((attendee) => attendee.sourceUpdatedAt)
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => Date.parse(right) - Date.parse(left))[0];
+function firstCategoryProducts(json: HiEventsEventResponse): unknown[] | undefined {
+  return json.data?.product_categories?.[0]?.products;
+}
+
+function releaseEventUrl(rawApiUrl: string, eventId: string, slug?: string): string {
+  const eventUrl = `${rawApiUrl.replace(/\/$/, "")}/event/${eventId}`;
+  return slug ? `${eventUrl}/${slug}` : eventUrl;
+}
+
+function releaseFromProduct(ticket: Record<string, unknown>, purchaseLink: string): HiEventsRelease {
   return {
-    state: "success",
-    eventId,
-    fetchedAt,
-    pagination: pageState(requestedPages, completedPages, totalPages || completedPages, true),
-    attendees,
-    sourceUpdatedAt,
+    id: numberValue(ticket.id) || 0,
+    title: text(ticket.title) || "Ticket",
+    description: text(ticket.description) || null,
+    price: ticket.price == null ? null : numberValue(ticket.price) ?? null,
+    currency: text(ticket.currency) || "EUR",
+    is_available: flag(ticket.is_available),
+    sales_start_date: null,
+    sales_end_date: null,
+    quantity_sold: numberValue(ticket.quantity_sold) || 0,
+    quantity_available: null,
+    purchase_link: purchaseLink,
   };
 }
 
@@ -469,28 +632,14 @@ export async function fetchHiEventsReleases(): Promise<HiEventsRelease[]> {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) return [];
-    const json = await response.json() as { data?: { product_categories?: Array<{ products?: unknown[] }>; slug?: string } };
-    const products = json.data?.product_categories?.[0]?.products;
+    const json = await response.json() as HiEventsEventResponse;
+    const products = firstCategoryProducts(json);
     if (!Array.isArray(products)) return [];
-    const eventUrl = json.data?.slug
-      ? `${rawApiUrl.replace(/\/$/, "")}/event/${eventId}/${json.data.slug}`
-      : `${rawApiUrl.replace(/\/$/, "")}/event/${eventId}`;
+    const purchaseLink = releaseEventUrl(rawApiUrl, eventId, json.data?.slug);
     return products
-      .filter((ticket): ticket is Record<string, unknown> => Boolean(ticket && typeof ticket === "object" && !Array.isArray(ticket)))
+      .filter(isRecord)
       .filter((ticket) => !isHiddenProduct(ticket))
-      .map((ticket) => ({
-        id: numberValue(ticket.id) || 0,
-        title: text(ticket.title) || "Ticket",
-        description: text(ticket.description) || null,
-        price: ticket.price == null ? null : numberValue(ticket.price) ?? null,
-        currency: text(ticket.currency) || "EUR",
-        is_available: flag(ticket.is_available),
-        sales_start_date: null,
-        sales_end_date: null,
-        quantity_sold: numberValue(ticket.quantity_sold) || 0,
-        quantity_available: null,
-        purchase_link: eventUrl,
-      }));
+      .map((ticket) => releaseFromProduct(ticket, purchaseLink));
   } catch {
     return [];
   }

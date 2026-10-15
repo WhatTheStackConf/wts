@@ -5,36 +5,40 @@ import { checkinLookupRecoverInputSchema, checkinLookupRecoveryOperationIdSchema
 type StoredCommand = Omit<CheckinLookupConfirmInput, "qrIdentity"> & { qrHash: string; priorOperationId: string };
 interface StoredLookup { command: StoredCommand; snapshot: CheckinEventSnapshot; final: boolean; recovery: CheckinLookupRecovery }
 const qrHash = (qr: string) => createHash("sha256").update(`wts2026:arrival:${qr}`).digest("hex");
-import type { CheckinActor } from "~/lib/checkin-contract";
+import type { CheckinActor, CheckinErrorCode, CheckinStatusDTO } from "~/lib/checkin-contract";
 import type { CheckinEventContext, CheckinEventSnapshot } from "~/lib/checkin-event-contract";
 import type { CheckinArrivalResult } from "~/lib/checkin-arrival-contract";
 import type { CheckinArrivalSource } from "~/lib/checkin-arrival-source";
 import { CheckinArrivalService } from "~/lib/checkin-arrival-service";
 import { checkinEventBindingHash } from "~/lib/checkin-event-service";
-import { CheckinError, CheckinService } from "~/lib/checkin-service";
+import { CheckinError, CheckinService, isCheckinStaff, pocketBaseFailure } from "~/lib/checkin-service";
+import { CHECKIN_STATION_ERROR_CODES, checkinHookError } from "~/lib/checkin-hook-error";
 import type { CheckinLookupSource, LookupRead } from "~/lib/checkin-lookup-hievents";
 import { checkinLookupAttendeeSchema, checkinLookupConfirmInputSchema, checkinLookupSearchInputSchema, type CheckinLookupConfirmInput, type CheckinLookupSearchInput, type CheckinLookupSearchResult } from "~/lib/checkin-lookup-contract";
 
+/** Unlike the context read, ledger commands treat only 403 as denial. */
+function commandFailure(error: unknown): CheckinError {
+  const { code, status } = pocketBaseFailure(error);
+  if (CHECKIN_STATION_ERROR_CODES.includes(code as CheckinErrorCode)) return new CheckinError(code as CheckinErrorCode, status || 400);
+  return status === 403 ? new CheckinError("forbidden", 403) : new CheckinError("unavailable", 503);
+}
+function bindsContext(status: CheckinStatusDTO, context: CheckinEventContext) {
+  return status.binding?.id === context.bindingId && status.binding.version === context.bindingVersion && status.station?.id === context.stationId;
+}
 /** Server-only orchestration. Search data lives only in this request; confirmation
  * enters the existing guarded arrival ledger, never an alternative effect path. */
 export class CheckinLookupService {
   constructor(private readonly pb: PocketBase, private readonly actor: CheckinActor, private readonly source: CheckinLookupSource, private readonly arrivalSource: CheckinArrivalSource) {}
 
   private async context(bindingToken: string | undefined, context: CheckinEventContext): Promise<CheckinEventSnapshot> {
-    if (!this.actor?.userId || !["admin", "checkin_operator"].includes(this.actor.role)) throw new CheckinError("forbidden", 403);
+    if (!isCheckinStaff(this.actor)) throw new CheckinError("forbidden", 403);
     const identityHash = checkinEventBindingHash(bindingToken);
     if (this.source.sourceKey !== this.arrivalSource.sourceKey) throw new CheckinError("unavailable", 503);
     try {
       // Existing PB transaction re-reads live user/verification, binding, selection,
       // system/station/event generations. This call does not write or read upstream.
       return await this.pb.send<CheckinEventSnapshot>("/api/wts/checkin-events", { method: "POST", requestKey: null, body: { operation: "context", actorUserId: this.actor.userId, sourceKey: this.source.sourceKey, identityHash, context } });
-    } catch (error) {
-      const value = error as { status?: number; response?: { data?: { code?: { code?: string } | string } } };
-      const field = value.response?.data?.code;
-      const code = typeof field === "string" ? field : field?.code;
-      if (["forbidden", "invalid_input", "invalid_binding", "revoked_binding", "disabled", "conflict", "unavailable"].includes(code || "")) throw new CheckinError(code as ConstructorParameters<typeof CheckinError>[0], value.status || 400);
-      throw new CheckinError(value.status === 401 || value.status === 403 ? "forbidden" : "unavailable", value.status === 401 || value.status === 403 ? 403 : 503);
-    }
+    } catch (error) { throw checkinHookError(error, CHECKIN_STATION_ERROR_CODES); }
   }
 
   async search(bindingToken: string | undefined, input: CheckinLookupSearchInput): Promise<CheckinLookupSearchResult> {
@@ -56,20 +60,15 @@ export class CheckinLookupService {
     const current = await new CheckinService(this.pb, this.actor).status(bindingToken);
     if (current.bindingState === "revoked" || current.binding?.revoked) throw new CheckinError("revoked_binding", 403);
     if (current.bindingState !== "bound") throw new CheckinError("invalid_binding", 403);
-    if (current.binding?.id !== context.bindingId || current.binding.version !== context.bindingVersion || current.station?.id !== context.stationId) throw new CheckinError("conflict", 409);
+    if (!bindsContext(current, context)) throw new CheckinError("conflict", 409);
   }
 
   private async lookupCommand(token: string | undefined, body: object): Promise<StoredLookup> {
-    if (!this.actor?.userId || !["admin", "checkin_operator"].includes(this.actor.role)) throw new CheckinError("forbidden", 403);
+    if (!isCheckinStaff(this.actor)) throw new CheckinError("forbidden", 403);
     if (this.source.sourceKey !== this.arrivalSource.sourceKey) throw new CheckinError("unavailable", 503);
     try {
       return await this.pb.send("/api/wts/checkin-lookup-commands", { method: "POST", requestKey: null, body: { ...body, identityHash: checkinEventBindingHash(token), actorUserId: this.actor.userId, sourceKey: this.source.sourceKey } });
-    } catch (error) {
-      const value = error as { status?: number; response?: { data?: { code?: { code?: string } | string } } };
-      const field = value.response?.data?.code; const code = typeof field === "string" ? field : field?.code;
-      if (["forbidden", "invalid_input", "invalid_binding", "revoked_binding", "disabled", "conflict", "unavailable"].includes(code || "")) throw new CheckinError(code as ConstructorParameters<typeof CheckinError>[0], value.status || 400);
-      throw new CheckinError(value.status === 403 ? "forbidden" : "unavailable", value.status === 403 ? 403 : 503);
-    }
+    } catch (error) { throw commandFailure(error); }
   }
 
   private async cachedResult(token: string | undefined, stored: StoredLookup): Promise<CheckinArrivalResult> {
@@ -81,12 +80,7 @@ export class CheckinLookupService {
     let response: { result?: CheckinArrivalResult };
     try {
       response = await this.pb.send("/api/wts/checkin-arrivals", { method: "POST", requestKey: null, body: { operation: "begin", identityHash: checkinEventBindingHash(token), actorUserId: this.actor.userId, sourceKey: this.source.sourceKey, command } });
-    } catch (error) {
-      const value = error as { status?: number; response?: { data?: { code?: { code?: string } | string } } };
-      const field = value.response?.data?.code; const code = typeof field === "string" ? field : field?.code;
-      if (["forbidden", "invalid_input", "invalid_binding", "revoked_binding", "disabled", "conflict", "unavailable"].includes(code || "")) throw new CheckinError(code as ConstructorParameters<typeof CheckinError>[0], value.status || 400);
-      throw new CheckinError(value.status === 403 ? "forbidden" : "unavailable", value.status === 403 ? 403 : 503);
-    }
+    } catch (error) { throw commandFailure(error); }
     await this.confirmBinding(token, command.context);
     if (!response.result) throw new CheckinError("conflict", 409);
     return response.result;

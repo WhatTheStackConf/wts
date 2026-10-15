@@ -1,6 +1,6 @@
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
 import { requireAuth } from "~/lib/server-auth";
-import { cfpDeadlineTimestamp } from "~/lib/cfp-deadline";
+import { requireCapability } from "~/lib/capability-availability";
 
 export interface MyCfpApplicantDto {
   id: string;
@@ -68,21 +68,27 @@ function applicantDto(record: any): MyCfpApplicantDto {
   };
 }
 
+function storedText(value: unknown): string {
+  return String(value || "");
+}
+
+function submissionStatus(status: unknown): MyCfpSubmissionDto["status"] {
+  return status === "accepted" || status === "rejected" ? status : "pending";
+}
+
 function submissionDto(record: any, applicant?: MyCfpApplicantDto): MyCfpSubmissionDto {
-  const status = record.status;
   return {
     id: String(record.id),
     applicant: String(record.applicant),
-    session_title: String(record.session_title || ""),
-    abstract: String(record.abstract || ""),
-    key_takeaways: String(record.key_takeaways || ""),
-    technical_requirements: String(record.technical_requirements || ""),
-    notes: String(record.notes || ""),
+    session_title: storedText(record.session_title),
+    abstract: storedText(record.abstract),
+    key_takeaways: storedText(record.key_takeaways),
+    technical_requirements: storedText(record.technical_requirements),
+    notes: storedText(record.notes),
     meta: record.meta && typeof record.meta === "object" ? record.meta : {},
-    status:
-      status === "accepted" || status === "rejected" ? status : "pending",
-    created: String(record.created || ""),
-    updated: String(record.updated || ""),
+    status: submissionStatus(record.status),
+    created: storedText(record.created),
+    updated: storedText(record.updated),
     ...(applicant ? { expand: { applicant } } : {}),
   };
 }
@@ -95,21 +101,10 @@ async function applicantForUser(userId: string): Promise<any | null> {
   return records[0] || null;
 }
 
-async function requireOpenCfp(): Promise<void> {
-  const records = await getAdminPB().fetchAllRecords("conference_config", {
-    fields: "cfp_open,cfp_deadline",
-  });
-  const config = records[0] as { cfp_open?: boolean; cfp_deadline?: string } | undefined;
-  if (config?.cfp_open === false) throw new Error("The CFP is closed.");
-  if (config && !config.cfp_deadline) return;
-  const closesAt = cfpDeadlineTimestamp(config?.cfp_deadline);
-  if (!Number.isFinite(closesAt) || Date.now() >= closesAt) {
-    throw new Error("The CFP is closed.");
-  }
-}
 
 export const fetchMyCfpApplicant = async (): Promise<MyCfpApplicantDto | null> => {
   "use server";
+  await requireCapability("cfp");
   const user = await requireAuth();
   const applicant = await applicantForUser(user.id);
   return applicant ? applicantDto(applicant) : null;
@@ -119,6 +114,7 @@ export const saveMyCfpApplicant = async (
   input: MyCfpApplicantInput,
 ): Promise<MyCfpApplicantDto> => {
   "use server";
+  await requireCapability("cfp");
   const user = await requireAuth();
   const socialHandles = input.social_handles
     .map((value) => text(value, 300))
@@ -141,6 +137,7 @@ export const saveMyCfpApplicant = async (
 
 export const fetchMyCfpSubmissions = async (): Promise<MyCfpSubmissionDto[]> => {
   "use server";
+  await requireCapability("cfp");
   const user = await requireAuth();
   const applicant = await applicantForUser(user.id);
   if (!applicant) return [];
@@ -155,8 +152,8 @@ export const fetchMyCfpSubmissions = async (): Promise<MyCfpSubmissionDto[]> => 
 export const saveMyCfpSubmissionCore = async (
   input: MyCfpSubmissionInput,
 ): Promise<MyCfpSubmissionDto> => {
+  await requireCapability("cfp");
   const user = await requireAuth();
-  await requireOpenCfp();
   const applicant = await applicantForUser(user.id);
   if (!applicant) throw new Error("Complete your CFP profile first.");
 

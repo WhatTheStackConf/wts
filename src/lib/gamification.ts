@@ -1,8 +1,10 @@
 import type {
   GamificationAchievementRecord,
+  GamificationActivityClaimRecord,
   GamificationActivityRecord,
   GamificationActivityKind,
   GamificationCapMembership,
+  GamificationCodeRecord,
   GamificationMissionRecord,
   GamificationProfileRecord,
   GamificationUserAchievementRecord,
@@ -132,6 +134,27 @@ export interface GamificationPublicOpsBoardPage {
 }
 
 const PUBLIC_OPS_BOARD_BADGE_CATEGORIES = new Set(["onboarding", "meta"]);
+
+const PRIVATE_SOURCE_ACTIVITY_KINDS = new Set<string>([
+  "hievents",
+  "session",
+  "workshop",
+  "warmup_event",
+  "satellite_event",
+  "social",
+  "booth",
+  "community_partner",
+]);
+const PRIVATE_SOURCE_EVIDENCE_MODES = new Set<string>(["hievents_ticket", "hievents_checkin"]);
+const PRIVATE_SOURCE_OUTCOME_KEYS = new Set<string>(["ticket_present", "checked_in"]);
+
+/** Activities whose claims reveal ticket, attendance, event, or partner history. */
+function isPrivateSourceActivity(activity: GamificationActivityRecord): boolean {
+  return PRIVATE_SOURCE_ACTIVITY_KINDS.has(activity.kind) ||
+    Boolean(activity.partner) ||
+    PRIVATE_SOURCE_EVIDENCE_MODES.has(activity.evidence_mode) ||
+    PRIVATE_SOURCE_OUTCOME_KEYS.has(activity.outcome_key);
+}
 
 function membershipKey(policy: SeptemberScorePolicy, dimension: GamificationCapMembership["dimension"]): string | undefined {
   return policy.capMembership.find((membership) => membership.dimension === dimension)?.key;
@@ -409,6 +432,10 @@ export function buildGamificationProfileSummary(
   userAchievements: GamificationUserAchievementRecord[],
   achievements: GamificationAchievementRecord[],
   missions: GamificationMissionRecord[] = [],
+  activities: GamificationActivityRecord[] = [],
+  claims: GamificationActivityClaimRecord[] = [],
+  now: string = new Date().toISOString(),
+  codes: GamificationCodeRecord[] = [],
 ): GamificationProfileSummary {
   const achievementsById = new Map(achievements.map((achievement) => [achievement.id, achievement]));
   const badges = userAchievements
@@ -458,8 +485,27 @@ export function buildGamificationProfileSummary(
       rarity: achievement.rarity,
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
+  const currentTime = Date.parse(now);
+  const inWindow = (startsAt?: string, endsAt?: string) => Number.isFinite(currentTime) &&
+    (!startsAt || Date.parse(startsAt) <= currentTime) &&
+    (!endsAt || Date.parse(endsAt) >= currentTime);
+  const completedActivityIds = new Set(claims
+    .filter((claim) => claim.user === profile.user && claim.status === "accepted")
+    .map((claim) => claim.activity));
+  const usableCodeActivities = new Set(codes.filter(code => code.status === "active" && code.enabled && !code.invalidated_at && inWindow(code.starts_at, code.ends_at) && (!code.max_redemptions || code.total_redemptions_cached < code.max_redemptions)).map(code => code.activity));
+  // Suggestions link to code redemption, not manual, imported, or derived evidence.
+  const eligibleMissionIds = new Set(activities
+    .filter((activity) => activity.status === "active" && activity.enabled &&
+      inWindow(activity.active_from, activity.active_until) &&
+      !completedActivityIds.has(activity.id) &&
+      usableCodeActivities.has(activity.id) &&
+      ["single_code", "two_code_start", "two_code_finish", "static_puzzle_code"].includes(activity.evidence_mode))
+    .map((activity) => activity.mission));
   const suggestedMissions = missions
-    .filter((mission) => mission.status === "active" && mission.visibility === "public" && mission.suggested)
+    .filter((mission) => mission.status === "active" && mission.visibility === "public" && mission.suggested &&
+      inWindow(mission.starts_at, mission.ends_at) && eligibleMissionIds.has(mission.id) &&
+      (!mission.primary_achievement || !unlockedAchievementIds.has(mission.primary_achievement)))
+    .slice(0, 20)
     .map((mission) => ({
       title: mission.title,
       summary: mission.summary,
@@ -509,18 +555,7 @@ export function buildGamificationPublicOpsBoardRows(
   activities: GamificationActivityRecord[] = [],
 ): GamificationPublicOpsBoardRow[] {
   const achievementsById = new Map(achievements.map((achievement) => [achievement.id, achievement]));
-  const privateSourceActivities = new Set(activities
-    .filter((activity) =>
-      activity.kind === "hievents" ||
-      activity.kind === "session" ||
-      activity.kind === "booth" ||
-      activity.kind === "community_partner" ||
-      Boolean(activity.partner) ||
-      activity.evidence_mode === "hievents_ticket" ||
-      activity.evidence_mode === "hievents_checkin" ||
-      activity.outcome_key === "ticket_present" ||
-      activity.outcome_key === "checked_in"
-    ));
+  const privateSourceActivities = new Set(activities.filter(isPrivateSourceActivity));
   const privateSourceKeys = new Set([...privateSourceActivities].flatMap((activity) => [activity.id, activity.key]));
   const privateAchievementIds = new Set([
     ...[...privateSourceActivities].flatMap((activity) => activity.achievement ? [activity.achievement] : []),

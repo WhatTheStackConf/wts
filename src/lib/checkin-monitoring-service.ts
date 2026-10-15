@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import type PocketBase from "pocketbase";
 import type { CheckinActor } from "~/lib/checkin-contract";
 import type { MonitoringDashboard, MonitoringConfig, MonitoringConfigureCommand, MonitoringServiceContract } from "~/lib/checkin-monitoring-contract";
-import { CheckinError } from "~/lib/checkin-service";
+import type { CheckinErrorCode } from "~/lib/checkin-contract";
+import { CheckinError, isCheckinStaff, pocketBaseFailure } from "~/lib/checkin-service";
+const forwarded: readonly CheckinErrorCode[] = ["forbidden", "invalid_input", "conflict"];
 export class CheckinMonitoringService implements MonitoringServiceContract {
   constructor(private readonly pb: PocketBase, private readonly actor: CheckinActor) {}
   private hash(token?: string | null) {
@@ -11,12 +13,11 @@ export class CheckinMonitoringService implements MonitoringServiceContract {
     return createHash("sha256").update(`wts2026:binding:${token}`).digest("hex");
   }
   private async request<T>(operation: string, data: object = {}): Promise<T> {
-    if (!this.actor?.userId || !["admin", "checkin_operator"].includes(this.actor.role) || (operation === "configure" && this.actor.role !== "admin")) throw new CheckinError("forbidden", 403);
+    if (!isCheckinStaff(this.actor) || (operation === "configure" && this.actor.role !== "admin")) throw new CheckinError("forbidden", 403);
     try { return await this.pb.send<T>("/api/wts/checkin-monitoring", { method: "POST", body: { ...data, operation, actorUserId: this.actor.userId }, requestKey: null }); }
     catch (error) {
-      const e = error as { status?: number; response?: { data?: { code?: { code?: string } | string } } };
-      const field = e.response?.data?.code; const code = typeof field === "string" ? field : field?.code;
-      if (code === "forbidden" || code === "invalid_input" || code === "conflict") throw new CheckinError(code, e.status || 400);
+      const { code, status } = pocketBaseFailure(error);
+      if (forwarded.includes(code as CheckinErrorCode)) throw new CheckinError(code as CheckinErrorCode, status || 400);
       throw new CheckinError("unavailable", 503);
     }
   }

@@ -3,7 +3,7 @@ import type PocketBase from "pocketbase";
 import type {
   CheckinActor, CheckinAdminCommand, CheckinAdminDTO, CheckinAdminResult,
   CheckinBindResult, CheckinConfirmation, CheckinErrorCode, CheckinPreviewDTO,
-  CheckinServiceContract, CheckinStatusDTO,
+  CheckinServiceContract, CheckinStatusDTO, CheckinPrinterCatalogueDTO,
 } from "~/lib/checkin-contract";
 
 const messages: Record<CheckinErrorCode, string> = {
@@ -19,6 +19,24 @@ export class CheckinError extends Error {
     super(messages[code]); this.name = "CheckinError";
   }
 }
+/** Admin or check-in operator with a resolved user ID. */
+export function isCheckinStaff(actor: CheckinActor | null | undefined): actor is CheckinActor {
+  return !!actor?.userId && ["admin", "checkin_operator"].includes(actor.role);
+}
+interface PocketBaseFailure { status?: number; response?: { data?: { code?: string | { code?: string } } } }
+/** The HTTP status and hook error code of a PocketBase rejection. */
+export function pocketBaseFailure(error: unknown): { code: string | undefined; status: number | undefined } {
+  const value = error as PocketBaseFailure;
+  const field = value.response?.data?.code;
+  return { code: typeof field === "string" ? field : field?.code, status: value.status };
+}
+function checkinFailure(error: unknown): CheckinError {
+  const { code, status } = pocketBaseFailure(error);
+  // Never forward PB errors, request bodies, hashes or diagnostics to clients/logs.
+  if (code && Object.hasOwn(messages, code)) return new CheckinError(code as CheckinErrorCode, status || 400);
+  const denied = status === 403 || status === 401;
+  return new CheckinError(denied ? "forbidden" : "unavailable", denied ? 403 : 503);
+}
 function digest(value: string, kind: "binding" | "provision"): string {
   if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) throw new CheckinError(kind === "binding" ? "invalid_binding" : "invalid_code", 400);
   return createHash("sha256").update(`wts2026:${kind}:${value}`).digest("hex");
@@ -30,23 +48,23 @@ function digest(value: string, kind: "binding" | "provision"): string {
 export class CheckinService implements CheckinServiceContract {
   constructor(private readonly pb: PocketBase, private readonly actor: CheckinActor) {}
   private async request<T>(operation: string, data: object = {}): Promise<T> {
-    if (!this.actor?.userId || !["admin", "checkin_operator"].includes(this.actor.role)) throw new CheckinError("forbidden", 403);
-    if (operation.startsWith("admin_") && this.actor.role !== "admin") throw new CheckinError("forbidden", 403);
+    if (!isCheckinStaff(this.actor) || (operation.startsWith("admin_") && this.actor.role !== "admin")) throw new CheckinError("forbidden", 403);
     try {
       return await this.pb.send<T>("/api/wts/checkin", {
         method: "POST", body: { ...data, operation, actorUserId: this.actor.userId }, requestKey: null,
       });
-    } catch (error) {
-      const value = error as { status?: number; response?: { data?: { code?: string | { code?: string } } } };
-      const field = value.response?.data?.code;
-      const code = typeof field === "string" ? field : field?.code;
-      // Never forward PB errors, request bodies, hashes or diagnostics to clients/logs.
-      if (code && Object.hasOwn(messages, code)) throw new CheckinError(code as CheckinErrorCode, value.status || 400);
-      throw new CheckinError(value.status === 403 || value.status === 401 ? "forbidden" : "unavailable", value.status === 403 || value.status === 401 ? 403 : 503);
-    }
+    } catch (error) { throw checkinFailure(error); }
   }
   status(bindingToken?: string | null): Promise<CheckinStatusDTO> {
     return this.request("status", { identityHash: bindingToken ? digest(bindingToken, "binding") : "" });
+  }
+  printers(bindingToken?: string | null): Promise<CheckinPrinterCatalogueDTO> {
+    return this.request("printers", { identityHash: bindingToken ? digest(bindingToken, "binding") : "" });
+  }
+  async selectPrinter(bindingToken: string | null | undefined, confirmation: CheckinConfirmation): Promise<CheckinBindResult> {
+    if (!bindingToken) throw new CheckinError("invalid_binding", 400);
+    const status = await this.request<CheckinStatusDTO>("select_printer", { identityHash: digest(bindingToken, "binding"), confirmation });
+    return { status, bindingToken };
   }
   preview(code: string, bindingToken?: string): Promise<CheckinPreviewDTO> {
     return this.request("preview", { codeHash: digest(code, "provision"), identityHash: bindingToken ? digest(bindingToken, "binding") : "" });

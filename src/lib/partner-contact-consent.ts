@@ -53,6 +53,26 @@ function approvedFields(value: unknown): Array<"name" | "email"> {
   return value.filter((field): field is "name" | "email" => field === "name" || field === "email");
 }
 
+function activityLabel(
+  activity: GamificationActivityRecord,
+  missionsById: Map<string, GamificationMissionRecord>,
+): string {
+  return (activity.mission && missionsById.get(activity.mission)?.title) || "Partner Activity";
+}
+
+function consentTerms(
+  activity: GamificationActivityRecord,
+  consent: PartnerContactConsentRecord | undefined,
+): Pick<PartnerContactConsentSummary, "noticeVersion" | "fields" | "state" | "grantedAt" | "withdrawnAt"> {
+  return {
+    noticeVersion: consent?.notice_version || text(activity.partner_follow_up_notice_version),
+    fields: consent ? approvedFields(consent.approved_fields) : [...PARTNER_FOLLOW_UP_FIELDS],
+    state: consent?.state || "available",
+    grantedAt: consent?.granted_at,
+    withdrawnAt: consent?.withdrawn_at || undefined,
+  };
+}
+
 /**
  * Private consent ledger. It is intentionally separate from redemption and
  * accounting so consent never changes a Claim, Badge, or score.
@@ -109,21 +129,15 @@ export class PartnerContactConsentService {
         const activity = activitiesById.get(activityId);
         const consent = consentByActivity.get(activityId);
         const partner = activity?.partner ? partnersById.get(activity.partner) : undefined;
-        if (!activity || !partner || (!this.isPartnerFollowUpActivity(activity) && !consent)) return undefined;
-        if (!consent && !this.canOffer(activity)) return undefined;
-        if (consent && consent.partner !== partner.id) return undefined;
+        if (!activity || !partner || !this.isSummarized(activity, partner, consent)) return undefined;
         const disclosure = consent ? disclosedByConsent.get(consent.id) : undefined;
         return {
           ...(consent ? { consentId: consent.id } : {}),
           activityId: activity.id,
-          activityLabel: (activity.mission && missionsById.get(activity.mission)?.title) || "Partner Activity",
+          activityLabel: activityLabel(activity, missionsById),
           partner: { id: partner.id, name: partner.name },
           purpose: "partner_follow_up" as const,
-          noticeVersion: consent?.notice_version || text(activity.partner_follow_up_notice_version),
-          fields: consent ? approvedFields(consent.approved_fields) : [...PARTNER_FOLLOW_UP_FIELDS],
-          state: consent?.state || "available",
-          grantedAt: consent?.granted_at,
-          withdrawnAt: consent?.withdrawn_at || undefined,
+          ...consentTerms(activity, consent),
           handoffState: disclosure ? "handed_off" as const : "not_handed_off" as const,
           handedOffAt: disclosure?.disclosed_at,
         };
@@ -243,6 +257,14 @@ export class PartnerContactConsentService {
       disclosedAt,
       contact: { name, email },
     };
+  }
+
+  private isSummarized(
+    activity: GamificationActivityRecord,
+    partner: PartnerRecord,
+    consent: PartnerContactConsentRecord | undefined,
+  ): boolean {
+    return consent ? consent.partner === partner.id : this.canOffer(activity);
   }
 
   private canOffer(activity: GamificationActivityRecord): boolean {

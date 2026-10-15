@@ -1,25 +1,9 @@
 import { expect, it } from "vite-plus/test";
+import { corruptPage, strippedPage } from "./checkin-pagination-test-helper";
 import { createCheckinRecoverySource } from "./checkin-recovery-upstream";
 import { createCheckinEventSource } from "./checkin-event-source";
-// Observed paginator shape only; synthetic hosts and identities throughout.
-function stripped(body: unknown) {
-  const copy = JSON.parse(JSON.stringify(body).replaceAll(`${base}/`, `${base.slice(0, -4)}/`));
-  copy.meta.current_page_url = `${copy.meta.path}?page=${copy.meta.current_page}`;
-  return copy;
-}
-function corrupt(body: ReturnType<typeof stripped>, field: string, kind: string) {
-  const owner = field === "path" || field === "current_page_url" ? body.meta : body.links;
-  if (kind === "origin") owner[field] = owner[field].replace(new URL(base).host, "foreign.example.invalid");
-  if (kind === "capability") owner[field] = owner[field].replace(/cil_[^/]+|events\/[0-9]+/, "other-list");
-  if (kind === "query") owner[field] += `${field === "path" ? "?" : "&"}extra=1`;
-  if (kind === "changed query") owner[field] += `${field === "path" ? "?" : "&"}query=A-ABC1235`;
-  if (kind === "duplicate query") owner[field] += `${field === "path" ? "?" : "&"}query=A-ABC1234&query=A-ABC1234`;
-  if (kind === "wrong mount") owner[field] = owner[field].replace(new URL(base).origin, `${new URL(base).origin}/api/api`);
-  if (kind === "duplicate") owner[field] += `${field === "path" ? "?" : "&"}per_page=1&per_page=1`;
-  if (kind === "credentials") owner[field] = owner[field].replace("https://", "https://user:pass@");
-  if (kind === "fragment") owner[field] += "#fragment";
-  if (kind === "count") body.meta.to = 2;
-}
+const stripped = (body: unknown) => strippedPage(base, body);
+const corrupt = (body: ReturnType<typeof stripped>, field: string, kind: string) => corruptPage(base, body, field, kind);
 const base="https://synthetic.example.invalid/api";
 const config={apiUrl:base,apiKey:`e30.${Buffer.from('{"account_id":77}').toString("base64url")}.c3ludGhldGlj`,accountId:"77"};
 const target={workflowId:"a".repeat(15),sourceKey:createCheckinEventSource(config).sourceKey,upstreamEventId:"501",upstreamListId:"701",upstreamAttendeeId:"901"};
@@ -29,15 +13,15 @@ const row={id:901,event_id:501,public_id:"A-ABC1234",product_id:601,order_id:100
 const checkin={id:1101,attendee_id:901,check_in_list_id:701,order_id:1001,checked_in_at:"2026-09-09T10:00:00Z",short_id:"ci_SYNTHETIC"};
 function page(path:string,data:unknown[]){return {data,links:{first:`${base}/${path}?page=1`,last:`${base}/${path}?page=1`,prev:null,next:null},meta:{current_page:1,last_page:1,per_page:25,total:data.length,from:data.length?1:null,to:data.length||null,path:`${base}/${path}`}};}
 function attendeePage(data:unknown[]){const p=page("public/check-in-lists/cil_SYNTHETIC/attendees",data);return {...p,links:{...p.links,last:null},meta:{current_page:1,per_page:25,from:data.length?1:null,to:data.length||null,path:p.meta.path}};}
+function expectCredentials(url:string,init?:RequestInit){if(url.includes("/public/"))expect(init?.headers).not.toHaveProperty("Authorization");else expect(init?.headers).toMatchObject({Authorization:`Bearer ${config.apiKey}`});}
+const optionRoutes:[(url:string)=>boolean,()=>unknown][]=[[url=>url.includes("/check-in-lists?page="),()=>page("events/501/check-in-lists",[list])],[url=>url.endsWith("/questions"),()=>({data:[]})],[url=>url.includes("/products?page="),()=>page("events/501/products",[product])],[url=>url.endsWith("events/501/attendees/901"),()=>({data:row})]];
+function attendeeResponse(url:string,data:unknown){const body=Array.isArray(data)?data[Number(new URL(url).searchParams.get("page"))-1]:data;if(body instanceof Error)throw body;return body instanceof Response?body:Response.json(body);}
 function fixture(data:unknown=attendeePage([{...row,check_in:checkin}]),deletion:Response|Error=new Response(null,{status:204})){
  const calls:{url:string;method:string}[]=[];
- const fetcher:typeof fetch=async(input,init)=>{const url=String(input);if(init?.method!=="DELETE"){if(url.includes("/public/"))expect(init?.headers).not.toHaveProperty("Authorization");else expect(init?.headers).toMatchObject({Authorization:`Bearer ${config.apiKey}`});}calls.push({url,method:init?.method??"GET"});
+ const fetcher:typeof fetch=async(input,init)=>{const url=String(input);if(init?.method!=="DELETE")expectCredentials(url,init);calls.push({url,method:init?.method??"GET"});
   if(init?.method==="DELETE"){if(deletion instanceof Error)throw deletion;return deletion;}
-  if(url.includes("/check-in-lists?page="))return Response.json(page("events/501/check-in-lists",[list]));
-  if(url.endsWith("/questions"))return Response.json({data:[]});
-  if(url.includes("/products?page="))return Response.json(page("events/501/products",[product]));
-  if(url.endsWith("events/501/attendees/901"))return Response.json({data:row});
-  if(url.includes("/attendees?page=")){const body=Array.isArray(data)?data[Number(new URL(url).searchParams.get("page"))-1]:data;if(body instanceof Error)throw body;return body instanceof Response?body:Response.json(body);}
+  const route=optionRoutes.find(([matches])=>matches(url));if(route)return Response.json(route[1]());
+  if(url.includes("/attendees?page="))return attendeeResponse(url,data);
   throw new Error("unexpected fixture URL");
  };
  return {calls,adapter:createCheckinRecoverySource(config,fetcher)};

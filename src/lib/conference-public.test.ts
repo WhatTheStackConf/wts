@@ -11,7 +11,6 @@ import {
   loadPublicSessionBySlug,
   loadPublicAgenda,
   loadPublicSpeakerBySlug,
-  loadPublicSpeakerTeaser,
   loadPublicSpeakers,
 } from "~/lib/conference-public";
 import {
@@ -20,6 +19,23 @@ import {
 } from "~/lib/pocketbase-thumbnail";
 
 describe("MC public profiles", () => {
+  it("carries explicit hosts through both detail loaders while retaining the full participant list", async () => {
+    const host = { id: "host26darko0001", collectionName: "speakers", slug: "darko-bozhinovski", display_name: "Darko Bozhinovski", published: true, is_mc: true, photo: "darko.jpg", user: "private-user" };
+    const guest = { id: "guest", slug: "guest", display_name: "Guest", published: true, is_mc: true };
+    const session = { id: "fs26f7995331c81", slug: "fireside-who-owes-open-source-what", title: "Fireside", abstract: "Abstract", published: true, speakers: [guest.id, host.id], expand: { speakers: [guest, host] } };
+    fetchAllRecords.mockReset();
+    fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({ speakers: [guest, host], sessions: [session] }[collection] || []));
+    for (const detail of [await loadPublicSessionBySlug(session.slug), (await loadPublicConferenceGuideProgramme()).sessions[0]]) {
+      expect(detail?.speakers).toHaveLength(2);
+      expect(detail?.hosts).toEqual([expect.objectContaining({ slug: host.slug, photoUrl: expect.stringContaining('darko.jpg') })]);
+      expect(detail?.hosts?.[0]).toEqual(detail?.speakers.find((person) => person.slug === host.slug));
+      expect(JSON.stringify(detail?.hosts)).not.toContain('private-user');
+    }
+    host.published = false;
+    expect((await loadPublicSessionBySlug(session.slug))?.hosts).toBeUndefined();
+    expect((await loadPublicConferenceGuideProgramme()).sessions[0].hosts).toBeUndefined();
+  });
+
   it("projects explicit MC status independently of sessions and hides private fields", async () => {
     fetchAllRecords.mockReset();
     fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
@@ -34,7 +50,6 @@ describe("MC public profiles", () => {
       slug: "host", displayName: "Host", photoUrl: null, affiliation: "Independent",
       isMc: true, sessionCount: 0, appearanceEvents: [], bio: "Public bio", socialHandles: [], sessions: [],
     });
-    expect((await loadPublicSpeakerTeaser()).preview[0].isMc).toBe(true);
   });
 
   it("allows MCs with sessions and defaults missing MC status to false", async () => {
@@ -89,29 +104,20 @@ describe("PocketBase image thumbnails", () => {
   });
 });
 
-describe("announced session detail timing", () => {
-  it("shows event-only DevFest timing and the confirmed Angular session time", async () => {
-    for (const [slug, event, date, start] of [
-      ["building-a-distributed-multi-agent-system", "DevFest", "2026-09-16", "17:00"],
-      ["the-monorepo-multiplier", "Angular Day", "2026-09-18", "10:00"],
-    ] as const) {
-      fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
-        sessions: [{ id: "talk", slug, title: slug, abstract: "", format: "talk", published: true, speakers: [] }],
-        appearance_events: [{ id: "event", name: event, published: true }],
-      }[collection] || []));
-      const session = await loadPublicSessionBySlug(slug);
-      if (event === "Angular Day") {
-        expect(session?.schedule).toMatchObject({
-          dayDate: date, event: { name: event },
-          startAt: "2026-09-18T12:15:00+02:00", endAt: "2026-09-18T12:45:00+02:00",
-          locationLabel: "Small FINKI amphitheater, Technical Campus, Skopje",
-        });
-      } else {
-        expect(session?.schedule).toBeUndefined();
-        expect(session?.announcement).toMatchObject({ dayDate: date, event: { name: event }, eventStartTime: start });
-      }
-    }
+describe("published session timing", () => {
+  it("does not synthesize historical session dates or times from matching appearance events", async () => {
+    fetchAllRecords.mockReset();
+    fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
+      sessions: [{ id: "synthetic-session", slug: "fundamentals-of-native-ios-development", title: "Synthetic talk", abstract: "", published: true, speakers: [] }],
+      appearance_events: [{ id: "synthetic-event", name: "Workshop Tuesday", published: true }],
+    }[collection] || []));
+
+    const session = await loadPublicSessionBySlug("fundamentals-of-native-ios-development");
+
+    expect(session?.schedule).toBeUndefined();
+    expect(session?.announcement).toBeUndefined();
   });
+
 
   it("prefers a later published slot to an earlier announced session in the public snapshot", async () => {
     fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
@@ -124,22 +130,20 @@ describe("announced session detail timing", () => {
     const data = await loadPublicConferenceGuideProgramme();
     expect(data.sessions[0].schedule).toMatchObject({ startAt: "2026-09-19T08:00:00Z", endAt: "2026-09-19T09:00:00Z", event: { name: "Main" } });
   });
-  it("uses the same confirmed start on the session page and hides it when its event is unpublished", async () => {
-    fetchAllRecords.mockReset();
-    let eventPublished = true;
-    fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
-      sessions: [{ id: "ios", slug: "fundamentals-of-native-ios-development", title: "iOS", abstract: "", format: "workshop", published: true, speakers: [] }],
-      appearance_events: [{ id: "tuesday", name: "Workshop Tuesday", published: eventPublished }],
-      agenda_slots: [], event_programmes: [], conference_days: [], agenda_tracks: [],
-    }[collection] || []));
-    const session = await loadPublicSessionBySlug("fundamentals-of-native-ios-development");
-    expect(session?.schedule).toMatchObject({ startAt: "2026-09-15T18:00:00+02:00", endAt: undefined, locationLabel: "Netaville, Skopje" });
-    eventPublished = false;
-    expect((await loadPublicSessionBySlug("fundamentals-of-native-ios-development"))?.schedule).toBeUndefined();
-  });
 });
 
 describe("public agenda loading", () => {
+  it("does not synthesize last-edition programme cards from current appearance events", async () => {
+    fetchAllRecords.mockReset();
+    fetchAllRecords.mockImplementation((collection: string) => Promise.resolve(
+      collection === "appearance_events"
+        ? [{ id: "synthetic-event", name: "InfoSec Monday", published: true }]
+        : [],
+    ));
+
+    await expect(loadPublicAgenda()).resolves.toEqual({ days: [] });
+  });
+
   it("loads published speaker names and photos without fetching private profile fields", async () => {
     fetchAllRecords.mockReset();
     fetchAllRecords.mockImplementation((collection: string) => Promise.resolve({
@@ -273,38 +277,5 @@ describe("public Speaker Event Appearances", () => {
     ]);
   });
 
-  it("includes Appearance Events in the homepage Speaker teaser", async () => {
-    fetchAllRecords.mockImplementation((collection: string) => {
-      if (collection === "speakers") {
-        return Promise.resolve([
-          {
-            id: "speaker-1",
-            slug: "ada-lovelace",
-            display_name: "Ada Lovelace",
-            published: true,
-            appearance_events: ["event-1"],
-          },
-        ]);
-      }
-      if (collection === "sessions") return Promise.resolve([]);
-      if (collection === "appearance_events") {
-        return Promise.resolve([
-          {
-            id: "event-1",
-            name: "WhatTheStack 2026",
-            compact_label: "WTS 2026",
-            published: true,
-            display_order: 0,
-          },
-        ]);
-      }
-      throw new Error(`Unexpected collection ${collection}`);
-    });
-
-    const teaser = await loadPublicSpeakerTeaser();
-
-    expect(teaser.preview[0].appearanceEvents).toEqual([
-      { name: "WhatTheStack 2026", compactLabel: "WTS 2026" },
-    ]);
-  });
 });
+

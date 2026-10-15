@@ -26,20 +26,32 @@ export function parseCheckinLookupConfirmResult(value: unknown, input: Pick<Chec
   if ("workflow" in result && (result.workflow.eventId !== input.context.eventId || result.workflow.stationId !== input.context.stationId)) throw new Error("Mismatched originating context");
   return result;
 }
+type RejectionKind = "access" | "context" | "transport";
+const rejectionKinds: Record<number, RejectionKind> = { 401: "access", 403: "access", 409: "context" };
+const rejections: Record<RejectionKind, string> = {
+  access: "Lookup access denied. Verify your login and station binding.",
+  context: "Lookup context changed. Preserve the original confirmation for recovery.",
+  transport: "Lookup unavailable. Retry the same request.",
+};
+const failures = {
+  mutation: { transport: "Confirmation outcome unknown. Retry the same confirmation.", invalid: "Confirmation response invalid. Outcome unknown; retry the same confirmation." },
+  read: { transport: "Lookup unavailable. Retry your search.", invalid: "Lookup response invalid. No results can be used; retry your search." },
+};
 async function request<T>(operation: "search" | "confirm" | "recovery_get" | "recover", input: object, parse: (value: unknown) => T): Promise<T> {
   const mutation = operation === "confirm" || operation === "recover";
+  const failure = failures[mutation ? "mutation" : "read"];
   let response: Response;
   try {
     response = await fetch("/api/checkin-lookup", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operation, input }), cache: "no-store", referrerPolicy: "no-referrer", signal: AbortSignal.timeout(30000) });
-  } catch { throw new CheckinLookupRequestError(mutation ? "Confirmation outcome unknown. Retry the same confirmation." : "Lookup unavailable. Retry your search.", mutation, "transport"); }
+  } catch { throw new CheckinLookupRequestError(failure.transport, mutation, "transport"); }
   // Even 403/409 can follow a committed command (post-commit authorization or
   // an earlier lost response). No HTTP rejection proves a mutation did not run.
   if (!response.ok) {
-    const kind = response.status === 401 || response.status === 403 ? "access" : response.status === 409 ? "context" : "transport";
-    throw new CheckinLookupRequestError(kind === "access" ? "Lookup access denied. Verify your login and station binding." : kind === "context" ? "Lookup context changed. Preserve the original confirmation for recovery." : "Lookup unavailable. Retry the same request.", mutation, kind, response.status);
+    const kind = rejectionKinds[response.status] ?? "transport";
+    throw new CheckinLookupRequestError(rejections[kind], mutation, kind, response.status);
   }
   try { return parse(await response.json()); }
-  catch { throw new CheckinLookupRequestError(mutation ? "Confirmation response invalid. Outcome unknown; retry the same confirmation." : "Lookup response invalid. No results can be used; retry your search.", mutation, "invalid"); }
+  catch { throw new CheckinLookupRequestError(failure.invalid, mutation, "invalid"); }
 }
 export function searchCheckinLookup(input: CheckinLookupSearchInput): Promise<CheckinLookupSearchResult> {
   const submitted = checkinLookupSearchInputSchema.parse(structuredClone(input));

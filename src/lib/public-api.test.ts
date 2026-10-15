@@ -8,6 +8,10 @@ const fetchAllRecords = vi.hoisted(() => vi.fn());
 vi.mock("~/lib/pocketbase-admin-service", () => ({
   getAdminPB: () => ({ fetchAllRecords }),
 }));
+vi.mock("~/lib/conference-guide-content", async (importOriginal) => {
+  const original = await importOriginal<typeof import("~/lib/conference-guide-content")>();
+  return { ...original, conferenceTimeZone: undefined };
+});
 
 import { loadPublicConferenceGuideProgramme } from "~/lib/conference-public";
 import { createPublicApi, publicApiPathGuard } from "~/lib/public-api";
@@ -57,6 +61,14 @@ beforeEach(() => {
   });
 });
 
+type DocumentedOperation = NonNullable<NonNullable<typeof publicApiOpenApi.paths>[string]>["get"];
+
+function jsonSuccessMedia(path: string, operation: DocumentedOperation) {
+  const success = operation?.responses["200"];
+  if (!success || "$ref" in success) throw new Error(`Missing success response for ${path}`);
+  return success.content?.["application/json"];
+}
+
 describe("public JSON interface", () => {
   it("publishes a valid OpenAPI document whose examples and actual responses match its schemas", async () => {
     const api = createPublicApi({ loadProgramme: loadPublicConferenceGuideProgramme });
@@ -71,9 +83,7 @@ describe("public JSON interface", () => {
       expect(operation?.operationId).toBeTruthy();
       expect(operations.has(operation!.operationId!)).toBe(false);
       operations.add(operation!.operationId!);
-      const success = operation?.responses["200"];
-      if (!success || "$ref" in success) throw new Error(`Missing success response for ${path}`);
-      const media = success.content?.["application/json"];
+      const media = jsonSuccessMedia(path, operation);
       expect(media?.schema).toBeTruthy();
       const validate = ajv.compile({ ...media!.schema, components: publicApiOpenApi.components });
       expect(validate(media!.example), JSON.stringify(validate.errors)).toBe(true);
@@ -173,24 +183,6 @@ describe("public JSON interface", () => {
     expect(agenda.days[0].programmes[0].slots[0]).toMatchObject({
       track: { key: "stage-1" }, session: { slug: "engines", speakers: [{ slug: "ada" }] },
     });
-  });
-
-  it("keeps event-only announcements on session details without inventing a talk time", async () => {
-    const data = records();
-    data.sessions[0].slug = "building-a-distributed-multi-agent-system";
-    data.appearance_events[0].name = "DevFest";
-    data.agenda_slots = [];
-    fetchAllRecords.mockImplementation(async (collection: keyof typeof data, options?: { filter?: string }) => {
-      const rows = data[collection] || [];
-      return options?.filter === "published = true"
-        ? rows.filter((row) => !("published" in row) || row.published)
-        : rows;
-    });
-    const api = createPublicApi({ loadProgramme: loadPublicConferenceGuideProgramme });
-    const response = await api({ request: new Request(`${root}sessions/building-a-distributed-multi-agent-system`) });
-    const { data: session } = await response.json();
-    expect(session.schedule).toBeUndefined();
-    expect(session.announcement).toMatchObject({ dayDate: "2026-09-16", eventStartTime: "17:00" });
   });
 
   it("has predictable JSON errors, rejects writes and does not expose partners", async () => {
@@ -397,12 +389,14 @@ describe("public JSON interface", () => {
     const response = await api({ request: new Request(`${root}speakers`) });
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
-    expect(await response.json()).toMatchObject({
+    const body = await response.json();
+    expect(body.meta).toEqual({ apiVersion: "1" });
+    expect(body).toMatchObject({
       data: [
         { slug: "ada", displayName: "Ada", affiliation: "Engines", sessionCount: 1 },
         { slug: "zoe", displayName: "Zoe", sessionCount: 0 },
       ],
-      meta: { apiVersion: "1", timeZone: "Europe/Skopje" },
+      meta: { apiVersion: "1" },
     });
     const second = await api({ request: new Request(`${root}speakers`) });
     const text = await second.text();

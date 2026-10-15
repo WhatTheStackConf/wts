@@ -7,7 +7,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import PocketBase from "pocketbase";
 import { describe, expect, it } from "vite-plus/test";
-import { AdminActions, type AdminActionStore } from "~/lib/admin-action-ledger";
+import {
+  AdminActions,
+  type AdminActionCompletion,
+  type AdminActionRequest,
+  type AdminActionStore,
+} from "~/lib/admin-action-ledger";
 import { createInMemoryAdminActionStore } from "~/lib/admin-action-memory-store";
 import { createPocketBaseAdminActionStore } from "~/lib/admin-action-store";
 import {
@@ -17,6 +22,7 @@ import {
   type PartnerAdministrationActorContext,
   type PartnerDraftInput,
   type PartnerPatch,
+  type PartnerStoreUpdateInput,
 } from "~/lib/partner-administration";
 import { createInMemoryPartnerAdministrationStore } from "~/lib/partner-administration-memory-store";
 import { createPocketBasePartnerAdministrationStore } from "~/lib/partner-administration-store";
@@ -114,6 +120,208 @@ async function waitForPocketBase(url: string): Promise<void> {
 
 function logoFingerprint(data: number[]): string {
   return createHash("sha256").update(Buffer.from(data).toString("base64")).digest("hex");
+}
+
+function assertSucceeded<T extends { success: boolean }>(
+  result: T,
+): asserts result is Extract<T, { success: true }> {
+  if (!result.success) throw new Error((result as { error?: string }).error);
+}
+
+const PARTNER_STORE_MIGRATIONS = [
+  "1782000000_create_partners.js",
+  "1782000001_remove_bank_partner_tier.js",
+  "1768850001_fix_user_role.js",
+  "1783000000_create_mcp_tokens.js",
+  "1787000000_normalize_partner_vocabulary.js",
+  "1787000002_partner_draft_lifecycle.js",
+  "1787000003_repair_partner_draft_fields.js",
+  "1787000004_create_admin_actions.js",
+  "1788000002_add_partner_logo_surface.js",
+];
+
+function partnerStoreMigrationSource(migration: string): string {
+  const source = readFileSync(
+    new URL(`../../pocketbase/pb_migrations/${migration}`, import.meta.url),
+    "utf8",
+  );
+  if (migration !== "1787000002_partner_draft_lifecycle.js") return source;
+  return source
+    .replace('    partners.fields.add(new Field({ name: "mutation_token", type: "text", required: false }));\n', "")
+    .replace('    partners.fields.add(new Field({ name: "logo_uploaded_by_human", type: "bool", required: false }));\n', "")
+    .replace('      partner.set("mutation_token", partner.id);\n', "")
+    .replace('      partner.set("logo_uploaded_by_human", Boolean(partner.getString("logo")));\n', "")
+    .replace('    partners.fields.getByName("mutation_token").required = true;\n', "");
+}
+
+async function startPartnerStorePocketBase() {
+  const root = mkdtempSync(join(tmpdir(), "wts-partner-store-"));
+  const migrationsDir = join(root, "pb_migrations");
+  const hooksDir = join(root, "pb_hooks");
+  const dataDir = join(root, "pb_data");
+  mkdirSync(migrationsDir);
+  mkdirSync(hooksDir);
+  mkdirSync(dataDir);
+  writeFileSync(
+    join(hooksDir, "partner_administration.pb.js"),
+    readFileSync(new URL("../../pocketbase/pb_hooks/partner_administration.pb.js", import.meta.url), "utf8"),
+  );
+  writeFileSync(
+    join(hooksDir, "admin_action_ledger.pb.js"),
+    readFileSync(new URL("../../pocketbase/pb_hooks/admin_action_ledger.pb.js", import.meta.url), "utf8"),
+  );
+  const binary = fileURLToPath(new URL("../../pocketbase/pocketbase", import.meta.url));
+  for (const migration of PARTNER_STORE_MIGRATIONS) {
+    writeFileSync(
+      join(migrationsDir, migration),
+      partnerStoreMigrationSource(migration),
+    );
+  }
+
+  const migrate = spawnSync(binary, [
+    "migrate",
+    "up",
+    `--dir=${dataDir}`,
+    `--migrationsDir=${migrationsDir}`,
+    `--hooksDir=${hooksDir}`,
+  ], { encoding: "utf8" });
+  expect(migrate.status, `${migrate.stdout}\n${migrate.stderr}`).toBe(0);
+  const email = "partner-store@example.com";
+  const password = "partner-store-password";
+  const superuser = spawnSync(binary, [
+    "superuser",
+    "create",
+    email,
+    password,
+    `--dir=${dataDir}`,
+    `--migrationsDir=${migrationsDir}`,
+    `--hooksDir=${hooksDir}`,
+    "--automigrate=false",
+  ], { encoding: "utf8" });
+  expect(superuser.status, `${superuser.stdout}\n${superuser.stderr}`).toBe(0);
+
+  const port = await availablePort();
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const server = spawn(binary, [
+    "serve",
+    `--http=127.0.0.1:${port}`,
+    `--dir=${dataDir}`,
+    `--migrationsDir=${migrationsDir}`,
+    `--hooksDir=${hooksDir}`,
+    "--automigrate=false",
+    "--hooksWatch=false",
+    "--dev",
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+  let serverLogs = "";
+  server.stdout.on("data", (chunk) => { serverLogs += String(chunk); });
+  server.stderr.on("data", (chunk) => { serverLogs += String(chunk); });
+
+  return {
+    email,
+    password,
+    baseUrl,
+    logs: () => serverLogs,
+    stop: async () => {
+      server.kill("SIGTERM");
+      await new Promise((resolve) => server.once("exit", resolve));
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
+}
+
+async function verifyProductionLedgerLeases(
+  pb: PocketBase,
+  actorId: string,
+  productionActions: AdminActions,
+): Promise<void> {
+  let ledgerNow = new Date("2026-07-13T12:00:00.000Z");
+  const leasedActions = new AdminActions(createPocketBaseAdminActionStore(pb), {
+    now: () => ledgerNow,
+    leaseMilliseconds: 30_000,
+  });
+  const leaseRequest = {
+    actorUserId: actorId,
+    source: "admin_ui" as const,
+    operationKind: "partner.patch",
+    targetCollection: "partners",
+    targetId: "lease-target",
+    operationId: "production-lease",
+    normalizedInput: { id: "lease-target", name: "Lease" },
+  };
+  const leased = await leasedActions.start(leaseRequest);
+  if (leased.outcome !== "started") throw new Error("Expected a production lease.");
+  ledgerNow = new Date("2026-07-13T12:00:01.000Z");
+  await expect(leasedActions.start(leaseRequest)).resolves.toMatchObject({
+    outcome: "pending",
+    action: { attemptCount: 1 },
+  });
+  ledgerNow = new Date("2026-07-13T12:00:31.000Z");
+  const reclaimed = await leasedActions.start(leaseRequest);
+  expect(reclaimed).toMatchObject({ outcome: "started", action: { attemptCount: 2 } });
+  if (reclaimed.outcome !== "started") throw new Error("Expected an expired lease retry.");
+  await expect(
+    leasedActions.complete(reclaimed.handle, {
+      targetId: "different-target",
+      beforeSummary: { id: "lease-target" },
+      afterSummary: { id: "different-target" },
+      replayResult: { id: "different-target" },
+    }),
+  ).rejects.toMatchObject({ status: 400 });
+  await leasedActions.fail(reclaimed.handle, {
+    code: "lease_test_complete",
+    message: "Production lease behavior verified.",
+  });
+
+  const concurrentRequest = {
+    ...leaseRequest,
+    operationId: "production-concurrent-reservation",
+    normalizedInput: { id: "lease-target", name: "Concurrent" },
+  };
+  const concurrentReservations = await Promise.all([
+    productionActions.start(concurrentRequest),
+    productionActions.start(concurrentRequest),
+  ]);
+  expect(concurrentReservations.filter((result) => result.outcome === "started")).toHaveLength(1);
+  expect(concurrentReservations.some((result) => result.outcome === "pending")).toBe(true);
+  const reserved = concurrentReservations.find((result) => result.outcome === "started");
+  if (!reserved || reserved.outcome !== "started") throw new Error("Expected one reservation winner.");
+  await productionActions.fail(reserved.handle, {
+    code: "concurrency_test_complete",
+    message: "Concurrent reservation behavior verified.",
+  });
+}
+
+async function expectReservedStoreUpdateRejected(
+  actions: AdminActions,
+  store: AuditedPartnerAdministrationStore,
+  reservation: {
+    request: AdminActionRequest;
+    notStarted: string;
+    target: { id: string; version: string };
+    input: PartnerStoreUpdateInput;
+    completion: AdminActionCompletion;
+    failure: { code: string; message: string };
+  },
+): Promise<void> {
+  const reserved = await actions.start(reservation.request);
+  if (reserved.outcome !== "started") throw new Error(reservation.notStarted);
+  await expect(
+    store.update(
+      reservation.target.id,
+      reservation.target.version,
+      reservation.input,
+      {
+        handle: reserved.handle,
+        operationKind: reservation.request.operationKind,
+        targetId: reservation.target.id,
+        normalizedInput: reservation.request.normalizedInput,
+        completion: reservation.completion,
+        complete: (completion) => actions.complete(reserved.handle, completion),
+        isApplied: async () => false,
+      },
+    ),
+  ).rejects.toMatchObject({ status: 400 });
+  await actions.fail(reserved.handle, reservation.failure);
 }
 
 describe("Partner Administration", () => {
@@ -1326,88 +1534,7 @@ describe("Partner Administration", () => {
   });
 
   it("enforces the same lifecycle through the production PocketBase store adapter", { timeout: 20_000 }, async () => {
-    const root = mkdtempSync(join(tmpdir(), "wts-partner-store-"));
-    const migrationsDir = join(root, "pb_migrations");
-    const hooksDir = join(root, "pb_hooks");
-    const dataDir = join(root, "pb_data");
-    mkdirSync(migrationsDir);
-    mkdirSync(hooksDir);
-    mkdirSync(dataDir);
-    writeFileSync(
-      join(hooksDir, "partner_administration.pb.js"),
-      readFileSync(new URL("../../pocketbase/pb_hooks/partner_administration.pb.js", import.meta.url), "utf8"),
-    );
-    writeFileSync(
-      join(hooksDir, "admin_action_ledger.pb.js"),
-      readFileSync(new URL("../../pocketbase/pb_hooks/admin_action_ledger.pb.js", import.meta.url), "utf8"),
-    );
-    const binary = fileURLToPath(new URL("../../pocketbase/pocketbase", import.meta.url));
-    for (const migration of [
-      "1782000000_create_partners.js",
-      "1782000001_remove_bank_partner_tier.js",
-      "1768850001_fix_user_role.js",
-      "1783000000_create_mcp_tokens.js",
-      "1787000000_normalize_partner_vocabulary.js",
-      "1787000002_partner_draft_lifecycle.js",
-      "1787000003_repair_partner_draft_fields.js",
-      "1787000004_create_admin_actions.js",
-      "1788000002_add_partner_logo_surface.js",
-    ]) {
-      let source = readFileSync(
-        new URL(`../../pocketbase/pb_migrations/${migration}`, import.meta.url),
-        "utf8",
-      );
-      if (migration === "1787000002_partner_draft_lifecycle.js") {
-        source = source
-          .replace('    partners.fields.add(new Field({ name: "mutation_token", type: "text", required: false }));\n', "")
-          .replace('    partners.fields.add(new Field({ name: "logo_uploaded_by_human", type: "bool", required: false }));\n', "")
-          .replace('      partner.set("mutation_token", partner.id);\n', "")
-          .replace('      partner.set("logo_uploaded_by_human", Boolean(partner.getString("logo")));\n', "")
-          .replace('    partners.fields.getByName("mutation_token").required = true;\n', "");
-      }
-      writeFileSync(
-        join(migrationsDir, migration),
-        source,
-      );
-    }
-
-    const migrate = spawnSync(binary, [
-      "migrate",
-      "up",
-      `--dir=${dataDir}`,
-      `--migrationsDir=${migrationsDir}`,
-      `--hooksDir=${hooksDir}`,
-    ], { encoding: "utf8" });
-    expect(migrate.status, `${migrate.stdout}\n${migrate.stderr}`).toBe(0);
-    const email = "partner-store@example.com";
-    const password = "partner-store-password";
-    const superuser = spawnSync(binary, [
-      "superuser",
-      "create",
-      email,
-      password,
-      `--dir=${dataDir}`,
-      `--migrationsDir=${migrationsDir}`,
-      `--hooksDir=${hooksDir}`,
-      "--automigrate=false",
-    ], { encoding: "utf8" });
-    expect(superuser.status, `${superuser.stdout}\n${superuser.stderr}`).toBe(0);
-
-    const port = await availablePort();
-    const baseUrl = `http://127.0.0.1:${port}`;
-    const server = spawn(binary, [
-      "serve",
-      `--http=127.0.0.1:${port}`,
-      `--dir=${dataDir}`,
-      `--migrationsDir=${migrationsDir}`,
-      `--hooksDir=${hooksDir}`,
-      "--automigrate=false",
-      "--hooksWatch=false",
-      "--dev",
-    ], { stdio: ["ignore", "pipe", "pipe"] });
-    let serverLogs = "";
-    server.stdout.on("data", (chunk) => { serverLogs += String(chunk); });
-    server.stderr.on("data", (chunk) => { serverLogs += String(chunk); });
+    const { email, password, baseUrl, logs, stop } = await startPartnerStorePocketBase();
 
     try {
       await waitForPocketBase(baseUrl);
@@ -1431,72 +1558,18 @@ describe("Partner Administration", () => {
         productionActions,
       );
 
-      let ledgerNow = new Date("2026-07-13T12:00:00.000Z");
-      const leasedActions = new AdminActions(createPocketBaseAdminActionStore(pb), {
-        now: () => ledgerNow,
-        leaseMilliseconds: 30_000,
-      });
-      const leaseRequest = {
-        actorUserId: actor.id,
-        source: "admin_ui" as const,
-        operationKind: "partner.patch",
-        targetCollection: "partners",
-        targetId: "lease-target",
-        operationId: "production-lease",
-        normalizedInput: { id: "lease-target", name: "Lease" },
-      };
-      const leased = await leasedActions.start(leaseRequest);
-      if (leased.outcome !== "started") throw new Error("Expected a production lease.");
-      ledgerNow = new Date("2026-07-13T12:00:01.000Z");
-      await expect(leasedActions.start(leaseRequest)).resolves.toMatchObject({
-        outcome: "pending",
-        action: { attemptCount: 1 },
-      });
-      ledgerNow = new Date("2026-07-13T12:00:31.000Z");
-      const reclaimed = await leasedActions.start(leaseRequest);
-      expect(reclaimed).toMatchObject({ outcome: "started", action: { attemptCount: 2 } });
-      if (reclaimed.outcome !== "started") throw new Error("Expected an expired lease retry.");
-      await expect(
-        leasedActions.complete(reclaimed.handle, {
-          targetId: "different-target",
-          beforeSummary: { id: "lease-target" },
-          afterSummary: { id: "different-target" },
-          replayResult: { id: "different-target" },
-        }),
-      ).rejects.toMatchObject({ status: 400 });
-      await leasedActions.fail(reclaimed.handle, {
-        code: "lease_test_complete",
-        message: "Production lease behavior verified.",
-      });
-
-      const concurrentRequest = {
-        ...leaseRequest,
-        operationId: "production-concurrent-reservation",
-        normalizedInput: { id: "lease-target", name: "Concurrent" },
-      };
-      const concurrentReservations = await Promise.all([
-        productionActions.start(concurrentRequest),
-        productionActions.start(concurrentRequest),
-      ]);
-      expect(concurrentReservations.filter((result) => result.outcome === "started")).toHaveLength(1);
-      expect(concurrentReservations.some((result) => result.outcome === "pending")).toBe(true);
-      const reserved = concurrentReservations.find((result) => result.outcome === "started");
-      if (!reserved || reserved.outcome !== "started") throw new Error("Expected one reservation winner.");
-      await productionActions.fail(reserved.handle, {
-        code: "concurrency_test_complete",
-        message: "Concurrent reservation behavior verified.",
-      });
+      await verifyProductionLedgerLeases(pb, actor.id, productionActions);
 
       const created = await administration.createDraft({
         name: "Production Adapter",
         type: "supporter",
         logo: null,
       });
-      expect(created, serverLogs).toMatchObject({
+      expect(created, logs()).toMatchObject({
         success: true,
         data: { partner: { logo: "", logoSurface: "dark", published: false } },
       });
-      if (!created.success) throw new Error(created.error);
+      assertSucceeded(created);
 
       const createWithLogo = administration.createDraft({
         name: "Production SVG Upload",
@@ -1513,8 +1586,8 @@ describe("Partner Administration", () => {
         createWithLogo,
         new Promise<"timed_out">((resolve) => setTimeout(() => resolve("timed_out"), 5_000)),
       ]);
-      expect(createWithLogoResult, serverLogs).not.toBe("timed_out");
-      expect(createWithLogoResult, serverLogs).toMatchObject({
+      expect(createWithLogoResult, logs()).not.toBe("timed_out");
+      expect(createWithLogoResult, logs()).toMatchObject({
         success: true,
         data: { partner: { logo: expect.stringContaining("official") }, publication: { ready: true } },
       });
@@ -1561,52 +1634,41 @@ describe("Partner Administration", () => {
         pb.collection("admin_actions").delete(created.action.id),
       ).rejects.toMatchObject({ status: 400 });
 
-      const wrongKind = await productionActions.start({
-        actorUserId: actor.id,
-        source: "admin_ui",
-        operationKind: "partner.delete",
-        targetCollection: "partners",
-        targetId: current.id,
-        operationId: "wrong-kind-patch",
-        normalizedInput: { id: current.id },
-      });
-      if (wrongKind.outcome !== "started") throw new Error("Expected a pending wrong-kind action.");
-      await expect(
-        productionStore.update(
-          current.id,
-          current.version,
-          {
-            name: current.name,
-            normalizedName: current.normalizedName,
-            published: current.published,
-            type: current.type,
-            tier: current.tier,
-            logoSurface: current.logoSurface,
-            logoUploadedByHuman: current.logoUploadedByHuman,
-            url: current.url,
-            canonicalUrl: current.canonicalUrl,
-            notes: current.notes,
-            noteAgentVisible: current.noteAgentVisible,
-          },
-          {
-            handle: wrongKind.handle,
-            operationKind: "partner.delete",
-            targetId: current.id,
-            normalizedInput: { id: current.id },
-            completion: {
-              targetId: current.id,
-              beforeSummary: { id: current.id, name: current.name },
-              afterSummary: { id: current.id, name: current.name },
-              replayResult: { kind: "partner_delete", data: { id: current.id } },
-            },
-            complete: (completion) => productionActions.complete(wrongKind.handle, completion),
-            isApplied: async () => false,
-          },
-        ),
-      ).rejects.toMatchObject({ status: 400 });
-      await productionActions.fail(wrongKind.handle, {
-        code: "invalid_target_route",
-        message: "Wrong Partner target route was rejected.",
+      await expectReservedStoreUpdateRejected(productionActions, productionStore, {
+        request: {
+          actorUserId: actor.id,
+          source: "admin_ui",
+          operationKind: "partner.delete",
+          targetCollection: "partners",
+          targetId: current.id,
+          operationId: "wrong-kind-patch",
+          normalizedInput: { id: current.id },
+        },
+        notStarted: "Expected a pending wrong-kind action.",
+        target: current,
+        input: {
+          name: current.name,
+          normalizedName: current.normalizedName,
+          published: current.published,
+          type: current.type,
+          tier: current.tier,
+          logoSurface: current.logoSurface,
+          logoUploadedByHuman: current.logoUploadedByHuman,
+          url: current.url,
+          canonicalUrl: current.canonicalUrl,
+          notes: current.notes,
+          noteAgentVisible: current.noteAgentVisible,
+        },
+        completion: {
+          targetId: current.id,
+          beforeSummary: { id: current.id, name: current.name },
+          afterSummary: { id: current.id, name: current.name },
+          replayResult: { kind: "partner_delete", data: { id: current.id } },
+        },
+        failure: {
+          code: "invalid_target_route",
+          message: "Wrong Partner target route was rejected.",
+        },
       });
 
       const reservedPatchInput = {
@@ -1618,102 +1680,80 @@ describe("Partner Administration", () => {
           logoSurface: "light",
         },
       };
-      const reservedPatch = await productionActions.start({
-        actorUserId: actor.id,
-        source: "admin_ui",
-        operationKind: "partner.patch",
-        targetCollection: "partners",
-        targetId: current.id,
-        operationId: "smuggled-generic-patch",
-        normalizedInput: reservedPatchInput,
-      });
-      if (reservedPatch.outcome !== "started") throw new Error("Expected a pending Partner patch.");
-      await expect(
-        productionStore.update(
-          current.id,
-          current.version,
-          {
-            name: "Reserved Partner Name",
-            normalizedName: "reserved partner name",
-            published: current.published,
-            type: current.type,
-            tier: current.tier,
-            logoSurface: "mixed",
-            logoUploadedByHuman: current.logoUploadedByHuman,
-            url: current.url,
-            canonicalUrl: current.canonicalUrl,
-            notes: current.notes,
-            noteAgentVisible: current.noteAgentVisible,
-          },
-          {
-            handle: reservedPatch.handle,
-            operationKind: "partner.patch",
-            targetId: current.id,
-            normalizedInput: reservedPatchInput,
-            completion: {
-              targetId: current.id,
-              beforeSummary: { id: current.id, name: current.name },
-              afterSummary: { id: current.id, name: "Reserved Partner Name" },
-              replayResult: { kind: "partner_mutation", data: { partner: { id: current.id } } },
-            },
-            complete: (completion) => productionActions.complete(reservedPatch.handle, completion),
-            isApplied: async () => false,
-          },
-        ),
-      ).rejects.toMatchObject({ status: 400 });
-      await productionActions.fail(reservedPatch.handle, {
-        code: "smuggled_patch_rejected",
-        message: "Partner patch input binding was verified.",
+      await expectReservedStoreUpdateRejected(productionActions, productionStore, {
+        request: {
+          actorUserId: actor.id,
+          source: "admin_ui",
+          operationKind: "partner.patch",
+          targetCollection: "partners",
+          targetId: current.id,
+          operationId: "smuggled-generic-patch",
+          normalizedInput: reservedPatchInput,
+        },
+        notStarted: "Expected a pending Partner patch.",
+        target: current,
+        input: {
+          name: "Reserved Partner Name",
+          normalizedName: "reserved partner name",
+          published: current.published,
+          type: current.type,
+          tier: current.tier,
+          logoSurface: "mixed",
+          logoUploadedByHuman: current.logoUploadedByHuman,
+          url: current.url,
+          canonicalUrl: current.canonicalUrl,
+          notes: current.notes,
+          noteAgentVisible: current.noteAgentVisible,
+        },
+        completion: {
+          targetId: current.id,
+          beforeSummary: { id: current.id, name: current.name },
+          afterSummary: { id: current.id, name: "Reserved Partner Name" },
+          replayResult: { kind: "partner_mutation", data: { partner: { id: current.id } } },
+        },
+        failure: {
+          code: "smuggled_patch_rejected",
+          message: "Partner patch input binding was verified.",
+        },
       });
 
       const currentAfterWrongKind = await productionStore.get(created.data.partner.id);
       if (!currentAfterWrongKind) throw new Error("Expected the Partner after wrong-kind rejection.");
-      const smuggledPublish = await productionActions.start({
-        actorUserId: actor.id,
-        source: "admin_ui",
-        operationKind: "partner.publish",
-        targetCollection: "partners",
-        targetId: currentAfterWrongKind.id,
-        operationId: "smuggled-publish-edit",
-        normalizedInput: { id: currentAfterWrongKind.id, published: true },
-      });
-      if (smuggledPublish.outcome !== "started") throw new Error("Expected a pending publish action.");
-      await expect(
-        productionStore.update(
-          currentAfterWrongKind.id,
-          currentAfterWrongKind.version,
-          {
-            name: currentAfterWrongKind.name,
-            normalizedName: currentAfterWrongKind.normalizedName,
-            published: true,
-            type: currentAfterWrongKind.type,
-            tier: currentAfterWrongKind.tier,
-            logoSurface: "light",
-            logoUploadedByHuman: currentAfterWrongKind.logoUploadedByHuman,
-            url: currentAfterWrongKind.url,
-            canonicalUrl: currentAfterWrongKind.canonicalUrl,
-            notes: currentAfterWrongKind.notes,
-            noteAgentVisible: currentAfterWrongKind.noteAgentVisible,
-          },
-          {
-            handle: smuggledPublish.handle,
-            operationKind: "partner.publish",
-            targetId: currentAfterWrongKind.id,
-            normalizedInput: { id: currentAfterWrongKind.id, published: true },
-            completion: {
-              targetId: currentAfterWrongKind.id,
-              beforeSummary: { id: currentAfterWrongKind.id, name: currentAfterWrongKind.name },
-              afterSummary: { id: currentAfterWrongKind.id, name: currentAfterWrongKind.name },
-              replayResult: { kind: "partner_mutation", data: { partner: { id: currentAfterWrongKind.id } } },
-            },
-            complete: (completion) => productionActions.complete(smuggledPublish.handle, completion),
-            isApplied: async () => false,
-          },
-        ),
-      ).rejects.toMatchObject({ status: 400 });
-      await productionActions.fail(smuggledPublish.handle, {
-        code: "smuggled_edit_rejected",
-        message: "Specialized Partner operation field boundary verified.",
+      await expectReservedStoreUpdateRejected(productionActions, productionStore, {
+        request: {
+          actorUserId: actor.id,
+          source: "admin_ui",
+          operationKind: "partner.publish",
+          targetCollection: "partners",
+          targetId: currentAfterWrongKind.id,
+          operationId: "smuggled-publish-edit",
+          normalizedInput: { id: currentAfterWrongKind.id, published: true },
+        },
+        notStarted: "Expected a pending publish action.",
+        target: currentAfterWrongKind,
+        input: {
+          name: currentAfterWrongKind.name,
+          normalizedName: currentAfterWrongKind.normalizedName,
+          published: true,
+          type: currentAfterWrongKind.type,
+          tier: currentAfterWrongKind.tier,
+          logoSurface: "light",
+          logoUploadedByHuman: currentAfterWrongKind.logoUploadedByHuman,
+          url: currentAfterWrongKind.url,
+          canonicalUrl: currentAfterWrongKind.canonicalUrl,
+          notes: currentAfterWrongKind.notes,
+          noteAgentVisible: currentAfterWrongKind.noteAgentVisible,
+        },
+        completion: {
+          targetId: currentAfterWrongKind.id,
+          beforeSummary: { id: currentAfterWrongKind.id, name: currentAfterWrongKind.name },
+          afterSummary: { id: currentAfterWrongKind.id, name: currentAfterWrongKind.name },
+          replayResult: { kind: "partner_mutation", data: { partner: { id: currentAfterWrongKind.id } } },
+        },
+        failure: {
+          code: "smuggled_edit_rejected",
+          message: "Specialized Partner operation field boundary verified.",
+        },
       });
       await expect(productionStore.get(created.data.partner.id)).resolves.toMatchObject({
         name: "Production Adapter",
@@ -1739,57 +1779,46 @@ describe("Partner Administration", () => {
           },
         },
       };
-      const reservedLogo = await productionActions.start({
-        actorUserId: actor.id,
-        source: "admin_ui",
-        operationKind: "partner.patch",
-        targetCollection: "partners",
-        targetId: currentAfterWrongKind.id,
-        operationId: "smuggled-logo-content",
-        normalizedInput: reservedLogoInput,
-      });
-      if (reservedLogo.outcome !== "started") throw new Error("Expected a pending logo patch.");
-      await expect(
-        productionStore.update(
-          currentAfterWrongKind.id,
-          currentAfterWrongKind.version,
-          {
-            name: currentAfterWrongKind.name,
-            normalizedName: currentAfterWrongKind.normalizedName,
-            published: currentAfterWrongKind.published,
-            type: currentAfterWrongKind.type,
-            tier: currentAfterWrongKind.tier,
-            logoSurface: currentAfterWrongKind.logoSurface,
-            logo: {
-              name: "content-bound.png",
-              type: "image/png",
-              data: substitutedLogoData,
-            },
-            logoUploadedByHuman: true,
-            url: currentAfterWrongKind.url,
-            canonicalUrl: currentAfterWrongKind.canonicalUrl,
-            notes: currentAfterWrongKind.notes,
-            noteAgentVisible: currentAfterWrongKind.noteAgentVisible,
+      await expectReservedStoreUpdateRejected(productionActions, productionStore, {
+        request: {
+          actorUserId: actor.id,
+          source: "admin_ui",
+          operationKind: "partner.patch",
+          targetCollection: "partners",
+          targetId: currentAfterWrongKind.id,
+          operationId: "smuggled-logo-content",
+          normalizedInput: reservedLogoInput,
+        },
+        notStarted: "Expected a pending logo patch.",
+        target: currentAfterWrongKind,
+        input: {
+          name: currentAfterWrongKind.name,
+          normalizedName: currentAfterWrongKind.normalizedName,
+          published: currentAfterWrongKind.published,
+          type: currentAfterWrongKind.type,
+          tier: currentAfterWrongKind.tier,
+          logoSurface: currentAfterWrongKind.logoSurface,
+          logo: {
+            name: "content-bound.png",
+            type: "image/png",
+            data: substitutedLogoData,
           },
-          {
-            handle: reservedLogo.handle,
-            operationKind: "partner.patch",
-            targetId: currentAfterWrongKind.id,
-            normalizedInput: reservedLogoInput,
-            completion: {
-              targetId: currentAfterWrongKind.id,
-              beforeSummary: { id: currentAfterWrongKind.id, name: currentAfterWrongKind.name },
-              afterSummary: { id: currentAfterWrongKind.id, name: currentAfterWrongKind.name },
-              replayResult: { kind: "partner_mutation", data: { partner: { id: currentAfterWrongKind.id } } },
-            },
-            complete: (completion) => productionActions.complete(reservedLogo.handle, completion),
-            isApplied: async () => false,
-          },
-        ),
-      ).rejects.toMatchObject({ status: 400 });
-      await productionActions.fail(reservedLogo.handle, {
-        code: "smuggled_logo_rejected",
-        message: "Partner logo content binding was verified.",
+          logoUploadedByHuman: true,
+          url: currentAfterWrongKind.url,
+          canonicalUrl: currentAfterWrongKind.canonicalUrl,
+          notes: currentAfterWrongKind.notes,
+          noteAgentVisible: currentAfterWrongKind.noteAgentVisible,
+        },
+        completion: {
+          targetId: currentAfterWrongKind.id,
+          beforeSummary: { id: currentAfterWrongKind.id, name: currentAfterWrongKind.name },
+          afterSummary: { id: currentAfterWrongKind.id, name: currentAfterWrongKind.name },
+          replayResult: { kind: "partner_mutation", data: { partner: { id: currentAfterWrongKind.id } } },
+        },
+        failure: {
+          code: "smuggled_logo_rejected",
+          message: "Partner logo content binding was verified.",
+        },
       });
 
       const sponsor = await administration.createDraft({
@@ -1798,7 +1827,7 @@ describe("Partner Administration", () => {
         tier: "bronze",
         logoSurface: "light",
       });
-      if (!sponsor.success) throw new Error(sponsor.error);
+      assertSucceeded(sponsor);
       const demoted = await administration.updatePartner(
         sponsor.data.partner.id,
         sponsor.data.partner.version,
@@ -1808,7 +1837,7 @@ describe("Partner Administration", () => {
         success: true,
         data: { partner: { type: "supporter", logoSurface: "light" } },
       });
-      if (!demoted.success) throw new Error(demoted.error);
+      assertSucceeded(demoted);
       expect(demoted.data.partner.tier).toBeUndefined();
       const ignoredTier = await administration.updatePartner(
         demoted.data.partner.id,
@@ -1819,7 +1848,7 @@ describe("Partner Administration", () => {
         success: true,
         data: { partner: { type: "supporter" } },
       });
-      if (!ignoredTier.success) throw new Error(ignoredTier.error);
+      assertSucceeded(ignoredTier);
       expect(ignoredTier.data.partner.tier).toBeUndefined();
 
       const surfaced = await administration.updatePartner(
@@ -1831,7 +1860,7 @@ describe("Partner Administration", () => {
         success: true,
         data: { partner: { logoSurface: "mixed" } },
       });
-      if (!surfaced.success) throw new Error(surfaced.error);
+      assertSucceeded(surfaced);
 
       const agentAdministration = new AuditedPartnerAdministration(
         productionStore,
@@ -1844,11 +1873,11 @@ describe("Partner Administration", () => {
         { notes: "Production timestamp patch" },
         "production-agent-timestamp-patch",
       );
-      expect(timestampPatch, serverLogs).toMatchObject({
+      expect(timestampPatch, logs()).toMatchObject({
         success: true,
         action: { replayed: false },
       });
-      if (!timestampPatch.success) throw new Error(timestampPatch.error);
+      assertSucceeded(timestampPatch);
       const timestampReplay = await agentAdministration.updatePartnerDraft(
         surfaced.data.partner.id,
         surfaced.data.partner.updatedAt,
@@ -1887,11 +1916,11 @@ describe("Partner Administration", () => {
           },
         },
       );
-      expect(withLogo, serverLogs).toMatchObject({
+      expect(withLogo, logs()).toMatchObject({
         success: true,
         data: { partner: { logo: expect.stringContaining("official") }, publication: { ready: true } },
       });
-      if (!withLogo.success) throw new Error(withLogo.error);
+      assertSucceeded(withLogo);
       expect(withLogo.data.partner.updatedAt).not.toContain("|");
       expect(withLogo.data.partner.version).toContain("|");
 
@@ -1947,7 +1976,7 @@ describe("Partner Administration", () => {
         name: "Production Delete",
         type: "other",
       });
-      if (!deletable.success) throw new Error(deletable.error);
+      assertSucceeded(deletable);
       await expect(
         administration.deletePartner(
           deletable.data.partner.id,
@@ -1955,9 +1984,7 @@ describe("Partner Administration", () => {
         ),
       ).resolves.toMatchObject({ success: true, data: { id: deletable.data.partner.id } });
     } finally {
-      server.kill("SIGTERM");
-      await new Promise((resolve) => server.once("exit", resolve));
-      rmSync(root, { recursive: true, force: true });
+      await stop();
     }
   });
 

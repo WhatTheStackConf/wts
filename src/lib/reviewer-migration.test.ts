@@ -3,16 +3,34 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vite-plus/test";
 
 describe("reviewer hardening migration", () => {
-  it("defaults new OAuth accounts to the user role", () => {
+  it("defaults new OAuth accounts to the user role even when createData is absent", () => {
     const source = readFileSync(
       new URL("../../pocketbase/pb_hooks/users_role_guard.pb.js", import.meta.url),
       "utf8",
     );
-    expect(source).toContain("onRecordAuthWithOAuth2Request");
-    expect(source).toMatch(/e\.isNewRecord[\s\S]+e\.createData\.role = "user"/);
+    type OAuthEvent = { isNewRecord: boolean; createData?: Record<string, unknown> | null; next: () => void };
+    let oauthHook: ((event: OAuthEvent) => void) | undefined;
+    runInNewContext(source, {
+      onRecordCreateRequest() {},
+      onRecordUpdateRequest() {},
+      onRecordAuthWithOAuth2Request(handler: typeof oauthHook) { oauthHook = handler; },
+    });
+    expect(oauthHook).toBeTypeOf("function");
+    for (const data of [undefined, null, {}, { role: "admin", name: "Test User" }]) {
+      let continued = false;
+      const event: OAuthEvent = { isNewRecord: true, createData: data, next() { continued = true; } };
+      oauthHook!(event);
+      expect(event.createData?.role).toBe("user");
+      if (data?.name) expect(event.createData?.name).toBe(data.name);
+      expect(continued).toBe(true);
+    }
+    const existing: OAuthEvent = { isNewRecord: false, createData: { role: "reviewer" }, next() {} };
+    oauthHook!(existing);
+    expect(existing.createData?.role).toBe("reviewer");
   });
 
   it("repairs legacy users and keeps the newest duplicate review", { timeout: 20_000 }, () => {

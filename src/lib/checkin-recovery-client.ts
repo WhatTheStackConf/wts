@@ -28,31 +28,43 @@ export const reconcileRecovery = (workflowId: string) => request({ operation: "r
 export function previewRecovery(workflowId: string, name: string, affiliation: string) {
   return request({ operation: "preview", workflowId, name, affiliation }, value => { const result = recoveryPreviewSchema.parse(value); if (result.workflowId !== workflowId || result.name !== name || result.affiliation !== affiliation) throw new Error("identity"); return result; });
 }
+type Result = ReturnType<typeof recoveryResultSchema.parse>;
+type Workflow = Result["workflow"];
+type Attempt = Workflow["attempts"][number];
+type Projection<K extends RecoveryCommand["operation"]> = [label: string, confirms: (command: Extract<RecoveryCommand, { operation: K }>, workflow: Workflow, last: Attempt | undefined) => boolean];
+const projections: { [K in RecoveryCommand["operation"]]?: Projection<K> } = {
+  correct: ["draft", (command, workflow) => workflow.name === command.name && workflow.affiliation === command.affiliation],
+  park: ["parking", (_command, workflow) => workflow.parked],
+  resume: ["parking", (_command, workflow) => !workflow.parked],
+  observe: ["observation", (command, _workflow, last) => last?.id === command.printId && last.observation === command.outcome],
+  replace: ["replacement", (command, _workflow, last) => last?.purpose === "replacement" && last.id !== command.printId && last.predecessorId === command.printId],
+  authorize_initial: ["authorization", (_command, workflow, last) => workflow.decision === "authorized" && workflow.attempts.length === 1 && last?.purpose === "initial"],
+  handwrite: ["handwriting", (_command, workflow) => ["handwritten", "handwrite_pending"].includes(workflow.fulfillment)],
+  reset: ["reset", (command, workflow) => workflow.decision === "reset_pending" && workflow.resets.at(-1)?.checkinId === command.checkinId],
+};
+function sameCommand(result: Result, submitted: RecoveryCommand, committedVersion: number) {
+  return result.operationId === submitted.operationId && result.workflow.workflowId === submitted.workflowId && committedVersion === submitted.expectedVersion + 1 && result.workflow.version >= committedVersion;
+}
+function confirmedResult(submitted: RecoveryCommand, value: unknown): Result {
+  const result = recoveryResultSchema.parse(value);
+  // This additive operation always has a bounded ledger receipt. A projection
+  // alone cannot acknowledge a grant whose response may have been lost.
+  if (submitted.operation === "retry_admission_reads" && result.commandId === undefined) throw new Error("receipt");
+  const committedVersion = result.commandVersion ?? result.workflow.version;
+  if (!sameCommand(result, submitted, committedVersion)) throw new Error("identity");
+  if (result.commandVersion !== undefined && result.workflow.version !== committedVersion) {
+    if (!result.replayed) throw new Error("Unexpected fresh projection");
+    // An immutable receipt confirms this command; later actions may legitimately
+    // change the separately returned current projection.
+    return result;
+  }
+  const projection = projections[submitted.operation] as Projection<RecoveryCommand["operation"]> | undefined;
+  if (projection && !projection[1](submitted, result.workflow, result.workflow.attempts.at(-1))) throw new Error(projection[0]);
+  return result;
+}
 export function commandRecovery(command: RecoveryCommand) {
   const submitted = recoveryCommandSchema.parse(structuredClone(command));
-  return request({ operation: "command", command: submitted }, value => {
-    const result = recoveryResultSchema.parse(value);
-    // This additive operation always has a bounded ledger receipt. A projection
-    // alone cannot acknowledge a grant whose response may have been lost.
-    if (submitted.operation === "retry_admission_reads" && result.commandId === undefined) throw new Error("receipt");
-    const committedVersion = result.commandVersion ?? result.workflow.version;
-    if (result.operationId !== submitted.operationId || result.workflow.workflowId !== submitted.workflowId || committedVersion !== submitted.expectedVersion + 1 || result.workflow.version < committedVersion) throw new Error("identity");
-    if (result.commandVersion !== undefined && result.workflow.version !== committedVersion) {
-      if (!result.replayed) throw new Error("Unexpected fresh projection");
-      // An immutable receipt confirms this command; later actions may legitimately
-      // change the separately returned current projection.
-      return result;
-    }
-    const w = result.workflow, last = w.attempts.at(-1);
-    if (submitted.operation === "correct" && (w.name !== submitted.name || w.affiliation !== submitted.affiliation)) throw new Error("draft");
-    if (submitted.operation === "park" && !w.parked || submitted.operation === "resume" && w.parked) throw new Error("parking");
-    if (submitted.operation === "observe" && (last?.id !== submitted.printId || last.observation !== submitted.outcome)) throw new Error("observation");
-    if (submitted.operation === "replace" && (last?.purpose !== "replacement" || last.id === submitted.printId || last.predecessorId !== submitted.printId)) throw new Error("replacement");
-    if (submitted.operation === "authorize_initial" && (w.decision !== "authorized" || w.attempts.length !== 1 || last?.purpose !== "initial")) throw new Error("authorization");
-    if (submitted.operation === "handwrite" && !["handwritten", "handwrite_pending"].includes(w.fulfillment)) throw new Error("handwriting");
-    if (submitted.operation === "reset" && (w.decision !== "reset_pending" || w.resets.at(-1)?.checkinId !== submitted.checkinId)) throw new Error("reset");
-    return result;
-  });
+  return request({ operation: "command", command: submitted }, value => confirmedResult(submitted, value));
 }
 /** Memory-only retry slot. Read failures never change it. Bind to an authenticated
  * session/binding generation; changing that scope destroys private pending data. */
@@ -61,17 +73,19 @@ export function createRecoveryCommandSlot() {
   let generation = 0;
   let running = false;
   let wasAmbiguous = false;
+  /** One command at a time; a pending command must be retried exactly, never replaced. */
+  function claim(command?: RecoveryCommand): Readonly<RecoveryCommand> {
+    if (running || (pending && command)) throw new RecoveryRequestError(false);
+    if (pending) return pending;
+    if (!command) throw new RecoveryRequestError(false);
+    pending = Object.freeze(recoveryCommandSchema.parse(structuredClone(command)));
+    return pending;
+  }
   return {
     pending: () => pending,
     reset() { generation++; pending = undefined; running = false; wasAmbiguous = false; },
     async submit(command?: RecoveryCommand) {
-      if (running) throw new RecoveryRequestError(false);
-      if (pending && command) throw new RecoveryRequestError(false);
-      if (!pending) {
-        if (!command) throw new RecoveryRequestError(false);
-        pending = Object.freeze(recoveryCommandSchema.parse(structuredClone(command)));
-      }
-      const saved = pending, current = generation;
+      const saved = claim(command), current = generation;
       running = true;
       try {
         const result = await commandRecovery(saved);

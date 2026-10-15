@@ -60,6 +60,8 @@ import {
   serverLogoutCore as serverLogout,
 } from "~/lib/server-auth-core";
 import { requireAdmin, requireCheckinOperatorSession, requireReviewerSession } from "~/lib/server-auth";
+import { serverLoginResultCore as loginResult, serverLoginWithTokenResultCore as tokenResult } from "~/lib/server-auth-core";
+import { authFailure, unwrapAuthResult } from "~/lib/auth-errors";
 
 function validToken(): string {
   const exp = Math.floor(Date.now() / 1000) + 3600;
@@ -91,6 +93,52 @@ describe("server authentication", () => {
     state.authWithPassword.mockReset();
     state.authRefresh.mockReset();
     state.authRefresh.mockResolvedValue(undefined);
+  });
+
+  it("returns serializable login failures instead of throwing across the server boundary", async () => {
+    const event = requestEvent();
+    state.getRequestEvent.mockReturnValue(event);
+    state.authWithPassword.mockRejectedValue({ status: 400, message: "private backend detail" });
+    const result = await loginResult("user@example.test", "wrong-test-password");
+    expect(result).toMatchObject({ ok: false, error: { code: "credentials" } });
+    expect(JSON.stringify(result)).not.toContain("private backend detail");
+    expect(() => unwrapAuthResult(result)).toThrow("Forgot Password");
+    expect(event.response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("preserves verification recovery without issuing a session", async () => {
+    const event = requestEvent();
+    state.getRequestEvent.mockReturnValue(event);
+    state.authWithPassword.mockResolvedValue({ token: state.token, record: { ...state.refreshedRecord, verified: false } });
+    await expect(loginResult("user@example.test", "test-password")).resolves.toMatchObject({ ok: false, error: { code: "verification" } });
+    expect(event.response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("returns sanitized OAuth session failures and still refuses cross-origin requests", async () => {
+    state.getRequestEvent.mockReturnValue(requestEvent());
+    state.authRefresh.mockRejectedValue({ status: 503, message: "private upstream failure" });
+    await expect(tokenResult(state.token)).resolves.toMatchObject({ ok: false, error: { code: "unavailable" } });
+    state.getRequestEvent.mockReturnValue(requestEvent({ origin: "https://attacker.example.test" }));
+    await expect(tokenResult(state.token)).resolves.toMatchObject({ ok: false, error: { code: "session" } });
+    expect(state.authRefresh).toHaveBeenCalledOnce();
+  });
+
+  it("keeps successful login results token-free", async () => {
+    state.getRequestEvent.mockReturnValue(requestEvent());
+    state.authWithPassword.mockResolvedValue({ token: state.token, record: state.refreshedRecord });
+    for (const result of [await loginResult("user@example.test", "test-password"), await tokenResult(state.token)]) {
+      expect(result).toEqual({ ok: true, user: state.refreshedRecord });
+      expect(unwrapAuthResult(result)).not.toHaveProperty("token");
+    }
+  });
+
+  it("maps registration validation and transport errors without reflecting server text", () => {
+    expect(authFailure({ status: 400, response: { data: { email: { code: "validation_not_unique" } } } }, "register").message).toContain("Forgot Password");
+    expect(authFailure({ status: 400, response: { data: { password: { code: "validation_length_out_of_range" } } } }, "register").message).toContain("8 characters");
+    expect(authFailure({ status: 429 }, "oauth").code).toBe("rate_limit");
+    expect(authFailure({ status: 0 }, "oauth").code).toBe("network");
+    expect(authFailure({ status: 0, isAbort: true }, "oauth").code).toBe("cancelled");
+    expect(authFailure(new Error("Internal Server Error: secret"), "register").message).not.toContain("secret");
   });
 
   it("logs in without returning a browser token and sets the secure HttpOnly cookie", async () => {

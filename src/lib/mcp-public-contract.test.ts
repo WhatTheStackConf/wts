@@ -7,47 +7,58 @@ import {
 } from "~/lib/conference-guide";
 import { conferenceGuideContent } from "~/lib/conference-guide-content";
 
+vi.mock("~/lib/conference-guide-content", async (importOriginal) => {
+  const original = await importOriginal<typeof import("~/lib/conference-guide-content")>();
+  return { ...original, conferenceTimeZone: undefined };
+});
+const scheduleTestContent = {
+  ...conferenceGuideContent,
+  contentVersion: "fixture-content-version",
+  event: {
+    ...conferenceGuideContent.event,
+    timeZone: { status: "announced" as const, iana: "Europe/Skopje" },
+  },
+};
+
 const guide = vi.hoisted(() => ({
   getIndex: vi.fn(async () => ({
     metadata: {
       schema_version: "2",
-      content_version: "2026-07-23",
+      content_version: "fixture-content-version",
       programme_version: "sha256:programme",
       generated_at: "2026-07-14T18:00:00.000Z",
-      time_zone: "Europe/Skopje",
       canonical_url: "https://wts.sh/mcp",
     },
     programme_status: "available",
     logistics: {
-      main_venue: { status: "announced", name: "Technical Campus" },
+      main_venue: { status: "not_announced" },
     },
     programme: { sessions: [{ slug: "safe-systems" }] },
   })),
   getAgenda: vi.fn(async () => ({
-    metadata: { content_version: "2026-07-23", programme_version: "sha256:programme" },
+    metadata: { content_version: "fixture-content-version", programme_version: "sha256:programme" },
     days: [{ key: "conference-day" }],
   })),
   getSession: vi.fn(async (slug: string) => slug === "safe-systems" ? ({
-    metadata: { content_version: "2026-07-23", programme_version: "sha256:programme" },
+    metadata: { content_version: "fixture-content-version", programme_version: "sha256:programme" },
     slug,
     title: "Safe Systems",
   }) : null),
   getSpeaker: vi.fn(async (slug: string) => slug === "ada-example" ? ({
-    metadata: { content_version: "2026-07-23", programme_version: "sha256:programme" },
+    metadata: { content_version: "fixture-content-version", programme_version: "sha256:programme" },
     slug,
     display_name: "Ada Example",
   }) : null),
   getPartners: vi.fn(async () => ({
-    metadata: { content_version: "2026-07-23", programme_version: "sha256:programme" },
+    metadata: { content_version: "fixture-content-version", programme_version: "sha256:programme" },
     groups: [{ key: "supporters", partners: [{ name: "Example Partner" }] }],
   })),
   searchSessions: vi.fn(async () => ({
     metadata: {
       schema_version: "2",
-      content_version: "2026-07-23",
+      content_version: "fixture-content-version",
       programme_version: "sha256:programme",
       generated_at: "2026-07-14T18:00:00.000Z",
-      time_zone: "Europe/Skopje",
       canonical_url: "https://wts.sh/sessions",
     },
     outcome: "results",
@@ -78,10 +89,9 @@ const guide = vi.hoisted(() => ({
   planProposedSchedule: vi.fn(async () => ({
     metadata: {
       schema_version: "2",
-      content_version: "2026-07-23",
+      content_version: "fixture-content-version",
       programme_version: "sha256:programme",
       generated_at: "2026-07-14T18:00:00.000Z",
-      time_zone: "Europe/Skopje",
       canonical_url: "https://wts.sh/agenda",
     },
     outcome: "planned_with_issues",
@@ -218,6 +228,13 @@ describe("public Conference Guide MCP contract", () => {
         "wts://conference-guide/agenda",
         "wts://conference-guide/partners",
       ]);
+
+      const agendaResource = resources.resources.find((resource) =>
+        resource.uri === "wts://conference-guide/agenda");
+      const agendaDescription = agendaResource?.description ?? "";
+      expect(agendaDescription).toMatch(/time.?zone/i);
+      expect(agendaDescription.toLowerCase()).toContain("omitted");
+      expect(agendaDescription).not.toContain("/");
       expect(templates.resourceTemplates.map((template) => template.uriTemplate)).toEqual([
         "wts://conference-guide/sessions/{slug}",
         "wts://conference-guide/speakers/{slug}",
@@ -289,7 +306,6 @@ describe("public Conference Guide MCP contract", () => {
       expect(structured).toMatchObject({
         success: true,
         data: {
-          metadata: { time_zone: "Europe/Skopje", programme_version: "sha256:programme" },
           outcome: "planned_with_issues",
           version_check: { status: "changed" },
           ephemeral: { saved: false, reserves_attendance: false },
@@ -335,6 +351,10 @@ describe("public Conference Guide MCP contract", () => {
       expect(promptText).toContain("wts://conference-guide/sessions/{slug}");
       expect(promptText).toContain("caller-supplied");
       expect(promptText).toContain("not saved");
+      expect(promptText.toLowerCase()).toContain("time zone");
+      expect(promptText.toLowerCase()).toContain("not announced");
+      expect(promptText.toLowerCase()).toContain("do not assign");
+      expect(promptText).not.toContain("Europe/Skopje");
       expect(promptText).toContain("does not reserve attendance");
       expect(promptText).toContain("client");
       expect(promptText).not.toContain("WTS-hosted LLM call");
@@ -625,7 +645,7 @@ describe("public Conference Guide MCP contract", () => {
       expect(index).toMatchObject({
         programme_status: "available",
         logistics: {
-          main_venue: { status: "announced", name: "Technical Campus" },
+          main_venue: { status: "not_announced" },
         },
       });
       expect(agenda).toMatchObject({ days: [{ key: "conference-day" }] });
@@ -641,7 +661,7 @@ describe("public Conference Guide MCP contract", () => {
 
   it("traces anonymous discovery, search, versioned planning, trade-offs, and canonical links", async () => {
     const tracerGuide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: scheduleTestContent,
       canonicalOrigin: "https://wts.sh",
       now: () => new Date("2026-07-14T18:00:00.000Z"),
       loadPublishedData: async () => ({
@@ -819,7 +839,7 @@ describe("public Conference Guide MCP contract", () => {
 
   it("preserves the strict Guide allowlist and complete metadata at the HTTP contract", async () => {
     const strictGuide = createConferenceGuide({
-      content: conferenceGuideContent,
+      content: scheduleTestContent,
       canonicalOrigin: "https://wts.sh",
       now: () => new Date("2026-07-14T18:00:00.000Z"),
       loadPublishedData: async () => ({
@@ -901,7 +921,7 @@ describe("public Conference Guide MCP contract", () => {
       for (const value of values) {
         expect(value.metadata).toMatchObject({
           schema_version: "2",
-          content_version: "2026-07-23",
+          content_version: "fixture-content-version",
           programme_version: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
           generated_at: "2026-07-14T18:00:00.000Z",
           time_zone: "Europe/Skopje",

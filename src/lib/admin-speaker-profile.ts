@@ -1,4 +1,5 @@
 import { uniqueSpeakerSlug } from "~/lib/conference-slug";
+import { requireCapability } from "~/lib/capability-availability";
 import type {
   CfpApplicantRecord,
   SpeakerRecord,
@@ -129,6 +130,27 @@ export function normalizeSpeakerSocialHandles(raw: unknown): string[] {
     .filter(Boolean);
 }
 
+export function trimmedText(value?: string | null): string {
+  return value?.trim() || "";
+}
+
+function uniqueTrimmedStrings(values: unknown[]): string[] {
+  return Array.from(
+    new Set(
+      values
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function speakerProfilePhotoError(photo: SpeakerProfilePhotoInput): string | null {
+  if (photo.intent !== "replace") return null;
+  if (!photo.file?.data?.length) return "Choose a photo to upload.";
+  return validateSpeakerPhotoUpload(photo.file);
+}
+
 export function validateSpeakerSlug(slug: string): string | null {
   if (!slug) return "Slug is required.";
   if (slug.length > 80) return "Slug must be 80 characters or fewer.";
@@ -144,21 +166,16 @@ export function normalizeSpeakerProfileUpdateInput(
   if (input.is_mc !== undefined && typeof input.is_mc !== "boolean") {
     return { success: false, error: "MC designation must be a boolean." };
   }
-  const displayName = input.display_name?.trim() || "";
+  const displayName = trimmedText(input.display_name);
   if (!displayName) return { success: false, error: "Display name is required." };
 
-  const slug = input.slug?.trim() || "";
+  const slug = trimmedText(input.slug);
   const slugError = validateSpeakerSlug(slug);
   if (slugError) return { success: false, error: slugError };
 
   const photo = input.photo || { intent: "keep" };
-  if (photo.intent === "replace") {
-    if (!photo.file?.data?.length) {
-      return { success: false, error: "Choose a photo to upload." };
-    }
-    const photoError = validateSpeakerPhotoUpload(photo.file);
-    if (photoError) return { success: false, error: photoError };
-  }
+  const photoError = speakerProfilePhotoError(photo);
+  if (photoError) return { success: false, error: photoError };
 
   return {
     success: true,
@@ -167,20 +184,11 @@ export function normalizeSpeakerProfileUpdateInput(
         ...(input.is_mc !== undefined ? { is_mc: input.is_mc } : {}),
         display_name: displayName,
         slug,
-        affiliation: input.affiliation?.trim() || "",
-        bio: input.bio?.trim() || "",
+        affiliation: trimmedText(input.affiliation),
+        bio: trimmedText(input.bio),
         social_handles: normalizeSpeakerSocialHandles(input.social_handles),
         ...(Array.isArray(input.appearance_events)
-          ? {
-              appearance_events: Array.from(
-                new Set(
-                  input.appearance_events
-                    .filter((value): value is string => typeof value === "string")
-                    .map((value) => value.trim())
-                    .filter(Boolean),
-                ),
-              ),
-            }
+          ? { appearance_events: uniqueTrimmedStrings(input.appearance_events) }
           : {}),
       },
       photo,
@@ -188,17 +196,21 @@ export function normalizeSpeakerProfileUpdateInput(
   };
 }
 
-export function isDuplicateFieldError(error: unknown, field: string): boolean {
+const DUPLICATE_ERROR_MARKERS = ["unique", "already", "constraint"];
+
+function fieldErrorText(error: unknown, field: string): string {
   const response = (error as { response?: { data?: Record<string, { message?: string }> } })
     ?.response;
   const fieldMessage = response?.data?.[field]?.message;
   const message = error instanceof Error ? error.message : String(error || "");
-  const combined = `${fieldMessage || ""} ${message}`.toLowerCase();
+  return `${fieldMessage || ""} ${message}`.toLowerCase();
+}
+
+export function isDuplicateFieldError(error: unknown, field: string): boolean {
+  const combined = fieldErrorText(error, field);
   return (
     combined.includes(field.toLowerCase()) &&
-    (combined.includes("unique") ||
-      combined.includes("already") ||
-      combined.includes("constraint"))
+    DUPLICATE_ERROR_MARKERS.some((marker) => combined.includes(marker))
   );
 }
 
@@ -310,6 +322,7 @@ export async function createOrReuseCfpSpeakerFromApplicant(
   adminService: AdminSpeakerService,
   applicantId: string,
 ): Promise<{ speaker: SpeakerRecord; created: boolean }> {
+  await requireCapability("cfp");
   const existing = await findSpeakerByCfpApplicant(adminService, applicantId);
   if (existing) return { speaker: existing, created: false };
 
@@ -317,8 +330,8 @@ export async function createOrReuseCfpSpeakerFromApplicant(
     expand: "user",
   })) as ExpandedCfpApplicantRecord;
   const user = applicant.expand?.user;
-  const displayName = user?.name?.trim() || "";
-  const baseName = displayName || user?.email?.trim() || "speaker";
+  const displayName = trimmedText(user?.name);
+  const baseName = displayName || trimmedText(user?.email) || "speaker";
 
   const slug = await uniqueSpeakerSlug(baseName, (candidate) =>
     speakerSlugExistsForOther(adminService, candidate, ""),
@@ -331,8 +344,8 @@ export async function createOrReuseCfpSpeakerFromApplicant(
     cfp_applicant: applicantId,
     user: applicant.user || "",
     display_name: displayName,
-    affiliation: applicant.affiliation?.trim() || "",
-    bio: applicant.bio?.trim() || "",
+    affiliation: trimmedText(applicant.affiliation),
+    bio: trimmedText(applicant.bio),
     social_handles: normalizeSpeakerSocialHandles(applicant.social_handles),
   };
 
@@ -343,13 +356,19 @@ export async function createOrReuseCfpSpeakerFromApplicant(
     const speaker = (await adminService.createRecord("speakers", body)) as SpeakerRecord;
     return { speaker, created: true };
   } catch (error) {
-    if (isDuplicateFieldError(error, "cfp_applicant")) {
-      const racedExisting = await findSpeakerByCfpApplicant(adminService, applicantId);
-      if (racedExisting) return { speaker: racedExisting, created: false };
-      throw new Error(
-        "A speaker profile already exists for this CFP applicant. Refresh Speakers and try again.",
-      );
-    }
-    throw error;
+    return reuseRacedCfpSpeaker(adminService, applicantId, error);
   }
+}
+
+async function reuseRacedCfpSpeaker(
+  adminService: AdminSpeakerService,
+  applicantId: string,
+  error: unknown,
+): Promise<{ speaker: SpeakerRecord; created: boolean }> {
+  if (!isDuplicateFieldError(error, "cfp_applicant")) throw error;
+  const racedExisting = await findSpeakerByCfpApplicant(adminService, applicantId);
+  if (racedExisting) return { speaker: racedExisting, created: false };
+  throw new Error(
+    "A speaker profile already exists for this CFP applicant. Refresh Speakers and try again.",
+  );
 }

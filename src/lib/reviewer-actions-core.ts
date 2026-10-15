@@ -1,5 +1,6 @@
 import { requireReviewer, requireReviewerSession } from "~/lib/server-auth";
 import { getAdminPB } from "~/lib/pocketbase-admin-service";
+import { capabilityUnavailableMetadata, isCapabilityUnavailable, requireCapability } from "~/lib/capability-availability";
 
 const WEIGHT_CRITERIA = [
   "relevance",
@@ -71,7 +72,15 @@ function failure(error: unknown, fallback: string) {
     event: "reviewer_action_failed",
     errorType: error instanceof Error ? error.name : "UnknownError",
   }));
-  return { success: false as const, error: message === "Unauthorized" ? "Unauthorized" : fallback };
+  return {
+    success: false as const,
+    error: isCapabilityUnavailable(error)
+      ? error.message
+      : message === "Unauthorized"
+        ? "Unauthorized"
+        : fallback,
+    ...capabilityUnavailableMetadata(error),
+  };
 }
 
 function submissionListDto(record: any): ReviewerSubmissionListDto {
@@ -187,6 +196,7 @@ function validatedReview(input: unknown) {
  */
 export const fetchReviewerSubmissionsCore = async () => {
   try {
+    await requireCapability("review");
     const user = await requireReviewer();
     const adminService = getAdminPB();
     const [submissions, myReviews] = await Promise.all([
@@ -217,6 +227,7 @@ export const fetchReviewerSubmissionsCore = async () => {
 
 export const fetchReviewerSubmissionDetailCore = async (id: string) => {
   try {
+    await requireCapability("review");
     const user = await requireReviewer();
     const safeId = validateRecordId(id);
     const adminService = getAdminPB();
@@ -251,6 +262,7 @@ export const fetchReviewerSubmissionDetailCore = async (id: string) => {
 /** Reviewers receive only their own vote; admins receive aggregate results only. */
 export const fetchWeightVotesCore = async () => {
   try {
+    await requireCapability("review");
     const user = await requireReviewer();
     const adminService = getAdminPB();
     if (user.role === "reviewer") {
@@ -283,6 +295,7 @@ export const fetchWeightVotesCore = async () => {
 
 export const fetchReviewerLeaderboardCore = async () => {
   try {
+    await requireCapability("review");
     await requireReviewer();
     const adminService = getAdminPB();
     const [reviewers, reviews] = await Promise.all([
@@ -318,6 +331,7 @@ export const fetchReviewerLeaderboardCore = async () => {
 
 export const saveWeightVoteCore = async (voteId: string | null, input: unknown) => {
   try {
+    await requireCapability("review");
     const user = await requireReviewer();
     if (user.role !== "reviewer") throw new Error("Unauthorized");
     const votes = validatedWeights(input);
@@ -348,6 +362,7 @@ export const saveWeightVoteCore = async (voteId: string | null, input: unknown) 
 
 export const submitReviewCore = async (input: unknown) => {
   try {
+    await requireCapability("review");
     const { pb, user } = await requireReviewerSession();
     if (user.role !== "reviewer") throw new Error("Unauthorized");
     const review = validatedReview(input);

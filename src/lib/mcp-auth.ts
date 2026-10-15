@@ -53,6 +53,17 @@ function expiryState(value?: string): "active" | "expired" | "invalid" {
   return timestamp <= Date.now() ? "expired" : "active";
 }
 
+const EXPIRY_ERRORS = {
+  expired: "MCP token has expired",
+  invalid: "MCP token expiry is invalid",
+} as const;
+
+function inactiveTokenError(record: McpTokenRecord): string | null {
+  if (record.revoked_at) return "MCP token has been revoked";
+  const expiry = expiryState(record.expires_at);
+  return expiry === "active" ? null : EXPIRY_ERRORS[expiry];
+}
+
 export async function authenticateMcpBearer(
   authorization: string | null,
 ): Promise<McpAuthResult> {
@@ -76,16 +87,9 @@ export async function authenticateMcpBearer(
     return { success: false, status: 401, error: "Invalid MCP bearer token" };
   }
 
-  if (record.revoked_at) {
-    return { success: false, status: 401, error: "MCP token has been revoked" };
-  }
-
-  const expiry = expiryState(record.expires_at);
-  if (expiry === "expired") {
-    return { success: false, status: 401, error: "MCP token has expired" };
-  }
-  if (expiry === "invalid") {
-    return { success: false, status: 401, error: "MCP token expiry is invalid" };
+  const inactiveError = inactiveTokenError(record);
+  if (inactiveError) {
+    return { success: false, status: 401, error: inactiveError };
   }
 
   const owners = (await adminService.fetchAllRecords("users", {

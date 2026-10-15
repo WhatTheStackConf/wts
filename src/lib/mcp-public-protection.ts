@@ -30,6 +30,31 @@ function retryAfterSeconds(expiresAt: number, now: number): number {
   return Math.max(1, Math.ceil((expiresAt - now) / 1_000));
 }
 
+interface PublicMcpProtectionLimits {
+  windowMs: number;
+  burstLimit: number;
+  globalLimit: number;
+  concurrencyLimit: number;
+}
+
+function protectionLimits(): PublicMcpProtectionLimits {
+  return {
+    windowMs: positiveInteger(process.env.MCP_PUBLIC_RATE_WINDOW_MS, DEFAULT_WINDOW_MS),
+    burstLimit: positiveInteger(process.env.MCP_PUBLIC_BURST_LIMIT, DEFAULT_BURST_LIMIT),
+    globalLimit: positiveInteger(process.env.MCP_PUBLIC_GLOBAL_LIMIT, DEFAULT_GLOBAL_LIMIT),
+    concurrencyLimit: positiveInteger(
+      process.env.MCP_PUBLIC_CONCURRENCY_LIMIT,
+      DEFAULT_CONCURRENCY_LIMIT,
+    ),
+  };
+}
+
+function hashedAddressKey(clientAddress: string | undefined): string | undefined {
+  return clientAddress
+    ? createHash("sha256").update(PROCESS_SALT).update(clientAddress).digest("hex")
+    : undefined;
+}
+
 class MemoryPublicMcpProtection {
   private readonly perAddress = new Map<string, WindowCounter>();
   private global: WindowCounter = { count: 0, expiresAt: 0 };
@@ -41,40 +66,46 @@ class MemoryPublicMcpProtection {
     this.inFlightWeight = 0;
   }
 
-  acquire(input: PublicMcpProtectionInput): PublicMcpProtectionResult {
-    const now = input.now ?? Date.now();
-    const weight = Math.max(1, Math.floor(input.weight));
-    const windowMs = positiveInteger(process.env.MCP_PUBLIC_RATE_WINDOW_MS, DEFAULT_WINDOW_MS);
-    const burstLimit = positiveInteger(process.env.MCP_PUBLIC_BURST_LIMIT, DEFAULT_BURST_LIMIT);
-    const globalLimit = positiveInteger(process.env.MCP_PUBLIC_GLOBAL_LIMIT, DEFAULT_GLOBAL_LIMIT);
-    const concurrencyLimit = positiveInteger(
-      process.env.MCP_PUBLIC_CONCURRENCY_LIMIT,
-      DEFAULT_CONCURRENCY_LIMIT,
-    );
-
+  private expireWindows(now: number, windowMs: number) {
     for (const [key, counter] of this.perAddress) {
       if (counter.expiresAt <= now) this.perAddress.delete(key);
     }
     if (this.global.expiresAt <= now) {
       this.global = { count: 0, expiresAt: now + windowMs };
     }
+  }
 
-    const addressKey = input.clientAddress
-      ? createHash("sha256").update(PROCESS_SALT).update(input.clientAddress).digest("hex")
-      : undefined;
-    const addressCounter = addressKey
-      ? this.perAddress.get(addressKey) ?? { count: 0, expiresAt: now + windowMs }
-      : undefined;
-
-    if (addressCounter && addressCounter.count + weight > burstLimit) {
+  private limitRejection(
+    addressCounter: WindowCounter | undefined,
+    weight: number,
+    limits: PublicMcpProtectionLimits,
+    now: number,
+  ): PublicMcpProtectionResult | undefined {
+    if (addressCounter && addressCounter.count + weight > limits.burstLimit) {
       return { allowed: false, retryAfter: retryAfterSeconds(addressCounter.expiresAt, now) };
     }
-    if (this.global.count + weight > globalLimit) {
+    if (this.global.count + weight > limits.globalLimit) {
       return { allowed: false, retryAfter: retryAfterSeconds(this.global.expiresAt, now) };
     }
-    if (this.inFlightWeight + weight > concurrencyLimit) {
+    if (this.inFlightWeight + weight > limits.concurrencyLimit) {
       return { allowed: false, retryAfter: 1 };
     }
+    return undefined;
+  }
+
+  acquire(input: PublicMcpProtectionInput): PublicMcpProtectionResult {
+    const now = input.now ?? Date.now();
+    const weight = Math.max(1, Math.floor(input.weight));
+    const limits = protectionLimits();
+    this.expireWindows(now, limits.windowMs);
+
+    const addressKey = hashedAddressKey(input.clientAddress);
+    const addressCounter = addressKey
+      ? this.perAddress.get(addressKey) ?? { count: 0, expiresAt: now + limits.windowMs }
+      : undefined;
+
+    const rejection = this.limitRejection(addressCounter, weight, limits, now);
+    if (rejection) return rejection;
 
     if (addressKey && addressCounter) {
       addressCounter.count += weight;

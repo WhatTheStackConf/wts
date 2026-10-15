@@ -181,12 +181,36 @@ async function parseBoundedBody(request: Request): Promise<unknown> {
   }
 }
 
-export async function handlePublicMcpRequest(
-  event: PublicMcpRequestEvent,
-  guide: ConferenceGuideService,
-) {
-  const request = event.request;
-  const origin = validateMcpOrigin(request);
+type PublicMcpBody =
+  | { ok: true; parsedBody: unknown }
+  | { ok: false; response: Response };
+
+async function parsePublicMcpBody(
+  request: Request,
+  origin: McpOriginDecision,
+): Promise<PublicMcpBody> {
+  let parsedBody: unknown;
+  try {
+    parsedBody = await parseBoundedBody(request);
+  } catch (error) {
+    if (error instanceof PublicMcpRequestTooLargeError) {
+      return {
+        ok: false,
+        response: jsonResponse({ error: "Public MCP request body is too large." }, 413, origin),
+      };
+    }
+    throw error;
+  }
+  if (Array.isArray(parsedBody) && parsedBody.length > MAX_BATCH_MESSAGES) {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "Public MCP JSON-RPC batch is too large." }, 400, origin),
+    };
+  }
+  return { ok: true, parsedBody };
+}
+
+function preflightResponse(request: Request, origin: McpOriginDecision): Response | undefined {
   if (!origin.allowed) {
     return jsonResponse({ error: "Origin is not allowed" }, 403, origin);
   }
@@ -212,32 +236,38 @@ export async function handlePublicMcpRequest(
       { Allow: "POST, OPTIONS" },
     );
   }
+  return undefined;
+}
+
+function capacityExhaustedResponse(retryAfter: number, origin: McpOriginDecision): Response {
+  return jsonResponse(
+    { error: "Public MCP capacity is temporarily exhausted. Retry later." },
+    429,
+    origin,
+    { "Retry-After": String(retryAfter) },
+  );
+}
+
+export async function handlePublicMcpRequest(
+  event: PublicMcpRequestEvent,
+  guide: ConferenceGuideService,
+) {
+  const request = event.request;
+  const origin = validateMcpOrigin(request);
+  const preflight = preflightResponse(request, origin);
+  if (preflight) return preflight;
 
   const address = clientAddress(event);
   const initialPermit = publicMcpProtection.acquire({ clientAddress: address, weight: 1 });
   if (!initialPermit.allowed) {
-    return jsonResponse(
-      { error: "Public MCP capacity is temporarily exhausted. Retry later." },
-      429,
-      origin,
-      { "Retry-After": String(initialPermit.retryAfter) },
-    );
+    return capacityExhaustedResponse(initialPermit.retryAfter, origin);
   }
 
   let weightedPermit: ReturnType<typeof publicMcpProtection.acquire> | undefined;
   try {
-    let parsedBody: unknown;
-    try {
-      parsedBody = await parseBoundedBody(request);
-    } catch (error) {
-      if (error instanceof PublicMcpRequestTooLargeError) {
-        return jsonResponse({ error: "Public MCP request body is too large." }, 413, origin);
-      }
-      throw error;
-    }
-    if (Array.isArray(parsedBody) && parsedBody.length > MAX_BATCH_MESSAGES) {
-      return jsonResponse({ error: "Public MCP JSON-RPC batch is too large." }, 400, origin);
-    }
+    const body = await parsePublicMcpBody(request, origin);
+    if (!body.ok) return body.response;
+    const parsedBody = body.parsedBody;
 
     const remainingWeight = requestWeight(parsedBody) - 1;
     if (remainingWeight > 0) {
@@ -246,12 +276,7 @@ export async function handlePublicMcpRequest(
         weight: remainingWeight,
       });
       if (!weightedPermit.allowed) {
-        return jsonResponse(
-          { error: "Public MCP capacity is temporarily exhausted. Retry later." },
-          429,
-          origin,
-          { "Retry-After": String(weightedPermit.retryAfter) },
-        );
+        return capacityExhaustedResponse(weightedPermit.retryAfter, origin);
       }
     }
 

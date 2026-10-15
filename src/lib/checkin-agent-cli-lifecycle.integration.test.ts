@@ -36,6 +36,7 @@ it('compiled CLI caches authenticated closure, retires offline, replays receipt 
     const [work] = (await liveAgent.work()).attempts; expect(work).toBeDefined();
     liveJournal.put({ ...work, state: "received" }); liveJournal.close();
     const lifecycle = new CheckinLifecycleService(t.pb, t.admin.actor);
+    const purgeCompletedAt = async () => (await lifecycle.status()).devices.find(d => d.journalIdentity === identity.journalIdentity)?.completedAt;
     await lifecycle.close({ operationId: crypto.randomUUID(), confirmEdition: 'WTS2026' });
     // Move only the disposable test DB clock/deadline; no production mutation.
     const db = new DatabaseSync(join(t.root, 'pb_data', 'data.db'));
@@ -57,12 +58,12 @@ it('compiled CLI caches authenticated closure, retires offline, replays receipt 
     const offline = await run(config); expect(offline.code, offline.output).toBe(0); expect(offline.output).toContain('agent_purge_receipt_pending');
     expect(existsSync(join(root, 'spool', 'test.bin'))).toBe(false);
     const retired = new DatabaseSync(journalPath, { readOnly: true }); expect(retired.prepare("SELECT name FROM sqlite_master WHERE name='journal'").get()).toBeUndefined(); retired.close();
-    expect((await lifecycle.status()).devices.find(d => d.journalIdentity === identity.journalIdentity)?.completedAt).toBeNull();
+    expect(await purgeCompletedAt()).toBeNull();
     coordinator = new Coordinator(t.pb); url = await coordinator.listenReportingOnly(); configure();
     expect((await t.pb.collection("checkin_coordinator").getOne("wts2026coord000")).owner).toBe("");
     symlinkSync(credential, join(root, 'spool', 'unsafe.bin'));
     const unsafe = await run(config); expect(unsafe.code, unsafe.output).toBe(78); expect(unsafe.output).not.toContain('agent_purge_complete');
-    expect((await lifecycle.status()).devices.find(d => d.journalIdentity === identity.journalIdentity)?.completedAt).toBeNull();
+    expect(await purgeCompletedAt()).toBeNull();
     unlinkSync(join(root, 'spool', 'unsafe.bin'));
     const retiredBytes = readFileSync(journalPath);
     for (const kind of ['missing', 'corrupt', 'foreign', 'hardlink']) {
@@ -72,12 +73,12 @@ it('compiled CLI caches authenticated closure, retires offline, replays receipt 
       if (kind === 'hardlink') { writeFileSync(journalPath, retiredBytes); linkSync(journalPath, join(root, 'alias.sqlite')); }
       const blocked = await run(config); expect(blocked.code, `${kind}: ${blocked.output}`).toBe(78);
       expect(blocked.output).not.toContain('agent_purge_complete');
-      expect((await lifecycle.status()).devices.find(d => d.journalIdentity === identity.journalIdentity)?.completedAt).toBeNull();
+      expect(await purgeCompletedAt()).toBeNull();
       if (kind === 'hardlink') unlinkSync(join(root, 'alias.sqlite'));
       if (existsSync(journalPath)) unlinkSync(journalPath);
       writeFileSync(journalPath, retiredBytes, { mode: 0o600 });
     }
     const receipt = await run(config); expect(receipt.code, receipt.output).toBe(0); expect(receipt.output).toContain('agent_purge_complete');
-    expect((await lifecycle.status()).devices.find(d => d.journalIdentity === identity.journalIdentity)?.completedAt).not.toBeNull();
+    expect(await purgeCompletedAt()).not.toBeNull();
   } finally { await coordinator.close(); await t.cleanup(); }
 }, 30000);

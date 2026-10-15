@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import type PocketBase from "pocketbase";
 import type { CheckinActor } from "~/lib/checkin-contract";
-import type { CheckinAdminEventCatalogue, CheckinConfigureEvent, CheckinConfigureEventResult, CheckinEventConfiguration, CheckinEventOptions, CheckinEventCatalogue, CheckinEventContext, CheckinEventSelection, CheckinEventSnapshot, CheckinEventServiceContract } from "~/lib/checkin-event-contract";
+import type { CheckinAffiliationMapping, CheckinAdminEventCatalogue, CheckinConfigureEvent, CheckinConfigureEventResult, CheckinEventConfiguration, CheckinEventOptions, CheckinEventCatalogue, CheckinEventContext, CheckinEventSelection, CheckinEventSnapshot, CheckinEventServiceContract } from "~/lib/checkin-event-contract";
 import { CheckinError } from "~/lib/checkin-service";
+import { CHECKIN_STATION_ERROR_CODES, checkinHookError } from "~/lib/checkin-hook-error";
 import { checkinUpstreamId, configureCheckinEventSchema, checkinEventContextSchema, selectCheckinEventSchema } from "~/lib/checkin-event-validation";
 
 export type { CheckinEventSource } from "./checkin-event-contract.js";
@@ -14,13 +15,7 @@ export class CheckinEventService implements CheckinEventServiceContract {
     if (!this.actor?.userId || !["admin", "checkin_operator"].includes(this.actor.role) || (operation.startsWith("admin_") && this.actor.role !== "admin")) throw new CheckinError("forbidden", 403);
     try {
       return await this.pb.send<T>("/api/wts/checkin-events", { method: "POST", body: { ...body, operation, actorUserId: this.actor.userId, sourceKey: this.source.sourceKey }, requestKey: null });
-    } catch (error) {
-      const value = error as { status?: number; response?: { data?: { code?: { code?: string } | string } } };
-      const field = value.response?.data?.code;
-      const code = typeof field === "string" ? field : field?.code;
-      if (["forbidden", "invalid_input", "invalid_binding", "revoked_binding", "disabled", "conflict", "unavailable"].includes(code || "")) throw new CheckinError(code as ConstructorParameters<typeof CheckinError>[0], value.status || 400);
-      throw new CheckinError(value.status === 403 || value.status === 401 ? "forbidden" : "unavailable", value.status === 403 || value.status === 401 ? 403 : 503);
-    }
+    } catch (error) { throw checkinHookError(error, CHECKIN_STATION_ERROR_CODES); }
   }
   async adminCatalogue(): Promise<CheckinAdminEventCatalogue> {
     await this.request<Configurations>("admin_catalogue");
@@ -50,17 +45,14 @@ export class CheckinEventService implements CheckinEventServiceContract {
     const event = discovered.events.find((entry) => entry.id === command.upstreamEventId);
     if (!event) throw new CheckinError("invalid_input", 400);
     if (command.enabled && (!command.member || !command.listId)) throw new CheckinError("invalid_input", 400);
-    if (command.listId || command.affiliation) {
-      const options = await this.source.options(command.upstreamEventId);
-      if (options.state !== "complete") throw new CheckinError("unavailable", 503);
-      if (command.listId && !options.lists.some((list) => list.id === command.listId)) throw new CheckinError("invalid_input", 400);
-      if (command.affiliation) {
-        const mapping = command.affiliation;
-        const question = options.questions.find((question) => question.id === mapping.questionId);
-        if (!question || mapping.productIds.some((id) => !options.products.some((product) => product.id === id) || (question.productIds.length > 0 && !question.productIds.includes(id)))) throw new CheckinError("invalid_input", 400);
-      }
-    }
+    if (command.listId || command.affiliation) await this.verifyConfiguredOptions(command);
     return this.request("admin_configure", { command, title: event.title });
+  }
+  private async verifyConfiguredOptions(command: CheckinConfigureEvent): Promise<void> {
+    const options = await this.source.options(command.upstreamEventId);
+    if (options.state !== "complete") throw new CheckinError("unavailable", 503);
+    if (command.listId && !hasList(options, command.listId)) throw new CheckinError("invalid_input", 400);
+    if (command.affiliation && !affiliationMatches(options, command.affiliation)) throw new CheckinError("invalid_input", 400);
   }
   async catalogue(bindingToken?: string): Promise<CheckinEventCatalogue> {
     const identityHash = checkinEventBindingHash(bindingToken);
@@ -75,19 +67,20 @@ export class CheckinEventService implements CheckinEventServiceContract {
     const verifiedMappings: { eventId: string; generation: number; listId: string }[] = [];
     if (upstream.state === "complete") {
       for (const entry of configurations) {
-        if (!entry.member || !entry.enabled || !entry.listId || !upstream.events.some((event) => event.id === entry.upstreamEventId)) continue;
-        const options = await this.source.options(entry.upstreamEventId);
-        if (options.state !== "complete") { upstreamState = "partial"; continue; }
-        if (!options.lists.some((list) => list.id === entry.listId)) continue;
-        if (entry.affiliation) {
-          const mapping = entry.affiliation;
-          const question = options.questions.find((question) => question.id === mapping.questionId);
-          if (!question || mapping.productIds.some((id) => !options.products.some((product) => product.id === id) || (question.productIds.length > 0 && !question.productIds.includes(id)))) continue;
-        }
-        verifiedMappings.push({ eventId: entry.id, generation: entry.generation, listId: entry.listId });
+        const check = await this.checkMapping(entry, upstream.events);
+        if (check === "partial") upstreamState = "partial";
+        if (check === "verified") verifiedMappings.push({ eventId: entry.id, generation: entry.generation, listId: entry.listId });
       }
     }
     return { upstreamState, discoveryComplete: upstream.state === "complete", verifiedMappings };
+  }
+  private async checkMapping(entry: CheckinEventConfiguration, events: { id: string }[]): Promise<"verified" | "skipped" | "partial"> {
+    if (!entry.member || !entry.enabled || !entry.listId || !events.some((event) => event.id === entry.upstreamEventId)) return "skipped";
+    const options = await this.source.options(entry.upstreamEventId);
+    if (options.state !== "complete") return "partial";
+    if (!hasList(options, entry.listId)) return "skipped";
+    if (entry.affiliation && !affiliationMatches(options, entry.affiliation)) return "skipped";
+    return "verified";
   }
   async select(bindingToken: string | undefined, input: CheckinEventSelection): Promise<CheckinEventCatalogue> {
     const parsed = selectCheckinEventSchema.safeParse(input);
@@ -110,6 +103,16 @@ export class CheckinEventService implements CheckinEventServiceContract {
     if (options.state !== "complete" || !options.lists.some((list) => list.id === snapshot.upstreamListId)) throw new CheckinError("unavailable", 503);
     return this.request("context", args);
   }
+}
+
+function hasList(options: CheckinEventOptions, listId: string): boolean {
+  return options.lists.some((list) => list.id === listId);
+}
+/** Every mapped product exists and is in the question's product scope (empty scope means all products). */
+function affiliationMatches(options: CheckinEventOptions, mapping: CheckinAffiliationMapping): boolean {
+  const question = options.questions.find((question) => question.id === mapping.questionId);
+  if (!question) return false;
+  return mapping.productIds.every((id) => options.products.some((product) => product.id === id) && (question.productIds.length === 0 || question.productIds.includes(id)));
 }
 
 export function checkinEventBindingHash(token: string | undefined): string {

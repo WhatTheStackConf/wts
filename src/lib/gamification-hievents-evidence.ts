@@ -39,6 +39,10 @@ function isSaturdayAdmission(eventId: string, attendee: HiEventsSourceAttendee):
     SATURDAY_PRODUCT_IDS.has(attendee.productId || "");
 }
 
+function isKnownNonMainProduct(eventId: string, attendee: HiEventsSourceAttendee): boolean {
+  return eventId === WTS_EVENT_ID && KNOWN_NONMAIN_PRODUCT_IDS.has(attendee.productId || "");
+}
+
 export interface HiEventsProfileStatusDto {
   state: HiEventsEvidenceState;
   lastSuccessfulSyncAt?: string;
@@ -170,6 +174,22 @@ function checkinFingerprint(eventId: string, attendee: HiEventsSourceAttendee): 
   return `hievents-checkin:v1:${eventId}:${attendee.stableId}:${checkinId}`;
 }
 
+/** Fixed Saturday Hi.Events outcomes. Their configured score policy must match these values. */
+const HIEVENTS_AWARD_POLICIES = {
+  ticket: {
+    sourceType: "hievents_ticket",
+    outcomeKey: "ticket_present",
+    expected: { totalXp: 10, leaderboardXp: 0 },
+    fingerprint: ticketFingerprint,
+  },
+  checkin: {
+    sourceType: "hievents_checkin",
+    outcomeKey: "checked_in",
+    expected: { totalXp: 20, leaderboardXp: 10 },
+    fingerprint: checkinFingerprint,
+  },
+} as const;
+
 function snapshotFingerprint(snapshot: Extract<HiEventsAttendeeSnapshot, { state: "success" }>): string {
   const source = snapshot.attendees
     .map((attendee) => [
@@ -192,6 +212,165 @@ function claimEventId(claim: GamificationActivityClaimRecord): string | undefine
     return text((metadata as Record<string, unknown>).eventId);
   }
   return text(claim.source_record_id)?.split(":", 1)[0];
+}
+
+interface SyncRunInput {
+  userId?: string;
+  actorId?: string;
+  adminActionId?: string;
+  eventId: string;
+  scope: "current_user" | "admin_reconciliation";
+  resultState: "success" | "partial" | "unavailable";
+  fetchedAt: string;
+  sourceUpdatedAt?: string;
+  pagination: { requestedPages: number; completedPages: number; totalPages?: number; complete: boolean };
+  userStatus?: HiEventsEvidenceState;
+  matchedCount?: number;
+  ambiguityCount?: number;
+  createdClaimCount?: number;
+  correctedClaimCount?: number;
+  sourceStableId?: string;
+  checkinId?: string;
+  checkedInAt?: string;
+}
+
+function syncRunParticipants(input: SyncRunInput): { user: string; actor: string; admin_action: string } {
+  return {
+    user: input.userId || "",
+    actor: input.actorId || "",
+    admin_action: input.adminActionId || "",
+  };
+}
+
+function syncRunCounts(input: SyncRunInput): Record<string, number> {
+  return {
+    matched_count: input.matchedCount || 0,
+    ambiguous_count: input.ambiguityCount || 0,
+    created_claim_count: input.createdClaimCount || 0,
+    corrected_claim_count: input.correctedClaimCount || 0,
+  };
+}
+
+function syncRunSourceAttendee(input: SyncRunInput): Record<string, string> {
+  return {
+    source_stable_id: input.sourceStableId || "",
+    checkin_id: input.checkinId || "",
+    checked_in_at: input.checkedInAt || "",
+  };
+}
+
+interface ReconciliationIndex {
+  eventId: string;
+  ticketActivityId: string;
+  usersByEmail: Map<string, UserRecord[]>;
+  ambiguousSourceIds: Set<string>;
+  attendeesBySourceId: Map<string, HiEventsSourceAttendee>;
+  acceptedClaimsBySourceId: Map<string, GamificationActivityClaimRecord[]>;
+}
+
+type AttendeeMatch =
+  | { kind: "unmatched" }
+  | { kind: "ambiguous"; userIds: string[] }
+  | { kind: "matched"; userId: string };
+
+function groupBy<T>(values: T[], key: (value: T) => string | undefined): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const value of values) {
+    const groupKey = key(value);
+    if (!groupKey) continue;
+    const group = groups.get(groupKey) || [];
+    group.push(value);
+    groups.set(groupKey, group);
+  }
+  return groups;
+}
+
+function eligibleSourceEmails(eventId: string, attendees: HiEventsSourceAttendee[]): Map<string, Set<string>> {
+  const sourceEmails = new Map<string, Set<string>>();
+  for (const attendee of attendees.filter((candidate) => candidate.eligibility === "eligible")) {
+    const sourceId = sourceRecordId(eventId, attendee);
+    const emails = sourceEmails.get(sourceId) || new Set<string>();
+    emails.add(attendee.normalizedEmail || "");
+    sourceEmails.set(sourceId, emails);
+  }
+  return sourceEmails;
+}
+
+/**
+ * Source absence or explicit ineligibility still corrects existing claims.
+ * Unknown status/product data is not negative evidence.
+ */
+function isCorrectedBySource(claim: GamificationActivityClaimRecord, index: ReconciliationIndex): boolean {
+  const source = claim.source_record_id ? index.attendeesBySourceId.get(claim.source_record_id) : undefined;
+  if (!source || source.eligibility === "ineligible") return true;
+  if (source.eligibility === "unknown") return false;
+  if (claim.source_record_id && index.ambiguousSourceIds.has(claim.source_record_id)) return false;
+  if (isKnownNonMainProduct(index.eventId, source)) return true;
+  if (!isSaturdayAdmission(index.eventId, source)) return false;
+  return !isSupportedSaturdayClaim(claim, source, index);
+}
+
+function isSupportedSaturdayClaim(
+  claim: GamificationActivityClaimRecord,
+  source: HiEventsSourceAttendee,
+  index: ReconciliationIndex,
+): boolean {
+  const sourceUsers = source.normalizedEmail ? index.usersByEmail.get(source.normalizedEmail) || [] : [];
+  if (sourceUsers.length !== 1 || sourceUsers[0].id !== claim.user) return false;
+  return claim.activity === index.ticketActivityId || source.checkedIn;
+}
+
+function matchAttendee(
+  attendee: HiEventsSourceAttendee,
+  index: ReconciliationIndex,
+  correctedClaimIds: Set<string>,
+): AttendeeMatch {
+  const sourceId = sourceRecordId(index.eventId, attendee);
+  if (index.ambiguousSourceIds.has(sourceId)) return { kind: "unmatched" };
+  const usersForEmail = index.usersByEmail.get(attendee.normalizedEmail) || [];
+  if (usersForEmail.length > 1) return { kind: "ambiguous", userIds: usersForEmail.map((user) => user.id) };
+  if (usersForEmail.length === 0) return { kind: "unmatched" };
+  const user = usersForEmail[0];
+  const linkedElsewhere = (index.acceptedClaimsBySourceId.get(sourceId) || [])
+    .some((claim) => claim.user !== user.id && !correctedClaimIds.has(claim.id));
+  return linkedElsewhere ? { kind: "ambiguous", userIds: [user.id] } : { kind: "matched", userId: user.id };
+}
+
+function proposedClaimCounts(
+  configuration: ConferenceConfiguration,
+  matched: Map<string, HiEventsSourceAttendee[]>,
+  ambiguousUserIds: Set<string>,
+  acceptedByUserActivity: Set<string>,
+): { ticketClaims: number; checkinClaims: number } {
+  let ticketClaims = 0;
+  let checkinClaims = 0;
+  for (const [userId, candidates] of matched) {
+    if (ambiguousUserIds.has(userId)) continue;
+    if (!acceptedByUserActivity.has(`${userId}:${configuration.ticketActivity.id}`)) ticketClaims += 1;
+    if (candidates.some((candidate) => candidate.checkedIn) && !acceptedByUserActivity.has(`${userId}:${configuration.checkinActivity.id}`)) {
+      checkinClaims += 1;
+    }
+  }
+  return { ticketClaims, checkinClaims };
+}
+
+function recordedAppliedCounts(audit: GamificationAdminActionRecord): NonNullable<AdminHiEventsReconciliationDto["applied"]> {
+  return {
+    ticketClaims: Number(audit.after_summary?.ticketClaims || 0),
+    checkinClaims: Number(audit.after_summary?.checkinClaims || 0),
+    corrections: Number(audit.after_summary?.corrections || 0),
+  };
+}
+
+function reconciliationOperationId(operationId: string): string {
+  const stableOperationId = text(operationId);
+  if (!stableOperationId || stableOperationId.length > 200) {
+    throw new Error("Hi.Events reconciliation requires a stable operation ID.");
+  }
+  if (containsMissionCode(stableOperationId)) {
+    throw new Error("Hi.Events reconciliation operation IDs must not contain Mission codes.");
+  }
+  return stableOperationId;
 }
 
 /**
@@ -225,14 +404,13 @@ export class GamificationHiEventsEvidenceService {
     const lastRun = latest(eventRuns);
     const lastSuccess = latest(eventRuns.filter((run) => run.result_state === "success"));
     if (!lastRun) return safeStatus("stale");
-    if (lastRun.result_state !== "success") {
-      return safeStatus("unavailable", { ...lastRun, last_success_at: lastSuccess?.last_success_at || lastSuccess?.fetched_at });
-    }
+    const run = { ...lastRun, last_success_at: lastSuccess?.last_success_at || lastSuccess?.fetched_at };
+    if (lastRun.result_state !== "success") return safeStatus("unavailable", run);
     const status = lastRun.user_status || "stale";
     if (Date.parse(this.clock()) - Date.parse(lastRun.fetched_at) > this.staleAfterMs) {
-      return safeStatus("stale", { ...lastRun, last_success_at: lastSuccess?.last_success_at || lastSuccess?.fetched_at });
+      return safeStatus("stale", run);
     }
-    return safeStatus(status, { ...lastRun, last_success_at: lastSuccess?.last_success_at || lastSuccess?.fetched_at });
+    return safeStatus(status, run);
   }
 
   async refreshCurrentUser(user: AccountingUser): Promise<HiEventsProfileStatusDto> {
@@ -263,25 +441,7 @@ export class GamificationHiEventsEvidenceService {
       ? await this.store.list<UserRecord>("users", { email: normalized }, { limit: 3 })
       : [];
     const candidates = snapshot.attendees.filter((attendee) => attendee.normalizedEmail === normalized);
-    const sourceRecordIds = candidates.map((attendee) => sourceRecordId(configuration.eventId, attendee));
-    const acceptedClaims = sourceRecordIds.length
-      ? await this.store.list<GamificationActivityClaimRecord>(
-        GAMIFICATION_COLLECTIONS.activityClaims,
-        { status: "accepted", source_record_id: sourceRecordIds },
-        { limit: sourceRecordIds.length * 4 },
-      )
-      : [];
-    const acceptedSourceUsers = new Map<string, Set<string>>();
-    for (const claim of acceptedClaims) {
-      if (!claim.source_record_id || claimEventId(claim) !== configuration.eventId) continue;
-      const sourceUsers = acceptedSourceUsers.get(claim.source_record_id) || new Set<string>();
-      sourceUsers.add(claim.user);
-      acceptedSourceUsers.set(claim.source_record_id, sourceUsers);
-    }
-    const crossUserCollision = candidates.some((attendee) =>
-      [...(acceptedSourceUsers.get(sourceRecordId(configuration.eventId, attendee)) || [])]
-        .some((userId) => userId !== user.id)
-    );
+    const crossUserCollision = await this.isLinkedToAnotherUser(user, configuration.eventId, candidates);
     if (!normalized || matchingUsers.length !== 1 || crossUserCollision) {
       await this.recordRun({
         userId: user.id,
@@ -317,6 +477,33 @@ export class GamificationHiEventsEvidenceService {
     return this.statusForUser(user);
   }
 
+  /** True when another User already holds accepted evidence for one of these attendees. */
+  private async isLinkedToAnotherUser(
+    user: AccountingUser,
+    eventId: string,
+    candidates: HiEventsSourceAttendee[],
+  ): Promise<boolean> {
+    const sourceRecordIds = candidates.map((attendee) => sourceRecordId(eventId, attendee));
+    const acceptedClaims = sourceRecordIds.length
+      ? await this.store.list<GamificationActivityClaimRecord>(
+        GAMIFICATION_COLLECTIONS.activityClaims,
+        { status: "accepted", source_record_id: sourceRecordIds },
+        { limit: sourceRecordIds.length * 4 },
+      )
+      : [];
+    const acceptedSourceUsers = new Map<string, Set<string>>();
+    for (const claim of acceptedClaims) {
+      if (!claim.source_record_id || claimEventId(claim) !== eventId) continue;
+      const sourceUsers = acceptedSourceUsers.get(claim.source_record_id) || new Set<string>();
+      sourceUsers.add(claim.user);
+      acceptedSourceUsers.set(claim.source_record_id, sourceUsers);
+    }
+    return candidates.some((attendee) =>
+      [...(acceptedSourceUsers.get(sourceRecordId(eventId, attendee)) || [])]
+        .some((userId) => userId !== user.id)
+    );
+  }
+
   async previewAdminReconciliation(): Promise<AdminHiEventsReconciliationDto> {
     let configuration: ConferenceConfiguration;
     try {
@@ -325,11 +512,7 @@ export class GamificationHiEventsEvidenceService {
       return this.emptyAdminDto("not_configured");
     }
     const snapshot = await this.fetchSnapshot();
-    if (snapshot.state !== "success" || !snapshot.pagination.complete) {
-      return snapshot.state === "success"
-        ? this.snapshotAdminDto({ ...snapshot, state: "partial", reason: "malformed_pagination" })
-        : this.snapshotAdminDto(snapshot);
-    }
+    if (snapshot.state !== "success" || !snapshot.pagination.complete) return this.incompleteSnapshotDto(snapshot);
     return (await this.plan(configuration, snapshot)).dto;
   }
 
@@ -338,13 +521,7 @@ export class GamificationHiEventsEvidenceService {
     expectedSnapshotFingerprint: string,
     operationId: string,
   ): Promise<AdminHiEventsReconciliationDto> {
-    const stableOperationId = text(operationId);
-    if (!stableOperationId || stableOperationId.length > 200) {
-      throw new Error("Hi.Events reconciliation requires a stable operation ID.");
-    }
-    if (containsMissionCode(stableOperationId)) {
-      throw new Error("Hi.Events reconciliation operation IDs must not contain Mission codes.");
-    }
+    const stableOperationId = reconciliationOperationId(operationId);
     const configuration = await this.configuration();
     const snapshot = await this.fetchSnapshot();
     if (snapshot.state !== "success" || !snapshot.pagination.complete) {
@@ -356,16 +533,33 @@ export class GamificationHiEventsEvidenceService {
         fetchedAt: snapshot.fetchedAt,
         pagination: snapshot.pagination,
       });
-      return snapshot.state === "success"
-        ? this.snapshotAdminDto({ ...snapshot, state: "partial", reason: "malformed_pagination" })
-        : this.snapshotAdminDto(snapshot);
+      return this.incompleteSnapshotDto(snapshot);
     }
     const plan = await this.plan(configuration, snapshot);
     if (!expectedSnapshotFingerprint || plan.dto.snapshotFingerprint !== expectedSnapshotFingerprint) {
       throw new Error("Hi.Events changed after the preview. Review a new complete snapshot before applying it.");
     }
+    const audit = await this.reconciliationAudit(actor, expectedSnapshotFingerprint, stableOperationId, plan);
+    if (audit.status === "applied") return { ...plan.dto, applied: recordedAppliedCounts(audit) };
+    try {
+      const applied = await this.applyPlan(actor, audit, stableOperationId, plan);
+      await this.store.update(GAMIFICATION_COLLECTIONS.adminActions, audit.id, { status: "applied" });
+      return { ...plan.dto, applied };
+    } catch (error) {
+      await this.store.update(GAMIFICATION_COLLECTIONS.adminActions, audit.id, { status: "failed" });
+      throw error;
+    }
+  }
+
+  /** Binds an operation ID to one actor and snapshot, reopening a failed attempt for retry. */
+  private async reconciliationAudit(
+    actor: { id: string },
+    expectedSnapshotFingerprint: string,
+    stableOperationId: string,
+    plan: EvidencePlan,
+  ): Promise<GamificationAdminActionRecord> {
     const auditKey = `admin-action:v1:hievents_reconciliation:${stableOperationId}`;
-    let audit = await this.store.findOne<GamificationAdminActionRecord>(
+    const audit = await this.store.findOne<GamificationAdminActionRecord>(
       GAMIFICATION_COLLECTIONS.adminActions,
       { idempotency_key: auditKey },
     );
@@ -373,87 +567,72 @@ export class GamificationHiEventsEvidenceService {
       if (audit.actor !== actor.id || audit.after_summary?.snapshotFingerprint !== expectedSnapshotFingerprint) {
         throw new Error("This reconciliation operation ID is already bound to another request.");
       }
-      if (audit.status === "applied") {
-        return {
-          ...plan.dto,
-          applied: {
-            ticketClaims: Number(audit.after_summary?.ticketClaims || 0),
-            checkinClaims: Number(audit.after_summary?.checkinClaims || 0),
-            corrections: Number(audit.after_summary?.corrections || 0),
-          },
-        };
-      }
-      if (audit.status === "failed") {
-        audit = await this.store.update<GamificationAdminActionRecord>(GAMIFICATION_COLLECTIONS.adminActions, audit.id, {
-          status: "rebuild_pending",
-        });
-      }
-    } else {
-      audit = await this.store.create<GamificationAdminActionRecord>(GAMIFICATION_COLLECTIONS.adminActions, {
-        actor: actor.id,
-        actor_role: "admin",
-        action: "hievents_reconciliation",
+      if (audit.status !== "failed") return audit;
+      return this.store.update<GamificationAdminActionRecord>(GAMIFICATION_COLLECTIONS.adminActions, audit.id, {
         status: "rebuild_pending",
-        reason: "Applied a reviewed complete Hi.Events reconciliation snapshot.",
-        correlation_id: stableOperationId,
-        idempotency_key: auditKey,
-        related_collection: GAMIFICATION_COLLECTIONS.hiEventsSyncRuns,
-        related_record_id: configuration.eventId,
-        after_summary: {
-          snapshotFingerprint: expectedSnapshotFingerprint,
-          eventId: configuration.eventId,
-          ticketClaims: plan.dto.proposed.ticketClaims,
-          checkinClaims: plan.dto.proposed.checkinClaims,
-          corrections: plan.dto.proposed.corrections,
-        },
       });
     }
-    const operationPrefix = `hievents-sync:${stableOperationId}`;
-    let ticketClaims = 0;
-    let checkinClaims = 0;
+    const { eventId } = plan.configuration;
+    return this.store.create<GamificationAdminActionRecord>(GAMIFICATION_COLLECTIONS.adminActions, {
+      actor: actor.id,
+      actor_role: "admin",
+      action: "hievents_reconciliation",
+      status: "rebuild_pending",
+      reason: "Applied a reviewed complete Hi.Events reconciliation snapshot.",
+      correlation_id: stableOperationId,
+      idempotency_key: auditKey,
+      related_collection: GAMIFICATION_COLLECTIONS.hiEventsSyncRuns,
+      related_record_id: eventId,
+      after_summary: {
+        snapshotFingerprint: expectedSnapshotFingerprint,
+        eventId,
+        ticketClaims: plan.dto.proposed.ticketClaims,
+        checkinClaims: plan.dto.proposed.checkinClaims,
+        corrections: plan.dto.proposed.corrections,
+      },
+    });
+  }
+
+  private async applyPlan(
+    actor: { id: string },
+    audit: GamificationAdminActionRecord,
+    stableOperationId: string,
+    plan: EvidencePlan,
+  ): Promise<NonNullable<AdminHiEventsReconciliationDto["applied"]>> {
+    const { configuration, snapshot } = plan;
     const statuses = new Map<string, AwardOutcome>();
+    for (const userId of plan.ambiguousUserIds) {
+      statuses.set(userId, { ticketClaims: 0, checkinClaims: 0, state: "ambiguous", matchedCount: 0, ambiguityCount: 1 });
+    }
+    const users = await this.usersForReconciliation();
+    for (const user of users) {
+      if (!plan.matched.has(user.id) && !plan.ambiguousUserIds.has(user.id)) {
+        statuses.set(user.id, { ticketClaims: 0, checkinClaims: 0, state: "no_ticket", matchedCount: 0, ambiguityCount: 0 });
+      }
+    }
+    const corrections = await this.voidCorrectedClaims(actor, `hievents-sync:${stableOperationId}`, plan, statuses);
+    const { ticketClaims, checkinClaims } = await this.awardMatchedUsers(users, plan, statuses);
+    await this.recordRun({
+      actorId: actor.id,
+      adminActionId: audit.id,
+      eventId: configuration.eventId,
+      scope: "admin_reconciliation",
+      resultState: "success",
+      fetchedAt: snapshot.fetchedAt,
+      sourceUpdatedAt: snapshot.sourceUpdatedAt,
+      pagination: snapshot.pagination,
+      matchedCount: plan.dto.matchCounts.matchedUsers,
+      ambiguityCount: plan.dto.matchCounts.ambiguousMatches,
+      createdClaimCount: ticketClaims + checkinClaims,
+      correctedClaimCount: corrections,
+    });
     const correctedClaimsByUser = new Map<string, number>();
     for (const claim of plan.correctedClaims) {
       correctedClaimsByUser.set(claim.user, (correctedClaimsByUser.get(claim.user) || 0) + 1);
     }
-    try {
-      for (const userId of plan.ambiguousUserIds) {
-        statuses.set(userId, { ticketClaims: 0, checkinClaims: 0, state: "ambiguous", matchedCount: 0, ambiguityCount: 1 });
-      }
-      const users = await this.usersForReconciliation();
-      for (const user of users) {
-        if (!plan.matched.has(user.id) && !plan.ambiguousUserIds.has(user.id)) {
-          statuses.set(user.id, { ticketClaims: 0, checkinClaims: 0, state: "no_ticket", matchedCount: 0, ambiguityCount: 0 });
-        }
-      }
-      let corrections = 0;
-      for (const claim of plan.correctedClaims) {
-        await this.accounting.voidActivityClaim(claim.id, {
-          actor: actor.id,
-          actorRole: "admin",
-          targetUser: claim.user,
-          reason: "Hi.Events complete source sync no longer supports this evidence.",
-          operationId: `${operationPrefix}:${claim.id}`,
-        });
-        corrections += 1;
-        statuses.set(claim.user, {
-          ticketClaims: 0,
-          checkinClaims: 0,
-          state: "source_corrected",
-          matchedCount: 0,
-          ambiguityCount: 0,
-        });
-      }
-      for (const [userId, candidates] of plan.matched) {
-        if (plan.ambiguousUserIds.has(userId)) continue;
-        const user = users.find((candidate) => candidate.id === userId);
-        if (!user) continue;
-        const outcome = await this.awardCandidateEvidence(user, configuration, candidates);
-        ticketClaims += outcome.ticketClaims;
-        checkinClaims += outcome.checkinClaims;
-        statuses.set(userId, outcome);
-      }
+    for (const [userId, status] of statuses) {
       await this.recordRun({
+        userId,
         actorId: actor.id,
         adminActionId: audit.id,
         eventId: configuration.eventId,
@@ -462,41 +641,63 @@ export class GamificationHiEventsEvidenceService {
         fetchedAt: snapshot.fetchedAt,
         sourceUpdatedAt: snapshot.sourceUpdatedAt,
         pagination: snapshot.pagination,
-        matchedCount: plan.dto.matchCounts.matchedUsers,
-        ambiguityCount: plan.dto.matchCounts.ambiguousMatches,
-        createdClaimCount: ticketClaims + checkinClaims,
-        correctedClaimCount: corrections,
+        userStatus: status.state,
+        matchedCount: status.matchedCount,
+        ambiguityCount: status.ambiguityCount,
+        createdClaimCount: status.ticketClaims + status.checkinClaims,
+        correctedClaimCount: correctedClaimsByUser.get(userId) || 0,
+        sourceStableId: status.sourceStableId,
+        checkinId: status.checkinId,
+        checkedInAt: status.checkedInAt,
       });
-      for (const [userId, status] of statuses) {
-        await this.recordRun({
-          userId,
-          actorId: actor.id,
-          adminActionId: audit.id,
-          eventId: configuration.eventId,
-          scope: "admin_reconciliation",
-          resultState: "success",
-          fetchedAt: snapshot.fetchedAt,
-          sourceUpdatedAt: snapshot.sourceUpdatedAt,
-          pagination: snapshot.pagination,
-          userStatus: status.state,
-          matchedCount: status.matchedCount,
-          ambiguityCount: status.ambiguityCount,
-          createdClaimCount: status.ticketClaims + status.checkinClaims,
-          correctedClaimCount: correctedClaimsByUser.get(userId) || 0,
-          sourceStableId: status.sourceStableId,
-          checkinId: status.checkinId,
-          checkedInAt: status.checkedInAt,
-        });
-      }
-      await this.store.update(GAMIFICATION_COLLECTIONS.adminActions, audit.id, { status: "applied" });
-      return {
-        ...plan.dto,
-        applied: { ticketClaims, checkinClaims, corrections },
-      };
-    } catch (error) {
-      await this.store.update(GAMIFICATION_COLLECTIONS.adminActions, audit.id, { status: "failed" });
-      throw error;
     }
+    return { ticketClaims, checkinClaims, corrections };
+  }
+
+  private async voidCorrectedClaims(
+    actor: { id: string },
+    operationPrefix: string,
+    plan: EvidencePlan,
+    statuses: Map<string, AwardOutcome>,
+  ): Promise<number> {
+    let corrections = 0;
+    for (const claim of plan.correctedClaims) {
+      await this.accounting.voidActivityClaim(claim.id, {
+        actor: actor.id,
+        actorRole: "admin",
+        targetUser: claim.user,
+        reason: "Hi.Events complete source sync no longer supports this evidence.",
+        operationId: `${operationPrefix}:${claim.id}`,
+      });
+      corrections += 1;
+      statuses.set(claim.user, {
+        ticketClaims: 0,
+        checkinClaims: 0,
+        state: "source_corrected",
+        matchedCount: 0,
+        ambiguityCount: 0,
+      });
+    }
+    return corrections;
+  }
+
+  private async awardMatchedUsers(
+    users: UserRecord[],
+    plan: EvidencePlan,
+    statuses: Map<string, AwardOutcome>,
+  ): Promise<{ ticketClaims: number; checkinClaims: number }> {
+    let ticketClaims = 0;
+    let checkinClaims = 0;
+    for (const [userId, candidates] of plan.matched) {
+      if (plan.ambiguousUserIds.has(userId)) continue;
+      const user = users.find((candidate) => candidate.id === userId);
+      if (!user) continue;
+      const outcome = await this.awardCandidateEvidence(user, plan.configuration, candidates);
+      ticketClaims += outcome.ticketClaims;
+      checkinClaims += outcome.checkinClaims;
+      statuses.set(userId, outcome);
+    }
+    return { ticketClaims, checkinClaims };
   }
 
   private async configuration(): Promise<ConferenceConfiguration> {
@@ -542,97 +743,48 @@ export class GamificationHiEventsEvidenceService {
       ),
     ]);
     if (claims.length > 10000) throw new Error("Hi.Events evidence exceeds the safe reconciliation limit. Escalate before applying changes.");
-    const usersByEmail = new Map<string, UserRecord[]>();
-    for (const user of users) {
-      const email = normalizeHiEventsEmail(user.email);
-      if (!email) continue;
-      const matches = usersByEmail.get(email) || [];
-      matches.push(user);
-      usersByEmail.set(email, matches);
-    }
-    const matched = new Map<string, HiEventsSourceAttendee[]>();
-    const ambiguousUserIds = new Set<string>();
-    const sourceEmails = new Map<string, Set<string>>();
-    for (const attendee of snapshot.attendees.filter((candidate) => candidate.eligibility === "eligible")) {
-      const sourceId = sourceRecordId(configuration.eventId, attendee);
-      const emails = sourceEmails.get(sourceId) || new Set<string>();
-      emails.add(attendee.normalizedEmail || "");
-      sourceEmails.set(sourceId, emails);
-    }
+    const { eventId } = configuration;
+    const usersByEmail = groupBy(users, (user) => normalizeHiEventsEmail(user.email));
+    const sourceEmails = eligibleSourceEmails(eventId, snapshot.attendees);
     const ambiguousSourceIds = new Set(
       [...sourceEmails].filter(([, emails]) => emails.size !== 1 || emails.has("")).map(([sourceId]) => sourceId),
     );
     let ambiguousMatches = ambiguousSourceIds.size;
-    for (const sourceId of ambiguousSourceIds) {
-      for (const email of sourceEmails.get(sourceId) || []) {
-        for (const user of usersByEmail.get(email) || []) ambiguousUserIds.add(user.id);
-      }
-    }
+    const ambiguousUserIds = new Set([...ambiguousSourceIds]
+      .flatMap((sourceId) => [...(sourceEmails.get(sourceId) || [])])
+      .flatMap((email) => usersByEmail.get(email) || [])
+      .map((user) => user.id));
     const acceptedClaims = claims.filter((claim) =>
-      claim.status === "accepted" && claimEventId(claim) === configuration.eventId &&
+      claim.status === "accepted" && claimEventId(claim) === eventId &&
       [configuration.ticketActivity.id, configuration.checkinActivity.id].includes(claim.activity),
     );
-    const attendeesBySourceId = new Map(snapshot.attendees.map((attendee) => [
-      sourceRecordId(configuration.eventId, attendee),
-      attendee,
-    ]));
-    const acceptedClaimsBySourceId = new Map<string, GamificationActivityClaimRecord[]>();
-    for (const claim of acceptedClaims) {
-      if (!claim.source_record_id) continue;
-      const sourceClaims = acceptedClaimsBySourceId.get(claim.source_record_id) || [];
-      sourceClaims.push(claim);
-      acceptedClaimsBySourceId.set(claim.source_record_id, sourceClaims);
-    }
-    const correctedClaims = acceptedClaims.filter((claim) => {
-      const source = claim.source_record_id ? attendeesBySourceId.get(claim.source_record_id) : undefined;
-      // Source absence or explicit ineligibility still corrects existing claims.
-      // Unknown status/product data is not negative evidence.
-      if (!source || source.eligibility === "ineligible") return true;
-      if (source.eligibility === "unknown") return false;
-      if (claim.source_record_id && ambiguousSourceIds.has(claim.source_record_id)) return false;
-      if (configuration.eventId === WTS_EVENT_ID && KNOWN_NONMAIN_PRODUCT_IDS.has(source.productId || "")) return true;
-      if (!isSaturdayAdmission(configuration.eventId, source)) return false;
-      const sourceUsers = source.normalizedEmail ? usersByEmail.get(source.normalizedEmail) || [] : [];
-      if (sourceUsers.length !== 1 || sourceUsers[0].id !== claim.user) return true;
-      return claim.activity === configuration.ticketActivity.id
-        ? false
-        : !source.checkedIn;
-    });
+    const index: ReconciliationIndex = {
+      eventId,
+      ticketActivityId: configuration.ticketActivity.id,
+      usersByEmail,
+      ambiguousSourceIds,
+      attendeesBySourceId: new Map(snapshot.attendees.map((attendee) => [sourceRecordId(eventId, attendee), attendee])),
+      acceptedClaimsBySourceId: groupBy(acceptedClaims, (claim) => claim.source_record_id),
+    };
+    const correctedClaims = acceptedClaims.filter((claim) => isCorrectedBySource(claim, index));
     const correctedClaimIds = new Set(correctedClaims.map((claim) => claim.id));
-    for (const attendee of snapshot.attendees.filter((candidate) => isSaturdayAdmission(configuration.eventId, candidate) && candidate.normalizedEmail)) {
-      if (ambiguousSourceIds.has(sourceRecordId(configuration.eventId, attendee))) continue;
-      const usersForEmail = usersByEmail.get(attendee.normalizedEmail) || [];
-      if (usersForEmail.length !== 1) {
-        if (usersForEmail.length > 1) {
-          ambiguousMatches += 1;
-          usersForEmail.forEach((user) => ambiguousUserIds.add(user.id));
-        }
-        continue;
-      }
-      const user = usersForEmail[0];
-      const linkedElsewhere = (acceptedClaimsBySourceId.get(sourceRecordId(configuration.eventId, attendee)) || [])
-        .some((claim) => claim.user !== user.id && !correctedClaimIds.has(claim.id));
-      if (linkedElsewhere) {
+    const matched = new Map<string, HiEventsSourceAttendee[]>();
+    for (const attendee of snapshot.attendees.filter((candidate) => isSaturdayAdmission(eventId, candidate) && candidate.normalizedEmail)) {
+      const match = matchAttendee(attendee, index, correctedClaimIds);
+      if (match.kind === "ambiguous") {
         ambiguousMatches += 1;
-        ambiguousUserIds.add(user.id);
-        continue;
+        match.userIds.forEach((userId) => ambiguousUserIds.add(userId));
       }
-      const candidates = matched.get(user.id) || [];
-      candidates.push(attendee);
-      matched.set(user.id, candidates);
+      if (match.kind === "matched") {
+        const candidates = matched.get(match.userId) || [];
+        candidates.push(attendee);
+        matched.set(match.userId, candidates);
+      }
     }
     const acceptedByUserActivity = new Set(acceptedClaims
       .filter((claim) => !correctedClaimIds.has(claim.id))
       .map((claim) => `${claim.user}:${claim.activity}`));
-    let ticketClaims = 0;
-    let checkinClaims = 0;
-    for (const [userId, candidates] of matched) {
-      if (ambiguousUserIds.has(userId)) continue;
-      if (!acceptedByUserActivity.has(`${userId}:${configuration.ticketActivity.id}`)) ticketClaims += 1;
-      if (candidates.some((candidate) => candidate.checkedIn) && !acceptedByUserActivity.has(`${userId}:${configuration.checkinActivity.id}`)) {
-        checkinClaims += 1;
-      }
-    }
+    const { ticketClaims, checkinClaims } = proposedClaimCounts(configuration, matched, ambiguousUserIds, acceptedByUserActivity);
     return {
       configuration,
       snapshot,
@@ -698,18 +850,16 @@ export class GamificationHiEventsEvidenceService {
     kind: "ticket" | "checkin",
   ): Promise<number> {
     const occurredAt = kind === "checkin" ? attendee.checkedInAt || this.clock() : this.clock();
-    const sourceType = kind === "ticket" ? "hievents_ticket" as const : "hievents_checkin" as const;
-    const fingerprint = kind === "ticket" ? ticketFingerprint(configuration.eventId, attendee) : checkinFingerprint(configuration.eventId, attendee);
-    const expected = kind === "ticket" ? { totalXp: 10, leaderboardXp: 0 } : { totalXp: 20, leaderboardXp: 10 };
+    const { sourceType, outcomeKey, expected, fingerprint } = HIEVENTS_AWARD_POLICIES[kind];
     const claimInput = {
       user: user.id,
       activity: activity.id,
       sourceType,
       sourceCollection: "hievents",
       sourceRecordId: sourceRecordId(configuration.eventId, attendee),
-      outcomeKey: kind === "ticket" ? "ticket_present" : "checked_in",
+      outcomeKey,
       occurredAt,
-      evidenceFingerprint: fingerprint,
+      evidenceFingerprint: fingerprint(configuration.eventId, attendee),
       idempotencyKey: activityClaimIdempotencyKey(user.id, activity.key, sourceType, `${configuration.eventId}:${attendee.stableId}`),
       metadata: {
         hievents: {
@@ -743,6 +893,12 @@ export class GamificationHiEventsEvidenceService {
     return alreadyAccepted ? 0 : 1;
   }
 
+  private incompleteSnapshotDto(snapshot: HiEventsAttendeeSnapshot): AdminHiEventsReconciliationDto {
+    return snapshot.state === "success"
+      ? this.snapshotAdminDto({ ...snapshot, state: "partial", reason: "malformed_pagination" })
+      : this.snapshotAdminDto(snapshot);
+  }
+
   private emptyAdminDto(state: "not_configured"): AdminHiEventsReconciliationDto {
     return {
       state,
@@ -763,29 +919,9 @@ export class GamificationHiEventsEvidenceService {
     };
   }
 
-  private async recordRun(input: {
-    userId?: string;
-    actorId?: string;
-    adminActionId?: string;
-    eventId: string;
-    scope: "current_user" | "admin_reconciliation";
-    resultState: "success" | "partial" | "unavailable";
-    fetchedAt: string;
-    sourceUpdatedAt?: string;
-    pagination: { requestedPages: number; completedPages: number; totalPages?: number; complete: boolean };
-    userStatus?: HiEventsEvidenceState;
-    matchedCount?: number;
-    ambiguityCount?: number;
-    createdClaimCount?: number;
-    correctedClaimCount?: number;
-    sourceStableId?: string;
-    checkinId?: string;
-    checkedInAt?: string;
-  }): Promise<void> {
+  private async recordRun(input: SyncRunInput): Promise<void> {
     await this.store.create(GAMIFICATION_COLLECTIONS.hiEventsSyncRuns, {
-      user: input.userId || "",
-      actor: input.actorId || "",
-      admin_action: input.adminActionId || "",
+      ...syncRunParticipants(input),
       event_id: input.eventId,
       scope: input.scope,
       result_state: input.resultState,
@@ -796,13 +932,8 @@ export class GamificationHiEventsEvidenceService {
       requested_pages: input.pagination.requestedPages,
       completed_pages: input.pagination.completedPages,
       complete: input.pagination.complete,
-      matched_count: input.matchedCount || 0,
-      ambiguous_count: input.ambiguityCount || 0,
-      created_claim_count: input.createdClaimCount || 0,
-      corrected_claim_count: input.correctedClaimCount || 0,
-      source_stable_id: input.sourceStableId || "",
-      checkin_id: input.checkinId || "",
-      checked_in_at: input.checkedInAt || "",
+      ...syncRunCounts(input),
+      ...syncRunSourceAttendee(input),
     });
   }
 }

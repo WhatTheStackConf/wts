@@ -11,18 +11,22 @@ function stripped(body: unknown) {
   copy.meta.current_page_url = `${copy.meta.path}?page=${copy.meta.current_page}`;
   return copy;
 }
+const separator = (field: string) => field === "path" ? "?" : "&";
+const corruptions: Record<string, (value: string, field: string) => string> = {
+  origin: (value) => value.replace(new URL(base).host, "foreign.example.invalid"),
+  capability: (value) => value.replace(/cil_[^/]+|events\/[0-9]+/, "other-list"),
+  query: (value, field) => `${value}${separator(field)}extra=1`,
+  "changed query": (value, field) => `${value}${separator(field)}query=A-ABC1235`,
+  "duplicate query": (value, field) => `${value}${separator(field)}query=A-ABC1234&query=A-ABC1234`,
+  "wrong mount": (value) => value.replace(new URL(base).origin, `${new URL(base).origin}/api/api`),
+  duplicate: (value, field) => `${value}${separator(field)}per_page=1&per_page=1`,
+  credentials: (value) => value.replace("https://", "https://user:pass@"),
+  fragment: (value) => `${value}#fragment`,
+};
 function corrupt(body: ReturnType<typeof stripped>, field: string, kind: string) {
+  if (kind === "count") { body.meta.to = 2; return; }
   const owner = field === "path" || field === "current_page_url" ? body.meta : body.links;
-  if (kind === "origin") owner[field] = owner[field].replace(new URL(base).host, "foreign.example.invalid");
-  if (kind === "capability") owner[field] = owner[field].replace(/cil_[^/]+|events\/[0-9]+/, "other-list");
-  if (kind === "query") owner[field] += `${field === "path" ? "?" : "&"}extra=1`;
-  if (kind === "changed query") owner[field] += `${field === "path" ? "?" : "&"}query=A-ABC1235`;
-  if (kind === "duplicate query") owner[field] += `${field === "path" ? "?" : "&"}query=A-ABC1234&query=A-ABC1234`;
-  if (kind === "wrong mount") owner[field] = owner[field].replace(new URL(base).origin, `${new URL(base).origin}/api/api`);
-  if (kind === "duplicate") owner[field] += `${field === "path" ? "?" : "&"}per_page=1&per_page=1`;
-  if (kind === "credentials") owner[field] = owner[field].replace("https://", "https://user:pass@");
-  if (kind === "fragment") owner[field] += "#fragment";
-  if (kind === "count") body.meta.to = 2;
+  owner[field] = corruptions[kind](owner[field], field);
 }
 const base = "https://arrival.example.invalid/api";
 const token = `${Buffer.from('{"alg":"HS256"}').toString("base64url")}.${Buffer.from('{"account_id":77}').toString("base64url")}.c3ludGhldGlj`;

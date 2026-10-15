@@ -1,5 +1,6 @@
 import type { OpenAPIV3_1 } from "openapi-types";
 import type { PublicSessionDetail, PublicSpeakerDetail } from "~/lib/conference-public";
+import { conferenceTimeZone } from "~/lib/conference-guide-content";
 
 type Schema = OpenAPIV3_1.SchemaObject | OpenAPIV3_1.ReferenceObject;
 const ref = (name: string): OpenAPIV3_1.ReferenceObject => ({ $ref: `#/components/schemas/${name}` });
@@ -26,15 +27,23 @@ const schemas: Record<string, Schema> = {
     type: "string", minLength: 1, maxLength: 200, pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$",
     description: "Public identifier, not a PocketBase ID. Use a speaker slug at /speakers/{slug} and a session slug at /sessions/{slug}.",
   },
-  LocalDate: { type: "string", format: "date", description: "Calendar date in Europe/Skopje (YYYY-MM-DD)." },
-  LocalTime: { type: "string", pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$", description: "Local Europe/Skopje time (HH:mm), not an instant." },
+  LocalDate: { type: "string", format: "date", description: "Conference-local calendar date (YYYY-MM-DD); metadata.timeZone is included when the conference time zone is announced." },
+  LocalTime: { type: "string", pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$", description: "Conference-local time (HH:mm), not an instant; metadata.timeZone is included when announced." },
   Timestamp: {
     type: "string",
     pattern: "^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$",
-    description: "Instant with offset. Existing v1 accepts both PocketBase's space separator and ISO T, with optional fractional seconds. Normalize the space to T before strict ISO parsing. Intentionally not declared format: date-time because v1 also emits PocketBase timestamps.",
-    examples: ["2026-09-19 08:00:00.000Z", "2026-09-15T18:00:00+02:00"],
+    description: "Instant with offset. Existing v1 accepts PocketBase's space separator and ISO T, with optional fractional seconds. Normalize the space to T before strict ISO parsing. Intentionally not declared format: date-time because v1 also emits PocketBase timestamps.",
   },
-  Metadata: object({ apiVersion: { type: "string", enum: ["1"] }, timeZone: { type: "string", enum: ["Europe/Skopje"] } }, ["apiVersion", "timeZone"]),
+  Metadata: object({
+    apiVersion: { type: "string", enum: ["1"] },
+    timeZone: {
+      type: "string",
+      description: conferenceTimeZone
+        ? "IANA conference time zone for local dates and times."
+        : "IANA conference time zone for local dates and times; omitted until announced.",
+      ...(conferenceTimeZone ? { enum: [conferenceTimeZone] } : {}),
+    },
+  }, ["apiVersion"]),
   AppearanceEvent: object({ name: text(), compactLabel: text() }, ["name", "compactLabel"]),
   AgendaEvent: object({ name: text(), compactLabel: text(), destinationUrl: text("Optional event destination URL.") }, ["name", "compactLabel"]),
   SpeakerSummary: object(speakerSummary, speakerRequired),
@@ -49,6 +58,7 @@ const schemas: Record<string, Schema> = {
     ...sessionCard,
     abstract: text("Website-authored rich text, which may contain HTML. Sanitize before rendering HTML."),
     speakers: array(ref("SpeakerSummary")), schedule: ref("SessionSchedule"), announcement: ref("SessionAnnouncement"),
+    hosts: { ...array(ref("SpeakerSummary")), description: "Explicit host subset of speakers. Display separately from other participants." },
     relatedSessions: array(ref("SessionCard")),
   }, ["slug", "title", "abstract", "speakers", "relatedSessions"]),
   SessionSchedule: object({
@@ -61,7 +71,7 @@ const schemas: Record<string, Schema> = {
     locationLabel: text(),
   }, ["dayDate", "event"]),
   AgendaSpeaker: object({ slug: ref("Slug"), name: text(), photoUrl: { type: ["string", "null"], format: "uri" } }, ["slug", "name"]),
-  AgendaSession: object({ ...sessionCard, schedule: ref("SessionSchedule"), speakers: array(ref("AgendaSpeaker")) }, ["slug", "title", "speakers"]),
+  AgendaSession: object({ ...sessionCard, schedule: ref("SessionSchedule"), speakers: array(ref("AgendaSpeaker")), hosts: array(ref("AgendaSpeaker")) }, ["slug", "title", "speakers"]),
   AgendaTrack: object({ key: text(), name: text(), locationLabel: text() }, ["key", "name"]),
   AgendaSlot: object({
     kind: { type: "string", enum: ["session", "break", "meal", "networking", "opening", "closing", "other"] },
@@ -95,7 +105,7 @@ for (const [name, data] of Object.entries({
 // Synthetic, internally consistent examples. No live data is copied into the spec.
 const exampleSpeaker: PublicSpeakerDetail = {
   slug: "ada-example", displayName: "Ada Example", affiliation: "Example Labs", photoUrl: null,
-  isMc: false, sessionCount: 1, appearanceEvents: [{ name: "WhatTheStack 2026", compactLabel: "WTS 2026" }],
+  isMc: false, sessionCount: 1, appearanceEvents: [],
   bio: "<p>A synthetic speaker biography.</p>", socialHandles: ["https://example.com/ada"],
   sessions: [{ slug: "building-reliable-apps", title: "Building Reliable Apps", format: "talk" }],
 };
@@ -103,12 +113,11 @@ const { bio: _bio, socialHandles: _socialHandles, sessions: _sessions, ...exampl
 const exampleSession: PublicSessionDetail = {
   slug: "building-reliable-apps", title: "Building Reliable Apps", format: "talk",
   abstract: "<p>A synthetic session abstract.</p>", speakers: [exampleSummary], relatedSessions: [],
-  schedule: {
-    dayDate: "2026-09-19", dayTitle: "Conference day", event: { name: "WhatTheStack 2026", compactLabel: "WTS 2026" },
-    startAt: "2026-09-19 08:00:00.000Z", endAt: "2026-09-19 08:35:00.000Z", trackName: "Stage 1",
-  },
 };
-const envelope = (data: unknown) => ({ data, meta: { apiVersion: "1", timeZone: "Europe/Skopje" } });
+const envelope = (data: unknown) => ({
+  data,
+  meta: { apiVersion: "1", ...(conferenceTimeZone ? { timeZone: conferenceTimeZone } : {}) },
+});
 const commonHeaders: Record<string, OpenAPIV3_1.HeaderObject> = {
   Link: { description: "Link to the OpenAPI document, rel=service-desc.", schema: text() },
   "Access-Control-Allow-Origin": { schema: { type: "string", enum: ["*"] } },
@@ -176,13 +185,13 @@ export const publicApiOpenApi: OpenAPIV3_1.Document = {
     "/speakers/{slug}": readPath("getSpeaker", "Get a speaker and their sessions", "SpeakerResponse", "Includes bio, social handles and published Session cards. Follow each sessions[].slug with GET /sessions/{slug}.", exampleSpeaker, true),
     "/sessions": readPath("listSessions", "List published sessions", "SessionListResponse", "Alphabetical by title, then slug. Cards do not include speakers; request session detail or agenda for speaker names.", exampleSpeaker.sessions),
     "/sessions/{slug}": readPath("getSession", "Get a session and its speakers", "SessionResponse", "Includes public speaker summaries; follow speakers[].slug with GET /speakers/{slug}. Schedule and end time are optional. An announcement's eventStartTime is not necessarily the session start.", exampleSession, true),
-    "/agenda": readPath("getAgenda", "Get the published conference agenda", "AgendaResponse", "Ordered days, programmes, tracks, slots and announced lineups. Empty slots with an untimed lineup is intentional. Times use Europe/Skopje. Agenda speakers use name, whereas profile summaries use displayName.", {
-      days: [{ key: "conference-day", localDate: "2026-09-19", title: "Conference day", programmes: [{
-        event: { name: "WhatTheStack 2026", compactLabel: "WTS 2026" }, tracks: [{ key: "stage-1", name: "Stage 1" }],
-        slots: [{ kind: "session", startAt: "2026-09-19 08:00:00.000Z", endAt: "2026-09-19 08:35:00.000Z", track: { key: "stage-1", name: "Stage 1" },
-          session: { ...exampleSpeaker.sessions[0], speakers: [{ slug: "ada-example", name: "Ada Example", photoUrl: null }] } }],
-      }] }],
-    }),
+    "/agenda": readPath(
+      "getAgenda",
+      "Get the published conference agenda",
+      "AgendaResponse",
+      `Ordered days, programmes, tracks, slots and announced lineups. Empty slots with an untimed lineup is intentional. ${conferenceTimeZone ? `Times use ${conferenceTimeZone}.` : "Time-zone context is omitted until the conference time zone is announced."} Agenda speakers use name, whereas profile summaries use displayName.`,
+      { days: [] },
+    ),
   },
   components: { schemas },
 };

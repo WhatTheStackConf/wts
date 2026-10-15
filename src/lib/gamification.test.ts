@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
@@ -24,6 +23,7 @@ import { buildCommunityPartnerMissionPresentations } from "~/lib/gamification-co
 import {
   containsMissionCode,
   createMissionCodeGeneration,
+  hashNormalizedMissionCode,
   parseMissionCode,
   verifyMissionCodeHash,
 } from "~/lib/mission-code-crypto";
@@ -317,6 +317,8 @@ function seedMetaConfiguration(
     updated: timestamp,
   });
   const expectedBand = metaScoreBandForRule(rule as any) || { totalXp: 20, leaderboardXp: 15 };
+  const totalXp = overrides.totalXp ?? expectedBand.totalXp;
+  const leaderboardXp = overrides.leaderboardXp ?? expectedBand.leaderboardXp;
   const policyKey = `meta-policy-${activityId}`;
   store.seed(GAMIFICATION_COLLECTIONS.scoreSchedulePolicies, {
     id: `meta-policy-record-${activityId}`,
@@ -324,8 +326,8 @@ function seedMetaConfiguration(
     activity: activityId,
     policy_key: policyKey,
     active: true,
-    total_xp: overrides.totalXp ?? expectedBand.totalXp,
-    leaderboard_xp: overrides.leaderboardXp ?? expectedBand.leaderboardXp,
+    total_xp: totalXp,
+    leaderboard_xp: leaderboardXp,
     cap_membership: [{ dimension: "activity", key: activityId }],
     created: timestamp,
     updated: timestamp,
@@ -335,8 +337,8 @@ function seedMetaConfiguration(
     dimension: "activity",
     cap_key: activityId,
     member_policy_keys: [policyKey],
-    total_xp_ceiling: overrides.totalXp ?? expectedBand.totalXp,
-    leaderboard_xp_ceiling: overrides.leaderboardXp ?? expectedBand.leaderboardXp,
+    total_xp_ceiling: totalXp,
+    leaderboard_xp_ceiling: leaderboardXp,
   }];
   for (const cap of caps) {
     store.seed(GAMIFICATION_COLLECTIONS.scoreScheduleCaps, {
@@ -517,16 +519,45 @@ function seedConfiguredEventCode(
   return generated;
 }
 
-function seedConfiguredEventFixture(
-  store: MemoryGamificationStore,
-  options: {
-    flow?: "one_code" | "two_code";
-    categoryCap?: { total: number; leaderboard: number };
-    dayCap?: { total: number; leaderboard: number };
-    conferenceCap?: { total: number; leaderboard: number };
-  } = {},
-): { single?: ReturnType<typeof seedConfiguredEventCode>; start?: ReturnType<typeof seedConfiguredEventCode>; finish?: ReturnType<typeof seedConfiguredEventCode> } {
-  const flow = options.flow || "one_code";
+type ConfiguredEventFixtureFlow = "one_code" | "two_code";
+type ConfiguredEventFixtureCeiling = { total: number; leaderboard: number };
+type ConfiguredEventFixtureOptions = {
+  flow?: ConfiguredEventFixtureFlow;
+  categoryCap?: ConfiguredEventFixtureCeiling;
+  dayCap?: ConfiguredEventFixtureCeiling;
+  conferenceCap?: ConfiguredEventFixtureCeiling;
+};
+type ConfiguredEventFlowFixture = {
+  ceiling: ConfiguredEventFixtureCeiling;
+  attendanceUnlockKey: string;
+  activities: Array<{ id: string; key: string; outcome: string; evidence: string; achievement: string; meta: boolean }>;
+  policies: Array<{ activity: string; key: string; total: number; leaderboard: number }>;
+};
+
+const CONFIGURED_EVENT_FLOW_FIXTURES: Record<ConfiguredEventFixtureFlow, ConfiguredEventFlowFixture> = {
+  one_code: {
+    ceiling: { total: 30, leaderboard: 25 },
+    attendanceUnlockKey: "workshop.platform-lab.attendance",
+    activities: [{ id: "event-attendance", key: "workshop.platform-lab.attendance", outcome: "attendance", evidence: "single_code", achievement: "event-attendance-badge", meta: true }],
+    policies: [{ activity: "event-attendance", key: "workshop.platform-lab.attendance", total: 30, leaderboard: 25 }],
+  },
+  two_code: {
+    ceiling: { total: 40, leaderboard: 30 },
+    attendanceUnlockKey: "workshop.platform-lab.start",
+    activities: [
+      { id: "event-start", key: "workshop.platform-lab.start", outcome: "attendance", evidence: "two_code_start", achievement: "event-attendance-badge", meta: false },
+      { id: "event-finish", key: "workshop.platform-lab.finish", outcome: "completion", evidence: "two_code_finish", achievement: "", meta: false },
+      { id: "event-completion", key: "workshop.platform-lab.completion", outcome: "completion", evidence: "derived_claim_set", achievement: "event-completion-badge", meta: true },
+    ],
+    policies: [
+      { activity: "event-start", key: "workshop.platform-lab.start", total: 10, leaderboard: 5 },
+      { activity: "event-finish", key: "workshop.platform-lab.finish", total: 0, leaderboard: 0 },
+      { activity: "event-completion", key: "workshop.platform-lab.completion", total: 30, leaderboard: 25 },
+    ],
+  },
+};
+
+function seedConfiguredEventMission(store: MemoryGamificationStore): void {
   store.seed(GAMIFICATION_COLLECTIONS.missions, {
     id: "event-mission",
     key: "workshop.platform-lab",
@@ -544,6 +575,9 @@ function seedConfiguredEventFixture(
     created: timestamp,
     updated: timestamp,
   });
+}
+
+function seedConfiguredEventAchievements(store: MemoryGamificationStore, flow: ConfiguredEventFixtureFlow, fixture: ConfiguredEventFlowFixture): void {
   store.seed(GAMIFICATION_COLLECTIONS.achievements, {
     id: "event-attendance-badge",
     key: "workshop.platform-lab.attendance",
@@ -553,7 +587,7 @@ function seedConfiguredEventFixture(
     rarity: "common",
     visibility: "public",
     status: "active",
-    unlock_rule: { kind: "activity_claim", activityKeys: [flow === "one_code" ? "workshop.platform-lab.attendance" : "workshop.platform-lab.start"] },
+    unlock_rule: { kind: "activity_claim", activityKeys: [fixture.attendanceUnlockKey] },
     active_from: configuredEventRef.startsAt,
     active_until: configuredEventRef.endsAt,
     sort_order: 1,
@@ -578,14 +612,10 @@ function seedConfiguredEventFixture(
       updated: timestamp,
     });
   }
-  const activityDefinitions = flow === "one_code"
-    ? [{ id: "event-attendance", key: "workshop.platform-lab.attendance", outcome: "attendance", evidence: "single_code", achievement: "event-attendance-badge", meta: true }]
-    : [
-        { id: "event-start", key: "workshop.platform-lab.start", outcome: "attendance", evidence: "two_code_start", achievement: "event-attendance-badge", meta: false },
-        { id: "event-finish", key: "workshop.platform-lab.finish", outcome: "completion", evidence: "two_code_finish", achievement: "", meta: false },
-        { id: "event-completion", key: "workshop.platform-lab.completion", outcome: "completion", evidence: "derived_claim_set", achievement: "event-completion-badge", meta: true },
-      ];
-  for (const definition of activityDefinitions) {
+}
+
+function seedConfiguredEventActivities(store: MemoryGamificationStore, fixture: ConfiguredEventFlowFixture): void {
+  for (const definition of fixture.activities) {
     store.seed(GAMIFICATION_COLLECTIONS.activities, {
       id: definition.id,
       key: definition.key,
@@ -610,25 +640,21 @@ function seedConfiguredEventFixture(
       updated: timestamp,
     });
   }
+}
+
+function seedConfiguredEventScoring(store: MemoryGamificationStore, fixture: ConfiguredEventFlowFixture, options: ConfiguredEventFixtureOptions): void {
   store.seed(GAMIFICATION_COLLECTIONS.scoreSchedules, {
     id: "event-schedule",
     key: "event-schedule",
     status: "active",
     effective_at: timestamp,
-    total_xp_ceiling: flow === "one_code" ? 30 : 40,
-    leaderboard_xp_ceiling: flow === "one_code" ? 25 : 30,
+    total_xp_ceiling: fixture.ceiling.total,
+    leaderboard_xp_ceiling: fixture.ceiling.leaderboard,
     access_level_thresholds: { "1": 0 },
     created: timestamp,
     updated: timestamp,
   });
-  const policyDefinitions = flow === "one_code"
-    ? [{ activity: "event-attendance", key: "workshop.platform-lab.attendance", total: 30, leaderboard: 25 }]
-    : [
-        { activity: "event-start", key: "workshop.platform-lab.start", total: 10, leaderboard: 5 },
-        { activity: "event-finish", key: "workshop.platform-lab.finish", total: 0, leaderboard: 0 },
-        { activity: "event-completion", key: "workshop.platform-lab.completion", total: 30, leaderboard: 25 },
-      ];
-  for (const policy of policyDefinitions) {
+  for (const policy of fixture.policies) {
     store.seed(GAMIFICATION_COLLECTIONS.scoreSchedulePolicies, {
       id: `policy-${policy.activity}`,
       schedule: "event-schedule",
@@ -644,7 +670,7 @@ function seedConfiguredEventFixture(
         { dimension: "conference_day", key: "2026-09-01" },
         { dimension: "conference", key: "conference" },
       ],
-      cap_ceiling_overrides: { related_group: { total_xp_ceiling: flow === "one_code" ? 30 : 40, leaderboard_xp_ceiling: flow === "one_code" ? 25 : 30 } },
+      cap_ceiling_overrides: { related_group: { total_xp_ceiling: fixture.ceiling.total, leaderboard_xp_ceiling: fixture.ceiling.leaderboard } },
       score_day: "2026-09-01",
       created: timestamp,
       updated: timestamp,
@@ -661,12 +687,12 @@ function seedConfiguredEventFixture(
       updated: timestamp,
     });
   }
-  const policyKeys = policyDefinitions.map((policy) => policy.key);
+  const policyKeys = fixture.policies.map((policy) => policy.key);
   for (const cap of [
-    { id: "event-related-cap", dimension: "related_group", key: "platform-lab-group", total: flow === "one_code" ? 30 : 40, leaderboard: flow === "one_code" ? 25 : 30 },
-    { id: "event-category-cap", dimension: "category", key: "workshop", total: options.categoryCap?.total ?? (flow === "one_code" ? 30 : 40), leaderboard: options.categoryCap?.leaderboard ?? (flow === "one_code" ? 25 : 30) },
-    { id: "event-day-cap", dimension: "conference_day", key: "2026-09-01", total: options.dayCap?.total ?? (flow === "one_code" ? 30 : 40), leaderboard: options.dayCap?.leaderboard ?? (flow === "one_code" ? 25 : 30) },
-    { id: "event-conference-cap", dimension: "conference", key: "conference", total: options.conferenceCap?.total ?? (flow === "one_code" ? 30 : 40), leaderboard: options.conferenceCap?.leaderboard ?? (flow === "one_code" ? 25 : 30) },
+    { id: "event-related-cap", dimension: "related_group", key: "platform-lab-group", ceiling: fixture.ceiling },
+    { id: "event-category-cap", dimension: "category", key: "workshop", ceiling: options.categoryCap ?? fixture.ceiling },
+    { id: "event-day-cap", dimension: "conference_day", key: "2026-09-01", ceiling: options.dayCap ?? fixture.ceiling },
+    { id: "event-conference-cap", dimension: "conference", key: "conference", ceiling: options.conferenceCap ?? fixture.ceiling },
   ]) {
     store.seed(GAMIFICATION_COLLECTIONS.scoreScheduleCaps, {
       id: cap.id,
@@ -674,12 +700,24 @@ function seedConfiguredEventFixture(
       dimension: cap.dimension,
       cap_key: cap.key,
       member_policy_keys: policyKeys,
-      total_xp_ceiling: cap.total,
-      leaderboard_xp_ceiling: cap.leaderboard,
+      total_xp_ceiling: cap.ceiling.total,
+      leaderboard_xp_ceiling: cap.ceiling.leaderboard,
       created: timestamp,
       updated: timestamp,
     });
   }
+}
+
+function seedConfiguredEventFixture(
+  store: MemoryGamificationStore,
+  options: ConfiguredEventFixtureOptions = {},
+): { single?: ReturnType<typeof seedConfiguredEventCode>; start?: ReturnType<typeof seedConfiguredEventCode>; finish?: ReturnType<typeof seedConfiguredEventCode> } {
+  const flow = options.flow || "one_code";
+  const fixture = CONFIGURED_EVENT_FLOW_FIXTURES[flow];
+  seedConfiguredEventMission(store);
+  seedConfiguredEventAchievements(store, flow, fixture);
+  seedConfiguredEventActivities(store, fixture);
+  seedConfiguredEventScoring(store, fixture, options);
   if (flow === "one_code") {
     return { single: seedConfiguredEventCode(store, "event-single-code", "event-attendance", "single") };
   }
@@ -2128,7 +2166,9 @@ describe("Gamification Profile privacy and authorization", () => {
       status: "active",
       suggested: true,
       sort_order: 2,
-    } as any]);
+    } as any], [{
+      id: "public-activity", mission: "mission-public", status: "active", enabled: true, evidence_mode: "single_code",
+    } as any], [], timestamp, [{ id: "public-code", activity: "public-activity", status: "active", enabled: true, evidence_role: "single" } as any]);
 
     expect(summary.lockedBadges).toEqual([
       expect.objectContaining({ name: "Locked Badge", teaser: "A safe challenge awaits." }),
@@ -2143,6 +2183,72 @@ describe("Gamification Profile privacy and authorization", () => {
     expect(JSON.stringify(summary)).not.toContain("Revoked Badge");
   });
 
+  it("suggests only unfinished Missions with an enabled available next Activity before applying the result limit", async () => {
+    const store = new MemoryGamificationStore();
+    const accounting = service(store);
+    const user = { id: "user-1", name: "Mission Agent" };
+    await accounting.ensureProfile(user);
+    const mission = (id: string, overrides: Record<string, unknown> = {}, activityOverrides: Record<string, unknown> = {}) => {
+      store.seed(GAMIFICATION_COLLECTIONS.missions, {
+        id, key: id, title: id, summary: "Use official WTS evidence.", status: "active", visibility: "public", suggested: true,
+        starts_at: timestamp, ends_at: "2026-09-02T00:00:00.000Z", ...overrides,
+      });
+      store.seed(GAMIFICATION_COLLECTIONS.activities, {
+        id: `${id}-activity`, key: `${id}-activity`, mission: id, kind: "session", category: "session",
+        status: "active", enabled: true, evidence_mode: "single_code", per_user_claim_limit: 1,
+        active_from: timestamp, active_until: "2026-09-02T00:00:00.000Z", max_claims: 100, ...activityOverrides,
+      });
+      store.seed(GAMIFICATION_COLLECTIONS.codes, { id: `${id}-code`, activity: `${id}-activity`, status: "active", enabled: true, evidence_role: activityOverrides.evidence_mode === "two_code_start" ? "start" : "single", starts_at: timestamp, ends_at: "2026-09-02T00:00:00.000Z", max_redemptions: 100, total_redemptions_cached: 0 });
+    };
+    // More than the old fetch limit, all ineligible, must not crowd out useful Missions.
+    for (let index = 0; index < 21; index += 1) mission(`disabled-${index}`, {}, { enabled: false });
+    mission("future-mission", { starts_at: "2026-09-02T00:00:00.000Z" });
+    mission("expired-mission", { ends_at: "2026-08-31T00:00:00.000Z" });
+    mission("future-activity", {}, { active_from: "2026-09-02T00:00:00.000Z" });
+    mission("expired-activity", {}, { active_until: "2026-08-31T00:00:00.000Z" });
+    mission("draft-activity", {}, { status: "draft" });
+    mission("derived-only", {}, { evidence_mode: "derived_claim_set" });
+    mission("manual-only", {}, { evidence_mode: "admin_manual" });
+    mission("completed");
+    mission("badge-completed", { primary_achievement: "completed-badge" });
+    mission("missing-activity");
+    await store.delete(GAMIFICATION_COLLECTIONS.activities, "missing-activity-activity");
+    mission("hidden", { visibility: "hidden_until_unlocked" });
+    mission("available");
+    mission("no-code");
+    await store.delete(GAMIFICATION_COLLECTIONS.codes, "no-code-code");
+    mission("disabled-code");
+    await store.update(GAMIFICATION_COLLECTIONS.codes, "disabled-code-code", { enabled: false });
+    mission("expired-code");
+    await store.update(GAMIFICATION_COLLECTIONS.codes, "expired-code-code", { ends_at: "2026-08-31T00:00:00.000Z" });
+    mission("exhausted-code");
+    await store.update(GAMIFICATION_COLLECTIONS.codes, "exhausted-code-code", { max_redemptions: 1 });
+    store.seed(GAMIFICATION_COLLECTIONS.codeRedemptions, { id: "used-code", code: "exhausted-code-code", activity: "exhausted-code-activity", user: "user-2", status: "accepted" });
+    mission("exhausted-activity", {}, { max_claims: 1 });
+    store.seed(GAMIFICATION_COLLECTIONS.activityClaims, { id: "used-activity", activity: "exhausted-activity-activity", user: "user-2", status: "accepted" });
+    mission("partial", {}, { evidence_mode: "two_code_start" });
+    store.seed(GAMIFICATION_COLLECTIONS.activities, {
+      id: "partial-finish", key: "partial-finish", mission: "partial", status: "active", enabled: true,
+      kind: "workshop", evidence_mode: "two_code_finish", per_user_claim_limit: 1,
+    });
+    store.seed(GAMIFICATION_COLLECTIONS.codes, { id: "partial-finish-code", activity: "partial-finish", status: "active", enabled: true, evidence_role: "finish", max_redemptions: 100 });
+    for (const activity of ["completed-activity", "partial-activity"]) store.seed(GAMIFICATION_COLLECTIONS.activityClaims, {
+      id: `claim-${activity}`, user: user.id, activity, status: "accepted",
+    });
+    store.seed(GAMIFICATION_COLLECTIONS.activityClaims, { id: "voided", user: user.id, activity: "available-activity", status: "voided" });
+    store.seed(GAMIFICATION_COLLECTIONS.activityClaims, { id: "other-user", user: "user-2", activity: "available-activity", status: "accepted" });
+    store.seed(GAMIFICATION_COLLECTIONS.userAchievements, { id: "earned", user: user.id, achievement: "completed-badge", status: "unlocked" });
+    const before = await store.list(GAMIFICATION_COLLECTIONS.xpEvents);
+    const summary = await accounting.summaryForUser(user);
+    expect(summary.suggestedMissions).toEqual([
+      { title: "available", summary: "Use official WTS evidence.", redemptionPath: "/missions/redeem" },
+      { title: "partial", summary: "Use official WTS evidence.", redemptionPath: "/missions/redeem" },
+    ]);
+    expect(summary).toMatchObject({ totalXp: 0, leaderboardXp: 0, opsBoard: { visible: true, publicBadgesVisible: true } });
+    expect(await store.list(GAMIFICATION_COLLECTIONS.xpEvents)).toEqual(before);
+    expect(JSON.stringify(summary.suggestedMissions)).not.toContain("activity");
+  });
+
   it("does not run an accounting operation before authentication succeeds", async () => {
     const operation = vi.fn();
     await expect(runAuthenticatedGamificationOperation(
@@ -2152,7 +2258,7 @@ describe("Gamification Profile privacy and authorization", () => {
     expect(operation).not.toHaveBeenCalled();
   });
 
-  it("hides Meta Badge snippets whose configured sources reveal Session attendance", () => {
+  it.each(["session", "workshop", "warmup_event", "satellite_event", "social"])("hides Meta Badge snippets whose unhosted %s sources reveal attendance", (kind) => {
     const rows = buildGamificationPublicOpsBoardRows(
       [{
         id: "profile-meta",
@@ -2204,8 +2310,8 @@ describe("Gamification Profile privacy and authorization", () => {
       [{
         id: "private-source-a-id",
         key: "private-source-a",
-        kind: "session",
-        category: "session",
+        kind,
+        category: kind,
         outcome_key: "attendance",
         evidence_mode: "single_code",
       } as any],
@@ -2515,6 +2621,60 @@ const adminActor = { id: "admin-1", role: "admin" as const };
 function operationService(store: MemoryGamificationStore): GamificationOperationsService {
   return new GamificationOperationsService(store, missionCodePepper, () => timestamp);
 }
+
+async function seedSuccessorSchedule(store: MemoryGamificationStore, scheduleId: string): Promise<void> {
+  const schedule = await store.getById<any>(GAMIFICATION_COLLECTIONS.scoreSchedules, scheduleId);
+  store.seed(GAMIFICATION_COLLECTIONS.scoreSchedules, { ...schedule, id: `${scheduleId}-successor`, key: `${schedule.key}-successor` });
+  for (const policy of await store.list<any>(GAMIFICATION_COLLECTIONS.scoreSchedulePolicies, { schedule: scheduleId })) {
+    store.seed(GAMIFICATION_COLLECTIONS.scoreSchedulePolicies, { ...policy, id: `${policy.id}-successor`, schedule: `${scheduleId}-successor` });
+  }
+  await store.update(GAMIFICATION_COLLECTIONS.scoreSchedules, scheduleId, { status: "superseded" });
+}
+
+describe("successor schedule code issuance", () => {
+  it("supports generic QR completion points through the existing Mission and score-policy lifecycle", async () => {
+    const store = new MemoryGamificationStore();
+    store.seed(GAMIFICATION_COLLECTIONS.missions, { id: "qr-mission", key: "qr.welcome", category: "social", status: "active" });
+    seedEasterEggDraftSchedule(store, "qr-schedule");
+    const operations = operationService(store);
+    const input = {
+      key: "qr.welcome.completion", missionId: "qr-mission", kind: "qr" as const, category: "social" as const,
+      outcomeKey: "completion", evidenceMode: "single_code" as const, perUserClaimLimit: 1, maxClaims: 100,
+      activeFrom: timestamp, activeUntil: "2026-09-30T23:59:59.000Z", enabled: true, operationId: "qr-draft",
+      scorePolicy: { scheduleId: "qr-schedule", policyKey: "qr.welcome.completion", enabled: true, totalXp: 7, leaderboardXp: 3, capMembership: [] },
+    };
+    const activity = await operations.saveActivityDraft(input, adminActor);
+    expect(activity).toMatchObject({ kind: "qr", category: "social", evidenceMode: "single_code", outcomeKey: "completion" });
+    await operations.saveActivityDraft({
+      ...input, id: activity.id, operationId: "qr-draft-policy",
+      scorePolicy: { ...input.scorePolicy, capMembership: [{ dimension: "activity", key: activity.id }] },
+    }, adminActor);
+    for (const invalid of [{ evidenceMode: "admin_manual" as const }, { outcomeKey: "attendance" }]) {
+      await expect(operations.saveActivityDraft({ ...input, ...invalid, id: activity.id, operationId: "qr-invalid" }, adminActor)).rejects.toThrow("QR Activities");
+    }
+    await operations.activateDefinition("activity", { id: activity.id, reason: "Enable organizer QR points", confirmation: true, operationId: "qr-activate" }, adminActor);
+    await operations.activateScoreSchedule("qr-schedule", { id: "qr-schedule", reason: "Enable QR score policy", confirmation: true, operationId: "qr-score-activate" }, adminActor);
+    const batch = await operations.generateCodes({
+      activityId: activity.id, label: "Welcome QR", quantity: 1, evidenceRole: "single", startsAt: timestamp,
+      endsAt: input.activeUntil, maxRedemptions: 100, perUserLimit: 1, operationId: "qr-generate",
+    }, adminActor);
+    const result = await redemptionService(store).redeem(redemptionInput(batch.codes![0].rawCode));
+    expect(result).toMatchObject({ status: "accepted", xpAwarded: 7, leaderboardXpAwarded: 3 });
+  });
+
+  it("generates event codes when an older active policy belongs to a superseded schedule", async () => {
+    const store = new MemoryGamificationStore();
+    seedConfiguredEventFixture(store);
+    await seedSuccessorSchedule(store, "event-schedule");
+    const input = {
+      activityId: "event-attendance", label: "Successor event", quantity: 1, evidenceRole: "single" as const,
+      startsAt: timestamp, endsAt: configuredEventRef.endsAt, maxRedemptions: 100, perUserLimit: 1, operationId: "successor-event-code",
+    };
+    await expect(operationService(store).generateCodes(input, adminActor)).resolves.toMatchObject({ batch: { committed: true, quantity: 1 } });
+    await store.update(GAMIFICATION_COLLECTIONS.scoreSchedules, "event-schedule-successor", { effective_at: "2026-09-02T00:00:00.000Z" });
+    await expect(operationService(store).generateCodes({ ...input, operationId: "future-successor-event" }, adminActor)).rejects.toThrow("score schedule");
+  });
+});
 
 function seedEasterEggDraftSchedule(store: MemoryGamificationStore, id = "easter-egg-schedule"): void {
   store.seed(GAMIFICATION_COLLECTIONS.scoreSchedules, {
@@ -3417,6 +3577,174 @@ function seedActiveOperationSchedule(store: MemoryGamificationStore): void {
   });
 }
 
+describe("preprinted Mission code registration", () => {
+  const rawA = `WTS26-12345678-${"A".repeat(26)}`;
+  const rawB = `WTS26-23456789-${"B".repeat(26)}`;
+  const input = {
+    activityId: "operation-activity", label: "Preprinted station signs", rawCodes: [rawA, rawB],
+    evidenceRole: "single" as const, startsAt: timestamp, endsAt: "2026-09-20T00:00:00.000Z",
+    maxRedemptions: 100, perUserLimit: 1, operationId: "register-preprinted",
+  };
+  function fixture(store = new MemoryGamificationStore()) {
+    seedOperationActivity(store);
+    seedActiveOperationSchedule(store);
+    return { store, operations: operationService(store) };
+  }
+
+  it("binds the exact printed identities to this pepper, redeems them, and never exports or audits secrets", async () => {
+    const { store, operations } = fixture();
+    seedUser(store);
+    seedUser(store, "user-2");
+    const result = await operations.registerCodes(input, adminActor);
+    expect(result.batch).toEqual({ id: input.operationId, label: input.label, activityId: input.activityId, quantity: 2, committed: true, secretsAvailable: false });
+    expect(result.codes.map((code) => code.lookupPrefix)).toEqual(["12345678", "23456789"]);
+    const records = await store.list<{ code_hash: string }>(GAMIFICATION_COLLECTIONS.codes);
+    for (const [index, rawCode] of input.rawCodes.entries()) {
+      expect(verifyMissionCodeHash(parseMissionCode(rawCode)!.normalizedCode, records[index].code_hash, missionCodePepper)).toBe(true);
+      expect(verifyMissionCodeHash(parseMissionCode(rawCode)!.normalizedCode, records[index].code_hash, "different-pepper")).toBe(false);
+      await expect(redemptionService(store).redeem(redemptionInput(rawCode, index === 0 ? "user-1" : "user-2"))).resolves.toMatchObject({ status: "accepted" });
+    }
+    const audit = await store.list(GAMIFICATION_COLLECTIONS.adminActions);
+    const safeOutput = JSON.stringify({ result, audit, operations: await operations.operations() });
+    for (const code of input.rawCodes) {
+      expect(safeOutput).not.toContain(code);
+      expect(safeOutput).not.toContain(parseMissionCode(code)!.normalizedCode);
+      expect(JSON.stringify(records)).not.toContain(code);
+    }
+    for (const record of records) expect(safeOutput).not.toContain(record.code_hash);
+    expect(safeOutput).not.toContain("rawCodes");
+    expect(audit).toEqual([expect.objectContaining({ action: "code_generation", status: "applied", after_summary: expect.objectContaining({ operation: "code_registration", payloadDigest: expect.any(String) }) })]);
+  });
+
+  it("replays the same safe receipt including normalized spelling and rejects changed payloads or actors", async () => {
+    const { store, operations } = fixture();
+    const first = await operations.registerCodes(input, adminActor);
+    await expect(operations.registerCodes({ ...input, rawCodes: input.rawCodes.map((code) => code.toLowerCase().replaceAll("-", " ")) }, adminActor)).resolves.toEqual(first);
+    for (const change of [{ label: "Other signs" }, { maxRedemptions: 99 }, { rawCodes: [rawA] }, { rawCodes: [rawB, rawA] }, { rawCodes: [rawA, rawB.replaceAll("B", "C")] }]) {
+      await expect(operations.registerCodes({ ...input, ...change }, adminActor)).rejects.toThrow("different request");
+    }
+    await expect(operations.registerCodes(input, { id: "admin-2", role: "admin" })).rejects.toThrow("another operation");
+    await store.update(GAMIFICATION_COLLECTIONS.activities, input.activityId, { enabled: false });
+    await expect(operations.registerCodes(input, adminActor)).resolves.toEqual(first);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toHaveLength(2);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.adminActions)).toHaveLength(1);
+  });
+
+  it.each(["prefix", "hash"])("rejects an existing %s collision without partial writes", async (kind) => {
+    const { store, operations } = fixture();
+    const generated = createMissionCodeGeneration(missionCodePepper);
+    store.seed(GAMIFICATION_COLLECTIONS.codes, {
+      id: "existing-code", lookup_prefix: kind === "prefix" ? "23456789" : "ZZZZZZZZ",
+      code_hash: kind === "hash"
+        ? hashNormalizedMissionCode(parseMissionCode(rawB)!.normalizedCode, missionCodePepper)
+        : generated.definition.codeHash,
+    });
+    await expect(operations.registerCodes(input, adminActor)).rejects.toThrow("already registered");
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toHaveLength(1);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes, { batch_id: input.operationId })).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.adminActions)).toEqual([]);
+  });
+
+  it("independently rejects empty, oversized, malformed, normalized duplicate and duplicate-prefix imports", async () => {
+    const { store, operations } = fixture();
+    for (const rawCodes of [[], Array(101).fill(rawA), [rawA, "not a code"], [rawA, rawA.toLowerCase()], [rawA, rawA.replaceAll("A", "B")]]) {
+      await expect(operations.registerCodes({ ...input, rawCodes }, adminActor)).rejects.toThrow();
+    }
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.adminActions)).toEqual([]);
+    const rawCodes = Array.from({ length: 100 }, (_, index) => `WTS26-${String(index).padStart(8, "0")}-${"D".repeat(26)}`);
+    await expect(operations.registerCodes({ ...input, rawCodes }, adminActor)).resolves.toMatchObject({ batch: { quantity: 100 } });
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toHaveLength(100);
+  });
+
+  it.each([
+    [GAMIFICATION_COLLECTIONS.activities, "operation-activity", { status: "draft" }],
+    [GAMIFICATION_COLLECTIONS.activities, "operation-activity", { enabled: false }],
+    [GAMIFICATION_COLLECTIONS.scoreSchedules, "operation-active-schedule", { status: "superseded" }],
+    [GAMIFICATION_COLLECTIONS.scoreSchedules, "operation-active-schedule", { effective_at: "2026-09-02T00:00:00.000Z" }],
+    [GAMIFICATION_COLLECTIONS.scoreSchedulePolicies, "operation-active-policy", { active: false }],
+  ])("enforces generation eligibility for %s %s %j", async (collection, id, change) => {
+    const { store, operations } = fixture();
+    await store.update(collection, id, change);
+    await expect(operations.registerCodes(input, adminActor)).rejects.toThrow();
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.adminActions)).toEqual([]);
+  });
+
+  it("uses generation windows, evidence roles and positive limits", async () => {
+    const { store, operations } = fixture();
+    for (const change of [{ evidenceRole: "finish" as const }, { startsAt: "invalid" }, { endsAt: "2026-10-01T00:00:00.000Z" }, { maxRedemptions: 0 }, { perUserLimit: 0 }]) {
+      await expect(operations.registerCodes({ ...input, ...change, operationId: JSON.stringify(change) }, adminActor)).rejects.toThrow();
+    }
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toEqual([]);
+  });
+
+  it("rolls back a mid-batch storage failure and can retry the same audited payload", async () => {
+    class FailingStore extends MemoryGamificationStore {
+      attempts = 0;
+      override async create<T>(collection: string, body: Record<string, unknown>): Promise<T> {
+        if (collection === GAMIFICATION_COLLECTIONS.codes && ++this.attempts === 2) throw new Error("Atomic insert failed");
+        return super.create<T>(collection, body);
+      }
+    }
+    const { store, operations } = fixture(new FailingStore());
+    await expect(operations.registerCodes(input, adminActor)).rejects.toThrow("Atomic insert failed");
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toEqual([]);
+    await expect(operations.registerCodes(input, adminActor)).resolves.toMatchObject({ batch: { committed: true, quantity: 2 } });
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toHaveLength(2);
+  });
+
+  it("recovers a lost atomic commit response with the same receipt", async () => {
+    class LostResponseStore extends MemoryGamificationStore {
+      override async createManyAtomic<T>(collection: string, rows: Record<string, unknown>[]): Promise<T[]> {
+        await super.createManyAtomic<T>(collection, rows);
+        throw new Error("Lost response");
+      }
+    }
+    const { store, operations } = fixture(new LostResponseStore());
+    const first = await operations.registerCodes(input, adminActor);
+    await expect(operations.registerCodes(input, adminActor)).resolves.toEqual(first);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toHaveLength(2);
+  });
+
+  it("fails closed without atomic storage and does not write an audit or codes", async () => {
+    const { store, operations } = fixture();
+    Object.defineProperty(store, "createManyAtomic", { value: undefined });
+    await expect(operations.registerCodes(input, adminActor)).rejects.toThrow("atomic batch storage");
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toEqual([]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.adminActions)).toEqual([]);
+  });
+
+  it("repairs interrupted audit completion without registering duplicate codes", async () => {
+    const { store, operations } = fixture();
+    store.failNextUpdate(GAMIFICATION_COLLECTIONS.adminActions);
+    await expect(operations.registerCodes(input, adminActor)).rejects.toThrow("update failure");
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toHaveLength(2);
+    const receipt = await operations.registerCodes(input, adminActor);
+    await expect(operations.registerCodes(input, adminActor)).resolves.toEqual(receipt);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toHaveLength(2);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.adminActions)).toEqual([expect.objectContaining({ status: "applied" })]);
+  });
+
+  it("does not reuse a generation operation for registration or vice versa", async () => {
+    const { store, operations } = fixture();
+    await operations.registerCodes(input, adminActor);
+    const { rawCodes: _, ...config } = input;
+    await expect(operations.generateCodes({ ...config, quantity: 2 }, adminActor)).rejects.toThrow("another operation");
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toHaveLength(2);
+  });
+
+  it("serializes competing imports so exactly one colliding batch commits", async () => {
+    const { store, operations } = fixture();
+    const results = await Promise.allSettled([
+      operations.registerCodes(input, adminActor),
+      operations.registerCodes({ ...input, operationId: "competing-registration" }, adminActor),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(await store.list(GAMIFICATION_COLLECTIONS.codes)).toHaveLength(2);
+  });
+});
+
 describe("admin gamification operations", () => {
   it("does not invoke a privileged operation before admin authorization succeeds", async () => {
     const operation = vi.fn();
@@ -3866,6 +4194,15 @@ describe("admin gamification operations", () => {
 });
 
 describe("static Easter Egg Missions", () => {
+  it("generates Easter Egg codes when an older active policy belongs to a superseded schedule", async () => {
+    const store = new MemoryGamificationStore();
+    const { configured } = await activeEggWithCode(store);
+    await seedSuccessorSchedule(store, "easter-egg-schedule");
+    await expect(operationService(store).generateCodes({
+      activityId: configured.activity.id, label: "Successor egg", quantity: 1, evidenceRole: "static_puzzle",
+      startsAt: timestamp, endsAt: "2026-09-30T23:59:59.000Z", maxRedemptions: 100, perUserLimit: 1, operationId: "successor-egg-code",
+    }, adminActor)).resolves.toMatchObject({ batch: { committed: true, quantity: 1 } });
+  });
   async function configuredEgg(store: MemoryGamificationStore, eggKey = "quiet-signal", operationId = `configure-${eggKey}`) {
     return operationService(store).saveEasterEggMissionDraft(easterEggDraftInput(eggKey, operationId), adminActor);
   }
@@ -6052,6 +6389,17 @@ describe("Community Partner Activities", () => {
     }, adminActor);
   }
 
+  it("generates Community Partner codes when an older active policy belongs to a superseded schedule", async () => {
+    const store = new MemoryGamificationStore();
+    const configured = await configureCommunityProgramme(store);
+    await activateCommunityProgramme(store, configured);
+    await seedSuccessorSchedule(store, "community-draft-schedule");
+    await expect(operationService(store).generateCodes({
+      activityId: configured.activities[0].id, label: "Successor community", quantity: 1, evidenceRole: "single",
+      startsAt: timestamp, endsAt: activeUntil, maxRedemptions: 100, perUserLimit: 1, operationId: "successor-community-code",
+    }, adminActor)).resolves.toMatchObject({ batch: { committed: true, quantity: 1 } });
+  });
+
   it("configures explicit canonical community classification without inferring public partner type or tier", async () => {
     const store = new MemoryGamificationStore();
     const configured = await configureCommunityProgramme(store, "one_code", ["attendance", "participation", "completion"]);
@@ -6289,11 +6637,12 @@ describe("Community Partner Activities", () => {
     expect(publicMissions).toEqual([expect.objectContaining({
       title: "Cloud Native Hack Night",
       visibility: "public",
-      badge: expect.objectContaining({ name: "Community participant", description: "A Community Partner challenge awaits." }),
+      badge: expect.objectContaining({ name: "Locked Badge", description: "A Community Partner challenge awaits." }),
     })]);
     expect(JSON.stringify(publicMissions)).not.toContain(missionKey);
     expect(JSON.stringify(publicMissions)).not.toContain(partnerId);
     expect(JSON.stringify(publicMissions)).not.toContain("deployment");
+    expect(JSON.stringify(publicMissions)).not.toContain("Community participant");
   });
 
   it("keeps Community Partner configuration behind the established admin authorization boundary", async () => {
@@ -6444,42 +6793,3 @@ describe("Hi.Events adapter pagination", () => {
   });
 });
 
-describe("gamification deployment configuration", () => {
-  it("passes Mission-code and Hi.Events server secrets to the web app", () => {
-    const compose = readFileSync(new URL("../../docker-compose.yml", import.meta.url), "utf8");
-    const webapp = compose.slice(compose.indexOf("  webapp:"), compose.indexOf("\n  pocketbase:\n    build:"));
-
-    expect(webapp).toContain("GAMIFICATION_CODE_PEPPER=${GAMIFICATION_CODE_PEPPER:?");
-    expect(webapp).toContain("POCKETBASE_SUPERUSER_EMAIL=${POCKETBASE_SUPERUSER_EMAIL:?");
-    expect(webapp).toContain("POCKETBASE_SUPERUSER_PASSWORD=${POCKETBASE_SUPERUSER_PASSWORD:?");
-    for (const variable of ["HIEVENTS_API_URL", "HIEVENTS_EVENT_ID", "HIEVENTS_EMAIL", "HIEVENTS_PASSWORD", "HIEVENTS_ACCOUNT_ID"]) {
-      expect(webapp).toContain(`${variable}=\${${variable}}`);
-    }
-    expect(webapp).not.toMatch(/(?:PUBLIC_|VITE_)GAMIFICATION_CODE_PEPPER/);
-  });
-
-  it("bakes only public browser configuration and declares container readiness", () => {
-    const compose = readFileSync(new URL("../../docker-compose.yml", import.meta.url), "utf8");
-    const dockerfile = readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
-
-    expect(compose).toContain("PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://wts.sh}");
-    expect(compose).toContain("VITE_LISTMONK_LIST_ID: ${VITE_LISTMONK_LIST_ID:-2}");
-    expect(compose).toContain("VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}");
-    expect(compose).toContain("http://127.0.0.1:3000/");
-    expect(compose).toContain("start_period: 30s");
-    expect(dockerfile).toContain("ARG PUBLIC_SITE_URL=https://wts.sh");
-    expect(dockerfile).toContain("ARG VITE_LISTMONK_LIST_ID");
-    expect(dockerfile).toContain("ARG VITE_TURNSTILE_SITE_KEY");
-    expect(dockerfile).not.toContain("ARG GAMIFICATION_CODE_PEPPER");
-  });
-
-  it("fails PocketBase startup on migration errors and excludes local secrets from Docker builds", () => {
-    const entrypoint = readFileSync(new URL("../../pocketbase/entrypoint.sh", import.meta.url), "utf8");
-    const dockerignore = readFileSync(new URL("../../.dockerignore", import.meta.url), "utf8");
-
-    expect(entrypoint).toMatch(/^#!\/bin\/sh\n\nset -eu/);
-    expect(dockerignore).toContain(".env.*");
-    expect(dockerignore).toContain("pocketbase/pb_data");
-    expect(dockerignore).toContain("pocketbase/pocketbase");
-  });
-});

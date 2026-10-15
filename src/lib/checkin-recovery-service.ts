@@ -1,15 +1,16 @@
 import type PocketBase from "pocketbase";
-import type { CheckinActor } from "./checkin-contract";
-import { CheckinError } from "./checkin-service";
+import type { CheckinActor, CheckinErrorCode } from "./checkin-contract";
+import { CheckinError, isCheckinStaff } from "./checkin-service";
 import { checkinEventBindingHash } from "./checkin-event-service";
 import { recoveryCommandSchema, type RecoveryCommand, type RecoverySource, type RecoveryTarget, type RecoveryReadResult, type RecoveryWorkflow, type RecoveryResult } from "./checkin-recovery-contract";
 import { renderNameLabel } from "./checkin-label-renderer";
+const failures=new Map<number|undefined,[CheckinErrorCode,number]>([[403,["forbidden",403]],[409,["conflict",409]],[400,["invalid_input",400]]]);
 export class CheckinRecoveryService {
  constructor(private pb:PocketBase,private actor:CheckinActor,private source:RecoverySource){}
  private async request<T>(operation:string,body:object):Promise<T>{
-  if(!this.actor?.userId||!["admin","checkin_operator"].includes(this.actor.role))throw new CheckinError("forbidden",403);
+  if(!isCheckinStaff(this.actor))throw new CheckinError("forbidden",403);
   try{return await this.pb.send<T>("/api/wts/checkin-recovery",{method:"POST",body:{...body,operation,actorUserId:this.actor.userId},requestKey:null});}
-  catch(error){const s=(error as {status?:number}).status;throw new CheckinError(s===403?"forbidden":s===409?"conflict":s===400?"invalid_input":"unavailable",s===403?403:s===409?409:s===400?400:503);}
+  catch(error){const [code,status]=failures.get((error as {status?:number}).status)??["unavailable",503];throw new CheckinError(code,status);}
  }
  private binding(token?:string){return token?checkinEventBindingHash(token):"";}
  get(token:string|undefined,workflowId:string){return this.request<RecoveryWorkflow>("get",{identityHash:this.binding(token),workflowId});}
