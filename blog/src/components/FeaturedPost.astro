@@ -1,0 +1,250 @@
+---
+import type { ContentBylineCredit, EditProxy, MediaValue } from "emdash";
+import { Image } from "emdash/ui";
+import BylineSummary from "./BylineSummary.astro";
+import { formatUtcDate } from "../utils/date";
+
+interface Props {
+	title: string;
+	excerpt?: string;
+	featuredImage?: MediaValue | string;
+	href: string;
+	date?: Date | null;
+	readingTime: number;
+	tags: Array<{ slug: string; label: string }>;
+	bylines?: ContentBylineCredit[];
+	edit: EditProxy;
+}
+
+const {
+	title,
+	excerpt,
+	featuredImage,
+	href,
+	date,
+	readingTime,
+	tags,
+	bylines = [],
+	edit,
+} = Astro.props;
+---
+
+<article class="featured-section">
+	<div class="featured-grid">
+		{
+			featuredImage && (
+				<a href={href} class="featured-image-link" aria-label={`Read ${title}`}>
+					<div class="featured-image" {...edit.featured_image}>
+						<Image image={featuredImage} priority />
+					</div>
+				</a>
+			)
+		}
+		<div class="featured-content">
+			<div class="featured-meta">
+				{
+					bylines.length > 0 && (
+						<>
+							<BylineSummary credits={bylines} shown={2} variant="featured" />
+							<span class="meta-dot" />
+						</>
+					)
+				}
+				{date && <time datetime={date.toISOString()}>{formatUtcDate(date)}</time>}
+				<span class="meta-dot" />
+				<span>{readingTime} min read</span>
+			</div>
+			<a href={href} class="featured-title-link">
+				<h2 class="featured-title" {...edit.title}>
+					{title}
+				</h2>
+			</a>
+			{
+				excerpt && (
+					<p class="featured-excerpt" {...edit.excerpt}>
+						{excerpt}
+					</p>
+				)
+			}
+			{
+				tags.length > 0 && (
+					<div class="featured-tags">
+						{tags.map((tag) => (
+							<a href={`/tag/${tag.slug}`} class="featured-tag">
+								{tag.label}
+							</a>
+						))}
+					</div>
+				)
+			}
+		</div>
+	</div>
+</article>
+
+<style>
+	.featured-section {
+		margin-bottom: var(--spacing-16);
+	}
+
+	.featured-grid {
+		display: grid;
+		grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+		gap: var(--spacing-8);
+		align-items: center;
+	}
+
+	.featured-image-link {
+		display: block;
+		min-width: 0;
+	}
+
+	.featured-image {
+		overflow: hidden;
+		background: var(--color-surface);
+	}
+
+	.featured-image img {
+		width: 100%;
+		height: auto;
+		aspect-ratio: 4 / 3;
+		object-fit: cover;
+		transition: transform 0.4s ease;
+	}
+
+	.featured-image-link:hover .featured-image img {
+		transform: scale(1.02);
+	}
+
+	.featured-content {
+		display: flex;
+		min-width: 0;
+		flex-direction: column;
+		gap: var(--spacing-4);
+	}
+
+	.featured-meta {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		column-gap: var(--spacing-3);
+		row-gap: var(--spacing-1);
+		font-size: var(--font-size-sm);
+		color: var(--color-text-secondary);
+	}
+
+	.meta-dot {
+		width: 3px;
+		height: 3px;
+		border-radius: 50%;
+		background: currentColor;
+	}
+
+	.featured-bylines {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+	}
+
+	.featured-byline {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--spacing-2);
+	}
+
+	.featured-byline-avatar {
+		width: var(--avatar-size-md);
+		height: var(--avatar-size-md);
+		border-radius: 50%;
+		object-fit: cover;
+	}
+
+	.featured-byline-name {
+		font-weight: 500;
+		color: var(--color-text-secondary);
+	}
+
+	.byline-sep {
+		color: var(--color-muted);
+		margin-right: 2px;
+	}
+
+	.byline-more {
+		font-size: var(--font-size-xs);
+		color: var(--color-text-secondary);
+		margin-left: 2px;
+	}
+
+	.featured-title-link {
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.featured-title {
+		min-width: 0;
+		overflow-wrap: anywhere;
+		font-size: clamp(var(--font-size-2xl), 3vw, var(--font-size-4xl));
+		font-weight: var(--font-weight-display);
+		line-height: var(--leading-tight);
+		letter-spacing: var(--tracking-tight);
+		transition: color var(--transition-fast);
+	}
+
+	.featured-title-link:hover .featured-title {
+		color: var(--color-brand);
+	}
+
+	.featured-excerpt {
+		max-width: 65ch;
+		font-size: var(--font-size-lg);
+		line-height: var(--leading-relaxed);
+		color: var(--color-text-secondary);
+	}
+
+	.featured-tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--spacing-2);
+		margin-top: var(--spacing-2);
+	}
+
+	.featured-tag {
+		display: inline-flex;
+		min-height: 44px;
+		align-items: center;
+		padding: var(--tag-padding-y) var(--spacing-3);
+		font-size: var(--font-size-xs);
+		color: var(--color-text-secondary);
+		background: var(--color-surface);
+		border-radius: var(--radius);
+		text-decoration: none;
+		transition: color var(--transition-fast), background var(--transition-fast);
+	}
+
+	.featured-tag:hover {
+		color: var(--color-text);
+		background: var(--color-border);
+	}
+
+	@media (max-width: 900px) {
+		.featured-grid {
+			grid-template-columns: minmax(0, 1fr);
+			gap: var(--spacing-6);
+		}
+
+		.featured-image img {
+			aspect-ratio: 16 / 9;
+		}
+	}
+
+	@media (max-width: 600px) {
+		.featured-title {
+			font-size: var(--font-size-2xl);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.featured-image img {
+			transition: none;
+		}
+	}
+</style>

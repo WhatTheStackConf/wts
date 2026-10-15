@@ -1,0 +1,51 @@
+---
+import type { ContentBylineCredit } from "emdash";
+import BylineAvatar from "./BylineAvatar.astro";
+
+interface Props {
+	credits: ContentBylineCredit[];
+	/** Number of credits shown by name; the rest collapse into "+N". */
+	shown: number;
+	/** Class prefix for the caller's styles, such as "card" for `card-bylines`. */
+	variant: "card" | "featured" | "post";
+	/** Show the collapsed names in a focusable tooltip. */
+	moreTooltip?: boolean;
+}
+
+// Remaining attributes carry the caller's style scope, so the caller styles this markup.
+const { credits, shown, variant, moreTooltip = false, ...scope } = Astro.props;
+const visible = credits.slice(0, shown);
+const hiddenCount = credits.length - visible.length;
+const hiddenNames = credits
+	.slice(shown)
+	.map((credit) => credit.byline.displayName)
+	.join(", ");
+const tooltip = moreTooltip ? hiddenNames : undefined;
+---
+
+<div class={`${variant}-bylines`} {...scope}>
+	{visible.map((credit, index) => (
+		<>
+			{index > 0 && <span class="byline-sep" {...scope}>,</span>}
+			<span class={`${variant}-byline`} {...scope}>
+				<BylineAvatar byline={credit.byline} class={`${variant}-byline-avatar`} {...scope} />
+				<span class={`${variant}-byline-name`} {...scope}>
+					{credit.byline.displayName}
+				</span>
+			</span>
+		</>
+	))}
+	{
+		hiddenCount > 0 && (
+			<span
+				class="byline-more"
+				data-tooltip={tooltip}
+				title={tooltip}
+				tabindex={moreTooltip ? "0" : undefined}
+				{...scope}
+			>
+				+{hiddenCount}
+			</span>
+		)
+	}
+</div>

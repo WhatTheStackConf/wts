@@ -1,0 +1,58 @@
+<nav class="toc" aria-label="Table of contents">
+	<h2 class="toc-title">On this page</h2>
+	<div class="toc-content" id="toc-content">
+		<!-- Populated by JS -->
+	</div>
+</nav>
+
+<script>
+	import { buildToc } from "../scripts/table-of-contents";
+
+	buildToc();
+</script>
+
+<style>
+	.toc {
+		margin-bottom: var(--spacing-8);
+		padding-bottom: var(--spacing-6);
+		border-bottom: 1px solid var(--color-border-subtle);
+	}
+
+	.toc-title {
+		font-size: var(--font-size-xs);
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: var(--tracking-wide);
+		color: var(--color-muted);
+		margin-bottom: var(--spacing-3);
+	}
+
+	.toc-content :global(.toc-list) {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+	}
+
+	.toc-content :global(.toc-item) {
+		margin-bottom: var(--spacing-1);
+	}
+
+	.toc-content :global(.toc-item--nested) {
+		padding-left: var(--spacing-3);
+	}
+
+	.toc-content :global(.toc-link) {
+		display: block;
+		font-size: var(--font-size-sm);
+		color: var(--color-muted);
+		text-decoration: none;
+		padding: var(--spacing-1) 0;
+		transition: color var(--transition-fast);
+		line-height: var(--leading-snug);
+	}
+
+	.toc-content :global(.toc-link:hover),
+	.toc-content :global(.toc-link.active) {
+		color: var(--color-text);
+	}
+</style>

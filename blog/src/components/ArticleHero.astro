@@ -1,0 +1,53 @@
+---
+import type { EditProxy } from "emdash";
+import { Image } from "emdash/ui";
+import type { Post } from "../../emdash-env";
+
+interface Props {
+	image: Post["featured_image"];
+	edit: EditProxy;
+}
+
+const { image, edit } = Astro.props;
+const caption = image?.meta?.caption;
+---
+
+{
+	image && (
+		<figure class="article-hero" {...edit.featured_image}>
+			<Image image={image} priority />
+			{typeof caption === "string" && caption && <figcaption>{caption}</figcaption>}
+		</figure>
+	)
+}
+
+<style>
+	/* Cover image follows the title within the reading column. */
+	.article-hero {
+		margin: 0 0 var(--spacing-10);
+		border-radius: var(--radius-lg);
+		overflow: hidden;
+		background: var(--color-surface);
+	}
+
+	.article-hero img {
+		display: block;
+		width: 100%;
+		height: auto;
+		aspect-ratio: 16 / 9;
+		object-fit: cover;
+	}
+
+	.article-hero figcaption {
+		padding: var(--spacing-3) var(--spacing-4);
+		font-size: var(--font-size-xs);
+		line-height: 1.5;
+		color: var(--color-text-secondary);
+	}
+
+	@media (max-width: 900px) {
+		.article-hero {
+			border-radius: var(--radius);
+		}
+	}
+</style>

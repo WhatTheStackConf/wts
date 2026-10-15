@@ -189,8 +189,8 @@ The blog deployed on 2026-09-30. The existing WTS application and local account 
 | Project / environment | WTS / production |
 | Server | `hetzner-one` |
 | Service UUID | `ejzjdlbdeatc5po2ndzncgqb` |
-| Image | `wts-blog:20260930-202250` |
-| Server source | `/opt/wts-blog/releases/20260930-202250` |
+| Image | `wts-blog:20261015-124439` |
+| Server source | `/opt/wts-blog/releases/20261015-124439` |
 | Persistent volume | `ejzjdlbdeatc5po2ndzncgqb_blog-data` |
 | Volume mount | `/app/data` |
 | Proxy network | `coolify` |
@@ -241,6 +241,14 @@ For a new release:
 3. Set `build.dockerfile` to `blog/Dockerfile`.
 4. Set the image tag for that release.
 5. Restart the service with the command above.
+
+On 2026-10-15, the restart removed the old container but did not start the new one. `coolify service start` did not start it either. If the service shows `exited` after a restart, use this command on the server:
+
+```bash
+cd /data/coolify/services/ejzjdlbdeatc5po2ndzncgqb && docker compose up -d --no-build
+```
+
+Build the release image on the server before the restart, so this command does not need a build.
 
 Keep the existing volume and production encryption key. Do not replace the database with the initial copy after editors create content.
 

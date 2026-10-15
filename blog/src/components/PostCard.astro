@@ -1,6 +1,7 @@
 ---
 import type { ContentBylineCredit, EditProxy, MediaValue } from "emdash";
 import { Image } from "emdash/ui";
+import PostCardMeta from "./PostCardMeta.astro";
 
 interface Props {
 	title: string;
@@ -25,10 +26,6 @@ const {
 	bylines,
 	edit,
 } = Astro.props;
-
-const formattedDate = date
-	? `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`
-	: null;
 ---
 
 <article class="post-card">
@@ -41,50 +38,7 @@ const formattedDate = date
 			)
 		}
 		<div class="card-body">
-			<div class="card-meta">
-				{
-					bylines && bylines.length > 0 && (
-						<>
-							<div class="card-bylines">
-								{bylines.slice(0, 1).map((credit) => (
-									<span class="card-byline">
-										{credit.byline.avatarMediaId && (
-											<img
-												src={`/_emdash/api/media/file/${credit.byline.avatarMediaId}`}
-												alt={credit.byline.displayName}
-												class="card-byline-avatar"
-											/>
-										)}
-										<span class="card-byline-name">
-											{credit.byline.displayName}
-										</span>
-									</span>
-								))}
-								{bylines.length > 1 && (
-									<span
-										class="byline-more"
-										data-tooltip={bylines
-											.slice(1)
-											.map((c) => c.byline.displayName)
-											.join(", ")}
-										title={bylines
-											.slice(1)
-											.map((c) => c.byline.displayName)
-											.join(", ")}
-										tabindex="0"
-									>
-										+{bylines.length - 1}
-									</span>
-								)}
-							</div>
-							{(formattedDate || readingTime) && <span class="meta-dot" />}
-						</>
-					)
-				}
-				{formattedDate && <time datetime={date?.toISOString()}>{formattedDate}</time>}
-				{formattedDate && readingTime && <span class="meta-dot" />}
-				{readingTime && <span>{readingTime} min</span>}
-			</div>
+			<PostCardMeta bylines={bylines} date={date} readingTime={readingTime} />
 			<h2 class="card-title" {...edit?.title}>{title}</h2>
 			{excerpt && <p class="card-excerpt" {...edit?.excerpt}>{excerpt}</p>}
 		</div>
@@ -137,29 +91,6 @@ const formattedDate = date
 		flex: 1;
 	}
 
-	.card-meta {
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
-		column-gap: var(--spacing-3);
-		row-gap: 0;
-		font-size: var(--font-size-sm);
-		color: var(--color-muted);
-		margin-bottom: var(--spacing-2);
-	}
-
-	.card-meta time,
-	.card-meta span:not(.meta-dot) {
-		white-space: nowrap;
-	}
-
-	.meta-dot {
-		width: 3px;
-		height: 3px;
-		border-radius: 50%;
-		background: var(--color-muted);
-	}
-
 	.card-title {
 		min-width: 0;
 		overflow-wrap: anywhere;
@@ -210,63 +141,5 @@ const formattedDate = date
 	.card-tag:hover {
 		color: var(--color-text);
 		background: var(--color-border);
-	}
-
-	/* Byline styles */
-	.card-bylines {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		white-space: nowrap;
-	}
-
-	.card-byline {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--spacing-1);
-	}
-
-	.card-byline-avatar {
-		width: var(--avatar-size-xs);
-		height: var(--avatar-size-xs);
-		border-radius: 50%;
-		object-fit: cover;
-	}
-
-	.card-byline-name {
-		font-weight: 500;
-		color: var(--color-text-secondary);
-	}
-
-	.byline-more {
-		position: relative;
-		font-size: var(--font-size-xs);
-		color: var(--color-muted);
-		margin-left: 2px;
-		cursor: default;
-		border-radius: var(--radius);
-		outline-offset: 2px;
-	}
-
-	.byline-more:focus-visible {
-		outline: 2px solid var(--color-brand);
-	}
-
-	.byline-more[data-tooltip]:hover::after,
-	.byline-more[data-tooltip]:focus-visible::after {
-		content: attr(data-tooltip);
-		position: absolute;
-		bottom: calc(100% + 6px);
-		left: 50%;
-		transform: translateX(-50%);
-		white-space: nowrap;
-		background: var(--color-text);
-		color: var(--color-bg);
-		font-size: var(--font-size-xs);
-		font-weight: 400;
-		padding: var(--spacing-1) var(--spacing-2);
-		border-radius: var(--radius);
-		pointer-events: none;
-		z-index: 10;
 	}
 </style>

@@ -1,0 +1,155 @@
+---
+import type { ContentBylineCredit, TaxonomyTerm } from "emdash";
+import BylineAvatar from "./BylineAvatar.astro";
+
+interface Props {
+	bylines?: ContentBylineCredit[];
+	/** ISO timestamp and its YYYY-MM-DD date, both null for unpublished posts. */
+	publishedTime: string | null;
+	publishDate: string | null;
+	readingTime: number;
+	tags?: TaxonomyTerm[];
+}
+
+const { bylines = [], publishedTime, publishDate, readingTime, tags = [] } = Astro.props;
+---
+
+<div class="meta-sticky">
+	{
+		bylines.length > 0 && (
+			<div class="meta-block byline-block">
+				<span class="meta-label">
+					{bylines.length === 1 ? "Author" : "Authors"}
+				</span>
+				<div class="bylines">
+					{bylines.map((credit) => (
+						<div class="byline">
+							<BylineAvatar byline={credit.byline} class="byline-avatar" />
+							<div class="byline-info">
+								<span class="byline-name">
+									{credit.byline.displayName}
+								</span>
+								{credit.roleLabel && (
+									<span class="byline-role">{credit.roleLabel}</span>
+								)}
+							</div>
+						</div>
+					))}
+				</div>
+			</div>
+		)
+	}
+	{
+		publishDate && (
+			<div class="meta-block">
+				<span class="meta-label">Published</span>
+				<time class="meta-value" datetime={publishedTime}>{publishDate}</time>
+			</div>
+		)
+	}
+	<div class="meta-block">
+		<span class="meta-label">Reading time</span>
+		<span class="meta-value">{readingTime} min</span>
+	</div>
+	{
+		tags.length > 0 && (
+			<div class="meta-block">
+				<span class="meta-label">Tags</span>
+				<div class="meta-tags">
+					{tags.map((t) => (
+						<a href={`/tag/${t.slug}`} class="meta-tag">
+							{t.label}
+						</a>
+					))}
+				</div>
+			</div>
+		)
+	}
+</div>
+
+<style>
+	.meta-sticky {
+		position: sticky;
+		top: calc(var(--nav-height) + var(--spacing-8));
+	}
+
+	.meta-block {
+		margin-bottom: var(--spacing-6);
+	}
+
+	.meta-label {
+		display: block;
+		font-size: var(--font-size-xs);
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: var(--tracking-wide);
+		color: var(--color-muted);
+		margin-bottom: var(--spacing-1);
+	}
+
+	.meta-value {
+		display: block;
+		font-size: var(--font-size-sm);
+		color: var(--color-text-secondary);
+	}
+
+	.meta-tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--spacing-1);
+	}
+
+	.meta-tag {
+		display: inline-block;
+		padding: var(--tag-padding-y) var(--spacing-2);
+		font-size: var(--font-size-xs);
+		color: var(--color-text-secondary);
+		background: var(--color-surface);
+		border-radius: var(--radius);
+		text-decoration: none;
+		transition:
+			color var(--transition-fast),
+			background var(--transition-fast);
+	}
+
+	.meta-tag:hover {
+		color: var(--color-text);
+		background: var(--color-border);
+	}
+
+	/* Byline styles */
+	.bylines {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-1);
+	}
+
+	.byline {
+		display: flex;
+		align-items: center;
+		gap: var(--spacing-2);
+	}
+
+	.byline-avatar {
+		width: var(--avatar-size-lg);
+		height: var(--avatar-size-lg);
+		border-radius: 50%;
+		object-fit: cover;
+	}
+
+	.byline-info {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.byline-name {
+		font-size: var(--font-size-sm);
+		font-weight: 500;
+		color: var(--color-text);
+	}
+
+	.byline-role {
+		font-size: var(--font-size-xs);
+		color: var(--color-muted);
+	}
+</style>

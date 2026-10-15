@@ -1,0 +1,23 @@
+---
+import type { ContentBylineCredit } from "emdash";
+import { mediaFilePath } from "../utils/media-url";
+
+interface Props {
+	byline: ContentBylineCredit["byline"];
+	class: string;
+}
+
+// Remaining attributes carry the caller's style scope, so the caller sizes the avatar.
+const { byline, class: className, ...scope } = Astro.props;
+---
+
+{
+	byline.avatarStorageKey && (
+		<img
+			src={mediaFilePath(byline.avatarStorageKey)}
+			alt={byline.displayName}
+			class={className}
+			{...scope}
+		/>
+	)
+}

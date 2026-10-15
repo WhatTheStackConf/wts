@@ -1,0 +1,102 @@
+---
+import type { ContentBylineCredit, EditProxy } from "emdash";
+
+interface Props {
+	title: string;
+	excerpt?: string;
+	bylines?: ContentBylineCredit[];
+	/** ISO timestamp and its YYYY-MM-DD date, both null for unpublished posts. */
+	publishedTime: string | null;
+	publishDate: string | null;
+	readingTime: number;
+	edit: EditProxy;
+}
+
+const { title, excerpt, bylines = [], publishedTime, publishDate, readingTime, edit } =
+	Astro.props;
+---
+
+<header class="article-header">
+	<div class="article-meta">
+		{
+			bylines.length > 0 && (
+				<>
+					<span class="article-meta-byline">
+						{bylines.map((credit, i) => (
+							<>
+								{i > 0 && ", "}
+								{credit.byline.displayName}
+							</>
+						))}
+					</span>
+					<span class="meta-dot" />
+				</>
+			)
+		}
+		{
+			publishDate && (
+				<>
+					<time datetime={publishedTime}>{publishDate}</time>
+					<span class="meta-dot" />
+				</>
+			)
+		}
+		<span>{readingTime} min read</span>
+	</div>
+	<h1 class="article-title" {...edit.title}>{title}</h1>
+	{
+		excerpt && (
+			<p class="article-excerpt" {...edit.excerpt}>
+				{excerpt}
+			</p>
+		)
+	}
+</header>
+
+<style>
+	.article-header {
+		margin-bottom: var(--spacing-10);
+	}
+
+	.article-header .article-meta {
+		display: none;
+		align-items: center;
+		flex-wrap: wrap;
+		column-gap: var(--spacing-3);
+		row-gap: var(--spacing-1);
+		font-size: var(--font-size-sm);
+		color: var(--color-muted);
+		margin-bottom: var(--spacing-4);
+	}
+
+	.article-meta-byline {
+		font-weight: 500;
+		color: var(--color-text-secondary);
+	}
+
+	.article-title {
+		font-size: clamp(2rem, 5vw, var(--font-size-5xl));
+		font-weight: var(--font-weight-display);
+		line-height: var(--leading-tight);
+		letter-spacing: var(--tracking-tight);
+		margin-bottom: var(--spacing-4);
+	}
+
+	.article-excerpt {
+		font-size: var(--font-size-xl);
+		line-height: var(--leading-relaxed);
+		color: var(--color-text-secondary);
+	}
+
+	@media (max-width: 1100px) {
+		.article-header .article-meta {
+			display: flex;
+		}
+	}
+
+	@media (max-width: 600px) {
+		.article-title {
+			font-size: var(--font-size-3xl);
+		}
+	}
+</style>

@@ -1,0 +1,117 @@
+---
+import type { ContentBylineCredit } from "emdash";
+import BylineSummary from "./BylineSummary.astro";
+import { formatUtcDate } from "../utils/date";
+
+interface Props {
+	bylines?: ContentBylineCredit[];
+	date?: Date;
+	readingTime?: number;
+}
+
+const { bylines = [], date, readingTime } = Astro.props;
+const formattedDate = date ? formatUtcDate(date) : null;
+
+// Each present item is shown in order, with a dot between neighbours.
+type MetaItem = "bylines" | "date" | "readingTime";
+const items: MetaItem[] = [];
+if (bylines.length > 0) items.push("bylines");
+if (formattedDate) items.push("date");
+if (readingTime) items.push("readingTime");
+---
+
+<div class="card-meta">
+	{items.map((item, index) => (
+		<>
+			{index > 0 && <span class="meta-dot" />}
+			{item === "bylines" && (
+				<BylineSummary credits={bylines} shown={1} variant="card" moreTooltip />
+			)}
+			{item === "date" && <time datetime={date?.toISOString()}>{formattedDate}</time>}
+			{item === "readingTime" && <span>{readingTime} min</span>}
+		</>
+	))}
+</div>
+
+<style>
+	.card-meta {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		column-gap: var(--spacing-3);
+		row-gap: 0;
+		font-size: var(--font-size-sm);
+		color: var(--color-muted);
+		margin-bottom: var(--spacing-2);
+	}
+
+	.card-meta time,
+	.card-meta span:not(.meta-dot) {
+		white-space: nowrap;
+	}
+
+	.meta-dot {
+		width: 3px;
+		height: 3px;
+		border-radius: 50%;
+		background: var(--color-muted);
+	}
+
+	/* Byline styles */
+	.card-bylines {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		white-space: nowrap;
+	}
+
+	.card-byline {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--spacing-1);
+	}
+
+	.card-byline-avatar {
+		width: var(--avatar-size-xs);
+		height: var(--avatar-size-xs);
+		border-radius: 50%;
+		object-fit: cover;
+	}
+
+	.card-byline-name {
+		font-weight: 500;
+		color: var(--color-text-secondary);
+	}
+
+	.byline-more {
+		position: relative;
+		font-size: var(--font-size-xs);
+		color: var(--color-muted);
+		margin-left: 2px;
+		cursor: default;
+		border-radius: var(--radius);
+		outline-offset: 2px;
+	}
+
+	.byline-more:focus-visible {
+		outline: 2px solid var(--color-brand);
+	}
+
+	.byline-more[data-tooltip]:hover::after,
+	.byline-more[data-tooltip]:focus-visible::after {
+		content: attr(data-tooltip);
+		position: absolute;
+		bottom: calc(100% + 6px);
+		left: 50%;
+		transform: translateX(-50%);
+		white-space: nowrap;
+		background: var(--color-text);
+		color: var(--color-bg);
+		font-size: var(--font-size-xs);
+		font-weight: 400;
+		padding: var(--spacing-1) var(--spacing-2);
+		border-radius: var(--radius);
+		pointer-events: none;
+		z-index: 10;
+	}
+</style>
