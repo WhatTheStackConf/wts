@@ -463,10 +463,6 @@ body {
   background: var(--color-dark-950);
 }
 
-/* Keep the Press Kit contents sticky without making the public shell a scroll container. */
-main:has(.press-kit-page) {
-  overflow-x: clip;
-}
 
 /* View Transitions API styles */
 ::view-transition-old(root),
@@ -1392,16 +1388,6 @@ a.partner-logo-card:focus-visible .cyber-scan-line {
   list-style-type: disc;
   padding-left: 1.5rem;
   margin-bottom: 0.75rem;
-}
-
-/* Blog image captions */
-.prose img + em,
-.prose p:has(> img) + p > em:only-child {
-  display: block;
-  text-align: center;
-  color: theme('colors.primary.200 / 50%');
-  font-size: 0.875rem;
-  margin-top: -0.5rem;
 }
 
 /* Hologram Button Styles */

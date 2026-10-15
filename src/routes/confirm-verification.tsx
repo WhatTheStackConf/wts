@@ -1,6 +1,6 @@
 import { createSignal, onSettled, Show } from "solid-js";
 import { useSearchParams, useNavigate } from "@solidjs/router";
-import { Layout } from "~/layouts/Layout";
+import { PublicPageShell } from "~/components/PublicPageShell";
 import { Icon } from "~/components/Icon";
 import { clientOnly } from "@solidjs/web";
 
@@ -49,11 +49,8 @@ const ConfirmVerificationPage = () => {
   });
 
   return (
-    <Layout
-      title="Email Verification"
-      description="Verifying your email address"
-    >
-      <div class="container mx-auto px-4 py-8">
+    <PublicPageShell title="Email verification" description="Complete your WhatTheStack account verification.">
+      <div class="support-auth container mx-auto px-4 py-8">
         <div class="max-w-md mx-auto bg-base-100 rounded-lg shadow-xl p-8 text-center">
           <Show when={status() === "verifying"}>
             <div class="flex flex-col items-center">
@@ -102,7 +99,7 @@ const ConfirmVerificationPage = () => {
           </Show>
         </div>
       </div>
-    </Layout>
+    </PublicPageShell>
   );
 };
 

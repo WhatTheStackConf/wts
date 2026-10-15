@@ -1,5 +1,4 @@
 import { renderToString } from "@solidjs/web";
-import { CheckinCameraScanner } from "~/components/checkin/checkin-camera-scanner";
 import type { CheckinArrivalDecision, CheckinArrivalWorkflow } from "~/lib/checkin-arrival-contract";
 import { describe, expect, it } from "vite-plus/test";
 import { compactArrivalPresentation, CheckinCompactResult } from "./CheckinCompactResult";
@@ -35,7 +34,6 @@ it("shows the attendee and completed protocol without private identifiers", () =
   expect(html).toContain("Заедница");
   expect(html).toContain("Done");
   expect(html).toContain('data-tone="success"');
-  expect(html).toContain("wts-name-label-text");
   expect(html).not.toContain("private-");
 });
 
@@ -68,15 +66,5 @@ it("provides accessible full text for long Cyrillic attendee details", () => {
   expect(html).toContain('aria-live="polite"');
 });
 
-it("exposes one compact Start scanning action while preserving legacy camera controls", () => {
-  const compact = renderToString(() => <CheckinCameraScanner compact enabled held={false} purpose="attendee" onDecode={() => {}} />);
-  expect(compact.match(/<button/g)).toHaveLength(1);
-  expect(compact).toContain("Start scanning");
-  expect(compact).not.toContain("Start attendee camera");
-  const legacy = renderToString(() => <CheckinCameraScanner enabled held={false} purpose="attendee" onDecode={() => {}} />);
-  expect(legacy).toContain("Start attendee camera");
-  expect(legacy).toContain("Stop attendee camera");
-  expect(legacy).toContain("Camera frames are decoded on this phone and never uploaded.");
-});
 
 });

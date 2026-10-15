@@ -1,11 +1,8 @@
 import { Show, For, createSignal } from "solid-js";
-import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { useNavigate } from "@solidjs/router";
-import { Redirect } from "~/components/Redirect";
 // import { Layout } from "~/layouts/Layout";
 import { useRequireAuth } from "~/lib/route-guards";
 import { useCfpStore } from "~/lib/cfp-store";
-import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
 import { clientOnly } from "@solidjs/web";
 import { Icon } from "~/components/Icon";
 
@@ -16,9 +13,6 @@ const Expenses = () => {
   const navigate = useNavigate();
   const [cfpStore, setCfpStore] = useCfpStore();
   const [errors, setErrors] = createSignal<Record<string, string>>({});
-  const [cfpConfig] = createResource(fetchCfpConfig);
-
-  if (!isCfpOpen()) return <Redirect href="/cfp/closed" />;
 
   const handleNext = () => {
     const currentErrors: Record<string, string> = {};

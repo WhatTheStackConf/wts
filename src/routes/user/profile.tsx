@@ -1,7 +1,7 @@
 import { createEffect, createSignal, Show, For } from "solid-js";
 import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { useNavigate } from "@solidjs/router";
-import { Layout } from "~/layouts/Layout";
+import { PublicPageShell } from "~/components/PublicPageShell";
 import { useAuth } from "~/lib/auth-context";
 import { clientOnly } from "@solidjs/web";
 import { Icon } from "~/components/Icon";
@@ -25,6 +25,11 @@ import {
 } from "~/lib/gamification-hievents-actions";
 import { updateMyProfile } from "~/lib/profile-actions";
 import type { SessionUser } from "~/lib/session-policy";
+
+const messageStyles = {
+  error: { tone: "alert-error bg-error/10 text-error border-error/20", role: "alert", icon: "material-symbols:error-outline" },
+  success: { tone: "alert-success bg-success/10 text-success border-success/20", role: "status", icon: "material-symbols:check-circle-outline" },
+} as const;
 
 const ProfilePage = () => {
   const auth = useAuth();
@@ -176,6 +181,12 @@ const ProfilePage = () => {
   };
 
   const refreshTicketStatus = () => setTicketRefreshRequest((request) => request + 1);
+  const userName = () => user()?.name;
+  const userEmail = () => user()?.email;
+  const messageStyle = () => message()?.type === "error" ? messageStyles.error : messageStyles.success;
+  const noProposals = () => !proposals.loading && proposals()?.length === 0;
+  const ticketReady = () => !ticketStatus.loading && ticketStatus();
+  const hasPartnerConsents = () => !partnerConsents.loading && partnerConsents()?.length;
 
   const saveGamificationVisibility = async (event: SubmitEvent) => {
     event.preventDefault();
@@ -257,10 +268,7 @@ const ProfilePage = () => {
   };
 
   return (
-    <Layout
-      title="Profile // WhatTheStack"
-      description="Your profile, achievements, and talk proposals."
-    >
+    <PublicPageShell title="Profile" description="Manage your WhatTheStack account profile.">
       <div class="min-h-screen pt-24 pb-20 relative overflow-hidden">
         {/* Background Elements */}
         <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-primary-900/20 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
@@ -299,8 +307,8 @@ const ProfilePage = () => {
                           }
                         >
                           <img
-                            src={getGravatarUrl(user()?.email || "")}
-                            alt={`${user()?.name || "Your"} profile avatar`}
+                            src={getGravatarUrl(userEmail() || "")}
+                            alt={`${userName() || "Your"} profile avatar`}
                             class="w-full h-full object-cover"
                             onError={() => setImgError(true)}
                           />
@@ -309,10 +317,10 @@ const ProfilePage = () => {
                     </div>
 
                     <p class="max-w-full break-words text-xl font-bold text-white mb-1 font-mono">
-                      {user()?.name || "Your account"}
+                      {userName() || "Your account"}
                     </p>
                     <p class="text-sm text-secondary-300 font-mono mb-6 truncate max-w-full px-2">
-                      {user()?.email}
+                      {userEmail()}
                     </p>
 
                     <div class="w-full h-px bg-white/10 mb-6"></div>
@@ -334,15 +342,11 @@ const ProfilePage = () => {
 
                   <Show when={message()}>
                     <div
-                      class={`alert mb-6 ${message()?.type === "error" ? "alert-error bg-error/10 text-error border-error/20" : "alert-success bg-success/10 text-success border-success/20"}`}
-                      role={message()?.type === "error" ? "alert" : "status"}
+                      class={`alert mb-6 ${messageStyle().tone}`}
+                      role={messageStyle().role}
                     >
                       <Icon
-                        icon={
-                          message()?.type === "error"
-                            ? "material-symbols:error-outline"
-                            : "material-symbols:check-circle-outline"
-                        }
+                        icon={messageStyle().icon}
                         class="text-xl"
                       />
                       <span>{message()?.text}</span>
@@ -361,7 +365,7 @@ const ProfilePage = () => {
                         type="text"
                         name="name"
                         autocomplete="name"
-                        value={user()?.name || ""}
+                        value={userName() || ""}
                         onInput={handleInputChange}
                         class="input input-lg bg-base-300/50 border-white/10 focus:border-primary-500 focus:outline-none text-white font-mono placeholder:text-white/20"
                         placeholder="Enter your name"
@@ -377,7 +381,7 @@ const ProfilePage = () => {
                       <input
                         id="profile-email"
                         type="email"
-                        value={user()?.email || ""}
+                        value={userEmail() || ""}
                         aria-describedby="profile-email-help"
                         class="input input-lg bg-base-300/30 border-white/5 text-white/50 font-mono cursor-not-allowed"
                         disabled
@@ -439,7 +443,7 @@ const ProfilePage = () => {
                           <div>
                             <p class="font-mono text-xs uppercase tracking-[0.12em] text-secondary-200">Conference ticket status</p>
                             <Show
-                              when={!ticketStatus.loading && ticketStatus()}
+                              when={ticketReady()}
                               fallback={<p class="mt-2 font-mono text-sm text-secondary-100/80">Checking ticket status…</p>}
                             >
                               {(status) => <>
@@ -647,7 +651,7 @@ const ProfilePage = () => {
                         </section>
                       </Show>
 
-                      <Show when={!partnerConsents.loading && partnerConsents()?.length}>
+                      <Show when={hasPartnerConsents()}>
                         <section class="border-t border-white/10 pt-5" aria-labelledby="partner-follow-up-heading">
                           <h3 id="partner-follow-up-heading" class="font-mono text-sm font-bold uppercase tracking-[0.12em] text-primary-200">Partner follow-up</h3>
                           <p class="mt-2 text-sm leading-relaxed text-secondary-200/80">Optional. Consent never changes your claims, badges, total XP, or Leaderboard XP. Withdrawal blocks future WTS handoffs; it cannot undo details already shared.</p>
@@ -713,7 +717,7 @@ const ProfilePage = () => {
                   </div>
                 </Show>
 
-                <Show when={!proposals.loading && proposals()?.length === 0}>
+                <Show when={noProposals()}>
                   <div class="p-6 border border-dashed border-white/20 rounded-xl bg-base-300/20 text-center">
                     <p class="text-secondary-300 font-mono">
                       No talk proposals yet.
@@ -763,7 +767,7 @@ const ProfilePage = () => {
           </div>
         </div>
       </div>
-    </Layout>
+    </PublicPageShell>
   );
 };
 

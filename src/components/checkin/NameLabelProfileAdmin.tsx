@@ -6,8 +6,16 @@ import { NameLabelProfileEditor } from "~/components/checkin/NameLabelProfileEdi
 
 type Intent = { operation: "configure"; config: LabelProfileConfig } | { operation: "approve"; profile: LabelProfile };
 interface Props { catalogue: CheckinLabelCatalogue; available: boolean; refresh(): Promise<void> }
+type Selection = { station: LabelProfileStation; profile?: LabelProfile; profileStationVersion?: number };
+const rejected = (failure: unknown) => failure instanceof CheckinLabelRequestError && !failure.ambiguous;
+function profileMutation(current: Selection, action: Intent, reason: CheckinReasonCode, note: string): LabelProfileMutation {
+  const common = { operationId: crypto.randomUUID(), expectedStationVersion: current.station.version, reason, note };
+  return action.operation === "configure"
+    ? { operation: "configure", command: { ...common, stationId: current.station.id, expectedVersion: current.profile?.version ?? 0, config: action.config } }
+    : { operation: "approve", command: { ...common, profileId: action.profile.id, expectedVersion: action.profile.version, physicalConfirmation: true } };
+}
 export function NameLabelProfileAdmin(props: Props) {
-  const [selected, setSelected] = createSignal<{ station: LabelProfileStation; profile?: LabelProfile; profileStationVersion?: number }>();
+  const [selected, setSelected] = createSignal<Selection>();
   const [intent, setIntent] = createSignal<Intent>();
   const [reason, setReason] = createSignal<CheckinReasonCode | "">("");
   const [note, setNote] = createSignal("");
@@ -17,6 +25,9 @@ export function NameLabelProfileAdmin(props: Props) {
   const [error, setError] = createSignal("");
   const [message, setMessage] = createSignal("");
   let reasonInput: HTMLSelectElement | undefined;
+  const locked = () => !props.available || pending() || !!intent() || !!frozen();
+  const submitted = () => pending() || !!frozen();
+  const confirmable = (action: Intent) => !!frozen() || (props.available && !!reason() && (action.operation !== "approve" || confirmed()));
   function choose(stationId: string) {
     if (intent() || frozen() || pending() || !props.available) return;
     const station = props.catalogue.stations.find((station) => station.id === stationId);
@@ -32,15 +43,9 @@ export function NameLabelProfileAdmin(props: Props) {
   async function confirm(event: SubmitEvent) {
     event.preventDefault();
     if (pending()) return;
-    const current = selected(); const action = intent(); const selectedReason = reason();
-    if (!current || !action || (!frozen() && (!props.available || !selectedReason || (action.operation === "approve" && !confirmed())))) return;
-    let mutation = frozen();
-    if (!mutation) {
-      const common = { operationId: crypto.randomUUID(), expectedStationVersion: current.station.version, reason: selectedReason as CheckinReasonCode, note: note() };
-      mutation = action.operation === "configure"
-        ? { operation: "configure", command: { ...common, stationId: current.station.id, expectedVersion: current.profile?.version ?? 0, config: action.config } }
-        : { operation: "approve", command: { ...common, profileId: action.profile.id, expectedVersion: action.profile.version, physicalConfirmation: true } };
-    }
+    const current = selected(); const action = intent();
+    if (!current || !action || !confirmable(action)) return;
+    const mutation = frozen() ?? profileMutation(current, action, reason() as CheckinReasonCode, note());
     setFrozen(mutation); setPending(true); setError("");
     try {
       const result = await mutateLabelProfile(mutation);
@@ -49,7 +54,7 @@ export function NameLabelProfileAdmin(props: Props) {
       await props.refresh();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Profile action could not be confirmed.");
-      if (failure instanceof CheckinLabelRequestError && !failure.ambiguous) {
+      if (rejected(failure)) {
         setFrozen(undefined); setIntent(undefined); setSelected(undefined);
         await props.refresh();
       }
@@ -61,7 +66,7 @@ export function NameLabelProfileAdmin(props: Props) {
       <Show when={error()}><p role="alert" class="alert alert-error">{error()}</p></Show>
       <Show when={message()}><p role="status" class="alert alert-success">{message()}</p></Show>
       <label for="label-profile-station" class="block font-medium">Station</label>
-      <select id="label-profile-station" class="select select-bordered min-h-12 w-full min-w-0 text-base" value={selected()?.station.id ?? ""} disabled={!props.available || pending() || !!intent() || !!frozen()} onChange={(event) => choose(event.currentTarget.value)}>
+      <select id="label-profile-station" class="select select-bordered min-h-12 w-full min-w-0 text-base" value={selected()?.station.id ?? ""} disabled={locked()} onChange={(event) => choose(event.currentTarget.value)}>
         <option value="">Choose a station</option>
         <For each={props.catalogue.stations}>{(station) => <option value={station.id}>{station.label} · {station.printerRef || "No printer asset"}</option>}</For>
       </select>
@@ -70,11 +75,11 @@ export function NameLabelProfileAdmin(props: Props) {
           <p>Station configuration version {current.station.version} · {current.profile ? `Profile v${current.profile.version}: ${current.profile.approval}` : "No saved profile"}</p>
           <Show when={current.profile?.config.printerRef !== undefined && current.profile.config.printerRef !== current.station.printerRef}><p role="status" class="alert alert-warning">Printer identity mismatch. This profile is unavailable for production use; configure and physically verify a new version.</p></Show>
           <Show when={current.profile && current.profileStationVersion !== current.station.version}><p role="status" class="alert alert-warning">Station configuration changed since this profile was saved. Save and physically verify a new profile version before approval, even if the printer reference is unchanged.</p></Show>
-          <NameLabelProfileEditor station={current.station} existing={current.profile?.config} locked={!props.available || pending() || !!intent() || !!frozen()} review={(config) => review({ operation: "configure", config })} />
+          <NameLabelProfileEditor station={current.station} existing={current.profile?.config} locked={locked()} review={(config) => review({ operation: "configure", config })} />
           <Show when={current.profile}>{(profile) => (
             <>
               <p class="text-sm">Approval applies only to the exact printer, stock, renderer, font and profile version. It is a recorded human attestation, not a consequence of this preview.</p>
-              <button type="button" class="btn btn-warning min-h-12" disabled={!props.available || pending() || !!intent() || !!frozen() || profile().approval === "approved" || profile().config.synthetic || profile().config.printerRef !== current.station.printerRef || current.profileStationVersion !== current.station.version} onClick={() => review({ operation: "approve", profile: profile() })}>Review physical profile approval</button>
+              <button type="button" class="btn btn-warning min-h-12" disabled={locked() || profile().approval === "approved" || profile().config.synthetic || profile().config.printerRef !== current.station.printerRef || current.profileStationVersion !== current.station.version} onClick={() => review({ operation: "approve", profile: profile() })}>Review physical profile approval</button>
               <Show when={profile().config.synthetic}><p>Synthetic profiles cannot be approved for production.</p></Show>
             </>
           )}</Show>
@@ -85,20 +90,20 @@ export function NameLabelProfileAdmin(props: Props) {
           <h4 class="text-lg font-bold">{action().operation === "configure" ? "Save an unapproved profile version" : "Record physical profile approval"}</h4>
           <p>Station: {selected()?.station.label} · Printer: {selected()?.station.printerRef}. The exact command and its expected versions are frozen after submission, including reason and note.</p>
           <label for="label-profile-reason" class="block font-medium">Reason (required)</label>
-          <select id="label-profile-reason" ref={(element) => { reasonInput = element; }} class="select select-bordered min-h-12 w-full text-base" required value={reason()} disabled={pending() || !!frozen()} onChange={(event) => setReason(event.currentTarget.value as CheckinReasonCode | "")}>
+          <select id="label-profile-reason" ref={(element) => { reasonInput = element; }} class="select select-bordered min-h-12 w-full text-base" required value={reason()} disabled={submitted()} onChange={(event) => setReason(event.currentTarget.value as CheckinReasonCode | "")}>
             <option value="">Choose a reason</option>
             <For each={CHECKIN_REASON_CODES}>{(value) => <option value={value}>{value.replaceAll("_", " ")}</option>}</For>
           </select>
           <label for="label-profile-note" class="block font-medium">Profile action note</label>
-          <textarea id="label-profile-note" class="textarea textarea-bordered w-full text-base" maxlength={240} required={action().operation === "approve"} value={note()} disabled={pending() || !!frozen()} onInput={(event) => setNote(event.currentTarget.value)} aria-describedby="label-profile-note-help" />
+          <textarea id="label-profile-note" class="textarea textarea-bordered w-full text-base" maxlength={240} required={action().operation === "approve"} value={note()} disabled={submitted()} onInput={(event) => setNote(event.currentTarget.value)} aria-describedby="label-profile-note-help" />
           <p id="label-profile-note-help" class="text-sm">Bounded non-sensitive operational evidence only. No attendee text, email, QR, credentials, URLs or raw diagnostics. For approval, describe the owner-led physical check of legibility, bounds and gap feed.</p>
           <Show when={action().operation === "approve"}>
-            <label for="label-physical-confirmation" class="flex items-start gap-3"><input id="label-physical-confirmation" type="checkbox" class="checkbox" required checked={confirmed()} disabled={pending() || !!frozen()} onChange={(event) => setConfirmed(event.currentTarget.checked)} /><span>I physically verified printed legibility, bounds and gap feed on this exact printer, stock and profile version. A screen preview, hash or generic-media report is not this evidence.</span></label>
+            <label for="label-physical-confirmation" class="flex items-start gap-3"><input id="label-physical-confirmation" type="checkbox" class="checkbox" required checked={confirmed()} disabled={submitted()} onChange={(event) => setConfirmed(event.currentTarget.checked)} /><span>I physically verified printed legibility, bounds and gap feed on this exact printer, stock and profile version. A screen preview, hash or generic-media report is not this evidence.</span></label>
           </Show>
           <Show when={frozen()}><p role="status" class="alert alert-warning">Submitted command frozen. Resolve an unknown response by retrying this same action, not by submitting a replacement.</p></Show>
           <div class="flex flex-wrap gap-3">
             <button type="submit" class="btn btn-warning min-h-12" disabled={pending() || (!frozen() && !props.available)}>{pending() ? "Saving profile action…" : frozen() ? "Retry same profile action" : "Confirm profile action"}</button>
-            <button type="button" class="btn btn-ghost min-h-12" disabled={pending() || !!frozen()} onClick={() => setIntent(undefined)}>Cancel profile action</button>
+            <button type="button" class="btn btn-ghost min-h-12" disabled={submitted()} onClick={() => setIntent(undefined)}>Cancel profile action</button>
           </div>
         </form>
       )}</Show>

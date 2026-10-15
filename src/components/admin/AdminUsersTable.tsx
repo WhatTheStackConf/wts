@@ -9,6 +9,9 @@ import { getGravatarUrl } from "~/lib/gravatar";
 
 const ROLES = ["user", "reviewer", "checkin_operator", "mc", "admin"] satisfies UserRecord["role"][];
 
+type UserRow = UserRecord & { isApplicant?: boolean; hasTicket?: boolean };
+type SpeakerProfile = { applicant: any; submissions: any[] };
+
 function roleLabel(role: string) {
     return role === "checkin_operator" ? "Check-in Operator" : role.toUpperCase();
 }
@@ -20,19 +23,19 @@ export default function AdminUsersTable() {
     const [users, { refetch }] = createResource(async () => {
         const res = await adminFetchAllUsers();
         if (res.success) {
-            return res.data as (UserRecord & { isApplicant?: boolean; hasTicket?: boolean })[];
+            return res.data as UserRow[];
         }
         return [];
     });
 
-    const [selectedUser, setSelectedUser] = createSignal<(UserRecord & { isApplicant?: boolean; hasTicket?: boolean }) | null>(null);
-    const [speakerProfile, setSpeakerProfile] = createSignal<{ applicant: any; submissions: any[] } | null>(null);
+    const [selectedUser, setSelectedUser] = createSignal<UserRow | null>(null);
+    const [speakerProfile, setSpeakerProfile] = createSignal<SpeakerProfile | null>(null);
     const [loadingProfile, setLoadingProfile] = createSignal(false);
     const [deleteId, setDeleteId] = createSignal<{ id: string, name: string } | null>(null);
 
     const [updating, setUpdating] = createSignal<string | null>(null);
 
-    const openUserDetails = async (user: UserRecord & { isApplicant?: boolean; hasTicket?: boolean }) => {
+    const openUserDetails = async (user: UserRow) => {
         setSelectedUser(user);
         setSpeakerProfile(null);
         if (user.isApplicant) {
@@ -319,193 +322,244 @@ export default function AdminUsersTable() {
 
             {/* User Details Modal */}
             <Show when={selectedUser()}>
-                <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedUser(null)}></div>
-                    <div class="bg-base-900 border border-white/10 p-0 rounded-2xl relative z-10 max-w-xl w-full max-h-[85vh] overflow-y-auto shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <div class="p-6 border-b border-white/10 bg-white/5 flex justify-between items-center">
-                            <h3 class="text-xl font-bold text-white">User Details</h3>
-                            <button onClick={() => setSelectedUser(null)} class="btn btn-circle btn-ghost btn-sm">
-                                <Icon icon="ph:x-bold" />
-                            </button>
-                        </div>
-                        <div class="p-6 space-y-6">
-                            <div class="flex items-center gap-4">
-                                <div class="avatar">
-                                    <div class="w-20 rounded-full ring-2 ring-white/10">
-                                        <img
-                                            src={getGravatarUrl(selectedUser()?.email || "")}
-                                            alt={selectedUser()?.name || "User"}
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <h4 class="text-lg font-bold text-white flex items-center gap-2">
-                                        {selectedUser()?.name || "Unknown"}
-                                        <Show when={selectedUser()?.isApplicant}>
-                                            <span class="badge badge-primary badge-sm gap-1">
-                                                <Icon icon="ph:microphone-stage-bold" />
-                                                APPLICANT
-                                            </span>
-                                        </Show>
-                                        <Show when={selectedUser()?.hasTicket}>
-                                            <span class="badge badge-warning badge-sm gap-1">
-                                                <Icon icon="ph:ticket-bold" />
-                                                TICKET
-                                            </span>
-                                        </Show>
-                                    </h4>
-                                    <p class="text-secondary-300 font-mono text-sm">{selectedUser()?.email}</p>
-                                    <p class="text-xs text-gray-500 font-mono mt-1">{selectedUser()?.id}</p>
-                                </div>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-4">
-                                <div class="bg-white/5 p-3 rounded-lg border border-white/5">
-                                    <div class="text-xs text-gray-400 uppercase font-bold mb-1">Role</div>
-                                    <div class="font-mono text-white">{(selectedUser()?.role || "user").toUpperCase()}</div>
-                                </div>
-                                <div class="bg-white/5 p-3 rounded-lg border border-white/5">
-                                    <div class="text-xs text-gray-400 uppercase font-bold mb-1">Status</div>
-                                    <div class={`font-mono font-bold ${selectedUser()?.verified ? 'text-success' : 'text-warning'}`}>
-                                        {selectedUser()?.verified ? "VERIFIED" : "UNVERIFIED"}
-                                    </div>
-                                </div>
-                                <div class="bg-white/5 p-3 rounded-lg border border-white/5">
-                                    <div class="text-xs text-gray-400 uppercase font-bold mb-1">Joined</div>
-                                    <div class="font-mono text-white">
-                                        {selectedUser()?.created ? new Date(selectedUser()!.created).toISOString().split('T')[0] : 'N/A'}
-                                    </div>
-                                </div>
-                                <div class="bg-white/5 p-3 rounded-lg border border-white/5">
-                                    <div class="text-xs text-gray-400 uppercase font-bold mb-1">Last Updated</div>
-                                    <div class="font-mono text-white">
-                                        {selectedUser()?.updated ? new Date(selectedUser()!.updated).toISOString().split('T')[0] : 'N/A'}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Speaker Profile Section */}
-                            <Show when={selectedUser()?.isApplicant}>
-                                <div class="border-t border-white/10 pt-6">
-                                    <h5 class="text-sm font-bold text-secondary-300 uppercase tracking-wider mb-4 flex items-center gap-2">
-                                        <Icon icon="ph:microphone-stage-bold" />
-                                        Speaker Profile
-                                    </h5>
-                                    <Show when={loadingProfile()}>
-                                        <div class="flex justify-center py-4">
-                                            <span class="loading loading-bars loading-sm text-primary-500"></span>
-                                        </div>
-                                    </Show>
-                                    <Show when={!loadingProfile() && speakerProfile()}>
-                                        <div class="space-y-4">
-                                            <div class="bg-white/5 p-3 rounded-lg border border-white/5">
-                                                <div class="text-xs text-gray-400 uppercase font-bold mb-1">Affiliation</div>
-                                                <div class="text-white text-sm">{speakerProfile()!.applicant.affiliation || "N/A"}</div>
-                                            </div>
-                                            <div class="bg-white/5 p-3 rounded-lg border border-white/5">
-                                                <div class="text-xs text-gray-400 uppercase font-bold mb-1">Bio</div>
-                                                <div class="text-white text-sm line-clamp-4">{speakerProfile()!.applicant.bio || "N/A"}</div>
-                                            </div>
-                                            <Show when={speakerProfile()!.applicant.social_handles}>
-                                                <div class="bg-white/5 p-3 rounded-lg border border-white/5">
-                                                    <div class="text-xs text-gray-400 uppercase font-bold mb-1">Social</div>
-                                                    <div class="flex flex-col gap-1">
-                                                        <For each={Array.isArray(speakerProfile()!.applicant.social_handles)
-                                                            ? speakerProfile()!.applicant.social_handles as string[]
-                                                            : [speakerProfile()!.applicant.social_handles as string]}>
-                                                            {(handle) => (
-                                                                <a href={handle} target="_blank" rel="noopener noreferrer"
-                                                                    class="text-yellow-400 hover:text-yellow-300 text-sm font-mono truncate">
-                                                                    {handle}
-                                                                </a>
-                                                            )}
-                                                        </For>
-                                                    </div>
-                                                </div>
-                                            </Show>
-
-                                            {/* Submissions */}
-                                            <Show when={speakerProfile()!.submissions.length > 0}>
-                                                <div class="pt-2">
-                                                    <div class="text-xs text-gray-400 uppercase font-bold mb-2">
-                                                        Submissions ({speakerProfile()!.submissions.length})
-                                                    </div>
-                                                    <div class="space-y-2">
-                                                        <For each={speakerProfile()!.submissions}>
-                                                            {(sub: any) => (
-                                                                <a
-                                                                    href={`/reviewer/${sub.id}`}
-                                                                    class="block bg-white/5 hover:bg-white/10 p-3 rounded-lg border border-white/5 hover:border-primary-500/30 transition-colors group"
-                                                                >
-                                                                    <div class="flex items-center justify-between gap-2">
-                                                                        <div class="flex-1 min-w-0">
-                                                                            <div class="text-sm font-bold text-white group-hover:text-primary-300 transition-colors truncate">
-                                                                                {sub.session_title}
-                                                                            </div>
-                                                                            <div class="text-xs text-gray-500 font-mono mt-1">
-                                                                                {new Date(sub.created).toISOString().split('T')[0]}
-                                                                            </div>
-                                                                        </div>
-                                                                        <Show when={sub.status}>
-                                                                            <span class={`badge badge-xs font-bold border-0 ${
-                                                                                sub.status === 'accepted' ? 'bg-success/20 text-success' :
-                                                                                sub.status === 'rejected' ? 'bg-error-500/20 text-error-400' :
-                                                                                'bg-white/10 text-gray-400'
-                                                                            }`}>
-                                                                                {sub.status.toUpperCase()}
-                                                                            </span>
-                                                                        </Show>
-                                                                        <Icon icon="ph:arrow-right-bold" class="text-gray-500 group-hover:text-primary-400 transition-colors flex-shrink-0" />
-                                                                    </div>
-                                                                </a>
-                                                            )}
-                                                        </For>
-                                                    </div>
-                                                </div>
-                                            </Show>
-                                        </div>
-                                    </Show>
-                                </div>
-                            </Show>
-                        </div>
-                        <div class="p-4 bg-black/20 border-t border-white/5 flex justify-end">
-                            <button class="btn btn-ghost" onClick={() => setSelectedUser(null)}>Close</button>
-                        </div>
-                    </div>
-                </div>
+                {(user) => (
+                    <UserDetailsModal
+                        user={user()}
+                        profile={speakerProfile()}
+                        loadingProfile={loadingProfile()}
+                        onClose={() => setSelectedUser(null)}
+                    />
+                )}
             </Show>
 
             {/* Delete Confirmation Modal */}
             <Show when={deleteId()}>
-                <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => !updating() && setDeleteId(null)}></div>
-                    <div class="relative bg-base-100 border border-white/10 rounded-2xl shadow-2xl p-6 max-w-sm w-full animate-scale-in">
-                        <div class="flex items-center gap-3 mb-2 text-error">
-                            <Icon icon="ph:warning-circle-bold" class="text-2xl" />
-                            <h3 class="text-xl font-bold text-white">Delete User?</h3>
-                        </div>
-                        <p class="text-gray-400 mb-6 leading-relaxed">
-                            Are you sure you want to PERMANENTLY delete <span class="text-white font-bold">{deleteId()?.name || "this user"}</span>? This action cannot be undone.
-                        </p>
-                        <div class="flex justify-end gap-3">
-                            <button
-                                class="btn btn-ghost hover:bg-white/5"
-                                onClick={() => setDeleteId(null)}
-                                disabled={!!updating()}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                class="btn btn-error shadow-lg shadow-error/20"
-                                onClick={handleConfirmDelete}
-                                disabled={!!updating()}
-                            >
-                                {updating() === deleteId()?.id ? <span class="loading loading-spinner"></span> : "Delete Forever"}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                {(target) => (
+                    <DeleteUserModal
+                        target={target()}
+                        updating={updating()}
+                        onCancel={() => setDeleteId(null)}
+                        onConfirm={handleConfirmDelete}
+                    />
+                )}
             </Show>
         </AdminPageShell>
+    );
+}
+
+interface UserDetailsModalProps {
+    user: UserRow;
+    profile: SpeakerProfile | null;
+    loadingProfile: boolean;
+    onClose: () => void;
+}
+
+function UserDetailsModal(props: UserDetailsModalProps) {
+    return (
+        <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => props.onClose()}></div>
+            <div class="bg-base-900 border border-white/10 p-0 rounded-2xl relative z-10 max-w-xl w-full max-h-[85vh] overflow-y-auto shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                <div class="p-6 border-b border-white/10 bg-white/5 flex justify-between items-center">
+                    <h3 class="text-xl font-bold text-white">User Details</h3>
+                    <button onClick={() => props.onClose()} class="btn btn-circle btn-ghost btn-sm">
+                        <Icon icon="ph:x-bold" />
+                    </button>
+                </div>
+                <div class="p-6 space-y-6">
+                    <div class="flex items-center gap-4">
+                        <div class="avatar">
+                            <div class="w-20 rounded-full ring-2 ring-white/10">
+                                <img
+                                    src={getGravatarUrl(props.user.email || "")}
+                                    alt={props.user.name || "User"}
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-bold text-white flex items-center gap-2">
+                                {props.user.name || "Unknown"}
+                                <Show when={props.user.isApplicant}>
+                                    <span class="badge badge-primary badge-sm gap-1">
+                                        <Icon icon="ph:microphone-stage-bold" />
+                                        APPLICANT
+                                    </span>
+                                </Show>
+                                <Show when={props.user.hasTicket}>
+                                    <span class="badge badge-warning badge-sm gap-1">
+                                        <Icon icon="ph:ticket-bold" />
+                                        TICKET
+                                    </span>
+                                </Show>
+                            </h4>
+                            <p class="text-secondary-300 font-mono text-sm">{props.user.email}</p>
+                            <p class="text-xs text-gray-500 font-mono mt-1">{props.user.id}</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                            <div class="text-xs text-gray-400 uppercase font-bold mb-1">Role</div>
+                            <div class="font-mono text-white">{(props.user.role || "user").toUpperCase()}</div>
+                        </div>
+                        <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                            <div class="text-xs text-gray-400 uppercase font-bold mb-1">Status</div>
+                            <div class={`font-mono font-bold ${props.user.verified ? 'text-success' : 'text-warning'}`}>
+                                {props.user.verified ? "VERIFIED" : "UNVERIFIED"}
+                            </div>
+                        </div>
+                        <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                            <div class="text-xs text-gray-400 uppercase font-bold mb-1">Joined</div>
+                            <div class="font-mono text-white">
+                                {props.user.created ? new Date(props.user.created).toISOString().split('T')[0] : 'N/A'}
+                            </div>
+                        </div>
+                        <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                            <div class="text-xs text-gray-400 uppercase font-bold mb-1">Last Updated</div>
+                            <div class="font-mono text-white">
+                                {props.user.updated ? new Date(props.user.updated).toISOString().split('T')[0] : 'N/A'}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Speaker Profile Section */}
+                    <Show when={props.user.isApplicant}>
+                        <SpeakerProfileSection profile={props.profile} loading={props.loadingProfile} />
+                    </Show>
+                </div>
+                <div class="p-4 bg-black/20 border-t border-white/5 flex justify-end">
+                    <button class="btn btn-ghost" onClick={() => props.onClose()}>Close</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+interface SpeakerProfileSectionProps {
+    profile: SpeakerProfile | null;
+    loading: boolean;
+}
+
+function SpeakerProfileSection(props: SpeakerProfileSectionProps) {
+    return (
+        <div class="border-t border-white/10 pt-6">
+            <h5 class="text-sm font-bold text-secondary-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Icon icon="ph:microphone-stage-bold" />
+                Speaker Profile
+            </h5>
+            <Show when={props.loading}>
+                <div class="flex justify-center py-4">
+                    <span class="loading loading-bars loading-sm text-primary-500"></span>
+                </div>
+            </Show>
+            <Show when={!props.loading && props.profile}>
+                <div class="space-y-4">
+                    <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                        <div class="text-xs text-gray-400 uppercase font-bold mb-1">Affiliation</div>
+                        <div class="text-white text-sm">{props.profile!.applicant.affiliation || "N/A"}</div>
+                    </div>
+                    <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                        <div class="text-xs text-gray-400 uppercase font-bold mb-1">Bio</div>
+                        <div class="text-white text-sm line-clamp-4">{props.profile!.applicant.bio || "N/A"}</div>
+                    </div>
+                    <Show when={props.profile!.applicant.social_handles}>
+                        <div class="bg-white/5 p-3 rounded-lg border border-white/5">
+                            <div class="text-xs text-gray-400 uppercase font-bold mb-1">Social</div>
+                            <div class="flex flex-col gap-1">
+                                <For each={Array.isArray(props.profile!.applicant.social_handles)
+                                    ? props.profile!.applicant.social_handles as string[]
+                                    : [props.profile!.applicant.social_handles as string]}>
+                                    {(handle) => (
+                                        <a href={handle} target="_blank" rel="noopener noreferrer"
+                                            class="text-yellow-400 hover:text-yellow-300 text-sm font-mono truncate">
+                                            {handle}
+                                        </a>
+                                    )}
+                                </For>
+                            </div>
+                        </div>
+                    </Show>
+
+                    {/* Submissions */}
+                    <Show when={props.profile!.submissions.length > 0}>
+                        <div class="pt-2">
+                            <div class="text-xs text-gray-400 uppercase font-bold mb-2">
+                                Submissions ({props.profile!.submissions.length})
+                            </div>
+                            <div class="space-y-2">
+                                <For each={props.profile!.submissions}>
+                                    {(sub: any) => (
+                                        <a
+                                            href={`/reviewer/${sub.id}`}
+                                            class="block bg-white/5 hover:bg-white/10 p-3 rounded-lg border border-white/5 hover:border-primary-500/30 transition-colors group"
+                                        >
+                                            <div class="flex items-center justify-between gap-2">
+                                                <div class="flex-1 min-w-0">
+                                                    <div class="text-sm font-bold text-white group-hover:text-primary-300 transition-colors truncate">
+                                                        {sub.session_title}
+                                                    </div>
+                                                    <div class="text-xs text-gray-500 font-mono mt-1">
+                                                        {new Date(sub.created).toISOString().split('T')[0]}
+                                                    </div>
+                                                </div>
+                                                <Show when={sub.status}>
+                                                    <span class={`badge badge-xs font-bold border-0 ${
+                                                        sub.status === 'accepted' ? 'bg-success/20 text-success' :
+                                                        sub.status === 'rejected' ? 'bg-error-500/20 text-error-400' :
+                                                        'bg-white/10 text-gray-400'
+                                                    }`}>
+                                                        {sub.status.toUpperCase()}
+                                                    </span>
+                                                </Show>
+                                                <Icon icon="ph:arrow-right-bold" class="text-gray-500 group-hover:text-primary-400 transition-colors flex-shrink-0" />
+                                            </div>
+                                        </a>
+                                    )}
+                                </For>
+                            </div>
+                        </div>
+                    </Show>
+                </div>
+            </Show>
+        </div>
+    );
+}
+
+interface DeleteUserModalProps {
+    target: { id: string; name: string };
+    updating: string | null;
+    onCancel: () => void;
+    onConfirm: () => void;
+}
+
+function DeleteUserModal(props: DeleteUserModalProps) {
+    return (
+        <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => !props.updating && props.onCancel()}></div>
+            <div class="relative bg-base-100 border border-white/10 rounded-2xl shadow-2xl p-6 max-w-sm w-full animate-scale-in">
+                <div class="flex items-center gap-3 mb-2 text-error">
+                    <Icon icon="ph:warning-circle-bold" class="text-2xl" />
+                    <h3 class="text-xl font-bold text-white">Delete User?</h3>
+                </div>
+                <p class="text-gray-400 mb-6 leading-relaxed">
+                    Are you sure you want to PERMANENTLY delete <span class="text-white font-bold">{props.target.name || "this user"}</span>? This action cannot be undone.
+                </p>
+                <div class="flex justify-end gap-3">
+                    <button
+                        class="btn btn-ghost hover:bg-white/5"
+                        onClick={() => props.onCancel()}
+                        disabled={!!props.updating}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        class="btn btn-error shadow-lg shadow-error/20"
+                        onClick={() => props.onConfirm()}
+                        disabled={!!props.updating}
+                    >
+                        {props.updating === props.target.id ? <span class="loading loading-spinner"></span> : "Delete Forever"}
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 }

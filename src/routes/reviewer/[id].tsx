@@ -19,6 +19,17 @@ const CRITERIA = [
     { id: "score_engagement", label: "Engagement" },
 ];
 
+const criterionScores = (score: (criterion: (typeof CRITERIA)[number]) => number) => {
+    const scores: any = {};
+    CRITERIA.forEach((criterion) => {
+        scores[criterion.id] = score(criterion);
+    });
+    return scores;
+};
+
+const applicantName = (applicant: any) => applicant?.expand?.user?.name || applicant?.name || "Unknown";
+const applicantEmail = (applicant: any) => applicant?.expand?.user?.email || applicant?.email;
+
 const ReviewPage = () => {
     const params = useParams();
     const auth = useAuth();
@@ -37,6 +48,8 @@ const ReviewPage = () => {
 
     const isAdmin = () => auth?.user?.role === "admin";
     const isReviewer = () => auth?.user?.role === "reviewer";
+    const meta = (): Record<string, any> => submission().meta ?? {};
+    const applicant = () => submission().expand?.applicant;
 
     const fetchSubmissionData = async (id: string) => {
         const { fetchReviewerSubmissionDetail } = await import("~/lib/reviewer-actions");
@@ -60,25 +73,7 @@ const ReviewPage = () => {
             if (cancelled || !res.success || !res.data) return;
             setSubmission(res.data.submission);
 
-            if (res.data.userRole === "admin") {
-              setAllReviews((res.data.reviews || []) as any[]);
-            } else if (res.data.reviews && res.data.reviews.length > 0) {
-              const review = res.data.reviews[0];
-              setMyReview(review as ReviewerReviewDto);
-              const newScores: any = {};
-              CRITERIA.forEach((criterion) => {
-                newScores[criterion.id] = (review as any)[criterion.id];
-              });
-              setScores(newScores);
-              setNotes(review.notes || "");
-              setIsLlm(review.is_llm_suspected);
-            } else {
-              const newScores: any = {};
-              CRITERIA.forEach((criterion) => {
-                newScores[criterion.id] = 1;
-              });
-              setScores(newScores);
-            }
+            loadReviews(res.data);
           } catch (error) {
             if (!cancelled) console.error(error);
           } finally {
@@ -90,6 +85,23 @@ const ReviewPage = () => {
         };
       },
     );
+
+    const restoreReview = (review: any) => {
+        setMyReview(review as ReviewerReviewDto);
+        setScores(criterionScores((criterion) => review[criterion.id]));
+        setNotes(review.notes || "");
+        setIsLlm(review.is_llm_suspected);
+    };
+
+    function loadReviews(data: { userRole: string; reviews?: any[] }) {
+        if (data.userRole === "admin") {
+            setAllReviews((data.reviews || []) as any[]);
+        } else if (data.reviews && data.reviews.length > 0) {
+            restoreReview(data.reviews[0]);
+        } else {
+            setScores(criterionScores(() => 1));
+        }
+    }
 
     const handleScoreChange = (key: string, val: string) => {
         setScores(p => ({ ...p, [key]: parseInt(val) }));
@@ -206,33 +218,33 @@ const ReviewPage = () => {
                                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
                                                     <div class="text-xs text-gray-500 uppercase font-bold mb-1">Covers Expenses?</div>
-                                                    <div class={`badge ${submission().meta?.company_cover_expenses === 'Yes' ? 'badge-success text-white' : 'badge-warning text-white'} font-mono`}>
-                                                        {submission().meta?.company_cover_expenses || "N/A"}
+                                                    <div class={`badge ${meta().company_cover_expenses === 'Yes' ? 'badge-success text-white' : 'badge-warning text-white'} font-mono`}>
+                                                        {meta().company_cover_expenses || "N/A"}
                                                     </div>
                                                 </div>
 
-                                                <Show when={submission().meta?.previous_presentation}>
+                                                <Show when={meta().previous_presentation}>
                                                     <div>
                                                         <div class="text-xs text-gray-500 uppercase font-bold mb-1">Previous Presentations</div>
                                                         <p class="text-sm text-gray-300 whitespace-pre-wrap break-words">
-                                                            {submission().meta?.previous_presentation}
+                                                            {meta().previous_presentation}
                                                         </p>
                                                     </div>
                                                 </Show>
                                             </div>
 
-                                            <Show when={submission().meta?.additional_info}>
+                                            <Show when={meta().additional_info}>
                                                 <div class="pt-2">
                                                     <div class="text-xs text-gray-500 uppercase font-bold mb-1">Additional Info</div>
-                                                    <p class="text-sm text-gray-300 italic">"{submission().meta?.additional_info}"</p>
+                                                    <p class="text-sm text-gray-300 italic">"{meta().additional_info}"</p>
                                                 </div>
                                             </Show>
 
-                                            <Show when={submission().meta?.organizer_notes}>
+                                            <Show when={meta().organizer_notes}>
                                                 <div class="pt-2 border-t border-white/10 mt-2">
                                                     <div class="text-xs text-secondary-400 uppercase font-bold mb-1">Notes to Organizer (Admin Only)</div>
                                                     <p class="text-sm text-secondary-200 font-mono bg-secondary-900/20 p-2 rounded border border-secondary-500/20">
-                                                        {submission().meta?.organizer_notes}
+                                                        {meta().organizer_notes}
                                                     </p>
                                                 </div>
                                             </Show>
@@ -252,7 +264,7 @@ const ReviewPage = () => {
                             {/* Sidebar Column */}
                             <div class="space-y-6">
                                 {/* Admin: Applicant Info Card */}
-                                <Show when={isAdmin() && submission().expand?.applicant}>
+                                <Show when={isAdmin() && applicant()}>
                                     <div class="glass-panel p-6 rounded-xl border border-primary-500/30 bg-primary-900/10 shadow-lg">
                                         <div class="flex items-center gap-3 mb-4">
                                             <div class="p-2 bg-primary-500/20 rounded-lg text-primary-400">
@@ -260,9 +272,9 @@ const ReviewPage = () => {
                                             </div>
                                             <h3 class="font-bold text-white uppercase tracking-wider text-sm">Applicant</h3>
                                         </div>
-                                        <h4 class="text-xl font-bold text-white mb-1">{submission().expand?.applicant?.expand?.user?.name || submission().expand?.applicant?.name || "Unknown"}</h4>
-                                        <a href={`mailto:${submission().expand?.applicant?.expand?.user?.email || submission().expand?.applicant?.email}`} class="text-sm text-primary-400 hover:text-primary-300 transition-colors mb-4 block">
-                                            {submission().expand?.applicant?.expand?.user?.email || submission().expand?.applicant?.email}
+                                        <h4 class="text-xl font-bold text-white mb-1">{applicantName(applicant())}</h4>
+                                        <a href={`mailto:${applicantEmail(applicant())}`} class="text-sm text-primary-400 hover:text-primary-300 transition-colors mb-4 block">
+                                            {applicantEmail(applicant())}
                                         </a>
                                         <div class="text-sm text-gray-400 leading-relaxed border-t border-white/10 pt-4 mt-4">
                                             {submission().expand.applicant.bio || "No bio provided."}

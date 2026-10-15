@@ -1,4 +1,12 @@
 // src/routes/api/nr-metadata.ts
+function nowPlaying(source: any) {
+  return {
+    artist: source?.artist || "NIGHTRIDE",
+    title: source?.title || "RADIO",
+    listeners: source?.listeners || 0,
+  };
+}
+
 export async function GET({ request }: { request: Request }) {
   try {
     const url = new URL(request.url);
@@ -22,11 +30,7 @@ export async function GET({ request }: { request: Request }) {
     const source = sourceList.find((s: any) => s.listenurl.includes(stationId));
 
     return new Response(
-      JSON.stringify({
-        artist: source?.artist || "NIGHTRIDE",
-        title: source?.title || "RADIO",
-        listeners: source?.listeners || 0,
-      }),
+      JSON.stringify(nowPlaying(source)),
       {
         headers: {
           "Content-Type": "application/json",

@@ -9,7 +9,7 @@ import {
   adminTextareaClass,
 } from "~/components/admin/AdminPageShell";
 import { adminSaveCommunityPartnerMissionDraft } from "~/lib/gamification-operations-actions";
-import type { AdminGamificationOperationsDto } from "~/lib/gamification-operations";
+import type { AdminGamificationOperationsDto, AdminCommunityPartnerMissionDraftInput } from "~/lib/gamification-operations";
 import type { CommunityPartnerOutcome } from "~/lib/gamification-community-partners";
 import type { GamificationEvidenceChannel } from "~/lib/pocketbase-types";
 import { scheduleLocalDateTimeToInstant } from "~/lib/programme";
@@ -72,6 +72,26 @@ export default function AdminCommunityPartnerMissions(props: AdminCommunityPartn
     setFollowUpOutcome("attendance"); setNoticeVersion(""); setScoreScheduleId(""); setScoreDay(""); setSortOrder("0"); setReason(""); setConfigurationOperationId("");
   };
 
+  const draftInput = (stableOperationId: string): AdminCommunityPartnerMissionDraftInput => ({
+    partnerId: partnerId(), partnerKey: partnerKey(), activityKey: programmeKey(), missionTitle: missionTitle(), summary: summary(),
+    visibility: visibility(), suggested: suggested(), flow: flow(),
+    outcomes: flow() === "one_code" ? selectedOutcomes().map((selectedOutcome) => ({
+      outcome: selectedOutcome,
+      deploymentLabel: outcomeDeployments()[selectedOutcome],
+      achievementId: outcomeAchievements()[selectedOutcome],
+      metaEligible: metaOutcome() === selectedOutcome,
+      partnerFollowUp: { enabled: followUpEnabled() && followUpOutcome() === selectedOutcome, noticeVersion: followUpEnabled() && followUpOutcome() === selectedOutcome ? noticeVersion() : undefined },
+    })) : [],
+    communityTwoCodeApproved: twoCodeApproved(),
+    evidenceChannel: evidenceChannel(), primaryDeploymentLabel: flow() === "two_code" ? primaryDeployment() : undefined, finishDeploymentLabel: flow() === "two_code" ? finishDeployment() : undefined,
+    activeFrom: scheduleLocalDateTimeToInstant(activeFrom()), activeUntil: scheduleLocalDateTimeToInstant(activeUntil()), perUserClaimLimit: 1,
+    maxClaims: Number(maxClaims()), directAchievementId: directAchievementId() || undefined,
+    completionAchievementId: flow() === "two_code" ? completionAchievementId() || undefined : undefined,
+    metaEligible: metaEligible(), partnerFollowUp: { enabled: followUpEnabled(), noticeVersion: followUpEnabled() ? noticeVersion() : undefined },
+    scoreScheduleId: scoreScheduleId(), scoreDay: scoreDay(), sortOrder: Number(sortOrder()), reason: reason() || undefined,
+    operationId: stableOperationId,
+  });
+
   const save = async (event: Event) => {
     event.preventDefault();
     if (busy()) return;
@@ -80,25 +100,7 @@ export default function AdminCommunityPartnerMissions(props: AdminCommunityPartn
     const stableOperationId = configurationOperationId() || operationId();
     setConfigurationOperationId(stableOperationId);
     try {
-      const result = await adminSaveCommunityPartnerMissionDraft({
-        partnerId: partnerId(), partnerKey: partnerKey(), activityKey: programmeKey(), missionTitle: missionTitle(), summary: summary(),
-        visibility: visibility(), suggested: suggested(), flow: flow(),
-        outcomes: flow() === "one_code" ? selectedOutcomes().map((selectedOutcome) => ({
-          outcome: selectedOutcome,
-          deploymentLabel: outcomeDeployments()[selectedOutcome],
-          achievementId: outcomeAchievements()[selectedOutcome],
-          metaEligible: metaOutcome() === selectedOutcome,
-          partnerFollowUp: { enabled: followUpEnabled() && followUpOutcome() === selectedOutcome, noticeVersion: followUpEnabled() && followUpOutcome() === selectedOutcome ? noticeVersion() : undefined },
-        })) : [],
-        communityTwoCodeApproved: twoCodeApproved(),
-        evidenceChannel: evidenceChannel(), primaryDeploymentLabel: flow() === "two_code" ? primaryDeployment() : undefined, finishDeploymentLabel: flow() === "two_code" ? finishDeployment() : undefined,
-        activeFrom: scheduleLocalDateTimeToInstant(activeFrom()), activeUntil: scheduleLocalDateTimeToInstant(activeUntil()), perUserClaimLimit: 1,
-        maxClaims: Number(maxClaims()), directAchievementId: directAchievementId() || undefined,
-        completionAchievementId: flow() === "two_code" ? completionAchievementId() || undefined : undefined,
-        metaEligible: metaEligible(), partnerFollowUp: { enabled: followUpEnabled(), noticeVersion: followUpEnabled() ? noticeVersion() : undefined },
-        scoreScheduleId: scoreScheduleId(), scoreDay: scoreDay(), sortOrder: Number(sortOrder()), reason: reason() || undefined,
-        operationId: stableOperationId,
-      });
+      const result = await adminSaveCommunityPartnerMissionDraft(draftInput(stableOperationId));
       if (!result.success) throw new Error(result.error || "Could not save the Community Partner programme.");
       await props.onChanged();
       reset();

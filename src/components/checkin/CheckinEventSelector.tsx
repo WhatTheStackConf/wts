@@ -1,10 +1,11 @@
 import { For, Show, createEffect, createSignal, onCleanup, onSettled } from "solid-js";
-import { createAsyncResource } from "~/lib/async-resource";
+import { createCheckinPollingResource } from "./checkin-polling-resource";
 import type { CheckinStatusDTO } from "~/lib/checkin-contract";
 import { checkinEventCatalogue, selectCheckinEvent } from "~/lib/checkin-event-client";
 import { CheckinArrivalPreflight } from "~/components/checkin/CheckinArrivalPreflight";
 import { CheckinArrivalWork } from "~/components/checkin/CheckinArrivalWork";
 import type { CheckinEventAvailability } from "~/lib/checkin-event-contract";
+import { activeBinding, contextMatches, fenceMatches, stationActive } from "./checkin-binding-fence";
 
 const availabilityMessages: Record<CheckinEventAvailability, string> = {
   available: "Available for selection",
@@ -24,15 +25,26 @@ interface CheckinEventSelectorProps {
   onEventLabelChange?: (label: string) => void;
   onBusyChange?: (busy: boolean) => void;
 }
+const selectionFailure = (failure: unknown) => failure instanceof Error ? failure.message : "Event selection could not be confirmed.";
 
 export function CheckinEventSelector(props: CheckinEventSelectorProps) {
   // Do not fan out full upstream discovery on every 5-second station heartbeat.
   // Refresh on binding/station fences, focus, explicit refresh and each selection.
   // The server always revalidates mappings and generations for new requests.
-  const source = () => props.status?.bindingState === "bound" ? `${props.authorityKey ?? "legacy"}:${props.status?.binding?.id}:${props.status?.binding?.version}:${props.status?.station?.generation}:${props.status?.system.generation}` : undefined;
-  const [catalogue, actions] = createAsyncResource(source, async fence => ({ ...(await checkinEventCatalogue()), verifiedFor: fence }));
+  const source = () => {
+    const status = props.status;
+    return status?.bindingState === "bound" ? `${props.authorityKey ?? "legacy"}:${status.binding?.id}:${status.binding?.version}:${status.station?.generation}:${status.system.generation}` : undefined;
+  };
+  const [catalogue, actions] = createCheckinPollingResource(source, async fence => ({ ...(await checkinEventCatalogue()), verifiedFor: fence }));
   const [resumeRequest, setResumeRequest] = createSignal<{ operationId: string; scope: string }>();
-  const bindingScope = () => props.status?.bindingState === "bound" && props.status.binding && !props.status.binding.revoked ? `${props.status.binding.id}:${props.status.binding.version}:${props.status.station?.id}` : undefined;
+  const bindingScope = () => {
+    const binding = activeBinding(props.status);
+    return binding ? `${binding.id}:${binding.version}:${props.status?.station?.id}` : undefined;
+  };
+  const stationKey = () => {
+    const binding = activeBinding(props.status);
+    return binding ? `${props.authorityKey ?? "legacy"}:${binding.id}:${binding.version}` : undefined;
+  };
   const [choice, setChoice] = createSignal("");
   const [pending, setPending] = createSignal(false);
   const [arrivalBusy, setArrivalBusy] = createSignal(false);
@@ -44,29 +56,31 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
   onCleanup(() => { disposed = true; epoch++; const notify = props.onBusyChange; queueMicrotask(() => notify?.(false)); });
   createEffect(source, () => { epoch++; setChoice(""); setError(""); setMessage(""); });
   createEffect(() => pending() || arrivalBusy(), value => { props.onBusyChange?.(value); });
-  createEffect(() => props.verifying || catalogue.error || catalogue()?.verifiedFor !== source() ? "Event unverified" : catalogue()?.selected?.title || "Choose an event", label => { props.onEventLabelChange?.(label); });
+  const fenceVerified = () => !props.verifying && !catalogue.error && catalogue()?.verifiedFor === source();
+  const verifiedCatalogue = () => fenceVerified() ? catalogue() : undefined;
+  createEffect(() => fenceVerified() ? catalogue()?.selected?.title || "Choose an event" : "Event unverified", label => { props.onEventLabelChange?.(label); });
   const verified = () => {
     const data = catalogue();
     return !!data && data.verifiedFor === source() && !catalogue.error && !catalogue.loading && !props.verifying && !pending()
-      && props.status?.bindingState === "bound" && !!props.status?.binding && !props.status?.binding.revoked
-      && props.status?.system.enabled && !!props.status?.station?.enabled
-      && data.fence.bindingVersion === props.status?.binding.version
-      && data.fence.stationGeneration === props.status?.station.generation
-      && data.fence.systemGeneration === props.status?.system.generation;
+      && stationActive(props.status) && fenceMatches(data.fence, props.status);
   };
   const contextAvailable = () => {
     const data = catalogue();
-    const context = data?.context;
-    return verified() && data?.selected?.availability === "available" && !!context
-      && context.eventId === data.selected.id && context.eventGeneration === data.selected.generation
-      && context.bindingId === props.status?.binding?.id && context.stationId === props.status?.station?.id
-      && context.bindingVersion === data.fence.bindingVersion && context.selectionVersion === data.fence.selectionVersion
-      && context.stationGeneration === data.fence.stationGeneration && context.systemGeneration === data.fence.systemGeneration;
+    return verified() && !!data && contextMatches(data, props.status);
   };
   const chosen = () => catalogue()?.events.find((event) => event.id === choice());
+  const selectionBlocked = () => !verified() || props.disabled || chosen()?.availability !== "available";
+  const station = () => props.status?.station;
+  const refreshing = () => catalogue.loading || props.verifying;
+  const noEventLabel = () => props.verifying || !catalogue() || catalogue.error || catalogue.loading ? "Current event not yet verified" : "No event selected";
+  const hiddenInCompact = (view: "phone" | "arrivals") => props.compact && props.view !== view;
+  const preflightContext = () => contextAvailable() && !props.disabled && (!props.compact || props.arrivalsActive) ? catalogue()?.context ?? null : null;
+  const eventTitle = () => verifiedCatalogue()?.selected?.title ?? "";
+  const stationLabel = () => !props.verifying ? station()?.label ?? "" : "";
+  const arrivalsVerifying = () => props.verifying || !!props.disabled || (!!props.compact && !props.arrivalsActive);
   async function refresh() { await actions.refetch().catch(() => undefined); }
   onSettled(() => {
-    const focus = () => { if (!pending()) void refresh(); };
+    const focus = () => { if (!document.hidden && !pending() && !arrivalBusy()) void actions.poll().catch(() => undefined); };
     window.addEventListener("focus", focus);
     return () => window.removeEventListener("focus", focus);
   });
@@ -74,7 +88,7 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
     event.preventDefault();
     const current = catalogue();
     const target = chosen();
-    if (!verified() || props.disabled || selecting || !current || !target || target.availability !== "available") return;
+    if (selectionBlocked() || selecting || !current || !target) return;
     const generation = epoch, fence = source();
     const live = () => !disposed && generation === epoch && fence === source();
     selecting = true;
@@ -87,7 +101,7 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
       setMessage("Event selection saved for this phone only. Other phones and existing work are unchanged.");
     } catch (failure) {
       if (!live()) return;
-      setError(failure instanceof Error ? failure.message : "Event selection could not be confirmed.");
+      setError(selectionFailure(failure));
       // Selection has no operation UUID: reconcile by reading, never replay
       // a stale selection fence automatically or optimistically show success.
       setChoice("");
@@ -100,15 +114,15 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
 
   return (
     <>
-    <section hidden={props.compact && props.view !== "phone"} aria-label="This phone's event" class={props.compact ? "wts-tools-event" : "min-w-0 border-t border-base-content/20 pt-4 space-y-4 break-words"}>
+    <section hidden={hiddenInCompact("phone")} aria-label="This phone's event" class={props.compact ? "wts-tools-event" : "min-w-0 border-t border-base-content/20 pt-4 space-y-4 break-words"}>
       <h2 class="text-xl font-bold">This phone's event</h2>
-      <Show when={!props.compact}><p class="font-bold">Station: {props.status?.station?.label || "Unavailable"}</p></Show>
+      <Show when={!props.compact}><p class="font-bold">Station: {station()?.label || "Unavailable"}</p></Show>
       <div aria-live="polite" class="space-y-2">
-        <Show when={catalogue.loading || props.verifying}><p role="status">Refreshing this phone's event context…</p></Show>
+        <Show when={refreshing()}><p role="status">Refreshing this phone's event context…</p></Show>
         <Show when={catalogue.error}><p role="alert" class="alert alert-error">Event catalogue unavailable. Any previously selected event below is unverified, not ready for new work.</p></Show>
         <Show when={error()}><p role="alert" class="alert alert-error">{error()} Refresh the catalogue and review the current event before choosing again.</p></Show>
         <Show when={message()}><p role="status">{message()}</p></Show>
-        <Show when={!props.verifying && !catalogue.error && catalogue()?.verifiedFor === source() && catalogue()?.selected} fallback={<p class="text-lg font-bold">{props.verifying || !catalogue() || catalogue.error || catalogue.loading ? "Current event not yet verified" : "No event selected"}</p>}>{(selected) => (
+        <Show when={verifiedCatalogue()?.selected} fallback={<p class="text-lg font-bold">{noEventLabel()}</p>}>{(selected) => (
           <div class="space-y-1">
             <p class="text-lg font-bold">Current event: {selected().title}</p>
             <Show when={!props.compact}><p>Event ID {selected().id} · Configuration generation {selected().generation}</p></Show>
@@ -120,7 +134,7 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
         </Show>
       </div>
       <button type="button" class="btn btn-outline min-h-12" disabled={pending() || catalogue.loading} onClick={() => void refresh()}>Refresh event catalogue</button>
-      <Show when={!props.verifying && !catalogue.error && catalogue()?.verifiedFor === source() && catalogue()}>{(data) => (
+      <Show when={verifiedCatalogue()}>{(data) => (
         <>
           <Show when={data().state !== "complete"}><p role="status" class="alert alert-warning">Event catalogue is {data().state}. Missing events are not an empty catalogue. Unverified entries cannot be selected.</p></Show>
           <Show when={data().state === "complete" && data().events.length === 0}><p>No WTS 2026 events are configured for this account. Ask an admin to confirm edition membership.</p></Show>
@@ -132,15 +146,15 @@ export function CheckinEventSelector(props: CheckinEventSelectorProps) {
             </select>
             <p id="phone-event-help" class="text-sm">Only this phone changes. Existing work keeps its original event.</p>
             <Show when={!props.compact && chosen()}>{(event) => <p>Proposed event: {event().title} · ID {event().id} · {availabilityMessages[event().availability]}</p>}</Show>
-            <button type="submit" class="btn btn-primary min-h-12" disabled={!verified() || props.disabled || chosen()?.availability !== "available"}>{pending() ? "Saving this phone's event…" : "Select event for this phone"}</button>
+            <button type="submit" class="btn btn-primary min-h-12" disabled={selectionBlocked()}>{pending() ? "Saving this phone's event…" : "Select event for this phone"}</button>
           </form>
         </>
       )}</Show>
     </section>
-    <div id={props.compact ? "tools-arrivals" : undefined} hidden={props.compact && props.view !== "arrivals"} class={props.compact ? "wts-tools-arrivals" : undefined}>
+    <div id={props.compact ? "tools-arrivals" : undefined} hidden={hiddenInCompact("arrivals")} class={props.compact ? "wts-tools-arrivals" : undefined}>
     <Show when={arrivalsMounted()}>
-    <CheckinArrivalPreflight onBusyChange={value => { setArrivalBusy(value); }} resumeRequest={resumeRequest()} context={contextAvailable() && !props.disabled && (!props.compact || props.arrivalsActive) ? catalogue()?.context ?? null : null} eventTitle={!props.verifying && !catalogue.error && catalogue()?.verifiedFor === source() ? catalogue()?.selected?.title ?? "" : ""} stationLabel={!props.verifying ? props.status?.station?.label ?? "" : ""} verifying={props.verifying || !!props.disabled || (!!props.compact && !props.arrivalsActive)} bindingScope={bindingScope()} />
-    <CheckinArrivalWork compact={props.compact} onResume={(operationId) => { const scope = bindingScope(); if (scope && !props.verifying && !props.disabled) setResumeRequest({ operationId, scope }); }} unavailable={props.verifying || props.disabled} stationKey={props.status?.bindingState === "bound" && props.status.binding && !props.status.binding.revoked ? `${props.authorityKey ?? "legacy"}:${props.status.binding.id}:${props.status.binding.version}` : undefined} />
+    <CheckinArrivalPreflight onBusyChange={value => { setArrivalBusy(value); }} resumeRequest={resumeRequest()} context={preflightContext()} eventTitle={eventTitle()} stationLabel={stationLabel()} verifying={arrivalsVerifying()} bindingScope={bindingScope()} />
+    <CheckinArrivalWork compact={props.compact} onResume={(operationId) => { const scope = bindingScope(); if (scope && !props.verifying && !props.disabled) setResumeRequest({ operationId, scope }); }} unavailable={props.verifying || props.disabled} stationKey={stationKey()} />
     </Show>
     </div>
     </>

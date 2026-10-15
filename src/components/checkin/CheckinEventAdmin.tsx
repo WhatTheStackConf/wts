@@ -1,15 +1,37 @@
 import { For, Show, createSignal, onSettled } from "solid-js";
-import { createAsyncResource } from "~/lib/async-resource";
+import { createCheckinPollingResource } from "./checkin-polling-resource";
 import { CHECKIN_NOTE_MAX_LENGTH, CHECKIN_REASON_CODES, type CheckinReasonCode } from "~/lib/checkin-contract";
 import { CheckinEventRequestError, checkinAdminEventCatalogue, checkinAdminEventOptions, configureCheckinEvent } from "~/lib/checkin-event-client";
-import type { CheckinConfigureEvent } from "~/lib/checkin-event-contract";
+import type { CheckinAdminEventEntry, CheckinAffiliationMapping, CheckinConfigureEvent, CheckinEventConfiguration, CheckinEventOptions } from "~/lib/checkin-event-contract";
 
 type EventDraft = Omit<CheckinConfigureEvent, "operationId" | "reason" | "note">;
+type EventQuestion = CheckinEventOptions["questions"][number];
+
+function draftFor(entry: CheckinAdminEventEntry): EventDraft {
+  const config: Partial<CheckinEventConfiguration> = entry.configuration ?? {};
+  return {
+    upstreamEventId: entry.upstreamEventId,
+    expectedGeneration: config.generation ?? 0,
+    member: config.member ?? false,
+    enabled: config.enabled ?? false,
+    listId: config.listId ?? "",
+    affiliation: config.affiliation ? { questionId: config.affiliation.questionId, productIds: [...config.affiliation.productIds] } : null,
+  };
+}
+const questionCovers = (question: EventQuestion | undefined, id: string) => !!question && (question.productIds.length === 0 || question.productIds.includes(id));
+function draftFits(current: EventDraft, loaded: CheckinEventOptions, question: EventQuestion | undefined) {
+  if (current.enabled && (!current.member || !current.listId)) return false;
+  if (current.listId && !loaded.lists.some((list) => list.id === current.listId)) return false;
+  return !current.affiliation || (!!question && current.affiliation.productIds.every((id) => questionCovers(question, id) && loaded.products.some((product) => product.id === id)));
+}
+const rejected = (failure: unknown) => failure instanceof CheckinEventRequestError && !failure.ambiguous;
+const affiliationQuestion = (affiliation: CheckinAffiliationMapping | null) => affiliation?.questionId || "None";
+const productScope = (affiliation: CheckinAffiliationMapping | null) => affiliation?.productIds.join(", ") || "No additional restriction";
 
 export function CheckinEventAdmin() {
-  const [catalogue, catalogueActions] = createAsyncResource(checkinAdminEventCatalogue);
+  const [catalogue, catalogueActions] = createCheckinPollingResource(checkinAdminEventCatalogue);
   const [draft, setDraft] = createSignal<EventDraft>();
-  const [options, optionActions] = createAsyncResource(() => draft()?.upstreamEventId || undefined, async (id) => ({ id, data: await checkinAdminEventOptions(id) }));
+  const [options, optionActions] = createCheckinPollingResource(() => draft()?.upstreamEventId || undefined, async (id) => ({ id, data: await checkinAdminEventOptions(id) }));
   const [reviewing, setReviewing] = createSignal(false);
   const [reason, setReason] = createSignal<CheckinReasonCode | "">("");
   const [note, setNote] = createSignal("");
@@ -21,31 +43,21 @@ export function CheckinEventAdmin() {
   const availableOptions = () => !options.error && !options.loading && options()?.id === draft()?.upstreamEventId ? options()?.data : undefined;
   const sourceAvailable = () => !catalogue.error && !catalogue.loading && !catalogue()?.sourceMismatch && catalogue()?.events.some((entry) => entry.upstreamEventId === draft()?.upstreamEventId && entry.upstreamAvailable);
   const selectedQuestion = () => availableOptions()?.questions.find((question) => question.id === draft()?.affiliation?.questionId);
-  const productApplies = (id: string) => {
-    const question = selectedQuestion();
-    return !!question && (question.productIds.length === 0 || question.productIds.includes(id));
-  };
+  const productApplies = (id: string) => questionCovers(selectedQuestion(), id);
   const canReview = () => {
     const current = draft();
     const loaded = availableOptions();
-    if (!sourceAvailable() || !current || loaded?.state !== "complete") return false;
-    if (current.enabled && (!current.member || !current.listId)) return false;
-    if (current.listId && !loaded.lists.some((list) => list.id === current.listId)) return false;
-    return !current.affiliation || (!!selectedQuestion() && current.affiliation.productIds.every((id) => productApplies(id) && loaded.products.some((product) => product.id === id)));
+    return !!sourceAvailable() && !!current && loaded?.state === "complete" && draftFits(current, loaded, selectedQuestion());
   };
+  const confirmable = () => !!frozen() || (!!draft() && !!reason() && canReview());
+  const submitted = () => pending() || !!frozen();
+  const editLocked = () => pending() || reviewing() || !!frozen() || !sourceAvailable();
+  const submitLabel = () => pending() ? "Saving event configuration…" : frozen() ? "Retry same event configuration" : "Confirm event configuration";
 
   function choose(id: string) {
     if (frozen() || pending()) return;
     const entry = catalogue()?.events.find((event) => event.upstreamEventId === id);
-    const config = entry?.configuration;
-    setDraft(entry ? {
-      upstreamEventId: entry.upstreamEventId,
-      expectedGeneration: config?.generation ?? 0,
-      member: config?.member ?? false,
-      enabled: config?.enabled ?? false,
-      listId: config?.listId ?? "",
-      affiliation: config?.affiliation ? { questionId: config.affiliation.questionId, productIds: [...config.affiliation.productIds] } : null,
-    } : undefined);
+    setDraft(entry ? draftFor(entry) : undefined);
     setReviewing(false); setReason(""); setNote(""); setError(""); setMessage("");
   }
   function update(change: Partial<EventDraft>) {
@@ -56,7 +68,11 @@ export function CheckinEventAdmin() {
     if (draft()) await optionActions.refetch().catch(() => undefined);
   }
   onSettled(() => {
-    const focus = () => { if (!pending()) void refresh(); };
+    const focus = () => {
+      if (document.hidden || pending()) return;
+      void catalogueActions.poll().catch(() => undefined);
+      if (draft()) void optionActions.poll().catch(() => undefined);
+    };
     window.addEventListener("focus", focus);
     return () => window.removeEventListener("focus", focus);
   });
@@ -64,9 +80,8 @@ export function CheckinEventAdmin() {
     event.preventDefault();
     if (pending()) return;
     const current = draft();
-    const selectedReason = reason();
-    if (!frozen() && (!current || !selectedReason || !canReview())) return;
-    const command = frozen() ?? { ...current!, operationId: crypto.randomUUID(), reason: selectedReason as CheckinReasonCode, note: note() };
+    if (!confirmable()) return;
+    const command = frozen() ?? { ...current!, operationId: crypto.randomUUID(), reason: reason() as CheckinReasonCode, note: note() };
     // Retain the exact payload, including the reason/note and UUID, until an
     // authoritative response resolves it. A retry is never a new intention.
     setFrozen(command); setPending(true); setError(""); setMessage("");
@@ -77,7 +92,7 @@ export function CheckinEventAdmin() {
       await catalogueActions.refetch().catch(() => undefined);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Unable to confirm event configuration.");
-      if (failure instanceof CheckinEventRequestError && !failure.ambiguous) {
+      if (rejected(failure)) {
         setFrozen(undefined); setReviewing(false);
         // Do not silently adopt a newer generation into the rejected draft.
         // Reloading the event explicitly is required before a new intention.
@@ -123,7 +138,7 @@ export function CheckinEventAdmin() {
             <>
               <Show when={loaded().state !== "complete"}><p class="alert alert-warning" role="status">Event options are {loaded().state}. Saving is unavailable until the full list, question and product catalogue is verified.</p></Show>
               <form method="post" action="/api/checkin-events" class="space-y-4" onSubmit={(event) => { event.preventDefault(); if (!canReview()) return; setReviewing(true); setError(""); requestAnimationFrame(() => { reasonInput?.focus(); reasonInput?.scrollIntoView({ block: "center" }); }); }}>
-                <fieldset class="min-w-0 space-y-4" disabled={pending() || reviewing() || !!frozen() || !sourceAvailable() || loaded().state !== "complete"}>
+                <fieldset class="min-w-0 space-y-4" disabled={editLocked() || loaded().state !== "complete"}>
                   <legend class="font-bold">Membership and admission list</legend>
                   <label class="flex items-start gap-3"><input type="checkbox" class="checkbox" checked={current().member} onChange={(event) => update({ member: event.currentTarget.checked })} /><span>This event belongs to WTS 2026</span></label>
                   <label for="checkin-event-list" class="block font-medium">Admission list (required when enabled)</label>
@@ -164,19 +179,19 @@ export function CheckinEventAdmin() {
             <form method="post" action="/api/checkin-events" aria-label="Confirm event configuration" class="min-w-0 rounded-lg border-2 border-warning p-4 space-y-4" onSubmit={(event) => void confirm(event)}>
               <h3 class="text-xl font-bold">Confirm event configuration</h3>
               <p>Event ID {current().upstreamEventId} · List ID {current().listId || "None (unconfigured)"} · WTS 2026 member: {current().member ? "yes" : "no"} · Enabled: {current().enabled ? "yes" : "no"} · Expected generation {current().expectedGeneration}</p>
-              <p>Affiliation question: {current().affiliation?.questionId || "None"} · Product scope: {current().affiliation?.productIds.join(", ") || "No additional restriction"}</p>
+              <p>Affiliation question: {affiliationQuestion(current().affiliation)} · Product scope: {productScope(current().affiliation)}</p>
               <label for="event-control-reason" class="block font-medium">Reason (required)</label>
-              <select ref={(element) => { reasonInput = element; }} id="event-control-reason" class="select select-bordered min-h-12 w-full min-w-0 text-base" required disabled={pending() || !!frozen()} value={reason()} onChange={(event) => setReason(event.currentTarget.value as CheckinReasonCode | "")}>
+              <select ref={(element) => { reasonInput = element; }} id="event-control-reason" class="select select-bordered min-h-12 w-full min-w-0 text-base" required disabled={submitted()} value={reason()} onChange={(event) => setReason(event.currentTarget.value as CheckinReasonCode | "")}>
                 <option value="">Choose a reason</option>
                 <For each={CHECKIN_REASON_CODES}>{(value) => <option value={value}>{value.replaceAll("_", " ")}</option>}</For>
               </select>
               <label for="event-control-note" class="block font-medium">Note (optional)</label>
-              <textarea id="event-control-note" class="textarea textarea-bordered w-full text-base" maxlength={CHECKIN_NOTE_MAX_LENGTH} disabled={pending() || !!frozen()} value={note()} onInput={(event) => setNote(event.currentTarget.value)} aria-describedby="event-note-help" />
+              <textarea id="event-control-note" class="textarea textarea-bordered w-full text-base" maxlength={CHECKIN_NOTE_MAX_LENGTH} disabled={submitted()} value={note()} onInput={(event) => setNote(event.currentTarget.value)} aria-describedby="event-note-help" />
               <p id="event-note-help" class="text-sm">Up to 240 characters. No personal data, email, QR codes, credentials, URLs or raw diagnostics.</p>
               <Show when={frozen()}><p class="alert alert-warning" role="status">This submitted command is frozen. If the response was lost, retry the same action to resolve its outcome; do not submit a replacement.</p></Show>
               <div class="flex flex-wrap gap-3">
-                <button type="submit" class="btn btn-warning min-h-12" disabled={pending() || (!frozen() && !canReview())}>{pending() ? "Saving event configuration…" : frozen() ? "Retry same event configuration" : "Confirm event configuration"}</button>
-                <button type="button" class="btn btn-ghost min-h-12" disabled={pending() || !!frozen()} onClick={() => setReviewing(false)}>Cancel event change</button>
+                <button type="submit" class="btn btn-warning min-h-12" disabled={pending() || (!frozen() && !canReview())}>{submitLabel()}</button>
+                <button type="button" class="btn btn-ghost min-h-12" disabled={submitted()} onClick={() => setReviewing(false)}>Cancel event change</button>
               </div>
             </form>
           </Show>

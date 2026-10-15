@@ -116,40 +116,10 @@ export const Footer = () => {
             Info
           </header>
           <a
-            href="/about"
+            href="/#about"
             class="link link-hover hover:text-primary-400 transition-colors"
           >
             About
-          </a>
-          <a
-            href="/press-kit"
-            class="link link-hover hover:text-primary-400 transition-colors"
-          >
-            Press Kit
-          </a>
-          <a
-            href="/convince-your-boss"
-            class="link link-hover hover:text-primary-400 transition-colors"
-          >
-            Convince Your Boss
-          </a>
-          <a
-            href="/partnerships"
-            class="link link-hover hover:text-primary-400 transition-colors"
-          >
-            Partner With Us
-          </a>
-          <a
-            href="/sponsors"
-            class="link link-hover hover:text-primary-400 transition-colors"
-          >
-            Sponsors & Partners
-          </a>
-          <a
-            href="/mcp"
-            class="link link-hover hover:text-primary-400 transition-colors"
-          >
-            MCP Conference Guide
           </a>
           <a
             href="/terms"

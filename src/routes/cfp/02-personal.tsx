@@ -1,5 +1,4 @@
 import { createEffect, createSignal, Show } from "solid-js";
-import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { useNavigate } from "@solidjs/router";
 import { useAuth } from "~/lib/auth-context";
 import { useRequireAuth } from "~/lib/route-guards";
@@ -8,11 +7,28 @@ import {
   useCfpStore,
   updateApplicant,
 } from "~/lib/cfp-store";
-import { isCfpOpen, fetchCfpConfig } from "~/lib/cfp-utils";
 import { CfpStepLayout } from "~/components/cfp/CfpStepLayout";
 import { clientOnly } from "@solidjs/web";
 import { Icon } from "~/components/Icon";
 import { SmartArea } from "../../components/SmartArea";
+import type { MyCfpApplicantDto } from "~/lib/cfp-actions";
+import type { SessionUser } from "~/lib/session-policy";
+
+function socialHandleList(rawHandles: unknown) {
+  if (Array.isArray(rawHandles)) return rawHandles;
+  return typeof rawHandles === "string" && rawHandles ? [rawHandles] : [];
+}
+
+function applicantFields(data: Partial<MyCfpApplicantDto>, record: SessionUser | null) {
+  return {
+    email: record?.email || "",
+    short_bio: data.bio || "",
+    affiliation: data.affiliation || "",
+    social_handles: socialHandleList(data.social_handles),
+    preferred_contact: data.preferred_contact_method || "",
+    applicant_id: data.id || "",
+  };
+}
 
 const Personal = () => {
   const auth = useAuth();
@@ -20,9 +36,6 @@ const Personal = () => {
   const navigate = useNavigate();
   const [cfpStore, setCfpStore] = useCfpStore();
   const [errors, setErrors] = createSignal<Record<string, string>>({});
-  const [cfpConfig] = createResource(fetchCfpConfig);
-
-  if (!isCfpOpen()) navigate("/cfp/closed");
 
   createEffect(
     () => ({ authorized: guard.authorized(), record: auth.record }),
@@ -35,24 +48,10 @@ const Personal = () => {
         const data = applicantData?.[0];
 
         if (data || record) {
-          const rawHandles = data?.social_handles;
-          const socialHandlesArray = Array.isArray(rawHandles)
-            ? rawHandles
-            : typeof rawHandles === "string"
-              ? rawHandles
-                ? [rawHandles]
-                : []
-              : [];
-
           setCfpStore("formData", {
             ...cfpStore.formData,
             full_name: cfpStore.formData.full_name || record?.name || "",
-            email: record?.email || "",
-            short_bio: data?.bio || "",
-            affiliation: data?.affiliation || "",
-            social_handles: socialHandlesArray,
-            preferred_contact: data?.preferred_contact_method || "",
-            applicant_id: data?.id || "",
+            ...applicantFields(data ?? {}, record),
           });
         }
       })();

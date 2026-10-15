@@ -65,6 +65,8 @@ export default function AdminSessionsHub() {
   const [saving, setSaving] = createSignal(false);
   const [clearingLegacy, setClearingLegacy] = createSignal(false);
 
+  const sessionCount = () => sessions()?.length ?? 0;
+
   const editingSession = createMemo(() => {
     const id = editingId();
     if (!id) return null;
@@ -527,7 +529,7 @@ export default function AdminSessionsHub() {
         </div>
       </Show>
 
-      <Show when={!sessions.loading && (sessions()?.length ?? 0) === 0 && !sessionsError()}>
+      <Show when={!sessions.loading && sessionCount() === 0 && !sessionsError()}>
         <AdminDataPanel>
           <div class="p-12 text-center">
             <Icon icon="ph:calendar-blank-bold" class="text-4xl text-base-content/40 mb-4" aria-hidden="true" />
@@ -544,7 +546,7 @@ export default function AdminSessionsHub() {
         </AdminDataPanel>
       </Show>
 
-      <Show when={!sessions.loading && (sessions()?.length ?? 0) > 0}>
+      <Show when={!sessions.loading && sessionCount() > 0}>
         <AdminDataPanel>
           <div class="md:hidden divide-y divide-white/10">
             <For each={sessions()}>
@@ -593,14 +595,6 @@ export default function AdminSessionsHub() {
                     </button>
                     <a href="/admin/agenda" class="btn btn-xs btn-ghost font-mono">
                       Agenda
-                    </a>
-                    <a
-                      href={`/sessions/${session.slug}`}
-                      class="btn btn-xs btn-ghost"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Preview
                     </a>
                   </div>
                 </article>
@@ -677,14 +671,6 @@ export default function AdminSessionsHub() {
                           </button>
                           <a href="/admin/agenda" class="btn btn-xs btn-ghost font-mono">
                             Agenda
-                          </a>
-                          <a
-                            href={`/sessions/${session.slug}`}
-                            class="btn btn-xs btn-ghost"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            Preview
                           </a>
                         </div>
                       </td>

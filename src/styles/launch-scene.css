@@ -1,0 +1,141 @@
+/* WTS 2027 launch scene · full-width planetary horizon */
+.launch-scene {
+  --launch-horizon-cy: 122%;
+  --launch-horizon-ry: 48%;
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-width: 0;
+  background: var(--launch-sky-night);
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    var(--launch-mask-show) 0 92%,
+    var(--color-orbit-star-mask-bright) 95%,
+    var(--color-orbit-star-mask-mid) 97%,
+    var(--color-orbit-star-mask-dim) 99%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    var(--launch-mask-show) 0 92%,
+    var(--color-orbit-star-mask-bright) 95%,
+    var(--color-orbit-star-mask-mid) 97%,
+    var(--color-orbit-star-mask-dim) 99%,
+    transparent 100%
+  );
+}
+
+.launch-scene::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-image: url("../assets/images/launch-nebula.webp");
+  background-position: center top;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: 0.43;
+  content: "";
+  pointer-events: none;
+}
+
+.launch-scene::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background-image: var(--launch-starfield),
+    radial-gradient(circle at 8% 18%, color-mix(in srgb, var(--color-orbit-star-sparkle) 43%, transparent) 0 .72px, transparent 1.1px),
+    radial-gradient(circle at 27% 38%, color-mix(in srgb, var(--color-orbit-star-sparkle) 34%, transparent) 0 .62px, transparent 1px),
+    radial-gradient(circle at 49% 14%, color-mix(in srgb, var(--color-orbit-star-sparkle) 45%, transparent) 0 .78px, transparent 1.12px),
+    radial-gradient(circle at 73% 31%, color-mix(in srgb, var(--color-orbit-star-sparkle) 35%, transparent) 0 .62px, transparent 1px),
+    radial-gradient(circle at 92% 11%, color-mix(in srgb, var(--color-orbit-star-sparkle) 42%, transparent) 0 .74px, transparent 1.1px);
+  background-repeat: no-repeat;
+  mask-image: linear-gradient(180deg, var(--launch-mask-show) 0 76%, transparent 100%);
+  filter: brightness(1.18);
+  content: "";
+  pointer-events: none;
+}
+
+.launch-scene__star {
+  position: absolute;
+  z-index: 1;
+  width: var(--star-size);
+  height: var(--star-size);
+  border-radius: 50%;
+  background: var(--color-orbit-twinkle);
+  opacity: var(--star-opacity);
+  box-shadow: 0 0.5px 3px 0.5px var(--color-orbit-star-shadow);
+  animation-name: launch-scene-star-twinkle;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-play-state: paused;
+  pointer-events: none;
+}
+
+.launch-scene__star--one { top: 16%; left: 16%; --star-size: 1px; --star-opacity: 0.62; animation-duration: 6.2s; animation-delay: -1.8s; }
+.launch-scene__star--two { top: 26%; left: 38%; --star-size: 1.1px; --star-opacity: 0.72; animation-duration: 8.4s; animation-delay: -5.1s; }
+.launch-scene__star--three { top: 12%; left: 59%; --star-size: 1.2px; --star-opacity: 0.84; animation-duration: 7.1s; animation-delay: -2.7s; }
+.launch-scene__star--four { top: 34%; left: 78%; --star-size: 1px; --star-opacity: 0.58; animation-duration: 9.2s; animation-delay: -6.4s; }
+.launch-scene__star--five { top: 42%; left: 23%; --star-size: 1.3px; --star-opacity: 0.88; animation-duration: 5.6s; animation-delay: -3.3s; }
+.launch-scene__star--six { top: 21%; left: 88%; --star-size: 1.1px; --star-opacity: 0.68; animation-duration: 8.8s; animation-delay: -0.9s; }
+
+.launch-scene[data-motion="running"] .launch-scene__star {
+  animation-play-state: running;
+}
+
+@keyframes launch-scene-star-twinkle {
+  0%, 100% { opacity: calc(var(--star-opacity) * 0.78); }
+  50% { opacity: var(--star-opacity); }
+}
+.launch-scene__horizon {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.launch-scene__horizon-ellipse {
+  cx: 50%;
+  cy: var(--launch-horizon-cy);
+  rx: 66%;
+  ry: var(--launch-horizon-ry);
+}
+
+
+
+
+
+.launch-scene__lower-clouds {
+  opacity: 0.56;
+}
+
+.launch-scene__canvas {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+
+
+
+@media (max-width: 767px) {
+  .launch-scene {
+    --launch-horizon-cy: 90%;
+    --launch-horizon-ry: 16%;
+  }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .launch-scene__star {
+    animation: none !important;
+  }
+}
+

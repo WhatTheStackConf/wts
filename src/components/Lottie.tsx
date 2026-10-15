@@ -16,6 +16,13 @@ interface LottieProps {
   onSegmentStart?: () => void;
 }
 
+const animationEvents = [
+  ["complete", "onComplete"],
+  ["loopComplete", "onLoopComplete"],
+  ["enterFrame", "onEnterFrame"],
+  ["segmentStart", "onSegmentStart"],
+] as const;
+
 const Lottie = (props: LottieProps) => {
   let containerRef: HTMLDivElement | undefined;
   let anim: AnimationItem | undefined;
@@ -40,13 +47,10 @@ const Lottie = (props: LottieProps) => {
         },
       });
 
-      if (props.onComplete) anim.addEventListener("complete", props.onComplete);
-      if (props.onLoopComplete)
-        anim.addEventListener("loopComplete", props.onLoopComplete);
-      if (props.onEnterFrame)
-        anim.addEventListener("enterFrame", props.onEnterFrame);
-      if (props.onSegmentStart)
-        anim.addEventListener("segmentStart", props.onSegmentStart);
+      for (const [event, handlerName] of animationEvents) {
+        const handler = props[handlerName];
+        if (handler) anim.addEventListener(event, handler);
+      }
 
       if (props.hasNeonGlow) {
         containerRef.classList.add("lottie-neon-glow");

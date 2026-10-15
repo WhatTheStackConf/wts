@@ -16,16 +16,45 @@ function validQuestion(value: unknown): value is LiveQaQuestion {
     && Number.isFinite(Date.parse(question.created));
 }
 
-function validSession(value: LiveQaSession, slug: string, page: number): boolean {
-  return !!value && value.slug === slug && typeof value.sessionId === "string"
+function optionalTime(value: string | null): boolean {
+  return value === null || Number.isFinite(Date.parse(value));
+}
+
+function validSessionState(value: LiveQaSession): boolean {
+  return typeof value.sessionId === "string"
     && typeof value.accepting === "boolean" && typeof value.canModerate === "boolean"
     && ["auto", "open", "closed"].includes(value.mode)
     && Number.isFinite(Date.parse(value.serverNow))
-    && (value.startAt === null || Number.isFinite(Date.parse(value.startAt)))
-    && (value.endAt === null || Number.isFinite(Date.parse(value.endAt)))
-    && value.page === page && Number.isInteger(value.totalPages) && value.totalPages >= 0
+    && optionalTime(value.startAt)
+    && optionalTime(value.endAt);
+}
+
+function validSessionPage(value: LiveQaSession, page: number): boolean {
+  return value.page === page && Number.isInteger(value.totalPages) && value.totalPages >= 0
     && Array.isArray(value.questions) && value.questions.length <= 50
     && value.questions.every(validQuestion);
+}
+
+function validSession(value: LiveQaSession, slug: string, page: number): boolean {
+  return !!value && value.slug === slug && validSessionState(value) && validSessionPage(value, page);
+}
+
+function errorStatus(error: unknown): number | undefined {
+  return error instanceof LiveQaClientError ? error.status : undefined;
+}
+
+function deniedStatus(status: number | undefined): boolean {
+  return status === 401 || status === 403;
+}
+
+const askRejections = new Map<number | undefined, string>([
+  [400, "Your question wasn't accepted. Check your draft and try again."],
+  [409, "Questions are closed. Your draft is still editable."],
+  [429, "Please wait before sending another question. Your draft is still editable."],
+]);
+
+function acknowledges(result: { question: LiveQaQuestion } | undefined, attempt: AskCommand): boolean {
+  return !!result && validQuestion(result.question) && result.question.own && result.question.body === attempt.body;
 }
 
 function loginRedirect() {
@@ -37,8 +66,6 @@ function loginRedirect() {
 }
 
 export function LiveQaPanel(props: LiveQaPanelProps) {
-  const auth = useAuth();
-  const directory = () => auth.user?.role === "mc" || auth.user?.role === "admin" ? "/mc" : "/qa";
   const [programme, controls] = createResource(() => props.slug, () => loadLiveQaProgramme());
   const stage = createMemo(() => programme()?.stages.find(stage => stage.sessions.some(session => session.slug === props.slug)));
   return <>
@@ -47,7 +74,7 @@ export function LiveQaPanel(props: LiveQaPanelProps) {
     </Show>
     <Show when={!programme.loading && !programme.error && stage()}>
       {(currentStage) => <>
-        <a class="mt-6 inline-flex min-h-11 items-center underline underline-offset-4 text-secondary-300" href={`${directory()}?stage=${encodeURIComponent(currentStage().key)}`}>Main-day Q&A · {currentStage().name} · Choose another talk</a>
+        <a class="mt-6 inline-flex min-h-11 items-center underline underline-offset-4 text-secondary-300" href={`/mc?stage=${encodeURIComponent(currentStage().key)}`}>Main-day Q&A · {currentStage().name} · Choose another talk</a>
         <EligibleLiveQaPanel slug={props.slug} />
       </>}
     </Show>
@@ -69,7 +96,7 @@ function EligibleLiveQaPanel(props: LiveQaPanelProps) {
         <Show when={scope()} keyed fallback={
           <div class="space-y-3">
             <p>Log in to ask and read your questions.</p>
-            <a href={`/login?redirect_url=${encodeURIComponent(`/sessions/${props.slug}#live-qa`)}`} onClick={() => loginRedirect()} class="btn btn-primary min-h-12 whitespace-nowrap">Log in to ask</a>
+            <a href={`/login?redirect_url=${encodeURIComponent(`/mc?session=${encodeURIComponent(props.slug)}#live-qa`)}`} onClick={() => loginRedirect()} class="btn btn-primary min-h-12 whitespace-nowrap">Log in to ask</a>
           </div>
         }>
           {(key) => <PrivateLiveQa slug={props.slug} actorId={auth.user!.id} current={() => scope() === key} />}
@@ -86,6 +113,7 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
   const [session, setSession] = createSignal<LiveQaSession>();
   const [page, setPage] = createSignal(1);
   const [reading, setReading] = createSignal(false);
+  const [readAction, setReadAction] = createSignal(false);
   const [readError, setReadError] = createSignal("");
   const [denied, setDenied] = createSignal(false);
   const [body, setBody] = createSignal("");
@@ -104,11 +132,13 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
   let command: AskCommand | undefined;
   let ambiguous = false;
   let requestedPage = 1;
+  let queuedPage: number | undefined;
   const current = () => alive && props.current();
   const draftLength = createMemo(() => Array.from(body().trim()).length);
   const validDraft = () => draftLength() > 0 && draftLength() <= 1000;
   const canAsk = () => !denied() && !!session()?.accepting && !readError();
   const canModerate = () => !denied() && !!session()?.canModerate && !readError();
+  const stale = (version: number) => !current() || version !== epoch;
 
   function revokePrivateData() {
     epoch++;
@@ -119,38 +149,76 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
     if (!command) setBody("");
   }
 
-  async function refresh(nextPage = requestedPage) {
-    if (!current() || readInFlight || askInFlight || moderationInFlight) return;
+  function failRead(error: unknown) {
+    setSession(undefined);
+    if (deniedStatus(errorStatus(error))) {
+      revokePrivateData();
+      setReadError("Q&A access could not be verified. Log in again or refresh to check access.");
+    } else {
+      setReadError("Couldn't refresh questions. New questions are paused until a refresh succeeds.");
+    }
+  }
+
+  function finishRead() {
+    readInFlight = false;
+    if (!current()) return;
+    setReading(false);
+    setReadAction(false);
+    if (queuedPage === undefined) return;
+    const next = queuedPage;
+    queuedPage = undefined;
+    void refresh(next);
+  }
+
+  async function refresh(nextPage = requestedPage, background = false) {
+    if (!current() || askInFlight || moderationInFlight) return;
+    if (readInFlight) {
+      // Keep controls stable during polls without dropping a user's page/refresh
+      // click. Serialize it after the poll so denial handling still runs first.
+      if (!background) { queuedPage = nextPage; setReadAction(true); }
+      return;
+    }
     readInFlight = true;
     requestedPage = nextPage;
     const version = ++epoch;
     setReading(true);
+    setReadAction(!background);
     try {
       const result = await liveQaRequest<LiveQaSession>({ operation: "session", slug, page: nextPage }, actorId);
-      if (!current() || version !== epoch) return;
+      if (stale(version)) return;
       if (!validSession(result, slug, nextPage)) throw new Error("Invalid Q&A response");
       setSession(result);
       setPage(nextPage);
       setDenied(false);
       setReadError("");
     } catch (error) {
-      if (!current() || version !== epoch) return;
-      setSession(undefined);
-      if (error instanceof LiveQaClientError && (error.status === 401 || error.status === 403)) {
-        revokePrivateData();
-        setReadError("Q&A access could not be verified. Log in again or refresh to check access.");
-      } else {
-        setReadError("Couldn't refresh questions. New questions are paused until a refresh succeeds.");
-      }
+      if (stale(version)) return;
+      failRead(error);
     } finally {
-      readInFlight = false;
-      if (current()) setReading(false);
+      finishRead();
     }
   }
 
+  const askBlocked = () => !current() || askInFlight || moderationInFlight || denied()
+    || (!command && (!canAsk() || !validDraft()));
+
+  function failAsk(error: unknown, wasAmbiguous: boolean) {
+    const status = errorStatus(error);
+    const rejection = wasAmbiguous ? undefined : askRejections.get(status);
+    if (rejection) {
+      command = undefined;
+      setHeld(undefined);
+      ambiguous = false;
+      setAskError(rejection);
+    } else {
+      ambiguous = true;
+      setAskError("We couldn't confirm whether your question was sent. Keep this page open and retry the exact question; it will not be submitted twice.");
+    }
+    if (deniedStatus(status)) revokePrivateData();
+  }
+
   async function sendQuestion() {
-    if (!current() || askInFlight || moderationInFlight || denied()) return;
-    if (!command && (!canAsk() || !validDraft())) return;
+    if (askBlocked()) return;
     const attempt = command ?? { operation: "ask" as const, slug, body: body().trim(), requestId: crypto.randomUUID() };
     command = attempt;
     setHeld(attempt);
@@ -162,8 +230,8 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
     setAskError("");
     try {
       const result = await liveQaRequest<{ question: LiveQaQuestion }>(attempt, actorId);
-      if (!current() || version !== epoch) return;
-      if (!result || !validQuestion(result.question) || !result.question.own || result.question.body !== attempt.body) {
+      if (stale(version)) return;
+      if (!acknowledges(result, attempt)) {
         throw new Error("Unmatched question acknowledgement");
       }
       command = undefined;
@@ -172,21 +240,8 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
       setBody("");
       setSent(true);
     } catch (error) {
-      if (!current() || version !== epoch) return;
-      const status = error instanceof LiveQaClientError ? error.status : undefined;
-      const definite = !wasAmbiguous && (status === 400 || status === 409 || status === 429);
-      if (definite) {
-        command = undefined;
-        setHeld(undefined);
-        ambiguous = false;
-        setAskError(status === 429 ? "Please wait before sending another question. Your draft is still editable."
-          : status === 409 ? "Questions are closed. Your draft is still editable."
-          : "Your question wasn't accepted. Check your draft and try again.");
-      } else {
-        ambiguous = true;
-        setAskError("We couldn't confirm whether your question was sent. Keep this page open and retry the exact question; it will not be submitted twice.");
-      }
-      if (status === 401 || status === 403) revokePrivateData();
+      if (stale(version)) return;
+      failAsk(error, wasAmbiguous);
     } finally {
       askInFlight = false;
       if (current()) {
@@ -196,20 +251,22 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
     }
   }
 
+  const moderationBlocked = () => !current() || !canModerate() || moderationInFlight || askInFlight;
+
   async function moderate(request: Extract<LiveQaRequest, { operation: "mode" | "answer" }>) {
-    if (!current() || !canModerate() || moderationInFlight || askInFlight) return;
+    if (moderationBlocked()) return;
     moderationInFlight = true;
     const version = ++epoch;
     setModerating(true);
     setModerationError("");
     try {
       const result = await liveQaRequest<{ ok: true }>(request, actorId);
-      if (!current() || version !== epoch) return;
+      if (stale(version)) return;
       if (result?.ok !== true) throw new Error("Invalid moderation acknowledgement");
     } catch (error) {
-      if (!current() || version !== epoch) return;
+      if (stale(version)) return;
       setModerationError("Couldn't confirm the change. Refresh to check the current state before trying again.");
-      if (error instanceof LiveQaClientError && (error.status === 401 || error.status === 403)) revokePrivateData();
+      if (deniedStatus(errorStatus(error))) revokePrivateData();
     } finally {
       moderationInFlight = false;
       if (current()) {
@@ -223,7 +280,7 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
   onSettled(() => {
     if (typeof window === "undefined") return;
     void refresh();
-    const poll = () => { if (!document.hidden) void refresh(); };
+    const poll = () => { if (!document.hidden) void refresh(requestedPage, true); };
     const timer = window.setInterval(poll, 5000);
     document.addEventListener("visibilitychange", poll);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", poll); };
@@ -232,21 +289,28 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
   function modeLabel(mode: LiveQaMode | undefined) {
     return mode === "open" ? "MC override: open" : mode === "closed" ? "MC override: closed" : "Using agenda timing";
   }
+  const availabilityStatus = () => reading() && !readError() ? "Checking questions…" : "Question availability not verified.";
+  const readBusy = () => readAction() || sending() || moderating();
+  const closedSession = () => session() && !session()!.accepting;
+  const draftTooLong = () => draftLength() > 1000;
+  const sendDisabled = () => sending() || moderating() || (!held() && (!canAsk() || !validDraft()));
+  const sendLabel = () => sending() ? "Sending question…" : held() ? "Retry exact question" : "Send question";
+  const modePressed = (mode: LiveQaMode) => session()?.mode === mode ? "true" : "false";
 
   return (
     <div class="space-y-5">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div role="status" class="text-sm">
-          <Show when={session()} fallback={<span>{reading() && !readError() ? "Checking questions…" : "Question availability not verified."}</span>}>
+          <Show when={session()} fallback={<span>{availabilityStatus()}</span>}>
             {(data) => <><strong class="block text-white">{data().accepting ? "Questions are open" : "Questions are closed"}</strong><span>{modeLabel(data().mode)}</span></>}
           </Show>
         </div>
-        <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" disabled={reading() || sending() || moderating()} onClick={() => void refresh()}>Refresh questions</button>
+        <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" disabled={readBusy()} onClick={() => void refresh()}>Refresh questions</button>
       </div>
-      <Show when={session() && !session()!.accepting}><p class="text-sm text-primary-200">You can still read submitted questions or prepare a draft.</p></Show>
+      <Show when={closedSession()}><p class="text-sm text-primary-200">You can still read submitted questions or prepare a draft.</p></Show>
       <Show when={readError()}><p role="alert" class="alert alert-warning">{readError()}</p></Show>
       <Show when={denied()}>
-        <a href={`/login?redirect_url=${encodeURIComponent(`/sessions/${slug}#live-qa`)}`} onClick={() => loginRedirect()} class="btn btn-outline min-h-12">Log in again</a>
+        <a href={`/login?redirect_url=${encodeURIComponent(`/mc?session=${encodeURIComponent(slug)}#live-qa`)}`} onClick={() => loginRedirect()} class="btn btn-outline min-h-12">Log in again</a>
       </Show>
       {/* Polling never owns the form. A read error cannot discard a draft or frozen retry. */}
       <Show when={!denied()}>
@@ -254,12 +318,12 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
           <label for="live-qa-question" class="block font-bold text-white">Your question</label>
           <p id="live-qa-draft-help" class="text-sm text-primary-200">About this session. No names or contact details needed.</p>
           <textarea id="live-qa-question" name="question" class="textarea textarea-bordered w-full min-w-0 min-h-28 text-base" rows={3} value={body()} readonly={!!held()} disabled={sending()} aria-describedby="live-qa-draft-help live-qa-draft-count" onInput={(event) => { setBody(event.currentTarget.value); setSent(false); }} />
-          <p id="live-qa-draft-count" class={draftLength() > 1000 ? "text-error text-sm" : "text-primary-200 text-sm"} aria-live="polite">{draftLength()} / 1000 characters<Show when={draftLength() > 1000}> — Shorten your question before sending.</Show></p>
+          <p id="live-qa-draft-count" class={draftTooLong() ? "text-error text-sm" : "text-primary-200 text-sm"} aria-live="polite">{draftLength()} / 1000 characters<Show when={draftTooLong()}> — Shorten your question before sending.</Show></p>
           <Show when={held()}><p class="text-sm">This question is locked until delivery is confirmed. Exact retries also work after questions close.</p></Show>
           <Show when={askError()}><p role="alert" class="alert alert-warning">{askError()}</p></Show>
           <Show when={sent()}><p role="status" class="text-success font-bold">Question sent</p></Show>
-          <button type="submit" class="btn btn-primary min-h-12 w-full sm:w-auto whitespace-nowrap" disabled={sending() || moderating() || (!held() && (!canAsk() || !validDraft()))}>
-            {sending() ? "Sending question…" : held() ? "Retry exact question" : "Send question"}
+          <button type="submit" class="btn btn-primary min-h-12 w-full sm:w-auto whitespace-nowrap" disabled={sendDisabled()}>
+            {sendLabel()}
           </button>
         </form>
       </Show>
@@ -268,9 +332,9 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
           <legend class="px-2 font-bold text-white">MC controls</legend>
           <p class="text-sm text-primary-200">Overrides stay active until changed.</p>
           <div class="flex flex-wrap gap-2">
-            <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" aria-pressed={session()?.mode === "open" ? "true" : "false"} onClick={() => void moderate({ operation: "mode", slug, mode: "open" })}>Open questions</button>
-            <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" aria-pressed={session()?.mode === "closed" ? "true" : "false"} onClick={() => void moderate({ operation: "mode", slug, mode: "closed" })}>Close questions</button>
-            <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" aria-pressed={session()?.mode === "auto" ? "true" : "false"} onClick={() => void moderate({ operation: "mode", slug, mode: "auto" })}>Use agenda timing</button>
+            <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" aria-pressed={modePressed("open")} onClick={() => void moderate({ operation: "mode", slug, mode: "open" })}>Open questions</button>
+            <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" aria-pressed={modePressed("closed")} onClick={() => void moderate({ operation: "mode", slug, mode: "closed" })}>Close questions</button>
+            <button type="button" class="btn btn-outline min-h-12 whitespace-nowrap" aria-pressed={modePressed("auto")} onClick={() => void moderate({ operation: "mode", slug, mode: "auto" })}>Use agenda timing</button>
           </div>
         </fieldset>
       </Show>
@@ -285,24 +349,24 @@ function PrivateLiveQa(props: PrivateLiveQaProps) {
           <p class="text-sm text-primary-200">Oldest first · Updates every 5 seconds while visible</p>
           <Show when={data().questions.length} fallback={<p>{page() > 1 ? "No questions on this page." : data().canModerate ? "No questions yet." : "You haven't sent any questions yet."}</p>}>
             <ul class="divide-y divide-white/15 list-none p-0">
-              <For each={data().questions}>
+              <For each={data().questions} keyed={question => question.id}>
                 {(question) => <li class="py-4 space-y-3 min-w-0">
                   <div class="flex flex-wrap items-center gap-2 text-sm">
-                    <Show when={question.own}><span class="font-bold text-white">Your question</span></Show>
-                    <span class={question.answered ? "badge badge-success" : "badge badge-outline"}>{question.answered ? "Answered" : "Unanswered"}</span>
+                    <Show when={question().own}><span class="font-bold text-white">Your question</span></Show>
+                    <span class={question().answered ? "badge badge-success" : "badge badge-outline"}>{question().answered ? "Answered" : "Unanswered"}</span>
                   </div>
-                  <p class="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{question.body}</p>
+                  <p class="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{question().body}</p>
                   <Show when={data().canModerate}>
-                    <button type="button" class="btn btn-sm btn-outline min-h-12" disabled={moderating() || sending()} onClick={() => void moderate({ operation: "answer", slug, questionId: question.id, answered: !question.answered })}>{question.answered ? "Reopen question" : "Mark answered"}</button>
+                    <button type="button" class="btn btn-sm btn-outline min-h-12" disabled={moderating() || sending()} onClick={() => void moderate({ operation: "answer", slug, questionId: question().id, answered: !question().answered })}>{question().answered ? "Reopen question" : "Mark answered"}</button>
                   </Show>
                 </li>}
               </For>
             </ul>
           </Show>
           <nav aria-label="Question pages" class="flex flex-wrap items-center gap-2 text-sm">
-            <button type="button" aria-label="Previous questions" class="btn btn-sm btn-outline min-h-12 whitespace-nowrap" disabled={reading() || sending() || moderating() || page() <= 1} onClick={() => void refresh(page() - 1)}>Previous</button>
+            <button type="button" aria-label="Previous questions" class="btn btn-sm btn-outline min-h-12 whitespace-nowrap" disabled={readBusy() || page() <= 1} onClick={() => void refresh(page() - 1)}>Previous</button>
             <span class="whitespace-nowrap">Page {page()} of {Math.max(1, data().totalPages)}</span>
-            <button type="button" aria-label="Next questions" class="btn btn-sm btn-outline min-h-12 whitespace-nowrap" disabled={reading() || sending() || moderating() || page() >= data().totalPages} onClick={() => void refresh(page() + 1)}>Next</button>
+            <button type="button" aria-label="Next questions" class="btn btn-sm btn-outline min-h-12 whitespace-nowrap" disabled={readBusy() || page() >= data().totalPages} onClick={() => void refresh(page() + 1)}>Next</button>
           </nav>
         </section>}
       </Show>

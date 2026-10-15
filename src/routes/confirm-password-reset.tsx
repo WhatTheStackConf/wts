@@ -1,6 +1,6 @@
 import { createSignal, Show, onSettled } from "solid-js";
 import { useSearchParams, useNavigate } from "@solidjs/router";
-import { Layout } from "~/layouts/Layout";
+import { PublicPageShell } from "~/components/PublicPageShell";
 import { Icon } from "~/components/Icon";
 
 const ConfirmPasswordResetPage = () => {
@@ -57,8 +57,8 @@ const ConfirmPasswordResetPage = () => {
 
     if (success()) {
         return (
-            <Layout title="Password Reset Successful" description="Your password has been reset">
-                <div class="container mx-auto px-4 py-8">
+            <PublicPageShell title="Password reset complete" description="Your WhatTheStack account password has been reset.">
+                <div class="support-auth container mx-auto px-4 py-8">
                     <div class="max-w-md mx-auto bg-base-100 rounded-lg shadow-xl p-6 text-center">
                         <div class="mb-4 text-success flex justify-center">
                             <Icon icon="mdi:check-circle" width="64" />
@@ -73,13 +73,13 @@ const ConfirmPasswordResetPage = () => {
                         </a>
                     </div>
                 </div>
-            </Layout>
+            </PublicPageShell>
         );
     }
 
     return (
-        <Layout title="Set New Password" description="Enter your new password">
-            <div class="container mx-auto px-4 py-8">
+        <PublicPageShell title="Reset password" description="Choose a new password for your WhatTheStack account.">
+            <div class="support-auth container mx-auto px-4 py-8">
                 <div class="max-w-md mx-auto bg-base-100 rounded-lg shadow-xl p-6">
                     <h1 class="text-2xl font-bold text-center mb-6">Set New Password</h1>
 
@@ -159,7 +159,7 @@ const ConfirmPasswordResetPage = () => {
                     </div>
                 </div>
             </div>
-        </Layout>
+        </PublicPageShell>
     );
 };
 

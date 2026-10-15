@@ -1,6 +1,6 @@
-import { Link } from "@solidjs/meta";
 import { Layout } from "~/layouts/Layout";
 import { toAbsoluteUrl } from "~/lib/site-url";
+import { publicEditionName } from "~/lib/conference-guide-content";
 
 const OPEN_CODE_CONFIG = `{
   "$schema": "https://opencode.ai/config.json",
@@ -42,11 +42,10 @@ export default function McpConferenceGuidePage() {
 
   return (
     <Layout
-      title="Public MCP Conference Guide | WhatTheStack 2026"
+      title={`Public MCP Conference Guide | ${publicEditionName}`}
       description="Connect an MCP client to the anonymous WhatTheStack Conference Guide for validated logistics and the current Published programme."
       ogSubtitle="Public Conference Guide for MCP clients"
     >
-      <Link rel="canonical" href={toAbsoluteUrl("/mcp")} />
       <article class="w-full px-4 pb-16 pt-8 md:px-6 md:pb-24 md:pt-16">
         <div class="mx-auto max-w-5xl">
           <header class="max-w-3xl pb-10 md:pb-14">
@@ -117,7 +116,7 @@ export default function McpConferenceGuidePage() {
               </div>
               <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
                 <dt class="font-mono text-sm font-bold text-accent-300">Published Agenda</dt>
-                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Published Conference Days grouped into Appearance Event Programmes, with Tracks, Agenda Slots, and local times in Europe/Skopje.</dd>
+                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Published Conference Days grouped into Appearance Event Programmes, with Tracks, Agenda Slots, and local times when the conference time zone is announced.</dd>
               </div>
               <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
                 <dt class="font-mono text-sm font-bold text-accent-300">Session / Speaker</dt>
@@ -133,19 +132,13 @@ export default function McpConferenceGuidePage() {
               </div>
               <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
                 <dt class="font-mono text-sm font-bold text-accent-300">plan_proposed_schedule</dt>
-                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Plans only from current Published Sessions with Published Agenda Slots. Accepts ranked, must-attend, and excluded public slugs, Europe/Skopje availability windows (including windows that cross midnight), and an optional prior programme version. Results contain non-overlapping selected Sessions, Event-specific Programme-wide Slots, unresolved hard constraints, conflict reasons, and alternatives.</dd>
+                <dd class="mt-2 leading-7 text-base-content/80 md:mt-0">Plans only from current Published Sessions with Published Agenda Slots. Accepts ranked, must-attend, and excluded public slugs, conference-local availability windows (including windows that cross midnight) when the time zone is announced, and an optional prior programme version. Results contain non-overlapping selected Sessions, Event-specific Programme-wide Slots, unresolved hard constraints, conflict reasons, and alternatives.</dd>
               </div>
               <div class="py-5 md:grid md:grid-cols-[13rem_1fr] md:gap-8">
                 <dt class="font-mono text-sm font-bold text-accent-300">Public prompts</dt>
                 <dd class="mt-2 leading-7 text-base-content/80 md:mt-0"><code class="font-mono text-sm">plan_conference_day</code> and <code class="font-mono text-sm">compare_sessions</code> guide compatible clients through resources, search, and planning. They return workflow instructions; they do not invoke a WTS-hosted LLM.</dd>
               </div>
             </dl>
-            <p class="mt-6 text-sm leading-6 text-base-content/70">
-              Human-readable sources: <a class="link text-primary-300" href="/agenda">Agenda</a>,{" "}
-              <a class="link text-primary-300" href="/sessions">Sessions</a>,{" "}
-              <a class="link text-primary-300" href="/speakers">Speakers</a>, and{" "}
-              <a class="link text-primary-300" href="/sponsors">Partners</a>.
-            </p>
           </section>
 
           <section aria-labelledby="boundary-heading" class={sectionClasses}>
@@ -182,7 +175,7 @@ export default function McpConferenceGuidePage() {
             <div class="mt-6 max-w-[72ch] space-y-4 leading-7 text-base-content/80">
               <p><code class="font-mono text-sm text-secondary-300">not_announced</code> means organizers have not published that logistics fact. It is not permission to infer or guess a value.</p>
               <p><code class="font-mono text-sm text-secondary-300">programme_unavailable</code> means the live Published programme could not be loaded. Static logistics remain readable, while programme resources fail clearly rather than extending expired cached data.</p>
-              <p>Every successful resource, Session search, and Proposed Schedule reports the deploy-content version, live programme version, generation time, canonical URL, and <code class="font-mono text-sm">Europe/Skopje</code>. A supplied older programme version is reported as changed; the planner uses only current Published facts.</p>
+              <p>Every successful resource, Session search, and Proposed Schedule reports the deploy-content version, live programme version, generation time, canonical URL, and the time zone only when it has been announced. A supplied older programme version is reported as changed; the planner uses only current Published facts.</p>
               <p>Missing or unpublished, unscheduled, excluded, unavailable, malformed, overlong, duplicate, and mutually conflicting inputs produce bounded explicit outcomes rather than inferred replacements. Invalid calls distinguish <code class="font-mono text-sm">malformed_arguments</code>, <code class="font-mono text-sm">overlong_arguments</code>, and <code class="font-mono text-sm">duplicate_arguments</code>. Equal must-attend conflicts use stable Published Agenda order, disclose the tie-break, and return the rejected choice as an equal alternative.</p>
             </div>
           </section>
@@ -200,7 +193,7 @@ export default function McpConferenceGuidePage() {
             <h2 id="examples-heading" class="text-3xl font-bold text-white">Example questions</h2>
             <ul class="mt-7 space-y-4 text-lg leading-7 text-base-content/85">
               <li class="border-b border-white/10 pb-4">“What has WhatTheStack announced about the main venue and accessibility?”</li>
-              <li class="border-b border-white/10 pb-4">“What is on the current Published Agenda in local Skopje time?”</li>
+              <li>“What is on the current Published Agenda in the announced local time zone?”</li>
               <li class="border-b border-white/10 pb-4">“Search Published Sessions for systems reliability on the Systems Track, explain which public fields matched, and link me to each Session and Speaker.”</li>
               <li class="border-b border-white/10 pb-4">“Plan my conference day: rank these Sessions, treat this one as must-attend, exclude that one, and explain every schedule conflict and alternative.”</li>
               <li class="border-b border-white/10 pb-4">“Compare these two Sessions using their public content and my availability, then disclose whether the programme changed.”</li>

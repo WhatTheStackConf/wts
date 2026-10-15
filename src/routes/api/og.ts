@@ -1,29 +1,18 @@
 import satori from "satori";
+import { createRequire } from "node:module";
 import sharp from "sharp";
 import {
   conferenceDefaultOgSubtitle,
   conferenceName,
 } from "~/lib/conference-guide-content";
-let fontRegular: ArrayBuffer | null = null;
+const require = createRequire(import.meta.url);
 let fontStar: ArrayBuffer | null = null;
 let logoPngDataUri: string | null = null;
 
 async function ensureAssets(origin: string) {
-  if (!fontRegular) {
-    try {
-      const res = await fetch(
-        "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mQoQDjQSkFtoMM3T6r8E7mF71Q-gOoraIAEj4PVksj.ttf"
-      );
-      fontRegular = await res.arrayBuffer();
-    } catch (e) {
-      console.error("Failed to fetch Space Grotesk font:", e);
-    }
-  }
   if (!fontStar) {
     try {
-      const res = await fetch(
-        `${origin}/fonts/starzoom-shavian.regular.ttf`
-      );
+      const res = await fetch(`${origin}/fonts/starzoom-shavian.regular.ttf`);
       fontStar = await res.arrayBuffer();
     } catch (e) {
       console.error("Failed to load StarzoomShavian font:", e);
@@ -47,17 +36,11 @@ export async function GET({ request }: { request: Request }) {
   const subtitle =
     url.searchParams.get("subtitle") || conferenceDefaultOgSubtitle;
 
+  // HarfBuzz's Emscripten Node loader needs its CommonJS __dirname to find WASM.
+  await require("harfbuzzjs");
   await ensureAssets(url.origin);
 
   const fonts: any[] = [];
-  if (fontRegular) {
-    fonts.push({
-      name: "Space Grotesk",
-      data: fontRegular,
-      weight: 400 as const,
-      style: "normal" as const,
-    });
-  }
   if (fontStar) {
     fonts.push({
       name: "StarzoomShavian",
@@ -67,19 +50,19 @@ export async function GET({ request }: { request: Request }) {
     });
   }
 
-  const titleFont = fontStar ? "StarzoomShavian" : "Space Grotesk";
+  const titleFont = "StarzoomShavian";
 
   const svg = await satori(
     {
-      key: null,
       type: "div",
+      key: null,
       props: {
         style: {
           display: "flex",
           flexDirection: "column",
           width: "100%",
           height: "100%",
-          backgroundColor: "#070514",
+          backgroundColor: "#111a33",
           position: "relative",
           overflow: "hidden",
         },
@@ -95,7 +78,7 @@ export async function GET({ request }: { request: Request }) {
                 width: "100%",
                 height: "100%",
                 background:
-                  "radial-gradient(circle at 20% 30%, #1a1035 0%, transparent 50%)",
+                  "radial-gradient(circle at 20% 30%, #22375a 0%, transparent 50%)",
                 display: "flex",
               },
             },
@@ -111,7 +94,7 @@ export async function GET({ request }: { request: Request }) {
                 width: "100%",
                 height: "100%",
                 background:
-                  "radial-gradient(circle at 80% 70%, #2d0a2e 0%, transparent 50%)",
+                  "radial-gradient(circle at 80% 70%, #32465b 0%, transparent 50%)",
                 display: "flex",
               },
             },
@@ -127,7 +110,7 @@ export async function GET({ request }: { request: Request }) {
                 width: "100%",
                 height: "4px",
                 background:
-                  "linear-gradient(to right, #ff00ff, #00ffff, #ff00ff)",
+                  "linear-gradient(to right, #55c6d8, #f0b35a, #55c6d8)",
                 display: "flex",
               },
             },
@@ -143,7 +126,7 @@ export async function GET({ request }: { request: Request }) {
                 width: "100%",
                 height: "4px",
                 background:
-                  "linear-gradient(to right, #00ffff, #ff00ff, #00ffff)",
+                  "linear-gradient(to right, #f0b35a, #55c6d8, #f0b35a)",
                 display: "flex",
               },
             },
@@ -158,8 +141,8 @@ export async function GET({ request }: { request: Request }) {
                 left: "20px",
                 width: "40px",
                 height: "40px",
-                borderLeft: "2px solid #ff00ff",
-                borderTop: "2px solid #ff00ff",
+                borderLeft: "2px solid #f0b35a",
+                borderTop: "2px solid #f0b35a",
                 display: "flex",
               },
             },
@@ -174,8 +157,8 @@ export async function GET({ request }: { request: Request }) {
                 right: "20px",
                 width: "40px",
                 height: "40px",
-                borderRight: "2px solid #00ffff",
-                borderTop: "2px solid #00ffff",
+                borderRight: "2px solid #55c6d8",
+                borderTop: "2px solid #55c6d8",
                 display: "flex",
               },
             },
@@ -190,8 +173,8 @@ export async function GET({ request }: { request: Request }) {
                 left: "20px",
                 width: "40px",
                 height: "40px",
-                borderLeft: "2px solid #00ffff",
-                borderBottom: "2px solid #00ffff",
+                borderLeft: "2px solid #55c6d8",
+                borderBottom: "2px solid #55c6d8",
                 display: "flex",
               },
             },
@@ -206,8 +189,8 @@ export async function GET({ request }: { request: Request }) {
                 right: "20px",
                 width: "40px",
                 height: "40px",
-                borderRight: "2px solid #ff00ff",
-                borderBottom: "2px solid #ff00ff",
+                borderRight: "2px solid #f0b35a",
+                borderBottom: "2px solid #f0b35a",
                 display: "flex",
               },
             },
@@ -265,8 +248,8 @@ export async function GET({ request }: { request: Request }) {
                     style: {
                       display: "flex",
                       fontSize: "24px",
-                      color: "#d4a0d4",
-                      fontFamily: "Space Grotesk",
+                      color: "#b9c8d9",
+                      fontFamily: titleFont,
                       letterSpacing: "0.15em",
                       textAlign: "center",
                     },
@@ -282,15 +265,15 @@ export async function GET({ request }: { request: Request }) {
                       marginTop: "16px",
                       padding: "12px 32px",
                       background:
-                        "linear-gradient(to right, #ff00ff, #00ffff)",
+                        "linear-gradient(to right, #55c6d8, #f0b35a)",
                       borderRadius: "999px",
                       fontSize: "20px",
-                      fontFamily: "Space Grotesk",
+                      fontFamily: titleFont,
                       fontWeight: 700,
-                      color: "#070514",
+                      color: "#111a33",
                       letterSpacing: "0.1em",
                     },
-                    children: "GET TICKETS AT WTS.SH",
+                    children: "GET UPDATES AT WTS.SH",
                   },
                 },
               ],

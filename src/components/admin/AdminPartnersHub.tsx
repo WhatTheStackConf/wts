@@ -189,6 +189,64 @@ async function readLogoPayload(file: File | null): Promise<PartnerLogoPayload | 
   return { name: file.name, type: logoMimeType(file), data };
 }
 
+interface SubmittedPartner {
+  id: string | null;
+  original: PartnerAdminSnapshot | null;
+  name: string;
+  type: PartnerRecord["type"];
+  tier: PartnerRecord["tier"] | "";
+  url: string;
+  notes: string;
+  logo: File | null;
+  logoSurface: PartnerRecord["logo_surface"];
+  removeLogo: boolean;
+}
+
+function partnerFieldPatch(submitted: SubmittedPartner, original: PartnerAdminSnapshot): PartnerPatch {
+  const fields: [keyof PartnerPatch, unknown, unknown, unknown][] = [
+    ["name", submitted.name.trim(), original.name, submitted.name],
+    ["type", submitted.type, original.type, submitted.type],
+    ["tier", submitted.tier || undefined, original.tier, submitted.tier || null],
+    ["url", submitted.url.trim() || undefined, original.url, submitted.url.trim() || null],
+    ["notes", submitted.notes.trim() || undefined, original.notes, submitted.notes.trim() || null],
+    ["logoSurface", submitted.logoSurface, original.logoSurface, submitted.logoSurface],
+  ];
+  return Object.fromEntries(
+    fields.filter(([, next, current]) => next !== current).map(([key, , , value]) => [key, value]),
+  ) as PartnerPatch;
+}
+
+function partnerPatch(
+  submitted: SubmittedPartner,
+  original: PartnerAdminSnapshot,
+  logo: PartnerLogoPayload | null,
+): PartnerPatch {
+  const patch = partnerFieldPatch(submitted, original);
+  if (logo) patch.logo = logo;
+  else if (submitted.removeLogo) patch.logo = null;
+  return patch;
+}
+
+function partnerDraft(submitted: SubmittedPartner, logo: PartnerLogoPayload | null): PartnerDraftInput {
+  return {
+    name: submitted.name,
+    type: submitted.type,
+    tier: submitted.tier,
+    url: submitted.url,
+    notes: submitted.notes,
+    logo,
+    logoSurface: submitted.logoSurface,
+  };
+}
+
+function partnerSavedMessage(name: string, updated: boolean, warnings: string[]): string {
+  if (updated) return `"${name}" updated.`;
+  const duplicates = warnings.length
+    ? ` with ${warnings.length} duplicate warning${warnings.length === 1 ? "" : "s"}`
+    : "";
+  return `"${name}" created as draft${duplicates}.`;
+}
+
 export default function AdminPartnersHub() {
   const { toast, showToast } = useAdminToast();
   const [typeFilter, setTypeFilter] = createSignal<PartnerTypeFilter>("all");
@@ -355,9 +413,20 @@ export default function AdminPartnersHub() {
 
   const filtersActive = () => typeFilter() !== "all" || publishedFilter() !== "all";
 
+  const savePartnerRequest = async (submitted: SubmittedPartner, operationKey: string) => {
+    const logoPayload = await readLogoPayload(submitted.logo);
+    const id = submitted.id;
+    if (!id) return adminCreatePartner(operationId(operationKey), partnerDraft(submitted, logoPayload));
+    const original = submitted.original;
+    if (!original) throw new Error("Reload this Partner before editing it.");
+    const patch = partnerPatch(submitted, original, logoPayload);
+    if (Object.keys(patch).length === 0) return null;
+    return adminUpdatePartner(operationId(operationKey), id, original.version, patch);
+  };
+
   const submit = async (e: Event) => {
     e.preventDefault();
-    const submitted = {
+    const submitted: SubmittedPartner = {
       id: editingId(),
       original: editingOriginal(),
       name: name(),
@@ -372,37 +441,10 @@ export default function AdminPartnersHub() {
     const operationKey = submitted.id ? `partner.patch:${submitted.id}` : "partner.create";
     setSaving(true);
     try {
-      const logoPayload = await readLogoPayload(submitted.logo);
-      const id = submitted.id;
-      let res;
-      if (id) {
-        const original = submitted.original;
-        if (!original) throw new Error("Reload this Partner before editing it.");
-        const patch: PartnerPatch = {};
-        if (submitted.name.trim() !== original.name) patch.name = submitted.name;
-        if (submitted.type !== original.type) patch.type = submitted.type;
-        if ((submitted.tier || undefined) !== original.tier) patch.tier = submitted.tier || null;
-        if ((submitted.url.trim() || undefined) !== original.url) patch.url = submitted.url.trim() || null;
-        if ((submitted.notes.trim() || undefined) !== original.notes) patch.notes = submitted.notes.trim() || null;
-        if (submitted.logoSurface !== original.logoSurface) patch.logoSurface = submitted.logoSurface;
-        if (logoPayload) patch.logo = logoPayload;
-        else if (submitted.removeLogo) patch.logo = null;
-        if (Object.keys(patch).length === 0) {
-          showToast("error", "No Partner changes to save.");
-          return;
-        }
-        res = await adminUpdatePartner(operationId(operationKey), id, original.version, patch);
-      } else {
-        const payload: PartnerDraftInput = {
-          name: submitted.name,
-          type: submitted.type,
-          tier: submitted.tier,
-          url: submitted.url,
-          notes: submitted.notes,
-          logo: logoPayload,
-          logoSurface: submitted.logoSurface,
-        };
-        res = await adminCreatePartner(operationId(operationKey), payload);
+      const res = await savePartnerRequest(submitted, operationKey);
+      if (!res) {
+        showToast("error", "No Partner changes to save.");
+        return;
       }
       if (!res.success) {
         if (res.code === "stale" && "current" in res) {
@@ -414,12 +456,7 @@ export default function AdminPartnersHub() {
         return;
       }
       const warnings = res.data.warnings.map((warning) => warning.message);
-      showToast(
-        "success",
-        id
-          ? `"${submitted.name.trim()}" updated.`
-          : `"${submitted.name.trim()}" created as draft${warnings.length ? ` with ${warnings.length} duplicate warning${warnings.length === 1 ? "" : "s"}` : ""}.`,
-      );
+      showToast("success", partnerSavedMessage(submitted.name.trim(), Boolean(submitted.id), warnings));
       clearOperationId(operationKey);
       resetForm();
       setFormWarnings(warnings);
@@ -528,6 +565,7 @@ export default function AdminPartnersHub() {
     const review = () => reviewFor(partner.id);
     const hasUrlIssue = () =>
       review()?.publication.issues.some((issue) => issue.field === "url");
+    const locked = () => saving() || busyId() === partner.id;
     return (
     <div class="flex flex-wrap items-center gap-1.5">
       <span
@@ -538,7 +576,7 @@ export default function AdminPartnersHub() {
       <button
         type="button"
         class={`btn btn-xs max-md:min-h-12 max-md:px-3 font-mono ${partner.published ? "btn-ghost" : "btn-primary"}`}
-        disabled={saving() || busyId() === partner.id}
+        disabled={locked()}
         onClick={() => togglePublished(partner)}
       >
         <Show when={partner.published} fallback="Publish">Unpublish</Show>
@@ -546,7 +584,7 @@ export default function AdminPartnersHub() {
       <button
         type="button"
         class="btn btn-xs btn-ghost max-md:min-h-12 max-md:px-3 font-mono"
-        disabled={saving() || busyId() === partner.id}
+        disabled={locked()}
         onClick={() => loadPartner(partner)}
       >
         Edit
@@ -563,7 +601,7 @@ export default function AdminPartnersHub() {
         <button
           type="button"
           class={`btn btn-xs max-md:min-h-12 max-md:px-3 font-mono ${partner.noteAgentVisible ? "btn-success btn-outline" : "btn-ghost"}`}
-          disabled={saving() || busyId() === partner.id}
+          disabled={locked()}
           aria-pressed={partner.noteAgentVisible ? "true" : "false"}
           onClick={() => toggleNoteApproval(partner)}
         >
@@ -573,7 +611,7 @@ export default function AdminPartnersHub() {
       <button
         type="button"
         class={`btn btn-xs max-md:min-h-12 max-md:px-3 font-mono ${deleteCandidateId() === partner.id ? "btn-error" : "btn-ghost text-error"}`}
-        disabled={saving() || busyId() === partner.id}
+        disabled={locked()}
         onClick={() => deletePartner(partner)}
       >
         {deleteCandidateId() === partner.id ? "Confirm delete" : "Delete"}
@@ -630,11 +668,6 @@ export default function AdminPartnersHub() {
       countLoading={partnerReviews.loading}
       accent="secondary"
       toast={toast()}
-      headerActions={
-        <a href="/sponsors" class="btn btn-outline btn-primary font-mono" target="_blank">
-          Public page
-        </a>
-      }
     >
       <Show when={partnersError()}>
         <div class="alert alert-error mb-6 font-mono text-sm" role="alert">
@@ -781,35 +814,17 @@ export default function AdminPartnersHub() {
                       </For>
                     </select>
                   </AdminFormField>
-                  <Show when={editingOriginal()?.logo}>
-                    <div class="min-w-0 lg:col-span-12">
-                      <label
-                        for="partner-remove-logo"
-                        class="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-mono"
-                      >
-                        <input
-                          id="partner-remove-logo"
-                          type="checkbox"
-                          class="checkbox checkbox-warning checkbox-sm"
-                          checked={removeLogo()}
-                          disabled={editingOriginal()?.published}
-                          onChange={(e) => {
-                            setRemoveLogo(e.currentTarget.checked);
-                            if (e.currentTarget.checked) {
-                              setLogo(null);
-                              resetFileInput();
-                            }
-                          }}
-                        />
-                        <Show
-                          when={editingOriginal()?.published}
-                          fallback="Remove the current logo and keep this Partner as an incomplete draft"
-                        >
-                          Unpublish this Partner before removing its current logo
-                        </Show>
-                      </label>
-                    </div>
-                  </Show>
+                  <CurrentLogoRemoval
+                    original={editingOriginal()}
+                    checked={removeLogo()}
+                    onChange={(checked) => {
+                      setRemoveLogo(checked);
+                      if (checked) {
+                        setLogo(null);
+                        resetFileInput();
+                      }
+                    }}
+                  />
                 </div>
               </AdminFormSection>
 
@@ -869,16 +884,7 @@ export default function AdminPartnersHub() {
                     onInput={(e) => setNotes(e.currentTarget.value)}
                   />
                 </AdminFormField>
-                <Show when={editingOriginal()?.notes}>
-                  <div class={`mt-3 badge badge-outline h-auto py-2 font-mono text-xs ${editingOriginal()?.noteAgentVisible ? "badge-success" : "badge-warning"}`}>
-                    <Show
-                      when={editingOriginal()?.noteAgentVisible}
-                      fallback="Current note requires human approval"
-                    >
-                      Current note is approved for agent visibility
-                    </Show>
-                  </div>
-                </Show>
+                <CurrentNoteApproval original={editingOriginal()} />
               </AdminFormSection>
 
               <AdminFormSection
@@ -967,24 +973,7 @@ export default function AdminPartnersHub() {
       </Show>
 
       <Show when={!partnerReviews.loading && filtered().length === 0}>
-        <AdminDataPanel>
-          <div class="p-12 text-center">
-            <Icon icon="ph:handshake-bold" class="text-4xl text-gray-600 mb-4" />
-            <p class="text-white font-bold mb-2">
-              {filtersActive() ? "No partners match these filters" : "No sponsors or partners yet"}
-            </p>
-            <p class="text-sm text-gray-500 font-mono max-w-md mx-auto mb-4">
-              {filtersActive()
-                ? "Try changing the type or visibility filters above."
-                : "Create draft records here, then publish them when the logo and link are ready."}
-            </p>
-            <Show when={!filtersActive() && !showForm()}>
-              <button type="button" class="btn btn-primary btn-sm font-mono" onClick={openNewPartner}>
-                New sponsor or partner
-              </button>
-            </Show>
-          </div>
-        </AdminDataPanel>
+        <PartnerEmptyState filtersActive={filtersActive()} showForm={showForm()} onCreate={openNewPartner} />
       </Show>
 
       <Show when={!partnerReviews.loading && filtered().length > 0}>
@@ -1183,5 +1172,87 @@ export default function AdminPartnersHub() {
         </AdminDataPanel>
       </section>
     </AdminPageShell>
+  );
+}
+
+interface CurrentLogoRemovalProps {
+  original: PartnerAdminSnapshot | null;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}
+
+function CurrentLogoRemoval(props: CurrentLogoRemovalProps) {
+  return (
+    <Show when={props.original?.logo}>
+      <div class="min-w-0 lg:col-span-12">
+        <label
+          for="partner-remove-logo"
+          class="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-mono"
+        >
+          <input
+            id="partner-remove-logo"
+            type="checkbox"
+            class="checkbox checkbox-warning checkbox-sm"
+            checked={props.checked}
+            disabled={props.original?.published}
+            onChange={(e) => props.onChange(e.currentTarget.checked)}
+          />
+          <Show
+            when={props.original?.published}
+            fallback="Remove the current logo and keep this Partner as an incomplete draft"
+          >
+            Unpublish this Partner before removing its current logo
+          </Show>
+        </label>
+      </div>
+    </Show>
+  );
+}
+
+interface CurrentNoteApprovalProps {
+  original: PartnerAdminSnapshot | null;
+}
+
+function CurrentNoteApproval(props: CurrentNoteApprovalProps) {
+  return (
+    <Show when={props.original?.notes}>
+      <div class={`mt-3 badge badge-outline h-auto py-2 font-mono text-xs ${props.original?.noteAgentVisible ? "badge-success" : "badge-warning"}`}>
+        <Show
+          when={props.original?.noteAgentVisible}
+          fallback="Current note requires human approval"
+        >
+          Current note is approved for agent visibility
+        </Show>
+      </div>
+    </Show>
+  );
+}
+
+interface PartnerEmptyStateProps {
+  filtersActive: boolean;
+  showForm: boolean;
+  onCreate: () => void;
+}
+
+function PartnerEmptyState(props: PartnerEmptyStateProps) {
+  return (
+    <AdminDataPanel>
+      <div class="p-12 text-center">
+        <Icon icon="ph:handshake-bold" class="text-4xl text-gray-600 mb-4" />
+        <p class="text-white font-bold mb-2">
+          {props.filtersActive ? "No partners match these filters" : "No sponsors or partners yet"}
+        </p>
+        <p class="text-sm text-gray-500 font-mono max-w-md mx-auto mb-4">
+          {props.filtersActive
+            ? "Try changing the type or visibility filters above."
+            : "Create draft records here, then publish them when the logo and link are ready."}
+        </p>
+        <Show when={!props.filtersActive && !props.showForm}>
+          <button type="button" class="btn btn-primary btn-sm font-mono" onClick={() => props.onCreate()}>
+            New sponsor or partner
+          </button>
+        </Show>
+      </div>
+    </AdminDataPanel>
   );
 }

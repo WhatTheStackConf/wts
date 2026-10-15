@@ -1,14 +1,16 @@
-import type { JSX } from "@solidjs/web";
-import { Title, Meta, Link } from "@solidjs/meta";
+import { clientOnly, type JSX } from "@solidjs/web";
+import { Link } from "@solidjs/meta";
 import { Navbar } from "~/components/Navbar";
-import CodeBackground from "../components/CodeBackground";
+import CodeBackground from "~/components/CodeBackground";
 import { Footer } from "~/components/Footer";
-import { clientOnly } from "@solidjs/web";
+
 import {
   conferenceDefaultDescription,
   conferenceDefaultOgSubtitle,
   conferenceName,
 } from "~/lib/conference-guide-content";
+import { CapabilityRouteBoundary } from "~/components/CapabilityRouteBoundary";
+import { PublicPageMetadata } from "~/components/PublicPageMetadata";
 
 const NewsletterPopup = clientOnly(
   () => import("~/components/NewsletterPopup"),
@@ -37,14 +39,12 @@ export const Layout = (props: LayoutProps) => {
         Skip to main content
       </a>
       <Navbar />
-      <Title>{title()}</Title>
       <Link rel="icon" href="/favicon.svg" />
-      <Meta name="description" content={description()} />
-      <Meta property="og:title" content={title()} />
-      <Meta property="og:description" content={description()} />
-      <Meta property="og:image" content={`/api/og?title=${encodeURIComponent(title())}&subtitle=${encodeURIComponent(ogSubtitle())}`} />
-      <Meta property="og:type" content="website" />
-      <Meta name="twitter:card" content="summary_large_image" />
+      <PublicPageMetadata
+        title={title()}
+        description={description()}
+        ogSubtitle={ogSubtitle()}
+      />
       <main id="main-content" tabindex="-1" class="font-sans relative w-full min-h-screen flex flex-col items-center overflow-x-hidden">
         <CodeBackground />
         <div class="absolute z-24 w-full min-h-screen h-full top-0 left-0 bg-black opacity-[76%]"></div>
@@ -56,7 +56,7 @@ export const Layout = (props: LayoutProps) => {
 
         {/* Layer 3: Content */}
         <div class="relative z-225 w-full md:max-w-[80%] flex flex-col items-center justify-center flex-grow py-20">
-          {props.children}
+          <CapabilityRouteBoundary>{props.children}</CapabilityRouteBoundary>
         </div>
         <div class="w-full relative z-225">
           <Footer />

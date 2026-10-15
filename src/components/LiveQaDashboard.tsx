@@ -1,10 +1,13 @@
 import { createMemo, Show } from "solid-js";
+import { useSearchParams } from "@solidjs/router";
+import { LiveQaPanel } from "~/components/LiveQaPanel";
 import { LiveQaStages } from "~/components/LiveQaStages";
 import { useAuth } from "~/lib/auth-context";
 import { mcAuthorized } from "~/lib/route-authorization";
 
 export function LiveQaDashboard() {
   const auth = useAuth();
+  const [params] = useSearchParams();
   const scope = createMemo(() => mcAuthorized({ loading: auth.isLoading(), authenticated: auth.isAuthenticated(), role: auth.user?.role })
     ? JSON.stringify([auth.user?.id, auth.user?.role]) : undefined);
   return (
@@ -17,7 +20,9 @@ export function LiveQaDashboard() {
           </Show>
         </div>
       }>
-        {(_key) => <LiveQaStages moderation />}
+        {(_key) => <Show when={typeof params.session === "string" && params.session} keyed fallback={<LiveQaStages />}>
+          {(slug) => <LiveQaPanel slug={slug} />}
+        </Show>}
       </Show>
     </Show>
   );

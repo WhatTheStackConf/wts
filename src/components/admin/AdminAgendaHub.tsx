@@ -39,8 +39,11 @@ import {
   type ProgrammeTrackRef,
 } from "~/lib/programme";
 
+const SCHEDULE_SUBTITLE = SCHEDULE_TIME_ZONE ? `Schedule times: ${SCHEDULE_TIME_ZONE}.` : "Schedule time zone has not been announced.";
+const SLOT_START_HINT = SCHEDULE_TIME_ZONE ? `${SCHEDULE_TIME_ZONE} local time.` : "Date/time entry unavailable until the conference time zone is announced.";
+
 function localDateTimeInput(instant?: string): string {
-  if (!instant || Number.isNaN(Date.parse(instant))) return "";
+  if (!SCHEDULE_TIME_ZONE || !instant || Number.isNaN(Date.parse(instant))) return "";
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: SCHEDULE_TIME_ZONE,
     year: "numeric",
@@ -57,6 +60,7 @@ function localDateTimeInput(instant?: string): string {
 }
 
 function displayDateTime(instant: string): string {
+  if (!SCHEDULE_TIME_ZONE) return "Time zone not announced";
   return new Date(instant).toLocaleString("en-US", {
     timeZone: SCHEDULE_TIME_ZONE,
     weekday: "short",
@@ -124,8 +128,15 @@ export default function AdminAgendaHub() {
   const [slotTitle, setSlotTitle] = createSignal("");
   const [slotSummary, setSlotSummary] = createSignal("");
 
+  const days = () => programme()?.days || [];
+  const appearanceEvents = () => programme()?.events || [];
+  const eventProgrammes = () => programme()?.programmes || [];
+  const tracks = () => programme()?.tracks || [];
+  const slots = () => programme()?.slots || [];
+  const sessions = () => programme()?.sessions || [];
+
   const availableTracks = createMemo(() =>
-    (programme()?.tracks || []).filter((track) => track.programmeId === slotProgrammeId()),
+    tracks().filter((track) => track.programmeId === slotProgrammeId()),
   );
 
   const resetDay = () => {
@@ -306,7 +317,10 @@ export default function AdminAgendaHub() {
 
   const submitSlot = async (event: Event) => {
     event.preventDefault();
-    if (busy()) return;
+    if (!SCHEDULE_TIME_ZONE) {
+      showToast("error", "Schedule times cannot be entered until the conference time zone is announced.");
+      return;
+    }
     setBusy(true);
     try {
       const payload = slotPayload();
@@ -372,7 +386,7 @@ export default function AdminAgendaHub() {
       layoutTitle="Admin: Agenda"
       layoutDescription="Manage the public conference programme"
       title="Agenda"
-      subtitle={`Schedule times: ${SCHEDULE_TIME_ZONE}.`}
+      subtitle={SCHEDULE_SUBTITLE}
       hint="Before publishing a session slot, assign its speakers to the matching Appearance Event."
       count={programme()?.slots.length}
       countLoading={programme.loading}
@@ -426,13 +440,13 @@ export default function AdminAgendaHub() {
               <AdminFormField id="agenda-programme-day" label="Conference Day" required>
                 <select id="agenda-programme-day" name="day" class={adminSelectClass()} required disabled={Boolean(programmeEditingId())} value={programmeDayId()} onChange={(event) => setProgrammeDayId(event.currentTarget.value)}>
                   <option value="">Choose a Day</option>
-                  <For each={programme()?.days || []}>{(day) => <option value={day.id}>{day.localDate} - {day.title}</option>}</For>
+                  <For each={days()}>{(day) => <option value={day.id}>{day.localDate} - {day.title}</option>}</For>
                 </select>
               </AdminFormField>
               <AdminFormField id="agenda-programme-event" label="Appearance Event" required>
                 <select id="agenda-programme-event" name="appearance_event" class={adminSelectClass()} required disabled={Boolean(programmeEditingId())} value={programmeEventId()} onChange={(event) => setProgrammeEventId(event.currentTarget.value)}>
                   <option value="">Choose an Event</option>
-                  <For each={programme()?.events || []}>{(appearanceEvent) => <option value={appearanceEvent.id}>{appearanceEvent.name} {appearanceEvent.published ? "(published)" : "(draft)"}</option>}</For>
+                  <For each={appearanceEvents()}>{(appearanceEvent) => <option value={appearanceEvent.id}>{appearanceEvent.name} {appearanceEvent.published ? "(published)" : "(draft)"}</option>}</For>
                 </select>
               </AdminFormField>
               <AdminFormField id="agenda-programme-order" label="Day-local display order" required>
@@ -452,7 +466,7 @@ export default function AdminAgendaHub() {
               <AdminFormField id="agenda-track-programme" label="Event Programme" required>
                 <select id="agenda-track-programme" name="programme" class={adminSelectClass()} required disabled={Boolean(trackEditingId())} value={trackProgrammeId()} onChange={(event) => setTrackProgrammeId(event.currentTarget.value)}>
                   <option value="">Choose a Programme</option>
-                  <For each={programme()?.programmes || []}>{(eventProgramme) => <option value={eventProgramme.id}>{eventProgrammeLabel(eventProgramme, programme()!)}</option>}</For>
+                  <For each={eventProgrammes()}>{(eventProgramme) => <option value={eventProgramme.id}>{eventProgrammeLabel(eventProgramme, programme()!)}</option>}</For>
                 </select>
               </AdminFormField>
               <AdminFormField id="agenda-track-key" label="Programme-local key" required hint="Example: main">
@@ -482,7 +496,7 @@ export default function AdminAgendaHub() {
             <AdminFormField id="agenda-slot-programme" label="Event Programme" required>
               <select id="agenda-slot-programme" name="programme" class={adminSelectClass()} required value={slotProgrammeId()} onChange={(event) => { setSlotProgrammeId(event.currentTarget.value); setSlotTrackId(""); }}>
                 <option value="">Choose a Programme</option>
-                <For each={programme()?.programmes || []}>{(eventProgramme) => <option value={eventProgramme.id}>{eventProgrammeLabel(eventProgramme, programme()!)}</option>}</For>
+                <For each={eventProgrammes()}>{(eventProgramme) => <option value={eventProgramme.id}>{eventProgrammeLabel(eventProgramme, programme()!)}</option>}</For>
               </select>
             </AdminFormField>
             <AdminFormField id="agenda-slot-track" label="Track">
@@ -491,11 +505,11 @@ export default function AdminAgendaHub() {
                 <For each={availableTracks()}>{(track) => <option value={track.id}>{track.name}</option>}</For>
               </select>
             </AdminFormField>
-            <AdminFormField id="agenda-slot-start" label="Start" required hint="Europe/Skopje local time.">
-              <input id="agenda-slot-start" type="datetime-local" class={adminInputClass("font-mono")} required value={slotStart()} onInput={(event) => setSlotStart(event.currentTarget.value)} />
+            <AdminFormField id="agenda-slot-start" label="Start" required hint={SLOT_START_HINT}>
+              <input id="agenda-slot-start" type="datetime-local" class={adminInputClass("font-mono")} required disabled={!SCHEDULE_TIME_ZONE} value={slotStart()} onInput={(event) => setSlotStart(event.currentTarget.value)} />
             </AdminFormField>
             <AdminFormField id="agenda-slot-end" label="End" required hint="Can run past midnight.">
-              <input id="agenda-slot-end" type="datetime-local" class={adminInputClass("font-mono")} required value={slotEnd()} onInput={(event) => setSlotEnd(event.currentTarget.value)} />
+              <input id="agenda-slot-end" type="datetime-local" class={adminInputClass("font-mono")} required disabled={!SCHEDULE_TIME_ZONE} value={slotEnd()} onInput={(event) => setSlotEnd(event.currentTarget.value)} />
             </AdminFormField>
             <AdminFormField id="agenda-slot-kind" label="Kind" required>
               <select id="agenda-slot-kind" class={adminSelectClass()} value={slotKind()} onChange={(event) => { setSlotKind(event.currentTarget.value as AgendaSlotKind); setSlotSessionId(""); setSlotTitle(""); setSlotSummary(""); }}>
@@ -523,7 +537,7 @@ export default function AdminAgendaHub() {
               <AdminFormField id="agenda-slot-session" label="Session" required hint="Publishing this Slot also publishes the linked Session.">
                 <select id="agenda-slot-session" class={adminSelectClass()} required value={slotSessionId()} onChange={(event) => setSlotSessionId(event.currentTarget.value)}>
                   <option value="">Choose a Session</option>
-                  <For each={programme()?.sessions || []}>{(session) => <option value={session.id}>{session.title} {session.published ? "(published)" : "(draft)"}</option>}</For>
+                  <For each={sessions()}>{(session) => <option value={session.id}>{session.title} {session.published ? "(published)" : "(draft)"}</option>}</For>
                 </select>
               </AdminFormField>
             </div>
@@ -539,7 +553,7 @@ export default function AdminAgendaHub() {
         <AdminDataPanel>
           <div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">Conference Days</h2></div>
           <ul class="divide-y divide-white/10" role="list">
-            <For each={programme()?.days || []}>{(day) => (
+            <For each={days()}>{(day) => (
               <li class="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div><p class="font-bold text-white">{day.localDate} - {day.title}</p><p class="text-xs font-mono text-base-content/55">{day.key} / order {day.displayOrder}</p></div>
                 <div class="flex gap-2">
@@ -548,31 +562,31 @@ export default function AdminAgendaHub() {
                 </div>
               </li>
             )}</For>
-            <Show when={(programme()?.days.length || 0) === 0}><li class="p-5 text-sm font-mono text-base-content/60">Create a Conference Day to begin.</li></Show>
+            <Show when={days().length === 0}><li class="p-5 text-sm font-mono text-base-content/60">Create a Conference Day to begin.</li></Show>
           </ul>
         </AdminDataPanel>
         <AdminDataPanel>
           <div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">Event Programmes</h2></div>
           <ul class="divide-y divide-white/10" role="list">
-            <For each={programme()?.programmes || []}>{(eventProgramme) => (
+            <For each={eventProgrammes()}>{(eventProgramme) => (
               <li class="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div><p class="font-bold text-white">{eventProgrammeLabel(eventProgramme, programme()!)}</p><p class="text-xs font-mono text-base-content/55">Day-local order {eventProgramme.displayOrder}</p></div>
                 <button type="button" class="btn btn-xs btn-ghost font-mono" onClick={() => editProgramme(eventProgramme)}>Edit</button>
               </li>
             )}</For>
-            <Show when={(programme()?.programmes.length || 0) === 0}><li class="p-5 text-sm font-mono text-base-content/60">Pair a Day with an Appearance Event.</li></Show>
+            <Show when={eventProgrammes().length === 0}><li class="p-5 text-sm font-mono text-base-content/60">Pair a Day with an Appearance Event.</li></Show>
           </ul>
         </AdminDataPanel>
         <AdminDataPanel>
           <div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">Tracks</h2></div>
           <ul class="divide-y divide-white/10" role="list">
-            <For each={programme()?.tracks || []}>{(track) => (
+            <For each={tracks()}>{(track) => (
               <li class="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div><p class="font-bold text-white">{track.name}</p><p class="text-xs font-mono text-base-content/55">{eventProgrammeLabel(programme()!.programmes.find((candidate) => candidate.id === track.programmeId)!, programme()!)} / {track.key} / {track.locationLabel || "No default location"}</p></div>
                 <button type="button" class="btn btn-xs btn-ghost font-mono" onClick={() => editTrack(track)}>Edit</button>
               </li>
             )}</For>
-            <Show when={(programme()?.tracks.length || 0) === 0}><li class="p-5 text-sm font-mono text-base-content/60">Tracks are optional.</li></Show>
+            <Show when={tracks().length === 0}><li class="p-5 text-sm font-mono text-base-content/60">Tracks are optional.</li></Show>
           </ul>
         </AdminDataPanel>
       </div>
@@ -580,7 +594,7 @@ export default function AdminAgendaHub() {
       <AdminDataPanel>
         <div class="mt-8 border-b border-white/10 p-5"><h2 class="font-bold text-white">Agenda Slots</h2></div>
         <ul class="divide-y divide-white/10" role="list">
-          <For each={programme()?.slots || []}>{(slot) => (
+          <For each={slots()}>{(slot) => (
             <li class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div class="min-w-0">
                 <p class="font-bold text-white break-words">{slotLabel(slot, programme()!)}</p>
@@ -592,7 +606,7 @@ export default function AdminAgendaHub() {
               </div>
             </li>
           )}</For>
-          <Show when={(programme()?.slots.length || 0) === 0}><li class="p-5 text-sm font-mono text-base-content/60">No Agenda Slots yet.</li></Show>
+          <Show when={slots().length === 0}><li class="p-5 text-sm font-mono text-base-content/60">No Agenda Slots yet.</li></Show>
         </ul>
       </AdminDataPanel>
     </AdminPageShell>

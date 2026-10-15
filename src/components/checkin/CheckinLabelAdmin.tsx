@@ -25,10 +25,11 @@ export function CheckinLabelAdmin() {
     return () => { cancelled = true; };
   });
   let previewGeneration = 0;
+  const previewUnavailable = () => !fontReady() || pending() || catalogue.loading || !!catalogue.error;
   function invalidate() { previewGeneration++; setResult(undefined); setError(""); }
   async function preview(event: SubmitEvent) {
     event.preventDefault();
-    if (pending() || catalogue.error || catalogue.loading || !fontReady()) return;
+    if (previewUnavailable()) return;
     invalidate();
     const generation = previewGeneration;
     const profile = catalogue()?.profiles.find((profile) => profile.id === profileId());
@@ -64,7 +65,7 @@ export function CheckinLabelAdmin() {
             <input id="label-name" class="input input-bordered min-h-12 w-full text-base" required maxlength={300} autocomplete="off" value={name()} aria-describedby="label-text-help" onInput={(event) => { invalidate(); setName(event.currentTarget.value); }} />
             <label for="label-affiliation" class="block font-medium">Affiliation (optional)</label>
             <input id="label-affiliation" class="input input-bordered min-h-12 w-full text-base" maxlength={300} autocomplete="off" value={affiliation()} onInput={(event) => { invalidate(); setAffiliation(event.currentTarget.value); }} />
-            <button type="submit" class="btn btn-primary min-h-12" disabled={!fontReady() || pending() || catalogue.loading || !!catalogue.error}>{pending() ? "Rendering Name Label…" : "Preview Name Label"}</button>
+            <button type="submit" class="btn btn-primary min-h-12" disabled={previewUnavailable()}>{pending() ? "Rendering Name Label…" : "Preview Name Label"}</button>
             <button type="button" class="btn btn-ghost min-h-12" onClick={() => { invalidate(); setName(""); setAffiliation(""); }}>Clear preview text and raster</button>
           </form>
           <Show when={error()}><p role="alert" class="alert alert-error">{error()}</p></Show>

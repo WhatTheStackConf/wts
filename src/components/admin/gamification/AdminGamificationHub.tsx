@@ -32,6 +32,10 @@ import AdminSessionAttendanceMissions from "~/components/admin/gamification/Admi
 import AdminConfiguredEventMissions from "~/components/admin/gamification/AdminConfiguredEventMissions";
 import AdminCommunityPartnerMissions from "~/components/admin/gamification/AdminCommunityPartnerMissions";
 import AdminEasterEggMissions from "~/components/admin/gamification/AdminEasterEggMissions";
+import AdminMissionQuestions from "~/components/admin/gamification/AdminMissionQuestions";
+import AdminPrintedMissionCodes from "~/components/admin/gamification/AdminPrintedMissionCodes";
+import AdminBoothAchievements from "~/components/admin/gamification/AdminBoothAchievements";
+import MissionCodeQr from "~/components/admin/gamification/MissionCodeQr";
 import type {
   AdminActivityDto,
   AdminCodeBatchResult,
@@ -42,17 +46,69 @@ import type {
 } from "~/lib/gamification-operations";
 
 const CATEGORIES = ["onboarding", "ticketing", "attendance", "session", "partner", "booth", "workshop", "satellite_event", "warmup_event", "community", "social", "meta", "admin_manual"];
-const ACTIVITY_KINDS = ["booth", "community_partner", "hievents", "admin_manual", "meta"];
+const ACTIVITY_KINDS = ["qr", "booth", "community_partner", "hievents", "admin_manual", "meta"];
 const EVIDENCE_MODES = ["single_code", "two_code_start", "two_code_finish", "hievents_ticket", "hievents_checkin", "admin_manual", "meta_rule"];
 const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"];
 const DEDICATED_EVENT_KINDS = new Set(["workshop", "warmup", "satellite", "social"]);
-type AdminGamificationTab = "catalog" | "events" | "community" | "eggs" | "sessions" | "codes" | "schedule" | "hievents" | "support";
+const DEDICATED_ACTIVITY_KINDS = new Set(["session", "community_partner", "easter_egg", "workshop", "warmup_event", "satellite_event", "social"]);
+const DEDICATED_MISSION_CATEGORIES = new Set(["community", "easter_egg"]);
+type AdminGamificationTab = "catalog" | "events" | "community" | "eggs" | "sessions" | "codes" | "printed" | "questions" | "booths" | "schedule" | "hievents" | "support";
+const TABS: { value: AdminGamificationTab; label: string }[] = [
+  { value: "catalog", label: "Catalog" },
+  { value: "questions", label: "QR questions" },
+  { value: "booths", label: "2026 booth achievements" },
+  { value: "printed", label: "Printed codes" },
+  { value: "schedule", label: "Score schedules" },
+  { value: "sessions", label: "Session Missions" },
+  { value: "events", label: "Event Missions" },
+  { value: "community", label: "Community Partners" },
+  { value: "eggs", label: "Easter Eggs" },
+  { value: "codes", label: "Mission codes" },
+  { value: "hievents", label: "Hi.Events sync" },
+  { value: "support", label: "User support" },
+];
+type CapMembership = AdminScorePolicyDto["capMembership"][number];
 
 function usesDedicatedConfiguration(kind: GamificationDefinitionKind, item: any): boolean {
-  if (kind === "activity") return item.kind === "session" || item.kind === "community_partner" || item.kind === "easter_egg" || ["workshop", "warmup_event", "satellite_event", "social"].includes(item.kind);
-  if (kind === "mission") return Boolean(item.sessionId || item.category === "community" || item.category === "easter_egg" || DEDICATED_EVENT_KINDS.has(item.eventRef?.kind));
+  if (kind === "activity") return DEDICATED_ACTIVITY_KINDS.has(item.kind);
+  if (kind === "mission") return Boolean(item.sessionId || DEDICATED_MISSION_CATEGORIES.has(item.category) || DEDICATED_EVENT_KINDS.has(item.eventRef?.kind));
   if (kind === "achievement") return item.category === "easter_egg";
   return false;
+}
+
+function eventReferenceKey(item: AdminActivityDto): string {
+  return item.eventRef?.eventKey || item.eventRef?.eventId || "";
+}
+
+function scorePolicyFields(item: AdminActivityDto, policy?: AdminScorePolicyDto) {
+  if (!policy) return { schedule: "", key: item.key, totalXp: "0", leaderboardXp: "0", relatedCap: "", scoreDay: "" };
+  return {
+    schedule: policy.scheduleId || "",
+    key: policy.policyKey || item.key,
+    totalXp: String(policy.totalXp || 0),
+    leaderboardXp: String(policy.leaderboardXp || 0),
+    relatedCap: policy.capMembership.find((membership) => membership.dimension === "related_group")?.key || "",
+    scoreDay: policy.scoreDay || "",
+  };
+}
+
+function activityCapMemberships(source: { activityId: string; kind: string; category: string; partnerId: string; scoreDay: string; relatedGroupKey?: string }): CapMembership[] {
+  const booth = source.kind === "booth";
+  return [
+    { dimension: "activity" as const, key: source.activityId },
+    ...(source.relatedGroupKey ? [{ dimension: "related_group" as const, key: source.relatedGroupKey }] : []),
+    ...(source.partnerId ? [{ dimension: "partner" as const, key: source.partnerId }] : []),
+    ...(booth && source.scoreDay ? [
+      { dimension: "category" as const, key: "booth" },
+      { dimension: "conference_day" as const, key: source.scoreDay },
+      { dimension: "conference" as const, key: "conference" },
+    ] : []),
+    ...(source.kind === "qr" ? [
+      { dimension: "category" as const, key: source.category },
+      { dimension: "conference" as const, key: "conference" },
+      ...(source.scoreDay ? [{ dimension: "conference_day" as const, key: source.scoreDay }] : []),
+    ] : []),
+  ];
 }
 
 function operationId(): string {
@@ -108,6 +164,14 @@ export default function AdminGamificationHub() {
     return result.data as AdminGamificationOperationsDto;
   });
 
+  const achievements = () => operations()?.achievements || [];
+  const missions = () => operations()?.missions || [];
+  const activities = () => operations()?.activities || [];
+  const schedules = () => operations()?.schedules || [];
+  const partnerReferences = () => operations()?.references.partners || [];
+  const sessionReferences = () => operations()?.references.sessions || [];
+  const displayedCodes = () => codeMatches() || operations()?.codes || [];
+
   const activeActivities = createMemo(() =>
     (operations()?.activities || []).filter((activity) => activity.status === "active" && activity.enabled),
   );
@@ -149,9 +213,9 @@ export default function AdminGamificationHub() {
   const [activityId, setActivityId] = createSignal("");
   const [activityKey, setActivityKey] = createSignal("");
   const [activityMission, setActivityMission] = createSignal("");
-  const [activityKind, setActivityKind] = createSignal("booth");
-  const [activityCategory, setActivityCategory] = createSignal("booth");
-  const [activityOutcome, setActivityOutcome] = createSignal("visit");
+  const [activityKind, setActivityKind] = createSignal("qr");
+  const [activityCategory, setActivityCategory] = createSignal("social");
+  const [activityOutcome, setActivityOutcome] = createSignal("completion");
   const [activityEvidence, setActivityEvidence] = createSignal("single_code");
   const [activityEvidenceChannel, setActivityEvidenceChannel] = createSignal<"wts_qr" | "wts_link" | "wts_manual_code" | "wts_static_code">("wts_qr");
   const [activityDeploymentLabel, setActivityDeploymentLabel] = createSignal("");
@@ -254,42 +318,58 @@ export default function AdminGamificationHub() {
   });
 
   const resetActivity = () => {
-    setActivityId(""); setActivityKey(""); setActivityMission(""); setActivityKind("booth"); setActivityCategory("booth"); setActivityOutcome("visit");
+    setActivityId(""); setActivityKey(""); setActivityMission(""); setActivityKind("qr"); setActivityCategory("social"); setActivityOutcome("completion");
     setActivityEvidence("single_code"); setActivityEvidenceChannel("wts_qr"); setActivityDeploymentLabel(""); setActivityAchievement(""); setActivityPartner(""); setActivityPartnerKind("sponsor"); setActivitySession("");
     setActivityEventKey(""); setActivityLimit("1"); setActivityMaxClaims("100"); setActivityFrom(""); setActivityUntil(""); setActivityEnabled(true); setActivityPartnerFollowUpEnabled(false); setActivityPartnerFollowUpNoticeVersion("");
     setPolicySchedule(""); setPolicyKey(""); setPolicyTotalXp("0"); setPolicyLeaderboardXp("0"); setPolicyRelatedCap(""); setPolicyScoreDay("");
   };
+  const editBoothEvidence = (item: AdminActivityDto) => {
+    setActivityEvidenceChannel(item.evidenceChannel || "wts_qr"); setActivityDeploymentLabel(item.deploymentLabel || "");
+    setActivityPartnerFollowUpEnabled(Boolean(item.partnerFollowUp?.enabled)); setActivityPartnerFollowUpNoticeVersion(item.partnerFollowUp?.noticeVersion || "");
+  };
+  const editScorePolicy = (item: AdminActivityDto, policy?: AdminScorePolicyDto) => {
+    const fields = scorePolicyFields(item, policy);
+    setPolicySchedule(fields.schedule); setPolicyKey(fields.key); setPolicyTotalXp(fields.totalXp); setPolicyLeaderboardXp(fields.leaderboardXp);
+    setPolicyRelatedCap(fields.relatedCap); setPolicyScoreDay(fields.scoreDay);
+  };
   const editActivity = (item: AdminActivityDto) => {
     const policy = item.scorePolicies.find((candidate) => draftSchedules().some((schedule) => schedule.id === candidate.scheduleId)) || item.scorePolicies[0];
     setActivityId(item.id); setActivityKey(item.key); setActivityMission(item.missionId || ""); setActivityKind(item.kind); setActivityCategory(item.category);
-    setActivityOutcome(item.outcomeKey); setActivityEvidence(item.evidenceMode); setActivityEvidenceChannel(item.evidenceChannel || "wts_qr"); setActivityDeploymentLabel(item.deploymentLabel || ""); setActivityAchievement(item.achievementId || ""); setActivityPartner(item.partnerId || "");
-    setActivityPartnerKind(item.partnerKind || "sponsor"); setActivitySession(item.sessionId || ""); setActivityEventKey(item.eventRef?.eventKey || item.eventRef?.eventId || "");
-    setActivityLimit(String(item.perUserClaimLimit)); setActivityMaxClaims(String(item.maxClaims || "")); setActivityFrom(localDateTime(item.activeFrom)); setActivityUntil(localDateTime(item.activeUntil)); setActivityEnabled(item.enabled); setActivityPartnerFollowUpEnabled(Boolean(item.partnerFollowUp?.enabled)); setActivityPartnerFollowUpNoticeVersion(item.partnerFollowUp?.noticeVersion || "");
-    setPolicySchedule(policy?.scheduleId || ""); setPolicyKey(policy?.policyKey || item.key); setPolicyTotalXp(String(policy?.totalXp || 0)); setPolicyLeaderboardXp(String(policy?.leaderboardXp || 0));
-    setPolicyRelatedCap(policy?.capMembership.find((membership) => membership.dimension === "related_group")?.key || ""); setPolicyScoreDay(policy?.scoreDay || "");
+    setActivityOutcome(item.outcomeKey); setActivityEvidence(item.evidenceMode); setActivityAchievement(item.achievementId || ""); setActivityPartner(item.partnerId || "");
+    setActivityPartnerKind(item.partnerKind || "sponsor"); setActivitySession(item.sessionId || ""); setActivityEventKey(eventReferenceKey(item));
+    setActivityLimit(String(item.perUserClaimLimit)); setActivityMaxClaims(String(item.maxClaims || "")); setActivityFrom(localDateTime(item.activeFrom)); setActivityUntil(localDateTime(item.activeUntil)); setActivityEnabled(item.enabled);
+    editBoothEvidence(item);
+    editScorePolicy(item, policy);
   };
+  const activityMemberships = (id: string, booth: boolean): CapMembership[] => {
+    if (!id) return [];
+    const boothGroupKey = booth ? operations()?.missions.find((mission) => mission.id === activityMission())?.key : undefined;
+    return activityCapMemberships({ activityId: id, kind: activityKind(), category: activityCategory(), partnerId: activityPartner(), scoreDay: policyScoreDay(), relatedGroupKey: boothGroupKey || policyRelatedCap() });
+  };
+  const activityBoothEvidence = (booth: boolean) => ({
+    evidenceChannel: booth ? activityEvidenceChannel() : undefined,
+    deploymentLabel: booth ? activityDeploymentLabel() || undefined : undefined,
+  });
+  const activitySources = () => ({
+    achievementId: activityAchievement() || undefined,
+    partnerId: activityPartner() || undefined,
+    partnerKind: activityPartner() ? activityPartnerKind() as any : undefined,
+    sessionId: activitySession() || undefined,
+    eventRef: activityEventKey() ? { eventKey: activityEventKey(), kind: activityKind() } : undefined,
+  });
+  const activityScorePolicy = (id: string, memberships: CapMembership[]) => (policySchedule() && id
+    ? { scheduleId: policySchedule(), policyKey: policyKey() || activityKey(), enabled: true, totalXp: Number(policyTotalXp()), leaderboardXp: Number(policyLeaderboardXp()), capMembership: memberships, scoreDay: policyScoreDay() || undefined }
+    : undefined);
   const saveActivity = (event: Event) => withBusy(async () => {
     event.preventDefault();
     const id = activityId();
     const booth = activityKind() === "booth";
-    const boothGroupKey = booth ? operations()?.missions.find((mission) => mission.id === activityMission())?.key : undefined;
-    const memberships = id ? [
-      { dimension: "activity" as const, key: id },
-      ...((booth && boothGroupKey) ? [{ dimension: "related_group" as const, key: boothGroupKey }] : policyRelatedCap() ? [{ dimension: "related_group" as const, key: policyRelatedCap() }] : []),
-      ...(activityPartner() ? [{ dimension: "partner" as const, key: activityPartner() }] : []),
-      ...(booth && policyScoreDay() ? [
-        { dimension: "category" as const, key: "booth" },
-        { dimension: "conference_day" as const, key: policyScoreDay() },
-        { dimension: "conference" as const, key: "conference" },
-      ] : []),
-    ] : [];
+    const memberships = activityMemberships(id, booth);
     const result = await adminSaveGamificationActivityDraft({
       id: id || undefined, key: activityKey(), missionId: activityMission() || undefined, kind: activityKind() as any, category: activityCategory() as any,
-      outcomeKey: activityOutcome(), evidenceMode: activityEvidence() as any, evidenceChannel: booth ? activityEvidenceChannel() : undefined, deploymentLabel: booth ? activityDeploymentLabel() || undefined : undefined, achievementId: activityAchievement() || undefined, partnerId: activityPartner() || undefined,
-      partnerKind: activityPartner() ? activityPartnerKind() as any : undefined, sessionId: activitySession() || undefined,
-      eventRef: activityEventKey() ? { eventKey: activityEventKey(), kind: activityKind() } : undefined,
+      outcomeKey: activityOutcome(), evidenceMode: activityEvidence() as any, ...activityBoothEvidence(booth), ...activitySources(),
       perUserClaimLimit: Number(activityLimit()), maxClaims: Number(activityMaxClaims()), activeFrom: asInstant(activityFrom()), activeUntil: asInstant(activityUntil()), enabled: activityEnabled(), partnerFollowUp: booth ? { enabled: activityPartnerFollowUpEnabled(), noticeVersion: activityPartnerFollowUpNoticeVersion() || undefined } : undefined,
-      scorePolicy: policySchedule() && id ? { scheduleId: policySchedule(), policyKey: policyKey() || activityKey(), enabled: true, totalXp: Number(policyTotalXp()), leaderboardXp: Number(policyLeaderboardXp()), capMembership: memberships, scoreDay: policyScoreDay() || undefined } : undefined,
+      scorePolicy: activityScorePolicy(id, memberships),
       operationId: operationId(),
     });
     if (!result.success) throw new Error(result.error || "Could not save Activity draft.");
@@ -381,7 +461,7 @@ export default function AdminGamificationHub() {
       layoutTitle="Admin: Gamification"
       layoutDescription="Configure September gamification, Mission codes, and single-User support"
       title="Gamification"
-      hint="Save drafts before activation. Retire used definitions instead of deleting them; accounting history is kept."
+      hint="Create a QR Activity for direct points, or attach questions before activating it. Save drafts, configure scoring, activate definitions and the score schedule, then generate or register codes."
       count={operations()?.activities.length}
       countLoading={operations.loading}
       toast={toast()}
@@ -390,20 +470,12 @@ export default function AdminGamificationHub() {
       <Show when={loadError()}><div class="alert alert-error mb-6 font-mono" role="alert">{loadError()}</div></Show>
 
        <nav class="mb-6 flex flex-wrap gap-2" aria-label="Gamification operations">
-          <button type="button" class={`btn btn-sm font-mono ${tab() === "catalog" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "catalog" ? "true" : "false"} onClick={() => selectTab("catalog")}>Catalog</button>
-            <button type="button" class={`btn btn-sm font-mono ${tab() === "schedule" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "schedule" ? "true" : "false"} onClick={() => selectTab("schedule")}>Score schedules</button>
-            <button type="button" class={`btn btn-sm font-mono ${tab() === "sessions" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "sessions" ? "true" : "false"} onClick={() => selectTab("sessions")}>Session Missions</button>
-            <button type="button" class={`btn btn-sm font-mono ${tab() === "events" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "events" ? "true" : "false"} onClick={() => selectTab("events")}>Event Missions</button>
-             <button type="button" class={`btn btn-sm font-mono ${tab() === "community" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "community" ? "true" : "false"} onClick={() => selectTab("community")}>Community Partners</button>
-            <button type="button" class={`btn btn-sm font-mono ${tab() === "eggs" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "eggs" ? "true" : "false"} onClick={() => selectTab("eggs")}>Easter Eggs</button>
-           <button type="button" class={`btn btn-sm font-mono ${tab() === "codes" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "codes" ? "true" : "false"} onClick={() => selectTab("codes")}>Mission codes</button>
-           <button type="button" class={`btn btn-sm font-mono ${tab() === "hievents" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "hievents" ? "true" : "false"} onClick={() => selectTab("hievents")}>Hi.Events sync</button>
-           <button type="button" class={`btn btn-sm font-mono ${tab() === "support" ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === "support" ? "true" : "false"} onClick={() => selectTab("support")}>User support</button>
+         <For each={TABS}>{(option) => <button type="button" class={`btn btn-sm font-mono ${tab() === option.value ? "btn-primary" : "btn-ghost"}`} aria-pressed={tab() === option.value ? "true" : "false"} onClick={() => selectTab(option.value)}>{option.label}</button>}</For>
        </nav>
 
       <Show when={tab() === "catalog"}>
         <div class="mb-6 grid gap-4 lg:grid-cols-3">
-          <AdminDataPanel><div class="p-5"><p class="text-xs font-mono text-base-content/60">PROFILE CACHE</p><p class="mt-1 text-xl font-bold text-white">{operations()?.profileCache.state || "Loading"}</p><p class="mt-1 text-xs font-mono text-base-content/55">{operations()?.profileCache.profiles || 0} profiles / last rebuild {formatTime(operations()?.profileCache.lastRecalculatedAt)}</p></div></AdminDataPanel>
+          <ProfileCachePanel cache={operations()?.profileCache} />
           <AdminDataPanel><div class="p-5"><p class="text-xs font-mono text-base-content/60">ACTIVE ACTIVITIES</p><p class="mt-1 text-xl font-bold text-white">{activeActivities().length}</p><p class="mt-1 text-xs font-mono text-base-content/55">Only active enabled Activities accept new evidence.</p></div></AdminDataPanel>
           <AdminDataPanel><div class="p-5"><AdminFormField id="gam-lifecycle-reason" label="Activation / retirement reason"><input id="gam-lifecycle-reason" class={adminInputClass("text-sm")} value={lifecycleReason()} onInput={(event) => setLifecycleReason(event.currentTarget.value)} /></AdminFormField></div></AdminDataPanel>
         </div>
@@ -442,8 +514,8 @@ export default function AdminGamificationHub() {
                 <AdminFormField id="gam-mission-key" label="Key" required><input id="gam-mission-key" class={adminInputClass("font-mono")} required disabled={Boolean(missionId())} value={missionKey()} onInput={(event) => setMissionKey(event.currentTarget.value)} /></AdminFormField>
                 <AdminFormField id="gam-mission-slug" label="Slug" required><input id="gam-mission-slug" class={adminInputClass("font-mono")} required disabled={Boolean(missionId())} value={missionSlug()} onInput={(event) => setMissionSlug(event.currentTarget.value)} /></AdminFormField>
                  <AdminFormField id="gam-mission-title" label="Title" required><input id="gam-mission-title" class={adminInputClass()} required value={missionTitle()} onInput={(event) => setMissionTitle(event.currentTarget.value)} /></AdminFormField>
-                 <AdminFormField id="gam-mission-achievement" label="Primary Achievement"><select id="gam-mission-achievement" class={adminSelectClass()} value={missionAchievement()} onChange={(event) => setMissionAchievement(event.currentTarget.value)}><option value="">None</option><For each={operations()?.achievements || []}>{(achievement) => <option value={achievement.id}>{achievement.key}</option>}</For></select></AdminFormField>
-                 <AdminFormField id="gam-mission-partner" label="Partner attribution"><select id="gam-mission-partner" class={adminSelectClass()} value={missionPartner()} onChange={(event) => setMissionPartner(event.currentTarget.value)}><option value="">No partner</option><For each={operations()?.references.partners || []}>{(partner) => <option value={partner.id}>{partner.name}{partner.type === "sponsor" ? "" : ` (${partner.type})`}</option>}</For></select></AdminFormField>
+                 <AdminFormField id="gam-mission-achievement" label="Primary Achievement"><select id="gam-mission-achievement" class={adminSelectClass()} value={missionAchievement()} onChange={(event) => setMissionAchievement(event.currentTarget.value)}><option value="">None</option><For each={achievements()}>{(achievement) => <option value={achievement.id}>{achievement.key}</option>}</For></select></AdminFormField>
+                 <AdminFormField id="gam-mission-partner" label="Partner attribution"><select id="gam-mission-partner" class={adminSelectClass()} value={missionPartner()} onChange={(event) => setMissionPartner(event.currentTarget.value)}><option value="">No partner</option><For each={partnerReferences()}>{(partner) => <option value={partner.id}>{partner.name}{partner.type === "sponsor" ? "" : ` (${partner.type})`}</option>}</For></select></AdminFormField>
                  <AdminFormField id="gam-mission-partner-key" label="Immutable sponsor key" hint="For booth Missions: the partnerKey in booth.{partnerKey}.{activityKey}."><input id="gam-mission-partner-key" class={adminInputClass("font-mono")} value={missionPartnerKey()} onInput={(event) => setMissionPartnerKey(event.currentTarget.value)} /></AdminFormField>
                 <AdminFormField id="gam-mission-summary" label="Summary" required class="md:col-span-2"><textarea id="gam-mission-summary" class={adminTextareaClass("min-h-20")} required value={missionSummary()} onInput={(event) => setMissionSummary(event.currentTarget.value)} /></AdminFormField>
                 <AdminFormField id="gam-mission-category" label="Category"><select id="gam-mission-category" class={adminSelectClass()} value={missionCategory()} onChange={(event) => setMissionCategory(event.currentTarget.value)}><For each={CATEGORIES}>{(category) => <option value={category}>{category}</option>}</For></select></AdminFormField>
@@ -463,7 +535,7 @@ export default function AdminGamificationHub() {
           <AdminFormSection title={activityId() ? "Edit Activity" : "New Activity"} description="Save first, then attach a draft score policy. Activation requires valid dependencies, evidence sources, and limits.">
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <AdminFormField id="gam-activity-key" label="Key" required><input id="gam-activity-key" class={adminInputClass("font-mono")} required disabled={Boolean(activityId())} value={activityKey()} onInput={(event) => setActivityKey(event.currentTarget.value)} /></AdminFormField>
-              <AdminFormField id="gam-activity-mission" label="Mission"><select id="gam-activity-mission" class={adminSelectClass()} value={activityMission()} onChange={(event) => setActivityMission(event.currentTarget.value)}><option value="">No Mission</option><For each={operations()?.missions || []}>{(mission) => <option value={mission.id}>{mission.key}</option>}</For></select></AdminFormField>
+              <AdminFormField id="gam-activity-mission" label="Mission"><select id="gam-activity-mission" class={adminSelectClass()} value={activityMission()} onChange={(event) => setActivityMission(event.currentTarget.value)}><option value="">No Mission</option><For each={missions()}>{(mission) => <option value={mission.id}>{mission.key}</option>}</For></select></AdminFormField>
               <AdminFormField id="gam-activity-kind" label="Kind" required><select id="gam-activity-kind" class={adminSelectClass()} value={activityKind()} onChange={(event) => setActivityKind(event.currentTarget.value)}><For each={ACTIVITY_KINDS}>{(kind) => <option value={kind}>{kind}</option>}</For></select></AdminFormField>
               <AdminFormField id="gam-activity-category" label="Category" required><select id="gam-activity-category" class={adminSelectClass()} value={activityCategory()} onChange={(event) => setActivityCategory(event.currentTarget.value)}><For each={CATEGORIES}>{(category) => <option value={category}>{category}</option>}</For></select></AdminFormField>
               <AdminFormField id="gam-activity-outcome" label="Outcome key" required><Show when={activityKind() === "booth"} fallback={<input id="gam-activity-outcome" class={adminInputClass("font-mono")} required value={activityOutcome()} onInput={(event) => setActivityOutcome(event.currentTarget.value)} />}><select id="gam-activity-outcome" class={adminSelectClass("font-mono")} value={activityOutcome()} onChange={(event) => setActivityOutcome(event.currentTarget.value)}><option value="visit">visit</option><option value="participation">participation</option><option value="completion">completion</option><option value="win">win</option><option value="high_score">high_score</option></select></Show></AdminFormField>
@@ -473,9 +545,9 @@ export default function AdminGamificationHub() {
                 <AdminFormField id="gam-activity-deployment" label="WTS deployment label" required><input id="gam-activity-deployment" class={adminInputClass()} required value={activityDeploymentLabel()} onInput={(event) => setActivityDeploymentLabel(event.currentTarget.value)} placeholder="WTS-owned sign, screen, or official page" /></AdminFormField>
                 <Show when={activityOutcome() === "win" || activityOutcome() === "high_score"}><p class="md:col-span-2 xl:col-span-4 text-sm text-warning-200">High-tier outcomes need their own WTS-controlled, outcome-specific artifact and code. Do not configure one from staff assertions, external forms, or generic booth evidence.</p></Show>
               </Show>
-              <AdminFormField id="gam-activity-achievement" label="Direct Achievement"><select id="gam-activity-achievement" class={adminSelectClass()} value={activityAchievement()} onChange={(event) => setActivityAchievement(event.currentTarget.value)}><option value="">None</option><For each={operations()?.achievements || []}>{(achievement) => <option value={achievement.id}>{achievement.key}</option>}</For></select></AdminFormField>
-              <AdminFormField id="gam-activity-session" label="Session source"><select id="gam-activity-session" class={adminSelectClass()} value={activitySession()} onChange={(event) => setActivitySession(event.currentTarget.value)}><option value="">None</option><For each={operations()?.references.sessions || []}>{(session) => <option value={session.id}>{session.title}{session.published ? "" : " (draft)"}</option>}</For></select></AdminFormField>
-              <AdminFormField id="gam-activity-partner" label="Partner source"><select id="gam-activity-partner" class={adminSelectClass()} value={activityPartner()} onChange={(event) => setActivityPartner(event.currentTarget.value)}><option value="">None</option><For each={operations()?.references.partners || []}>{(partner) => <option value={partner.id}>{partner.name}{partner.type === "sponsor" ? "" : ` (${partner.type})`}</option>}</For></select></AdminFormField>
+              <AdminFormField id="gam-activity-achievement" label="Direct Achievement"><select id="gam-activity-achievement" class={adminSelectClass()} value={activityAchievement()} onChange={(event) => setActivityAchievement(event.currentTarget.value)}><option value="">None</option><For each={achievements()}>{(achievement) => <option value={achievement.id}>{achievement.key}</option>}</For></select></AdminFormField>
+              <AdminFormField id="gam-activity-session" label="Session source"><select id="gam-activity-session" class={adminSelectClass()} value={activitySession()} onChange={(event) => setActivitySession(event.currentTarget.value)}><option value="">None</option><For each={sessionReferences()}>{(session) => <option value={session.id}>{session.title}{session.published ? "" : " (draft)"}</option>}</For></select></AdminFormField>
+              <AdminFormField id="gam-activity-partner" label="Partner source"><select id="gam-activity-partner" class={adminSelectClass()} value={activityPartner()} onChange={(event) => setActivityPartner(event.currentTarget.value)}><option value="">None</option><For each={partnerReferences()}>{(partner) => <option value={partner.id}>{partner.name}{partner.type === "sponsor" ? "" : ` (${partner.type})`}</option>}</For></select></AdminFormField>
               <AdminFormField id="gam-activity-partner-kind" label="Partner kind"><select id="gam-activity-partner-kind" class={adminSelectClass()} value={activityPartnerKind()} onChange={(event) => setActivityPartnerKind(event.currentTarget.value)}><option value="sponsor">Sponsor</option><option value="community_partner">Community partner</option><option value="organizer">Organizer</option><option value="workshop_host">Workshop host</option></select></AdminFormField>
               <AdminFormField id="gam-activity-event" label="Event key / ID"><input id="gam-activity-event" class={adminInputClass("font-mono")} value={activityEventKey()} onInput={(event) => setActivityEventKey(event.currentTarget.value)} /></AdminFormField>
               <AdminFormField id="gam-activity-limit" label="Per-User limit" required><input id="gam-activity-limit" type="number" min="1" class={adminInputClass("font-mono")} required value={activityLimit()} onInput={(event) => setActivityLimit(event.currentTarget.value)} /></AdminFormField>
@@ -509,7 +581,7 @@ export default function AdminGamificationHub() {
         </details>
 
         <div class="mt-8 grid gap-8 xl:grid-cols-3">
-          <For each={[{ kind: "achievement" as const, title: "Achievements", rows: operations()?.achievements || [] }, { kind: "mission" as const, title: "Missions", rows: operations()?.missions || [] }, { kind: "activity" as const, title: "Activities", rows: operations()?.activities || [] }]}>
+          <For each={[{ kind: "achievement" as const, title: "Achievements", rows: achievements() }, { kind: "mission" as const, title: "Missions", rows: missions() }, { kind: "activity" as const, title: "Activities", rows: activities() }]}>
             {(group) => <AdminDataPanel>
               <div class="border-b border-white/10 p-4"><h2 class="font-bold text-white">{group.title}</h2></div>
               <ul class="divide-y divide-white/10" role="list">
@@ -539,7 +611,7 @@ export default function AdminGamificationHub() {
         </div>
         <div class="grid gap-8 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
           <form class={adminFormPanelClass} onSubmit={createSchedule}><AdminFormSection title="New score schedule draft" description="Activate only after every intended direct Activity policy is attached and its Activity is active."><div class="grid gap-4"><AdminFormField id="gam-schedule-key" label="Schedule key" required><input id="gam-schedule-key" class={adminInputClass("font-mono")} required value={scheduleKey()} onInput={(event) => setScheduleKey(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-schedule-effective" label="Effective at" required><input id="gam-schedule-effective" type="datetime-local" class={adminInputClass("font-mono")} required value={scheduleEffectiveAt()} onInput={(event) => setScheduleEffectiveAt(event.currentTarget.value)} /></AdminFormField></div></AdminFormSection><div class="mt-5 flex justify-end"><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Create schedule draft</button></div></form>
-          <AdminDataPanel><div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">Versioned September schedules</h2><p class="mt-1 text-xs font-mono text-base-content/60">Only active score-bearing policies on active Activities produce the cap snapshot and Access Level thresholds.</p></div><ul class="divide-y divide-white/10" role="list"><For each={operations()?.schedules || []}>{(schedule) => <li class="flex flex-wrap items-center justify-between gap-4 p-5"><div><p class="font-bold text-white">{schedule.key}</p><p class="text-xs font-mono text-base-content/60">total cap {schedule.totalXpCeiling} / leaderboard cap {schedule.leaderboardXpCeiling} / effective {formatTime(schedule.effectiveAt)}</p></div><div class="flex items-center gap-2"><span class={statusClass(schedule.status === "active")}>{schedule.status}</span><Show when={schedule.status === "draft"}><button type="button" class="btn btn-sm btn-success font-mono" disabled={busy()} onClick={() => activateSchedule(schedule.id)}>Activate</button></Show></div></li>}</For></ul></AdminDataPanel>
+          <AdminDataPanel><div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">Versioned September schedules</h2><p class="mt-1 text-xs font-mono text-base-content/60">Only active score-bearing policies on active Activities produce the cap snapshot and Access Level thresholds.</p></div><ul class="divide-y divide-white/10" role="list"><For each={schedules()}>{(schedule) => <li class="flex flex-wrap items-center justify-between gap-4 p-5"><div><p class="font-bold text-white">{schedule.key}</p><p class="text-xs font-mono text-base-content/60">total cap {schedule.totalXpCeiling} / leaderboard cap {schedule.leaderboardXpCeiling} / effective {formatTime(schedule.effectiveAt)}</p></div><div class="flex items-center gap-2"><span class={statusClass(schedule.status === "active")}>{schedule.status}</span><Show when={schedule.status === "draft"}><button type="button" class="btn btn-sm btn-success font-mono" disabled={busy()} onClick={() => activateSchedule(schedule.id)}>Activate</button></Show></div></li>}</For></ul></AdminDataPanel>
         </div>
        </Show>
 
@@ -556,22 +628,31 @@ export default function AdminGamificationHub() {
        <Show when={tab() === "eggs"}>
          <AdminEasterEggMissions operations={operations} onChanged={refetch} />
        </Show>
+       <Show when={tab() === "questions"}>
+          <AdminMissionQuestions operations={operations} onChanged={refetch} />
+       </Show>
+       <Show when={tab() === "booths"}>
+         <AdminBoothAchievements operations={operations} onChanged={refetch} />
+       </Show>
+       <Show when={tab() === "printed"}>
+         <AdminPrintedMissionCodes operations={operations} onChanged={refetch} />
+       </Show>
 
         <Show when={tab() === "codes"}>
         <div class="grid gap-8 xl:grid-cols-2">
           <form class={adminFormPanelClass} onSubmit={generateCodes}><AdminFormSection title="Generate Mission code batch" description="The raw code, QR/link URL, and CSV are shown once only. A retry with the same operation never creates a second secret batch."><div class="grid gap-4 md:grid-cols-2"><AdminFormField id="gam-code-activity" label="Active Activity" required><select id="gam-code-activity" class={adminSelectClass()} required value={codeActivity()} onChange={(event) => setCodeActivity(event.currentTarget.value)}><option value="">Choose Activity</option><For each={activeActivities()}>{(activity) => <option value={activity.id}>{activity.key}</option>}</For></select></AdminFormField><AdminFormField id="gam-code-label" label="Batch label" required><input id="gam-code-label" class={adminInputClass()} required value={codeLabel()} onInput={(event) => setCodeLabel(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-quantity" label="Quantity" required><input id="gam-code-quantity" type="number" min="1" max="100" class={adminInputClass("font-mono")} required value={codeQuantity()} onInput={(event) => setCodeQuantity(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-role" label="Evidence role" required><select id="gam-code-role" class={adminSelectClass()} value={codeRole()} onChange={(event) => setCodeRole(event.currentTarget.value as "single" | "start" | "finish" | "static_puzzle")}><option value="single">single</option><option value="start">start</option><option value="finish">finish</option><option value="static_puzzle">static puzzle</option></select></AdminFormField><AdminFormField id="gam-code-from" label="Code active from" required><input id="gam-code-from" type="datetime-local" class={adminInputClass("font-mono")} required value={codeFrom()} onInput={(event) => setCodeFrom(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-until" label="Code active until" required><input id="gam-code-until" type="datetime-local" class={adminInputClass("font-mono")} required value={codeUntil()} onInput={(event) => setCodeUntil(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-max" label="Max redemptions" required><input id="gam-code-max" type="number" min="1" class={adminInputClass("font-mono")} required value={codeMaxRedemptions()} onInput={(event) => setCodeMaxRedemptions(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-user-limit" label="Per-User limit" required><input id="gam-code-user-limit" type="number" min="1" class={adminInputClass("font-mono")} required value={codePerUserLimit()} onInput={(event) => setCodePerUserLimit(event.currentTarget.value)} /></AdminFormField></div></AdminFormSection><div class="mt-5 flex justify-end"><button type="submit" class="btn btn-primary font-mono" disabled={busy()}>Generate one-time batch</button></div></form>
-          <AdminDataPanel><div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">One-time secret response</h2><p class="mt-1 text-xs font-mono text-base-content/60">This panel is intentionally not recoverable from later admin reads.</p></div><Show when={oneTimeBatch()} fallback={<p class="p-5 text-sm font-mono text-base-content/60">Generate or reissue a code to receive its one-time export.</p>}>{(batch) => <div class="p-5"><Show when={batch().batch.secretsAvailable} fallback={<div class="alert alert-warning text-sm">{batch().batch.committed ? "This batch was committed, but its secret response is unrecoverable. Invalidate the affected code and reissue a replacement. No raw code can be regenerated." : "Code generation did not complete. Any persisted code definitions were disabled and their secrets cannot be recovered."}</div>}><div class="alert alert-warning mb-4 items-start text-sm" role="alert"><span>These bearer codes are visible only in this response. Download the CSV, store it securely, then clear the secrets from this page. Leaving Mission codes clears them automatically.</span></div><div class="mb-4 flex flex-wrap gap-2"><button type="button" class="btn btn-sm btn-secondary font-mono" onClick={() => batch().csvExport && downloadCsv(batch().csvExport!)}>Download CSV now</button><button type="button" class="btn btn-sm btn-outline btn-warning font-mono" onClick={() => setOneTimeBatch(null)}>Clear secrets from this page</button></div><ul class="space-y-3" role="list"><For each={batch().codes || []}>{(code) => <li class="rounded-lg border border-warning-400/30 bg-warning-500/10 p-3"><p class="font-mono text-xs text-base-content/60">{code.label}</p><code class="mt-1 block break-all text-sm text-warning-100">{code.rawCode}</code><code class="mt-2 block break-all text-xs text-secondary-200">{code.qrLink}</code></li>}</For></ul></Show></div>}</Show></AdminDataPanel>
+          <AdminDataPanel><div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">One-time secret response</h2><p class="mt-1 text-xs font-mono text-base-content/60">This panel is intentionally not recoverable from later admin reads.</p></div><Show when={oneTimeBatch()} fallback={<p class="p-5 text-sm font-mono text-base-content/60">Generate or reissue a code to receive its one-time export.</p>}>{(batch) => <div class="p-5"><Show when={batch().batch.secretsAvailable} fallback={<div class="alert alert-warning text-sm">{batch().batch.committed ? "This batch was committed, but its secret response is unrecoverable. Invalidate the affected code and reissue a replacement. No raw code can be regenerated." : "Code generation did not complete. Any persisted code definitions were disabled and their secrets cannot be recovered."}</div>}><div class="alert alert-warning mb-4 items-start text-sm" role="alert"><span>These bearer codes are visible only in this response. Download the CSV, store it securely, then clear the secrets from this page. Leaving Mission codes clears them automatically.</span></div><div class="mb-4 flex flex-wrap gap-2"><button type="button" class="btn btn-sm btn-secondary font-mono" onClick={() => batch().csvExport && downloadCsv(batch().csvExport!)}>Download CSV now</button><button type="button" class="btn btn-sm btn-outline btn-warning font-mono" onClick={() => setOneTimeBatch(null)}>Clear secrets from this page</button></div><ul class="space-y-3" role="list"><For each={batch().codes || []}>{(code) => <li class="rounded-lg border border-warning-400/30 bg-warning-500/10 p-3"><p class="font-mono text-xs text-base-content/60">{code.label}</p><code class="mt-1 block break-all text-sm text-warning-100">{code.rawCode}</code><code class="mt-2 block break-all text-xs text-secondary-200">{code.qrLink}</code><MissionCodeQr path={code.qrLink} codeId={code.id} /></li>}</For></ul></Show></div>}</Show></AdminDataPanel>
         </div>
 
         <div class={`${adminFormPanelClass} mt-8`}><form onSubmit={lookupCodes}><AdminFormSection title="Safe code lookup" description="Search batch ID, label, lookup prefix, Activity/Mission, or redemption support reference. Raw-code verification is compared on the server and is never stored or returned."><div class="grid gap-4 md:grid-cols-2"><AdminFormField id="gam-code-search" label="Safe search"><input id="gam-code-search" class={adminInputClass("font-mono")} value={codeSearch()} onInput={(event) => setCodeSearch(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-raw-search" label="Verify raw code"><input id="gam-code-raw-search" class={adminInputClass("font-mono")} value={rawCodeSearch()} onInput={(event) => setRawCodeSearch(event.currentTarget.value)} /></AdminFormField><AdminFormField id="gam-code-reason" label="Invalidation / reissue reason" required class="md:col-span-2"><input id="gam-code-reason" class={adminInputClass()} required value={codeReason()} onInput={(event) => setCodeReason(event.currentTarget.value)} placeholder="Do not include secrets, hashes, tokens, or unnecessary personal data." /></AdminFormField></div></AdminFormSection><div class="mt-5 flex justify-end"><button type="submit" class="btn btn-secondary font-mono" disabled={busy()}>Look up</button></div></form></div>
 
-        <AdminDataPanel><div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">Code operations status</h2><p class="mt-1 text-xs font-mono text-base-content/60">Safe labels and prefixes only. Accepted/rejected counts are operational support status, not attendee exports.</p></div><ul class="divide-y divide-white/10" role="list"><For each={codeMatches() || operations()?.codes || []}>{(code) => <li class="flex flex-col gap-3 p-5 lg:flex-row lg:items-center lg:justify-between"><div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><p class="font-bold text-white">{code.label}</p><span class={statusClass(code.status === "active" && code.enabled)}>{code.status}</span></div><p class="mt-1 break-all text-xs font-mono text-base-content/60">batch {code.batchId || "legacy"} / prefix {code.lookupPrefix} / {code.missionKey || "no mission"} / {code.activityKey || code.activityId}</p><p class="mt-1 text-xs font-mono text-base-content/60">accepted {code.acceptedRedemptions} / rejected {code.rejectedRedemptions} / last attempt {formatTime(code.lastAttemptAt)} / last success {formatTime(code.lastSuccessAt)}</p></div><div class="flex shrink-0 flex-wrap gap-2"><Show when={code.status === "active" && code.enabled}><button type="button" class="btn btn-sm btn-error btn-outline font-mono" disabled={busy()} onClick={() => invalidateCode(code)}>Invalidate</button></Show><Show when={code.status === "disabled"}><button type="button" class="btn btn-sm btn-secondary font-mono" disabled={busy()} onClick={() => reissueCode(code)}>Reissue</button></Show></div></li>}</For><Show when={(codeMatches() || operations()?.codes || []).length === 0}><li class="p-5 text-sm font-mono text-base-content/60">No code definitions match.</li></Show></ul></AdminDataPanel>
+        <AdminDataPanel><div class="border-b border-white/10 p-5"><h2 class="font-bold text-white">Code operations status</h2><p class="mt-1 text-xs font-mono text-base-content/60">Safe labels and prefixes only. Accepted/rejected counts are operational support status, not attendee exports.</p></div><ul class="divide-y divide-white/10" role="list"><For each={displayedCodes()}>{(code) => <li class="flex flex-col gap-3 p-5 lg:flex-row lg:items-center lg:justify-between"><div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><p class="font-bold text-white">{code.label}</p><span class={statusClass(code.status === "active" && code.enabled)}>{code.status}</span></div><p class="mt-1 break-all text-xs font-mono text-base-content/60">batch {code.batchId || "legacy"} / prefix {code.lookupPrefix} / {code.missionKey || "no mission"} / {code.activityKey || code.activityId}</p><p class="mt-1 text-xs font-mono text-base-content/60">accepted {code.acceptedRedemptions} / rejected {code.rejectedRedemptions} / last attempt {formatTime(code.lastAttemptAt)} / last success {formatTime(code.lastSuccessAt)}</p></div><div class="flex shrink-0 flex-wrap gap-2"><Show when={code.status === "active" && code.enabled}><button type="button" class="btn btn-sm btn-error btn-outline font-mono" disabled={busy()} onClick={() => invalidateCode(code)}>Invalidate</button></Show><Show when={code.status === "disabled"}><button type="button" class="btn btn-sm btn-secondary font-mono" disabled={busy()} onClick={() => reissueCode(code)}>Reissue</button></Show></div></li>}</For><Show when={displayedCodes().length === 0}><li class="p-5 text-sm font-mono text-base-content/60">No code definitions match.</li></Show></ul></AdminDataPanel>
        </Show>
 
        <Show when={tab() === "support"}>
          <AdminGamificationSupport
-           activities={operations()?.activities || []}
-           achievements={operations()?.achievements || []}
+           activities={activities()}
+           achievements={achievements()}
            onChanged={refetch}
          />
        </Show>
@@ -581,4 +662,12 @@ export default function AdminGamificationHub() {
        </Show>
      </AdminPageShell>
   );
+}
+
+interface ProfileCachePanelProps {
+  cache?: AdminGamificationOperationsDto["profileCache"];
+}
+
+function ProfileCachePanel(props: ProfileCachePanelProps) {
+  return <AdminDataPanel><div class="p-5"><p class="text-xs font-mono text-base-content/60">PROFILE CACHE</p><p class="mt-1 text-xl font-bold text-white">{props.cache?.state || "Loading"}</p><p class="mt-1 text-xs font-mono text-base-content/55">{props.cache?.profiles || 0} profiles / last rebuild {formatTime(props.cache?.lastRecalculatedAt)}</p></div></AdminDataPanel>;
 }

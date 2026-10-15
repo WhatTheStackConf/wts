@@ -170,7 +170,10 @@ export default function AdminProposalsTable() {
         return items;
     });
 
+    const submissionCount = () => submissions()?.length || 0;
+    const filtersActive = () => expenseFilter() !== "all" || statusFilter() !== "all";
     const visibleSubmissionIds = createMemo(() => filteredSubmissions().map((item) => item.id));
+    const visibleSelectionLocked = () => visibleSubmissionIds().length === 0 || bulkBusyStatus() !== null;
     const selectedSubmissionIds = createMemo(() => [...selectedIds()]);
     const selectedCount = createMemo(() => selectedSubmissionIds().length);
     const deleteTargetTitle = createMemo(() => {
@@ -264,6 +267,15 @@ export default function AdminProposalsTable() {
         return null;
     };
 
+    const announcePromotion = (item: LeaderboardItem, session?: PromotedSessionSummary) =>
+        showToast(
+            "success",
+            `Draft session created for "${session?.title || proposalTitle(item)}".`,
+            session
+                ? { actionLabel: "Review draft session", actionHref: session.editHref }
+                : undefined,
+        );
+
     const handlePromoteSubmission = async (item: LeaderboardItem) => {
         if (item.promotedSession) return;
 
@@ -292,13 +304,7 @@ export default function AdminProposalsTable() {
                 );
             }
 
-            showToast(
-                "success",
-                `Draft session created for "${session?.title || proposalTitle(item)}".`,
-                session
-                    ? { actionLabel: "Review draft session", actionHref: session.editHref }
-                    : undefined,
-            );
+            announcePromotion(item, session);
             await refetch();
         } catch (error) {
             console.error(error);
@@ -379,16 +385,6 @@ export default function AdminProposalsTable() {
                             >
                                 {session().published ? "Edit session" : "Review draft"}
                             </a>
-                            <Show when={session().published}>
-                                <a
-                                    href={`/sessions/${session().slug}`}
-                                    class={`btn ${buttonSizeClass()} btn-ghost font-mono text-base-content/70 hover:text-white`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    View public
-                                </a>
-                            </Show>
                         </>
                     )}
                 </Show>
@@ -403,7 +399,7 @@ export default function AdminProposalsTable() {
             title="Proposals"
             subtitle="Ranked by weighted review scores."
             hint="Accept a proposal, then create its draft session. The speaker profile is created or reused automatically."
-            count={submissions()?.length || 0}
+            count={submissionCount()}
             countLoading={submissions.loading}
             accent="secondary"
             toast={toast()}
@@ -417,9 +413,9 @@ export default function AdminProposalsTable() {
 
                     {/* Filters */}
                     <AdminFilterBar
-                        showCount={expenseFilter() !== "all" || statusFilter() !== "all"}
+                        showCount={filtersActive()}
                         filteredCount={filteredSubmissions().length}
-                        totalCount={submissions()?.length || 0}
+                        totalCount={submissionCount()}
                     >
                         <AdminFilterGroup label="Expenses:">
                             <For each={["all", "Yes", "No", "Other"]}>
@@ -464,15 +460,10 @@ export default function AdminProposalsTable() {
                                     </button>
                                 )}
                             </For>
-                            <button
-                                type="button"
-                                class="btn btn-xs font-mono btn-ghost border-white/15 text-base-content/70 hover:bg-white/10 hover:text-white"
-                                onClick={() => setSortDir(sortDir() === "desc" ? "asc" : "desc")}
-                                title={sortDir() === "desc" ? "Descending" : "Ascending"}
-                                aria-label={sortDir() === "desc" ? "Sort descending" : "Sort ascending"}
-                            >
-                                <Icon icon={sortDir() === "desc" ? "ph:arrow-down-bold" : "ph:arrow-up-bold"} aria-hidden="true" />
-                            </button>
+                            <SortDirectionButton
+                                direction={sortDir()}
+                                onToggle={() => setSortDir(sortDir() === "desc" ? "asc" : "desc")}
+                            />
                         </AdminFilterGroup>
                     </AdminFilterBar>
 
@@ -485,7 +476,7 @@ export default function AdminProposalsTable() {
                                 <button
                                     type="button"
                                     class="btn btn-xs btn-ghost border-white/15 font-mono text-base-content/70 hover:bg-white/10 hover:text-white"
-                                    disabled={visibleSubmissionIds().length === 0 || bulkBusyStatus() !== null}
+                                    disabled={visibleSelectionLocked()}
                                     onClick={toggleVisibleSelection}
                                 >
                                     {allVisibleSelected() ? "Deselect visible" : "Select visible"}
@@ -546,25 +537,7 @@ export default function AdminProposalsTable() {
                         <AdminDataPanel>
                             <Show
                                 when={filteredSubmissions().length > 0}
-                                fallback={
-                                    <div class="p-12 text-center">
-                                        <Icon icon="ph:files-bold" class="text-4xl text-base-content/40 mb-4" aria-hidden="true" />
-                                        <p class="text-white font-bold mb-2">
-                                            {expenseFilter() !== "all" || statusFilter() !== "all"
-                                                ? "No proposals match these filters"
-                                                : submissionsError()
-                                                  ? "Proposals could not be loaded"
-                                                  : "No proposals yet"}
-                                        </p>
-                                        <p class="text-sm text-base-content/60 font-mono max-w-md mx-auto leading-relaxed text-pretty">
-                                            {expenseFilter() !== "all" || statusFilter() !== "all"
-                                                ? "Try changing the expense or status filters above."
-                                                : submissionsError()
-                                                  ? "Check the error above, then refresh when the admin API is available."
-                                                  : "CFP submissions will appear here after applicants submit proposals."}
-                                        </p>
-                                    </div>
-                                }
+                                fallback={<ProposalsEmptyState filtersActive={filtersActive()} loadFailed={Boolean(submissionsError())} />}
                             >
                             {/* Mobile Card View */}
                             <div class="md:hidden divide-y divide-white/10">
@@ -672,7 +645,7 @@ export default function AdminProposalsTable() {
                                                     type="checkbox"
                                                     class="checkbox checkbox-sm checkbox-secondary"
                                                     checked={allVisibleSelected()}
-                                                    disabled={visibleSubmissionIds().length === 0 || bulkBusyStatus() !== null}
+                                                    disabled={visibleSelectionLocked()}
                                                      aria-label={allVisibleSelected() ? "Deselect visible proposals" : "Select visible proposals"}
                                                      onChange={() => toggleVisibleSelection()}
                                                  />
@@ -847,5 +820,51 @@ export default function AdminProposalsTable() {
                 </div>
             </Show>
         </AdminPageShell>
+    );
+}
+
+interface SortDirectionButtonProps {
+    direction: "desc" | "asc";
+    onToggle: () => void;
+}
+
+function SortDirectionButton(props: SortDirectionButtonProps) {
+    return (
+        <button
+            type="button"
+            class="btn btn-xs font-mono btn-ghost border-white/15 text-base-content/70 hover:bg-white/10 hover:text-white"
+            onClick={() => props.onToggle()}
+            title={props.direction === "desc" ? "Descending" : "Ascending"}
+            aria-label={props.direction === "desc" ? "Sort descending" : "Sort ascending"}
+        >
+            <Icon icon={props.direction === "desc" ? "ph:arrow-down-bold" : "ph:arrow-up-bold"} aria-hidden="true" />
+        </button>
+    );
+}
+
+interface ProposalsEmptyStateProps {
+    filtersActive: boolean;
+    loadFailed: boolean;
+}
+
+function ProposalsEmptyState(props: ProposalsEmptyStateProps) {
+    return (
+        <div class="p-12 text-center">
+            <Icon icon="ph:files-bold" class="text-4xl text-base-content/40 mb-4" aria-hidden="true" />
+            <p class="text-white font-bold mb-2">
+                {props.filtersActive
+                    ? "No proposals match these filters"
+                    : props.loadFailed
+                      ? "Proposals could not be loaded"
+                      : "No proposals yet"}
+            </p>
+            <p class="text-sm text-base-content/60 font-mono max-w-md mx-auto leading-relaxed text-pretty">
+                {props.filtersActive
+                    ? "Try changing the expense or status filters above."
+                    : props.loadFailed
+                      ? "Check the error above, then refresh when the admin API is available."
+                      : "CFP submissions will appear here after applicants submit proposals."}
+            </p>
+        </div>
     );
 }

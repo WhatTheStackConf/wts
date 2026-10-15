@@ -3,10 +3,13 @@ import routes from "virtual:file-routes";
 import { getRequestEvent } from "@solidjs/web";
 import { Router } from "~/router";
 import { isCheckinPath, protectCheckinResponse } from "~/lib/checkin-privacy";
+import { isFeedbackPath, protectFeedbackResponse } from "~/lib/feedback-privacy";
 import {
   hasValidSpeakerGuidePassword,
   requiresSpeakerGuidePassword,
 } from "~/lib/speaker-guide-access";
+import { capabilityForPath } from "~/lib/conference-capability-policy";
+import { capabilityAvailable } from "~/lib/capability-availability";
 
 const privatePageHeaders = new Headers({
   "Cache-Control": "private, no-store",
@@ -31,6 +34,12 @@ async function protectSpeakerGuide(
     const response = await next();
     privatePageHeaders.forEach((value, name) => response.headers.set(name, value));
     return response;
+}
+
+async function protectDormantCfpAndReview(request: Request, next: (request?: Request) => Promise<Response>) {
+  const capability = capabilityForPath(new URL(request.url).pathname);
+  if (!capability || await capabilityAvailable(capability)) return next();
+  return new Response("Not Found", { status: 404, headers: privatePageHeaders });
 }
 
 async function preserveDeclaredStatus(
@@ -71,4 +80,13 @@ async function protectLiveQa(request: Request, next: (request?: Request) => Prom
   return response;
 }
 
-export default [preserveDeclaredStatus, protectSpeakerGuide, protectCheckin, protectLiveQa, createAPIHandler(routes)];
+async function protectFeedback(request: Request, next: (request?: Request) => Promise<Response>) {
+  if (!isFeedbackPath(new URL(request.url).pathname)) return next();
+  // Nitro supplies a lazy request facade, not an Undici-branded Request.
+  // Mutate its headers rather than passing that facade into new Request().
+  request.headers.delete("cookie");
+  request.headers.delete("authorization");
+  return protectFeedbackResponse(await next());
+}
+
+export default [protectFeedback, preserveDeclaredStatus, protectDormantCfpAndReview, protectSpeakerGuide, protectCheckin, protectLiveQa, createAPIHandler(routes)];

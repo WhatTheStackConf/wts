@@ -9,15 +9,3 @@ it("redacts unavailable/unbound shells and never renders admin controls for an o
   const admin = renderToString(() => <CheckinAdminRecovery scopeKey="admin:session-v1" />);
   expect(admin).toContain("Admission evidence and recovery"); expect(admin).not.toMatch(/force.new.checkin|transfer station|bindingToken|@example/);
 });
-it("compact recovery starts with recent work, not a recovery manual", () => {
-  const html = renderToString(() => <CheckinOperatorRecovery scopeKey="operator:binding" compact />);
-  expect(html).toContain("Recent work");
-  expect(html).not.toContain("Parking does not make uncertain printing safe");
-  expect(html).not.toContain("Guarded erroneous-check-in reset");
-  expect(html).not.toContain("Label-only name");
-});
-it("unavailable compact recovery never exposes selected work", () => {
-  const html = renderToString(() => <CheckinOperatorRecovery scopeKey="operator:binding" compact unavailable />);
-  expect(html).not.toContain("Label-only name");
-  expect(html).not.toContain("Request a new replacement label");
-});

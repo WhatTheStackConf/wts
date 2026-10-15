@@ -2,6 +2,9 @@ import { For, Show, createSignal, onCleanup, onSettled } from "solid-js";
 import { Meta, Title } from "@solidjs/meta";
 import { useRequireCheckinOperator } from "~/lib/route-guards";
 import { registrationProgrammes, registrationRosterSchema, type RegistrationRoster } from "~/lib/registrations-contract";
+const accessDenied = (status: number) => status === 401 || status === 403;
+const rosterFailure = (status: number) => accessDenied(status) ? "Access denied. Sign in with an operator account." : "Registrations unavailable. Refresh to try again.";
+const rosterError = (reason: unknown) => reason instanceof Error && reason.message.startsWith("Access denied") ? reason.message : "Registrations unavailable. Refresh to try again.";
 function Roster() {
   const [programme, setProgramme] = createSignal(registrationProgrammes[0]?.id || "");
   const [search, setSearch] = createSignal("");
@@ -12,15 +15,16 @@ function Roster() {
   onCleanup(() => { disposed = true; epoch++; controller?.abort(); });
   async function refresh() {
     const version = ++epoch; controller?.abort(); controller = new AbortController();
+    const current = () => !disposed && version === epoch;
     setRoster(undefined); setBusy(true); setError("");
     try {
       const response = await fetch("/api/registrations", { method: "POST", credentials: "same-origin", cache: "no-store", signal: controller.signal });
-      if (disposed || version !== epoch) return;
-      if (!response.ok) { if (response.status === 401 || response.status === 403) setSearch(""); throw new Error(response.status === 401 || response.status === 403 ? "Access denied. Sign in with an operator account." : "Registrations unavailable. Refresh to try again."); }
+      if (!current()) return;
+      if (!response.ok) { if (accessDenied(response.status)) setSearch(""); throw new Error(rosterFailure(response.status)); }
       const value = registrationRosterSchema.parse(await response.json());
-      if (!disposed && version === epoch) setRoster(value);
-    } catch (reason) { if (!disposed && version === epoch) setError(reason instanceof Error && reason.message.startsWith("Access denied") ? reason.message : "Registrations unavailable. Refresh to try again."); }
-    finally { if (!disposed && version === epoch) setBusy(false); }
+      if (current()) setRoster(value);
+    } catch (reason) { if (current()) setError(rosterError(reason)); }
+    finally { if (current()) setBusy(false); }
   }
   onSettled(() => { void refresh(); });
   const all = () => roster()?.registrations.filter(row => row.programmeId === programme()) || [];

@@ -1,9 +1,9 @@
 import { useParams, type RouteDefinition } from "@solidjs/router";
 import { httpStatus } from "@solidjs/web";
 import { createMemo, Show } from "solid-js";
-import { Layout } from "~/layouts/Layout";
+import { PublicPageShell } from "~/components/PublicPageShell";
 import { MDXContent } from "~/components/MDXContent";
-import { pages } from ".velite";
+import { pages } from "~/lib/markdown-pages";
 import NotFound from "./[...404]";
 
 export const route = {
@@ -21,18 +21,14 @@ export default function Page() {
 
     return (
         <Show when={page()} fallback={<NotFound />}>
-            <Layout
+            <PublicPageShell
                 title={page()!.title}
-                description={`Read our ${page()!.title}`}
+                description={`Read ${page()!.title} from WhatTheStack.`}
             >
-                <div class="w-full h-full px-4 relative pt-4 md:pt-24 pb-20">
-                    <div class="max-w-4xl mx-auto relative z-20">
-                        <div class="glass-panel p-6 md:p-12 rounded-2xl fade-in-delay-1 relative z-30">
-                            <MDXContent code={page()!.content} />
-                        </div>
-                    </div>
-                </div>
-            </Layout>
+                <article class="support-prose">
+                    <MDXContent code={page()!.content} />
+                </article>
+            </PublicPageShell>
         </Show>
     );
 }

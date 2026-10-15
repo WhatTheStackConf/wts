@@ -1,7 +1,34 @@
-import { createSignal, onSettled, createEffect, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, onSettled, Show } from "solid-js";
 import { Icon } from "~/components/Icon";
+import "~/styles/newsletter.css";
 
-const NewsletterPopup = () => {
+interface TurnstileApi {
+  render(
+    container: HTMLElement,
+    options: {
+      sitekey: string;
+      callback: (token: string) => void;
+      "expired-callback": () => void;
+      "error-callback": () => void;
+      theme: "dark" | "light";
+      size: "compact";
+    },
+  ): string;
+  reset(widgetId: string): void;
+  remove?(widgetId: string): void;
+}
+
+declare global {
+  interface Window {
+    turnstile?: TurnstileApi;
+  }
+}
+
+interface NewsletterPopupProps {
+  appearance?: "light";
+}
+
+const NewsletterPopup = (props: NewsletterPopupProps) => {
   const [isVisible, setIsVisible] = createSignal(false);
   const [email, setEmail] = createSignal("");
   const [name, setName] = createSignal("");
@@ -10,10 +37,13 @@ const NewsletterPopup = () => {
   const [error, setError] = createSignal("");
   const [turnstileToken, setTurnstileToken] = createSignal("");
   const [turnstileReady, setTurnstileReady] = createSignal(false);
-  let containerRef: HTMLDivElement | undefined;
-
-  // Prevent double rendering
+  let dialogRef: HTMLDialogElement | undefined;
+  let emailRef: HTMLInputElement | undefined;
+  let turnstileRef: HTMLDivElement | undefined;
+  let opener: HTMLElement | null = null;
   let renderedWidgetId: string | null = null;
+  let renderTimer: number | undefined;
+  let alive = true;
 
   const LIST_ID = import.meta.env.VITE_LISTMONK_LIST_ID;
   const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
@@ -21,249 +51,252 @@ const NewsletterPopup = () => {
 
   const loadTurnstile = () => {
     if (!SITE_KEY) return;
-    if ((window as any).turnstile) {
+    if (window.turnstile) {
       setTurnstileReady(true);
       return;
     }
 
-    const existingScript = document.getElementById("turnstile-script");
+    const existingScript = document.getElementById("turnstile-script") as HTMLScriptElement | null;
     if (existingScript) {
-      existingScript.addEventListener("load", () => setTurnstileReady(true), {
-        once: true,
-      });
+      existingScript.addEventListener("load", onTurnstileLoad);
+      existingScript.addEventListener("error", onTurnstileError);
       return;
     }
 
     const script = document.createElement("script");
-    script.src =
-      "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
     script.id = "turnstile-script";
     script.async = true;
     script.fetchPriority = "low";
-    script.onload = () => setTurnstileReady(true);
+    script.addEventListener("load", onTurnstileLoad);
+    script.addEventListener("error", onTurnstileError);
     document.head.appendChild(script);
   };
 
-  onSettled(() => {
-    const handleOpen = () => {
-      setIsVisible(true);
-      loadTurnstile();
-    };
-    window.addEventListener("wts:open-newsletter", handleOpen);
+  const onTurnstileLoad = () => {
+    if (alive) setTurnstileReady(true);
+  };
+  const onTurnstileError = () => {
+    if (alive) setError("The security check could not load. Please try again later.");
+  };
 
+  const renderTurnstile = () => {
+    if (!SITE_KEY || !turnstileReady() || !isVisible() || !turnstileRef || renderedWidgetId || !window.turnstile) return;
+    renderTimer = window.setTimeout(() => {
+      renderTimer = undefined;
+      if (!alive || !isVisible() || !turnstileRef || !window.turnstile || renderedWidgetId) return;
+      try {
+        renderedWidgetId = window.turnstile.render(turnstileRef, {
+          sitekey: SITE_KEY,
+          callback: (token) => {
+            if (alive) {
+              setTurnstileToken(token);
+              setError("");
+            }
+          },
+          "expired-callback": () => {
+            if (alive) setTurnstileToken("");
+          },
+          "error-callback": () => {
+            if (alive) {
+              setTurnstileToken("");
+              setError("The security check could not load. Please try again.");
+            }
+          },
+          theme: props.appearance === "light" ? "light" : "dark",
+          size: "compact",
+        });
+      } catch {
+        if (alive) setError("The security check could not load. Please try again.");
+      }
+    }, 100);
+  };
+
+  const openDialog = () => {
+    if (!dialogRef || dialogRef.open) return;
+    opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setIsVisible(true);
+    dialogRef.showModal();
+    queueMicrotask(() => emailRef?.focus());
+    loadTurnstile();
+    renderTurnstile();
+  };
+
+  const handleDismiss = () => {
+    if (!dialogRef?.open) return;
+    dialogRef.close();
+  };
+
+  const handleDialogClose = () => {
+    setIsVisible(false);
+    if (renderTimer !== undefined) {
+      window.clearTimeout(renderTimer);
+      renderTimer = undefined;
+    }
+    if (renderedWidgetId && window.turnstile?.remove) {
+      window.turnstile.remove(renderedWidgetId);
+      renderedWidgetId = null;
+    }
+    setTurnstileToken("");
+    const previousOpener = opener;
+    opener = null;
+    if (previousOpener?.isConnected) previousOpener.focus();
+  };
+  const resetChallenge = () => {
+    if (!SITE_KEY) return;
+    setTurnstileToken("");
+    if (!renderedWidgetId || !window.turnstile) return;
+    try {
+      window.turnstile.reset(renderedWidgetId);
+    } catch {
+      window.turnstile.remove?.(renderedWidgetId);
+      renderedWidgetId = null;
+      if (turnstileRef) turnstileRef.innerHTML = "";
+      renderTurnstile();
+    }
+  };
+
+
+  onSettled(() => {
+    window.addEventListener("wts:open-newsletter", openDialog);
+    const existingScript = document.getElementById("turnstile-script");
+    existingScript?.addEventListener("load", onTurnstileLoad);
+    existingScript?.addEventListener("error", onTurnstileError);
     return () => {
-      window.removeEventListener("wts:open-newsletter", handleOpen);
+      window.removeEventListener("wts:open-newsletter", openDialog);
+      existingScript?.removeEventListener("load", onTurnstileLoad);
+      existingScript?.removeEventListener("error", onTurnstileError);
     };
   });
 
-  // Render Turnstile when visible and ready
-  createEffect(
-    () => ({
-      visible: isVisible(),
-      succeeded: success(),
-      ready: turnstileReady(),
-    }),
-    ({ visible, succeeded, ready }) => {
-      if (!visible) {
-        renderedWidgetId = null;
-        return;
-      }
+  onCleanup(() => {
+    alive = false;
+    if (renderTimer !== undefined) window.clearTimeout(renderTimer);
+    const script = document.getElementById("turnstile-script");
+    script?.removeEventListener("load", onTurnstileLoad);
+    script?.removeEventListener("error", onTurnstileError);
+    if (renderedWidgetId && window.turnstile?.remove) window.turnstile.remove(renderedWidgetId);
+  });
 
-      if (
-        !succeeded &&
-        SITE_KEY &&
-        ready &&
-        (window as any).turnstile &&
-        containerRef
-      ) {
-        if (renderedWidgetId) return;
-        const timeout = setTimeout(() => {
-          try {
-            if (containerRef && !renderedWidgetId) {
-              containerRef.innerHTML = "";
-              renderedWidgetId = (window as any).turnstile.render(containerRef, {
-                sitekey: SITE_KEY,
-                callback: (token: string) => setTurnstileToken(token),
-                "expired-callback": () => setTurnstileToken(""),
-                "error-callback": () => {},
-                theme: "dark",
-              });
-            }
-          } catch (error) {
-            console.error("Turnstile render error", error);
-          }
-        }, 100);
-        return () => clearTimeout(timeout);
-      }
+  createEffect(
+    () => ({ ready: turnstileReady(), visible: isVisible() }),
+    ({ ready, visible }) => {
+      if (ready && visible) renderTurnstile();
     },
   );
 
-  const handleDismiss = () => {
-    setIsVisible(false);
-    localStorage.setItem("wts_newsletter_dismissed", "true");
+  const subscribeBlocker = () => {
+    if (!LIST_ID) return "Newsletter sign-up is currently unavailable. Please check back later.";
+    if (SITE_KEY && !turnstileToken()) return "Please complete the security check before subscribing.";
+    return undefined;
   };
 
-  const handleSubscribe = async (e: Event) => {
-    e.preventDefault();
-    if (!LIST_ID) {
-      setError("Newsletter configuration missing (List ID).");
-      return;
-    }
-
-    if (SITE_KEY && !turnstileToken()) {
-      setError("Please complete the captcha.");
+  const handleSubscribe = async (event: SubmitEvent) => {
+    event.preventDefault();
+    if (loading() || success()) return;
+    const blocker = subscribeBlocker();
+    if (blocker) {
+      setError(blocker);
       return;
     }
 
     setLoading(true);
     setError("");
-
     try {
-      // Listmonk public subscription endpoint
-      // POST /api/public/subscription
-      // Payload: { email, name, l: list_uuid }
-
       const response = await fetch(`${LISTMONK_URL}/api/public/subscription`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: email(),
           name: name(),
           l: LIST_ID,
           turnstile_response: turnstileToken(),
-          // 'confirm': true // Optional: if you want to skip double opt-in if allowed by server settings, usually not exposed publicly
         }),
       });
-
-      if (!response.ok) {
-        throw new Error("We couldn't add you to the newsletter. Try again.");
+      if (!response.ok) throw new Error("We couldn't add you to the newsletter. Please try again.");
+      if (alive) setSuccess(true);
+    } catch {
+      if (alive) {
+        resetChallenge();
+        setError("We couldn’t confirm your subscription. Check your inbox before trying again.");
       }
-
-      setSuccess(true);
-
-      // Mark as dismissed so they don't see it again
-      localStorage.setItem("wts_newsletter_dismissed", "true");
-
-      // Auto clear after a few seconds
-      setTimeout(() => {
-        setIsVisible(false);
-      }, 3000);
-    } catch (err: any) {
-      console.error("Newsletter error:", err);
-      setError(err.message || "We couldn't add you to the newsletter. Try again.");
     } finally {
-      setLoading(false);
+      if (alive) setLoading(false);
     }
   };
 
   return (
-    <Show when={isVisible()}>
-      <div class="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-        {/* Backdrop */}
-        <div
-          class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-          onClick={handleDismiss}
-        ></div>
-
-        {/* Modal Content */}
-        <div class="relative w-full max-w-md bg-base-100/90 backdrop-blur-xl border border-primary-500/30 shadow-[0_0_50px_rgba(var(--color-primary-500),0.2)] rounded-2xl p-6 md:p-8 overflow-hidden">
-          {/* Decorative elements */}
-          <div class="absolute top-0 right-0 w-32 h-32 bg-primary-500/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
-          <div class="absolute bottom-0 left-0 w-24 h-24 bg-secondary-500/10 rounded-full blur-2xl -ml-12 -mb-12 pointer-events-none"></div>
-
-          {/* Close button */}
-          <button
-            onClick={handleDismiss}
-            class="absolute top-4 right-4 text-base-content/50 hover:text-white transition-colors p-1"
-          >
-            <Icon icon="mdi:close" width="24" />
-          </button>
-
-          <Show when={success()}>
-            <div class="text-center py-8">
-              <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-success/20 text-success mb-4">
-                <Icon icon="mdi:email-check" width="32" />
-              </div>
-              <h3 class="text-2xl font-bold font-star text-white mb-2">
-                Subscribed!
-              </h3>
-              <p class="text-secondary-300">
-                Thanks for joining. Check your inbox for confirmation.
-              </p>
-            </div>
-          </Show>
-
-          <Show when={!success()}>
-            <div class="text-center mb-6">
-              <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary-500/20 text-primary-400 mb-4">
-                <Icon icon="mdi:email-fast-outline" width="28" />
-              </div>
-              <h3 class="text-2xl font-bold font-star text-white mb-2">
-                CONFERENCE UPDATES
-              </h3>
-              <p class="text-secondary-300 text-sm">
-                Speaker announcements, ticket updates, and schedule changes.
-                That's it.
-              </p>
-            </div>
-
-            <form onSubmit={handleSubscribe} class="flex flex-col gap-4">
-              {/* Turnstile Container */}
-              <div
-                ref={containerRef}
-                class="flex justify-center min-h-[65px] mb-4"
-              ></div>
-
-              <Show when={!!turnstileToken()}>
-                <div class="form-control">
-                  <input
-                    type="text"
-                    placeholder="Your Name (Optional)"
-                    class="input input-bordered bg-base-200/50 focus:bg-base-200 w-full"
-                    value={name()}
-                    onInput={(e) => setName(e.currentTarget.value)}
-                  />
-                </div>
-
-                <div class="form-control">
-                  <input
-                    type="email"
-                    placeholder="your@email.com"
-                    class="input input-bordered bg-base-200/50 focus:bg-base-200 w-full"
-                    value={email()}
-                    onInput={(e) => setEmail(e.currentTarget.value)}
-                    required
-                  />
-                </div>
-
-                <Show when={error()}>
-                  <div class="text-error text-xs text-center">{error()}</div>
-                </Show>
-
-                <button
-                  type="submit"
-                  class="btn btn-primary w-full shadow-lg shadow-primary-500/20"
+    <dialog
+      ref={(element) => { dialogRef = element; }}
+      class="newsletter-dialog"
+      data-newsletter-appearance={props.appearance === "light" ? "light" : "dark"}
+      aria-labelledby="newsletter-title"
+      aria-describedby="newsletter-description"
+      onClose={handleDialogClose}
+      onClick={(event) => {
+        if (event.target === dialogRef) handleDismiss();
+      }}
+    >
+      <section class="newsletter-panel">
+        <button type="button" class="btn btn-square btn-ghost newsletter-close" onClick={handleDismiss} aria-label="Close newsletter sign-up">
+          <Icon icon="ph:x-bold" width="20" height="20" aria-hidden="true" />
+        </button>
+        <Show when={success()} fallback={
+          <>
+            <h2 id="newsletter-title" class="newsletter-title">Conference updates</h2>
+            <p id="newsletter-description" class="newsletter-description">
+              Get occasional news about WTS and the software community. You can unsubscribe at any time.
+            </p>
+            <Show when={!LIST_ID}>
+              <p class="newsletter-unavailable" role="status">Newsletter sign-up is currently unavailable. Please check back later.</p>
+            </Show>
+            <form class="newsletter-form" onSubmit={handleSubscribe} aria-busy={loading() ? "true" : "false"}>
+              <Show when={SITE_KEY}>
+                <div ref={(element) => { turnstileRef = element; }} class="newsletter-challenge" aria-label="Security check"></div>
+              </Show>
+              <label class="newsletter-field">
+                <span>Email address (required)</span>
+                <input class="input input-bordered"
+                  ref={(element) => { emailRef = element; }}
+                  type="email"
+                  name="email"
+                  autocomplete="email"
+                  required
+                  value={email()}
+                  onInput={(event) => setEmail(event.currentTarget.value)}
                   disabled={loading()}
-                >
-                  {loading() ? (
-                    <span class="loading loading-spinner loading-sm"></span>
-                  ) : (
-                    <>
-                      Subscribe <Icon icon="mdi:arrow-right" />
-                    </>
-                  )}
-                </button>
-                <p class="text-[10px] text-center text-base-content/40 mt-2">
-                  We use Listmonk for our newsletter. Unsubscribe at any time.
-                </p>
+                />
+              </label>
+              <label class="newsletter-field">
+                <span>Name <span class="newsletter-optional">(optional)</span></span>
+                <input class="input input-bordered"
+                  type="text"
+                  name="name"
+                  autocomplete="name"
+                  value={name()}
+                  onInput={(event) => setName(event.currentTarget.value)}
+                  disabled={loading()}
+                />
+              </label>
+              <Show when={error()}>
+                <p class="newsletter-error" role="alert">{error()}</p>
+              </Show>
+              <button class="btn btn-primary newsletter-submit" type="submit" disabled={loading() || !LIST_ID}>
+                <Show when={loading()} fallback="Subscribe">Submitting…</Show>
+              </button>
+              <Show when={loading()}>
+                <p class="newsletter-pending" role="status">Submitting your request. Closing this window will not cancel it.</p>
               </Show>
             </form>
-          </Show>
-        </div>
-      </div>
-    </Show>
+          </>
+        }>
+          <h2 id="newsletter-title" class="newsletter-title">Check your inbox</h2>
+          <p id="newsletter-description" class="newsletter-description" role="status">
+            Thanks for joining. Check your inbox for a confirmation email.
+          </p>
+        </Show>
+      </section>
+    </dialog>
   );
 };
 

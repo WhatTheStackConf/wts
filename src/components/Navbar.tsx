@@ -1,11 +1,11 @@
 import logoUrl from "../assets/images/LogoSolo.svg";
-import { createSignal, onSettled, Show, Loading } from "solid-js";
+import { createSignal, onSettled, Show } from "solid-js";
 import { createAsyncResource as createResource } from "~/lib/async-resource";
 import { clientOnly } from "@solidjs/web";
 import { Icon } from "~/components/Icon";
 import { useAuth } from "~/lib/auth-context";
 import { fetchCfpConfig } from "~/lib/cfp-utils";
-import { authenticated, checkinOperatorAuthorized, mcAuthorized } from "~/lib/route-authorization";
+import { checkinOperatorAuthorized, mcAuthorized } from "~/lib/route-authorization";
 
 const LoginMenu = clientOnly(() => import("./LoginMenu"));
 
@@ -15,9 +15,6 @@ export const Navbar = () => {
   const [isDrawerOpen, setIsDrawerOpen] = createSignal(false);
   const [cfpConfig] = createResource(fetchCfpConfig);
   let animationTimer: number | undefined;
-  const showLiveQa = () => mounted() && authenticated({
-    loading: auth.isLoading(), authenticated: auth.isAuthenticated(),
-  });
   const canModerate = () => mounted() && mcAuthorized({
     loading: auth.isLoading(), authenticated: auth.isAuthenticated(), role: auth.user?.role,
   });
@@ -26,6 +23,11 @@ export const Navbar = () => {
     authenticated: auth.isAuthenticated(),
     role: auth.user?.role,
   });
+  const showAdmin = () => mounted() && auth?.user?.role === "admin";
+  const showReviewer = () => mounted() && (auth?.user?.role === "reviewer" || auth?.user?.role === "admin");
+  const showAccount = () => mounted() && auth?.isAuthenticated();
+  const showLogin = () => mounted() && !auth?.isAuthenticated();
+  const cfpOpen = () => cfpConfig()?.cfp_open;
 
   onSettled(() => {
     setMounted(true);
@@ -94,7 +96,7 @@ export const Navbar = () => {
             <a
               class="h-6 lg:h-16 flex items-center justify-center w-auto ml-2 lg:ml-0"
               href="/"
-              aria-label="WhatTheStack 2 0 2 6 home"
+              aria-label="WhatTheStack 2 0 2 7 home"
             >
               <div class="h-6 w-6 mr-4 shrink-0 overflow-hidden lg:h-16 lg:w-16 lg:mr-3 [&>svg]:!w-full [&>svg]:!h-full" aria-hidden="true">
                 <img src={logoUrl} alt="" class="block h-full w-full object-contain" />
@@ -109,7 +111,7 @@ export const Navbar = () => {
                         <span class="text-secondary-300">Stack</span>
                       </span>
                       <span class="mt-0 whitespace-nowrap text-xs tracking-[0.5em] text-secondary-300 md:mt-2 md:text-2xl md:tracking-[0.7em]">
-                        2 0 2 6
+                        2 0 2 7
                       </span>
                     </span>
                   </span>
@@ -122,7 +124,7 @@ export const Navbar = () => {
           <div class="navbar-center hidden lg:flex">
             <ul class="menu menu-lg menu-horizontal px-1 font-black uppercase text-primary-200">
               {/* Admin Link */}
-              {mounted() && auth?.user?.role === "admin" && (
+              {showAdmin() && (
                 <li>
                   <a href="/admin" class="text-red-500 hover:text-red-400">
                     Admin
@@ -130,7 +132,7 @@ export const Navbar = () => {
                 </li>
               )}
               {/* Reviewer Link */}
-              {mounted() && (auth?.user?.role === "reviewer" || auth?.user?.role === "admin") && (
+              {showReviewer() && (
                 <li>
                   <a
                     href="/reviewer"
@@ -144,9 +146,6 @@ export const Navbar = () => {
               <Show when={canModerate()}>
                 <li><a href="/mc" class="text-secondary-500 hover:text-secondary-400">MC Q&A</a></li>
               </Show>
-              <Show when={showLiveQa()}>
-                <li><a href="/qa" class="text-secondary-500 hover:text-secondary-400">Live Q&A</a></li>
-              </Show>
               <Show when={canCheckin()}>
                 <li><a href="/registrations" target="_self" class="text-secondary-500 hover:text-secondary-400">Registrations</a></li>
                 <li>
@@ -156,75 +155,29 @@ export const Navbar = () => {
                 </li>
               </Show>
 
-              <li>
-                <a href="/tickets">Grab a ticket!</a>
-              </li>
-
-              {/* Conference dropdown */}
-              <li>
-                <button
-                  type="button"
-                  class="uppercase"
-                  popovertarget="nav-conference"
-                  style="anchor-name:--anchor-conference"
-                >
-                  Conference
-                </button>
-                <ul
-                  class="dropdown menu p-2 bg-base-100 shadow-lg w-[min(280px,calc(100vw-2rem))] overflow-x-hidden"
-                  popover
-                  id="nav-conference"
-                  style="position-anchor:--anchor-conference"
-                >
-                  <li>
-                    <a href="/speakers">{`>`} Speakers</a>
-                  </li>
-                  <li>
-                    <a href="/agenda">{`>`} Agenda</a>
-                  </li>
-                  <li>
-                    <a href="/sessions">{`>`} Sessions</a>
-                  </li>
-                  <li>
-                    <a href="/sponsors">{`>`} Sponsors & partners</a>
-                  </li>
-                  <li>
-                    <a href="/timeline">{`>`} Timeline</a>
-                  </li>
-                  <li>
-                    <a href="/blog">{`>`} Blog</a>
-                  </li>
-                </ul>
-              </li>
-
               {/* Get Involved dropdown */}
-              <li>
-                <button
-                  type="button"
-                  class="uppercase"
-                  popovertarget="nav-involved"
-                  style="anchor-name:--anchor-involved"
-                >
-                  Get Involved
-                </button>
-                <ul
-                  class="dropdown menu p-2 bg-base-100 shadow-lg w-[220px] overflow-x-hidden"
-                  popover
-                  id="nav-involved"
-                  style="position-anchor:--anchor-involved"
-                >
-                  <Loading>
-                    <Show when={cfpConfig()?.cfp_open}>
-                      <li>
-                        <a href="/cfp">{`>`} Apply to speak</a>
-                      </li>
-                    </Show>
-                  </Loading>
-                  <li>
-                    <a href="/partnerships">{`>`} Partner with us</a>
-                  </li>
-                </ul>
-              </li>
+              <Show when={cfpOpen()}>
+                <li>
+                  <button
+                    type="button"
+                    class="uppercase"
+                    popovertarget="nav-involved"
+                    style="anchor-name:--anchor-involved"
+                  >
+                    Get Involved
+                  </button>
+                  <ul
+                    class="dropdown menu p-2 bg-base-100 shadow-lg w-[220px] overflow-x-hidden"
+                    popover
+                    id="nav-involved"
+                    style="position-anchor:--anchor-involved"
+                  >
+                    <li>
+                      <a href="/cfp">{`>`} Apply to speak</a>
+                    </li>
+                  </ul>
+                </li>
+              </Show>
 
               {/* About dropdown */}
               <li>
@@ -243,19 +196,7 @@ export const Navbar = () => {
                   style="position-anchor:--anchor-about"
                 >
                   <li>
-                    <a href="/about">{`>`} About WTS</a>
-                  </li>
-                  <li>
-                    <a href="/press-kit">{`>`} Press Kit</a>
-                  </li>
-                  <li>
-                    <a href="/faq">{`>`} FAQ</a>
-                  </li>
-                  <li>
-                    <a href="/convince-your-boss">{`>`} Convince your boss</a>
-                  </li>
-                  <li>
-                    <a href="/trip-cost">{`>`} Trip cost calculator</a>
+                    <a href="/#about">{`>`} About WhatTheStack</a>
                   </li>
                   <li class="border-t border-white/10 mt-1 pt-1">
                     <a href="https://2025.wts.sh" target="_blank">
@@ -320,7 +261,7 @@ export const Navbar = () => {
           </div>
 
           <ul class="space-y-2 font-bold uppercase text-lg">
-            {mounted() && auth?.user?.role === "admin" && (
+            {showAdmin() && (
               <li>
                 <a
                   href="/admin"
@@ -331,7 +272,7 @@ export const Navbar = () => {
                 </a>
               </li>
             )}
-            {mounted() && (auth?.user?.role === "reviewer" || auth?.user?.role === "admin") && (
+            {showReviewer() && (
               <li>
                 <a
                   href="/reviewer"
@@ -346,9 +287,6 @@ export const Navbar = () => {
             <Show when={canModerate()}>
               <li><a href="/mc" onClick={closeDrawer} class="text-secondary-500 hover:bg-secondary-500/10">MC Q&A</a></li>
             </Show>
-            <Show when={showLiveQa()}>
-              <li><a href="/qa" onClick={closeDrawer} class="text-secondary-500 hover:bg-secondary-500/10">Live Q&A</a></li>
-            </Show>
             <Show when={canCheckin()}>
               <li><a href="/registrations" target="_self" onClick={closeDrawer} class="text-secondary-500 hover:bg-secondary-500/10">Registrations</a></li>
               <li>
@@ -358,57 +296,20 @@ export const Navbar = () => {
               </li>
             </Show>
 
-            <li>
-              <a href="/tickets" onClick={closeDrawer}>
-                Grab a ticket!
-              </a>
-            </li>
-
-            {/* Conference */}
-            <li>
-              <details>
-                <summary>Conference</summary>
-                <ul>
-                  <li>
-                    <a href="/speakers" onClick={closeDrawer}>Speakers</a>
-                  </li>
-                  <li>
-                    <a href="/agenda" onClick={closeDrawer}>Agenda</a>
-                  </li>
-                  <li>
-                    <a href="/sessions" onClick={closeDrawer}>Sessions</a>
-                  </li>
-                  <li>
-                    <a href="/sponsors" onClick={closeDrawer}>Sponsors & partners</a>
-                  </li>
-                  <li>
-                    <a href="/timeline" onClick={closeDrawer}>Timeline</a>
-                  </li>
-                  <li>
-                    <a href="/blog" onClick={closeDrawer}>Blog</a>
-                  </li>
-                </ul>
-              </details>
-            </li>
 
             {/* Get Involved */}
-            <li>
-              <details>
-                <summary>Get Involved</summary>
-                <ul>
-                  <Loading>
-                    <Show when={cfpConfig()?.cfp_open}>
-                      <li>
-                        <a href="/cfp" onClick={closeDrawer}>Apply to speak</a>
-                      </li>
-                    </Show>
-                  </Loading>
-                  <li>
-                    <a href="/partnerships" onClick={closeDrawer}>Partner with us</a>
-                  </li>
-                </ul>
-              </details>
-            </li>
+            <Show when={cfpOpen()}>
+              <li>
+                <details>
+                  <summary>Get Involved</summary>
+                  <ul>
+                    <li>
+                      <a href="/cfp" onClick={closeDrawer}>Apply to speak</a>
+                    </li>
+                  </ul>
+                </details>
+              </li>
+            </Show>
 
             {/* About */}
             <li>
@@ -416,19 +317,7 @@ export const Navbar = () => {
                 <summary>About</summary>
                 <ul>
                   <li>
-                    <a href="/about" onClick={closeDrawer}>About WTS</a>
-                  </li>
-                  <li>
-                    <a href="/press-kit" onClick={closeDrawer}>Press Kit</a>
-                  </li>
-                  <li>
-                    <a href="/faq" onClick={closeDrawer}>FAQ</a>
-                  </li>
-                  <li>
-                    <a href="/convince-your-boss" onClick={closeDrawer}>Convince your boss</a>
-                  </li>
-                  <li>
-                    <a href="/trip-cost" onClick={closeDrawer}>Trip cost calculator</a>
+                    <a href="/#about" onClick={closeDrawer}>About WhatTheStack</a>
                   </li>
                   <li class="border-t border-white/10 mt-1 pt-1">
                     <a href="https://2025.wts.sh" target="_blank" onClick={closeDrawer}>
@@ -444,7 +333,7 @@ export const Navbar = () => {
               </details>
             </li>
 
-            {mounted() && auth?.isAuthenticated() && (
+            {showAccount() && (
               <>
                 <div class="divider border-white/10 my-2"></div>
                 <li>
@@ -460,7 +349,7 @@ export const Navbar = () => {
               </>
             )}
 
-            {mounted() && !auth?.isAuthenticated() && (
+            {showLogin() && (
               <li>
                 <a href="/login" onClick={closeDrawer} class="text-primary-300">
                   Log in
@@ -470,7 +359,7 @@ export const Navbar = () => {
           </ul>
 
           <div class="mt-auto px-4 py-8 text-xs text-secondary-500/50 font-mono text-center">
-            WhatTheStack 2026
+            WhatTheStack 2027
           </div>
         </div>
         </dialog>

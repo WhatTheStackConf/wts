@@ -5,6 +5,8 @@ import { Layout } from "~/layouts/Layout";
 import { useAuth } from "~/lib/auth-context";
 import type { MissionCodeRedemptionResult } from "~/lib/mission-code-redemption";
 import { redeemMissionCode } from "~/lib/mission-code-redemption-action";
+import { MissionQuestionForm } from "~/components/MissionQuestionForm";
+import { missionRetrySeconds, type MissionQuestionChallenge } from "~/lib/mission-questions";
 import { grantMyPartnerContactConsent } from "~/lib/partner-contact-consent-actions";
 import {
   clearPendingMissionCode,
@@ -14,12 +16,25 @@ import {
   setMissionCodeLoginResume,
 } from "~/lib/mission-code-resume";
 
+const QUESTION_RETRY_STATUSES = ["questions_incorrect", "questions_incomplete", "questions_malformed", "question_conflict"];
+const RETRYABLE_STATUSES = ["rate_limited", "unavailable", ...QUESTION_RETRY_STATUSES];
+
+const resultPresentation = (status: MissionCodeRedemptionResult["status"]) => status === "accepted" || status === "already_redeemed"
+  ? { tone: "border-success/30 bg-success/10", role: "status", icon: "material-symbols:check-circle-outline" } as const
+  : { tone: "border-warning/30 bg-warning/10", role: "alert", icon: "material-symbols:info-outline" } as const;
+
+const pendingPartnerFollowUp = (result: MissionCodeRedemptionResult) => result.partnerFollowUp?.state !== "granted" ? result.partnerFollowUp : undefined;
+
 const RedeemMissionPage = () => {
   const auth = useAuth();
   const [code, setCode] = createSignal("");
   const [pendingVersion, setPendingVersion] = createSignal(0);
   const [isRedeeming, setIsRedeeming] = createSignal(false);
   const [result, setResult] = createSignal<MissionCodeRedemptionResult>();
+  const [challenge, setChallenge] = createSignal<{ value: MissionQuestionChallenge; userId: string; sourceCode: string }>();
+  const [retryAt, setRetryAt] = createSignal(0);
+  const [tick, setTick] = createSignal(Date.now());
+  const retrySeconds = () => missionRetrySeconds(retryAt(), tick());
   const [requestError, setRequestError] = createSignal("");
   const [consentBusy, setConsentBusy] = createSignal(false);
   const [consentMessage, setConsentMessage] = createSignal("");
@@ -29,6 +44,13 @@ const RedeemMissionPage = () => {
   let resultRegion: HTMLDivElement | undefined;
 
   const pendingCode = () => typeof window === "undefined" ? undefined : readPendingMissionCode(window.sessionStorage);
+  const enteredCode = () => code() || pendingCode() || "";
+  const codeLocked = () => isRedeeming() || Boolean(challenge()) || retrySeconds() > 0;
+  const retryLocked = () => isRedeeming() || retrySeconds() > 0;
+  const signedOut = () => !auth.isLoading() && !auth.isAuthenticated();
+  const currentChallenge = () => challenge()?.userId === auth.user?.id ? challenge() : undefined;
+  const questionRetryAvailable = () => QUESTION_RETRY_STATUSES.includes(result()?.status || "");
+  const retryLabel = (status: MissionCodeRedemptionResult["status"]) => retrySeconds() > 0 ? `Retry in ${retrySeconds()}s` : status.startsWith("questions_") ? "Start a new attempt" : "Try again";
 
   const redirectToLogin = (pending: string) => {
     savePendingMissionCode(window.sessionStorage, pending);
@@ -36,8 +58,29 @@ const RedeemMissionPage = () => {
     window.location.assign("/login");
   };
 
+  const applyResult = (redemption: MissionCodeRedemptionResult, userId: string, sourceCode: string) => {
+    if (auth.user?.id !== userId) {
+      setChallenge(undefined); setResult(undefined);
+      setRequestError("Your signed-in User changed. Reload before continuing.");
+      return;
+    }
+    setResult(redemption);
+    if (redemption.status === "rate_limited") {
+      const now = Date.now();
+      setTick(now);
+      setRetryAt(now + (redemption.retryAfterSeconds || 60) * 1000);
+    }
+    if (redemption.questionnaire) { setChallenge({ value: redemption.questionnaire, userId, sourceCode }); setCode(""); }
+    else if (redemption.status !== "rate_limited" && redemption.status !== "unavailable") setChallenge(undefined);
+    if (pendingCode() === sourceCode && !["rate_limited", "unavailable", "questions_required", "questions_incorrect", "questions_incomplete", "questions_malformed", "question_conflict"].includes(redemption.status)) {
+      clearPendingMissionCode(window.sessionStorage);
+      setCode("");
+      setPendingVersion(value => value + 1);
+    }
+  };
+
   const submitCode = async (rawCode: string, sourceHint: "link" | "manual") => {
-    if (isRedeeming()) return;
+    if (codeLocked()) return;
     const trimmedCode = rawCode.trim();
     if (!trimmedCode) {
       setRequestError("Enter a mission code.");
@@ -48,28 +91,26 @@ const RedeemMissionPage = () => {
       return;
     }
 
+    const expectedUserId = auth.user?.id || "";
+    savePendingMissionCode(window.sessionStorage, trimmedCode);
     setIsRedeeming(true);
     setRequestError("");
     setResult(undefined);
     try {
-      const redemption = await redeemMissionCode(trimmedCode, sourceHint);
-      setResult(redemption);
-      if (redemption.status !== "rate_limited" && redemption.status !== "unavailable") {
-        clearPendingMissionCode(window.sessionStorage);
-        setPendingVersion((value) => value + 1);
-      }
-      if (redemption.status === "accepted") setCode("");
-    } catch {
+      const redemption = await redeemMissionCode(trimmedCode, sourceHint, expectedUserId);
+      applyResult(redemption, expectedUserId, trimmedCode);
+    } catch (error) {
       // Retain the secret only in this tab so a temporary outage cannot lose a valid scan.
       savePendingMissionCode(window.sessionStorage, trimmedCode);
       setPendingVersion((value) => value + 1);
-      setRequestError("Could not redeem your code. Check your connection and try again.");
+      setRequestError(error instanceof Error ? error.message : "Could not redeem your code. Check your connection and try again.");
     } finally {
       setIsRedeeming(false);
     }
   };
 
   const resumePendingCode = () => {
+    if (codeLocked()) return;
     const pending = pendingCode();
     if (!pending || auth.isLoading()) return;
     if (!auth.isAuthenticated()) {
@@ -83,7 +124,7 @@ const RedeemMissionPage = () => {
 
   const handleSubmit = (event: Event) => {
     event.preventDefault();
-    void submitCode(code(), "manual");
+    void submitCode(enteredCode(), code() ? "manual" : "link");
   };
 
   const grantPartnerFollowUp = async (event: SubmitEvent, activityId: string) => {
@@ -111,7 +152,14 @@ const RedeemMissionPage = () => {
 
   const captureFragmentCode = () => {
     const fragmentCode = missionCodeFromFragment(window.location.hash);
+    if (fragmentCode && (isRedeeming() || challenge())) {
+      if (fragmentCode !== pendingCode()) setRequestError("Another QR was not submitted. Finish this Mission, then scan the other QR again.");
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      return;
+    }
     if (fragmentCode) {
+      automaticallySubmittedCode = undefined;
+      setCode("");
       savePendingMissionCode(window.sessionStorage, fragmentCode);
       setPendingVersion((value) => value + 1);
     }
@@ -123,8 +171,9 @@ const RedeemMissionPage = () => {
 
   onSettled(() => {
     captureFragmentCode();
+    const timer = window.setInterval(() => setTick(Date.now()), 500);
     window.addEventListener("hashchange", captureFragmentCode);
-    return () => window.removeEventListener("hashchange", captureFragmentCode);
+    return () => { window.clearInterval(timer); window.removeEventListener("hashchange", captureFragmentCode); };
   });
 
   createEffect(
@@ -137,9 +186,10 @@ const RedeemMissionPage = () => {
   );
 
   createEffect(
-    () => ({ hasError: Boolean(requestError()), hasResult: Boolean(result()) }),
-    ({ hasError, hasResult }) => {
+    () => ({ hasError: Boolean(requestError()), hasResult: Boolean(result()), questionId: result()?.questionnaire?.questions[0]?.id }),
+    ({ hasError, hasResult, questionId }) => {
       if (hasError) queueMicrotask(() => requestErrorRegion?.focus());
+      else if (questionId) queueMicrotask(() => document.getElementById(`question-${questionId}`)?.focus());
       else if (hasResult) queueMicrotask(() => resultRegion?.focus());
     },
   );
@@ -153,10 +203,10 @@ const RedeemMissionPage = () => {
             Mission progress is saved to your signed-in profile.
           </p>
 
-          <Show when={!auth.isLoading() && !auth.isAuthenticated()}>
+          <Show when={signedOut()}>
             <div class="mt-6 rounded-xl border border-secondary-400/25 bg-secondary-500/10 p-4" role="status">
               <p class="text-sm text-secondary-100">Log in to redeem. Your scanned code stays only in this tab while you log in.</p>
-              <button type="button" class="btn btn-secondary btn-sm mt-3" onClick={() => redirectToLogin(code() || pendingCode() || "") } disabled={!code() && !pendingCode()}>
+              <button type="button" class="btn btn-secondary btn-sm mt-3" onClick={() => redirectToLogin(enteredCode()) } disabled={!code() && !pendingCode()}>
                 Log in to redeem
               </button>
             </div>
@@ -181,7 +231,7 @@ const RedeemMissionPage = () => {
                 autocomplete="off"
                 autocapitalize="characters"
                 spellcheck={false}
-                disabled={isRedeeming() || result()?.status === "rate_limited"}
+                disabled={codeLocked()}
                 aria-describedby={requestError() ? "mission-code-help mission-code-error" : "mission-code-help"}
                 aria-invalid={requestError() ? "true" : undefined}
               />
@@ -190,12 +240,22 @@ const RedeemMissionPage = () => {
               </p>
             </div>
 
-            <button type="submit" class="btn btn-primary w-full font-mono" disabled={isRedeeming() || result()?.status === "rate_limited"}>
+            <button type="submit" class="btn btn-primary w-full font-mono" disabled={codeLocked()}>
               <Show when={!isRedeeming()} fallback={<><span class="loading loading-spinner loading-sm" aria-hidden="true" /> Redeeming…</>}>
                 Redeem code
               </Show>
             </button>
           </form>
+
+          <Show when={retrySeconds() > 0}><p class="mt-3 text-sm" role="status">Retry available in {retrySeconds()} seconds. No automatic retries.</p></Show>
+          <Show when={currentChallenge()} keyed>{current => <MissionQuestionForm challenge={current.value} userId={current.userId} retrySeconds={retrySeconds()} onResult={value => applyResult(value, current.userId, current.sourceCode)} />}</Show>
+          <Show when={questionRetryAvailable()}>
+            <button type="button" class="btn btn-outline btn-primary mt-4 min-h-12 w-full" disabled={retryLocked()} onClick={() => {
+              const pending = pendingCode();
+              if (pending) void submitCode(pending, "link");
+              else setRequestError("Scan the official code again to start a new question attempt.");
+            }}>Try questions again</button>
+          </Show>
 
           <Show when={requestError()}>
             <div ref={requestErrorRegion} id="mission-code-error" class="alert alert-error mt-5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error" role="alert" tabindex="-1">
@@ -208,14 +268,14 @@ const RedeemMissionPage = () => {
             {(current) => (
               <div
                 ref={resultRegion}
-                class={`mt-5 rounded-xl border p-5 ${current().status === "accepted" || current().status === "already_redeemed" ? "border-success/30 bg-success/10" : "border-warning/30 bg-warning/10"}`}
-                role={current().status === "accepted" || current().status === "already_redeemed" ? "status" : "alert"}
+                class={`mt-5 rounded-xl border p-5 ${resultPresentation(current().status).tone}`}
+                role={resultPresentation(current().status).role}
                 aria-live="polite"
                 tabindex="-1"
               >
                 <div class="flex gap-3">
                   <Icon
-                    icon={current().status === "accepted" || current().status === "already_redeemed" ? "material-symbols:check-circle-outline" : "material-symbols:info-outline"}
+                    icon={resultPresentation(current().status).icon}
                     class="mt-0.5 text-xl"
                     aria-hidden="true"
                   />
@@ -257,7 +317,7 @@ const RedeemMissionPage = () => {
                         </>
                       )}
                     </Show>
-                    <Show when={current().partnerFollowUp?.state !== "granted" ? current().partnerFollowUp : undefined}>
+                    <Show when={pendingPartnerFollowUp(current())}>
                       {(consent) => (
                         <form class="mt-5 border-t border-white/15 pt-4" onSubmit={(event) => void grantPartnerFollowUp(event, consent().activityId)} aria-busy={consentBusy() ? "true" : "false"}>
                           <fieldset>
@@ -286,9 +346,9 @@ const RedeemMissionPage = () => {
                     <Show when={current().supportReference}>
                       <p class="mt-2 font-mono text-xs text-secondary-100">Support reference: {current().supportReference}</p>
                     </Show>
-                    <Show when={current().status === "rate_limited" || current().status === "unavailable"}>
-                      <button type="button" class="btn btn-outline btn-warning mt-4 min-h-12 font-mono" disabled={isRedeeming()} onClick={() => void submitCode(code() || pendingCode() || "", "manual")}>
-                        Try again
+                    <Show when={!challenge() && (RETRYABLE_STATUSES.includes(current().status))}>
+                      <button type="button" class="btn btn-outline btn-warning mt-4 min-h-12 font-mono" disabled={retryLocked()} onClick={() => void submitCode(enteredCode(), "manual")}>
+                        {retryLabel(current().status)}
                       </button>
                     </Show>
                   </div>

@@ -53,16 +53,31 @@ const VISIBILITY_OPTIONS = [
   { value: "no" as const, label: "Draft" },
 ];
 
+const PHOTO_ERROR_TERMS = ["photo", "jpeg", "png", "webp"];
+const INVITE_PHOTO_ERROR_TERMS = [...PHOTO_ERROR_TERMS, "5 mb"];
+
+function mentionsAny(message: string, terms: string[]): boolean {
+  const lower = message.toLowerCase();
+  return terms.some((term) => lower.includes(term));
+}
+
+function markInputInvalid(input: HTMLInputElement | undefined, message: string) {
+  input?.setCustomValidity(message);
+  input?.setAttribute("aria-invalid", "true");
+}
+
+function sourceUserName(row: SpeakerRow): string | undefined {
+  return row.expand?.cfp_applicant?.expand?.user?.name || row.expand?.user?.name;
+}
+
+function sourceUserEmail(row: SpeakerRow): string | undefined {
+  return row.expand?.cfp_applicant?.expand?.user?.email || row.expand?.user?.email;
+}
+
 function speakerLabel(row: SpeakerRow): string {
   if (row.display_name) return row.display_name;
-  if (row.origin === "cfp") {
-    return (
-      row.expand?.cfp_applicant?.expand?.user?.name ||
-      row.expand?.user?.name ||
-      row.slug
-    );
-  }
-  return row.display_name || row.slug;
+  if (row.origin === "cfp") return sourceUserName(row) || row.slug;
+  return row.slug;
 }
 
 function speakerSocialText(raw: unknown): string {
@@ -318,6 +333,32 @@ export default function AdminSpeakersHub() {
   const [creatingInvite, setCreatingInvite] = createSignal(false);
   let invitePhotoInput: HTMLInputElement | undefined;
 
+  const clearInvitePhotoError = () => {
+    setInvitePhotoError("");
+    invitePhotoInput?.setCustomValidity("");
+    invitePhotoInput?.removeAttribute("aria-invalid");
+  };
+
+  const resetInviteForm = () => {
+    setInviteName("");
+    setInviteIsMc(false);
+    setInviteSlug("");
+    setInviteAffiliation("");
+    setInviteBio("");
+    setInviteSocial("");
+    setInvitePhoto(null);
+    setInvitePhotoError("");
+    setShowInviteForm(false);
+    const fileInput = document.getElementById("invite-speaker-photo") as HTMLInputElement | null;
+    if (fileInput) fileInput.value = "";
+  };
+
+  const reportInvitePhotoError = (message: string) => {
+    if (!mentionsAny(message, INVITE_PHOTO_ERROR_TERMS)) return;
+    setInvitePhotoError(message);
+    markInputInvalid(invitePhotoInput, message);
+  };
+
   const submitInvite = async (e: Event) => {
     e.preventDefault();
     if (creatingInvite()) return;
@@ -328,9 +369,7 @@ export default function AdminSpeakersHub() {
     }
 
     setCreatingInvite(true);
-    setInvitePhotoError("");
-    invitePhotoInput?.setCustomValidity("");
-    invitePhotoInput?.removeAttribute("aria-invalid");
+    clearInvitePhotoError();
     try {
       const handles = inviteSocial()
         .split("\n")
@@ -350,17 +389,7 @@ export default function AdminSpeakersHub() {
         showToast("error", res.error || "Could not create invite speaker.");
         return;
       }
-      setInviteName("");
-      setInviteIsMc(false);
-      setInviteSlug("");
-      setInviteAffiliation("");
-      setInviteBio("");
-      setInviteSocial("");
-      setInvitePhoto(null);
-      setInvitePhotoError("");
-      setShowInviteForm(false);
-      const fileInput = document.getElementById("invite-speaker-photo") as HTMLInputElement | null;
-      if (fileInput) fileInput.value = "";
+      resetInviteForm();
       showToast(
         "success",
         `Draft profile for "${displayName}" created. Toggle Published when ready for the public site.`,
@@ -368,47 +397,25 @@ export default function AdminSpeakersHub() {
       await refetch();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not create invite speaker.";
-      const lower = message.toLowerCase();
-      if (
-        lower.includes("photo") ||
-        lower.includes("jpeg") ||
-        lower.includes("png") ||
-        lower.includes("webp") ||
-        lower.includes("5 mb")
-      ) {
-        setInvitePhotoError(message);
-        invitePhotoInput?.setCustomValidity(message);
-        invitePhotoInput?.setAttribute("aria-invalid", "true");
-      }
+      reportInvitePhotoError(message);
       showToast("error", message);
     } finally {
       setCreatingInvite(false);
     }
   };
 
+  const editErrorFields: { terms: string[]; setError: (message: string) => void; input: () => HTMLInputElement | undefined }[] = [
+    { terms: ["slug"], setError: setEditSlugError, input: () => editSlugInput },
+    { terms: ["display", "name"], setError: setEditNameError, input: () => editNameInput },
+    { terms: PHOTO_ERROR_TERMS, setError: setEditPhotoError, input: () => editPhotoInput },
+  ];
+
   const applyEditError = (message: string) => {
-    const lower = message.toLowerCase();
     setEditError(message);
-
-    if (lower.includes("slug")) {
-      setEditSlugError(message);
-      editSlugInput?.setCustomValidity(message);
-      editSlugInput?.setAttribute("aria-invalid", "true");
-      return;
-    }
-
-    if (lower.includes("display") || lower.includes("name")) {
-      setEditNameError(message);
-      editNameInput?.setCustomValidity(message);
-      editNameInput?.setAttribute("aria-invalid", "true");
-      return;
-    }
-
-    if (lower.includes("photo") || lower.includes("jpeg") || lower.includes("png") || lower.includes("webp")) {
-      setEditPhotoError(message);
-      editPhotoInput?.setCustomValidity(message);
-      editPhotoInput?.setAttribute("aria-invalid", "true");
-    }
+    const field = editErrorFields.find((candidate) => mentionsAny(message, candidate.terms));
+    if (!field) return;
+    field.setError(message);
+    markInputInvalid(field.input(), message);
   };
 
   const submitEdit = async (e: Event) => {
@@ -497,14 +504,6 @@ export default function AdminSpeakersHub() {
           >
             Edit
           </button>
-          <a
-            href={`/speakers/${row.slug}`}
-            class="btn btn-xs btn-ghost"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Preview
-          </a>
         </div>
       </td>
     </>
@@ -554,73 +553,13 @@ export default function AdminSpeakersHub() {
         showToast={showToast}
       />
 
-      <div class="glass-panel p-6 rounded-2xl mb-8 border border-warning-500/20 shadow-xl backdrop-blur-xl bg-black/40">
-        <div class="flex flex-wrap justify-between items-start gap-3 mb-4">
-          <div>
-            <h2 class="text-lg font-bold text-warning-300">
-              Accepted CFP applicants without a profile
-            </h2>
-            <p class="text-xs text-base-content/60 font-mono mt-1 max-w-3xl leading-relaxed text-pretty">
-              Create a profile only, or create a draft session from Proposals to include the speaker automatically.
-            </p>
-          </div>
-          <a href="/admin/proposals" class="btn btn-xs btn-outline btn-warning font-mono">
-            Proposals leaderboard
-          </a>
-        </div>
-
-        <Show when={pendingApplicants.loading}>
-          <div class="flex justify-center py-6">
-            <span class="loading loading-spinner loading-md text-warning-400"></span>
-          </div>
-        </Show>
-
-        <Show when={!pendingApplicants.loading && (pendingApplicants()?.length ?? 0) > 0}>
-          <div class="divide-y divide-white/10">
-            <For each={pendingApplicants()}>
-              {(item: any) => (
-                <div class="flex flex-wrap justify-between items-center gap-3 py-3">
-                  <div class="min-w-0">
-                    <div class="font-bold text-white [overflow-wrap:anywhere]">
-                      {item.applicant?.expand?.user?.name || "Unknown"}
-                    </div>
-                    <div class="text-xs text-base-content/60 font-mono [overflow-wrap:anywhere]">
-                      Accepted proposal: {item.submissionTitle}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-primary font-mono"
-                    disabled={busyId() !== null}
-                    onClick={() => createFromApplicant(item.applicantId)}
-                  >
-                    {busyId() === item.applicantId ? (
-                      <span class="loading loading-spinner loading-xs"></span>
-                    ) : (
-                      "Create draft profile"
-                    )}
-                  </button>
-                </div>
-              )}
-            </For>
-          </div>
-        </Show>
-
-        <Show
-          when={
-            !pendingApplicants.loading &&
-            (pendingApplicants()?.length ?? 0) === 0 &&
-            !pendingError()
-          }
-        >
-          <div class="py-4">
-            <p class="text-sm text-gray-200 mb-2">
-              No accepted CFP applicants waiting for a speaker profile.
-            </p>
-
-          </div>
-        </Show>
-      </div>
+      <PendingApplicantsPanel
+        items={pendingApplicants()}
+        loading={pendingApplicants.loading}
+        error={pendingError()}
+        busyId={busyId()}
+        onCreate={createFromApplicant}
+      />
 
       <div class="mb-8">
         <Show when={editingSpeaker()}>
@@ -642,14 +581,6 @@ export default function AdminSpeakersHub() {
                   <span class={`badge font-mono ${row().published ? "badge-success" : "badge-ghost"}`}>
                     {row().published ? "Published" : "Draft"}
                   </span>
-                  <a
-                    href={`/speakers/${row().slug}`}
-                    class="btn btn-xs btn-ghost"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Preview
-                  </a>
                 </div>
               </div>
 
@@ -743,42 +674,7 @@ export default function AdminSpeakersHub() {
                     </div>
                   </AdminFormSection>
 
-                  <AdminFormSection
-                    title="Source"
-                  >
-                    <div>
-                      <span class="badge badge-ghost font-mono">
-                        {row().origin === "cfp" ? "CFP-origin copied snapshot" : "Invited"}
-                      </span>
-                      <Show
-                        when={row().origin === "cfp"}
-                        fallback={
-                          <p class="mt-3 text-xs font-mono leading-relaxed text-base-content/65 text-pretty">
-                            Created in admin. Edits change only the public profile.
-                          </p>
-                        }
-                      >
-                        <p class="mt-3 text-xs font-mono leading-relaxed text-base-content/65 text-pretty">
-                          Copied from CFP once. Changes to this profile and the CFP/user account do not sync with each other.
-                        </p>
-                      </Show>
-                      <Show
-                        when={
-                          row().expand?.cfp_applicant?.expand?.user?.name ||
-                          row().expand?.user?.name ||
-                          row().expand?.cfp_applicant?.expand?.user?.email ||
-                          row().expand?.user?.email
-                        }
-                      >
-                        <p class="mt-3 text-xs font-mono text-base-content/60 break-all">
-                          Source user: {row().expand?.cfp_applicant?.expand?.user?.name || row().expand?.user?.name || "Unnamed"}
-                          <Show when={row().expand?.cfp_applicant?.expand?.user?.email || row().expand?.user?.email}>
-                            {(email) => <span> ({email()})</span>}
-                          </Show>
-                        </p>
-                      </Show>
-                    </div>
-                  </AdminFormSection>
+                  <SpeakerSourceSection row={row()} />
                 </div>
 
                 <div class="space-y-6 lg:order-1 lg:col-span-7">
@@ -901,52 +797,12 @@ export default function AdminSpeakersHub() {
                     title="Appearance Events"
                     description="Select events where participation has been publicly announced. Draft events stay hidden."
                   >
-                    <Show when={appearanceEvents.loading}>
-                      <div class="flex justify-center py-5">
-                        <span class="loading loading-spinner loading-sm text-primary-400" />
-                      </div>
-                    </Show>
-                    <Show when={!appearanceEvents.loading && (appearanceEvents()?.length ?? 0) === 0}>
-                      <p class="text-sm font-mono text-base-content/60">
-                        Add an Appearance Event above before assigning appearances.
-                      </p>
-                    </Show>
-                    <Show when={!appearanceEvents.loading && (appearanceEvents()?.length ?? 0) > 0}>
-                      <fieldset class="space-y-2">
-                        <legend class="sr-only">Appearance Event assignments</legend>
-                        <For each={appearanceEvents()}>
-                          {(event) => (
-                            <label class="flex min-h-12 cursor-pointer items-center justify-between gap-4 rounded-lg border border-white/10 bg-black/25 px-4 py-3 hover:border-primary-500/35">
-                              <span class="flex min-w-0 items-center gap-3">
-                                <input
-                                  type="checkbox"
-                                  name="appearance_events"
-                                  value={event.id}
-                                  class="checkbox checkbox-primary checkbox-sm shrink-0"
-                                  checked={editAppearanceEventIds().includes(event.id)}
-                                  onChange={(inputEvent) =>
-                                    setEditAppearanceAssignment(event.id, inputEvent.currentTarget.checked)
-                                  }
-                                />
-                                <span class="min-w-0">
-                                  <span class="block text-sm font-bold text-white [overflow-wrap:anywhere]">
-                                    {event.name}
-                                  </span>
-                                  <span class="block text-xs font-mono text-base-content/55 [overflow-wrap:anywhere]">
-                                    Ribbon: {event.compact_label || event.name}
-                                  </span>
-                                </span>
-                              </span>
-                              <span class={`badge badge-sm shrink-0 font-mono ${event.published ? "badge-success" : "badge-ghost"}`}>
-                                <Show when={event.published} fallback="Draft">
-                                  Published
-                                </Show>
-                              </span>
-                            </label>
-                          )}
-                        </For>
-                      </fieldset>
-                    </Show>
+                    <AppearanceEventAssignments
+                      events={appearanceEvents()}
+                      loading={appearanceEvents.loading}
+                      selectedIds={editAppearanceEventIds()}
+                      onAssign={setEditAppearanceAssignment}
+                    />
                   </AdminFormSection>
                 </div>
               </div>
@@ -1196,28 +1052,11 @@ export default function AdminSpeakersHub() {
       </Show>
 
       <Show when={!speakers.loading && filtered().length === 0}>
-        <AdminDataPanel>
-          <div class="p-12 text-center">
-            <Icon icon="ph:microphone-stage-bold" class="text-4xl text-base-content/40 mb-4" aria-hidden="true" />
-            <p class="text-white font-bold mb-2">
-              {filtersActive() ? "No speakers match these filters" : "No speaker profiles yet"}
-            </p>
-            <p class="text-sm text-base-content/60 font-mono max-w-md mx-auto leading-relaxed text-pretty">
-              {filtersActive()
-                ? "Try changing the origin or visibility filters above."
-                : "Create a profile from an accepted applicant or invite a speaker."}
-            </p>
-            <Show when={!filtersActive() && !showInviteForm()}>
-              <button
-                type="button"
-                class="btn btn-primary btn-sm font-mono mt-4"
-                onClick={() => setShowInviteForm(true)}
-              >
-                Invite speaker
-              </button>
-            </Show>
-          </div>
-        </AdminDataPanel>
+        <SpeakersEmptyState
+          filtersActive={filtersActive()}
+          showInviteForm={showInviteForm()}
+          onInvite={() => setShowInviteForm(true)}
+        />
       </Show>
 
       <Show when={!speakers.loading && filtered().length > 0}>
@@ -1258,14 +1097,6 @@ export default function AdminSpeakersHub() {
                       >
                         Edit
                       </button>
-                      <a
-                        href={`/speakers/${row.slug}`}
-                        class="btn btn-xs btn-ghost"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Preview
-                      </a>
                     </div>
                   </div>
                 </article>
@@ -1293,5 +1124,218 @@ export default function AdminSpeakersHub() {
         </AdminDataPanel>
       </Show>
     </AdminPageShell>
+  );
+}
+
+interface PendingApplicantsPanelProps {
+  items: any[] | undefined;
+  loading: boolean;
+  error: string | null;
+  busyId: string | null;
+  onCreate: (applicantId: string) => void;
+}
+
+function PendingApplicantsPanel(props: PendingApplicantsPanelProps) {
+  return (
+    <div class="glass-panel p-6 rounded-2xl mb-8 border border-warning-500/20 shadow-xl backdrop-blur-xl bg-black/40">
+      <div class="flex flex-wrap justify-between items-start gap-3 mb-4">
+        <div>
+          <h2 class="text-lg font-bold text-warning-300">
+            Accepted CFP applicants without a profile
+          </h2>
+          <p class="text-xs text-base-content/60 font-mono mt-1 max-w-3xl leading-relaxed text-pretty">
+            Create a profile only, or create a draft session from Proposals to include the speaker automatically.
+          </p>
+        </div>
+        <a href="/admin/proposals" class="btn btn-xs btn-outline btn-warning font-mono">
+          Proposals leaderboard
+        </a>
+      </div>
+
+      <Show when={props.loading}>
+        <div class="flex justify-center py-6">
+          <span class="loading loading-spinner loading-md text-warning-400"></span>
+        </div>
+      </Show>
+
+      <Show when={!props.loading && (props.items?.length ?? 0) > 0}>
+        <div class="divide-y divide-white/10">
+          <For each={props.items}>
+            {(item: any) => (
+              <div class="flex flex-wrap justify-between items-center gap-3 py-3">
+                <div class="min-w-0">
+                  <div class="font-bold text-white [overflow-wrap:anywhere]">
+                    {item.applicant?.expand?.user?.name || "Unknown"}
+                  </div>
+                  <div class="text-xs text-base-content/60 font-mono [overflow-wrap:anywhere]">
+                    Accepted proposal: {item.submissionTitle}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary font-mono"
+                  disabled={props.busyId !== null}
+                  onClick={() => props.onCreate(item.applicantId)}
+                >
+                  {props.busyId === item.applicantId ? (
+                    <span class="loading loading-spinner loading-xs"></span>
+                  ) : (
+                    "Create draft profile"
+                  )}
+                </button>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      <Show
+        when={
+          !props.loading &&
+          (props.items?.length ?? 0) === 0 &&
+          !props.error
+        }
+      >
+        <div class="py-4">
+          <p class="text-sm text-gray-200 mb-2">
+            No accepted CFP applicants waiting for a speaker profile.
+          </p>
+
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+interface SpeakerSourceSectionProps {
+  row: SpeakerRow;
+}
+
+function SpeakerSourceSection(props: SpeakerSourceSectionProps) {
+  return (
+    <AdminFormSection
+      title="Source"
+    >
+      <div>
+        <span class="badge badge-ghost font-mono">
+          {props.row.origin === "cfp" ? "CFP-origin copied snapshot" : "Invited"}
+        </span>
+        <Show
+          when={props.row.origin === "cfp"}
+          fallback={
+            <p class="mt-3 text-xs font-mono leading-relaxed text-base-content/65 text-pretty">
+              Created in admin. Edits change only the public profile.
+            </p>
+          }
+        >
+          <p class="mt-3 text-xs font-mono leading-relaxed text-base-content/65 text-pretty">
+            Copied from CFP once. Changes to this profile and the CFP/user account do not sync with each other.
+          </p>
+        </Show>
+        <Show
+          when={sourceUserName(props.row) || sourceUserEmail(props.row)}
+        >
+          <p class="mt-3 text-xs font-mono text-base-content/60 break-all">
+            Source user: {sourceUserName(props.row) || "Unnamed"}
+            <Show when={sourceUserEmail(props.row)}>
+              {(email) => <span> ({email()})</span>}
+            </Show>
+          </p>
+        </Show>
+      </div>
+    </AdminFormSection>
+  );
+}
+
+interface AppearanceEventAssignmentsProps {
+  events: AppearanceEventRecord[] | undefined;
+  loading: boolean;
+  selectedIds: string[];
+  onAssign: (eventId: string, assigned: boolean) => void;
+}
+
+function AppearanceEventAssignments(props: AppearanceEventAssignmentsProps) {
+  return (
+    <>
+      <Show when={props.loading}>
+        <div class="flex justify-center py-5">
+          <span class="loading loading-spinner loading-sm text-primary-400" />
+        </div>
+      </Show>
+      <Show when={!props.loading && (props.events?.length ?? 0) === 0}>
+        <p class="text-sm font-mono text-base-content/60">
+          Add an Appearance Event above before assigning appearances.
+        </p>
+      </Show>
+      <Show when={!props.loading && (props.events?.length ?? 0) > 0}>
+        <fieldset class="space-y-2">
+          <legend class="sr-only">Appearance Event assignments</legend>
+          <For each={props.events}>
+            {(event) => (
+              <label class="flex min-h-12 cursor-pointer items-center justify-between gap-4 rounded-lg border border-white/10 bg-black/25 px-4 py-3 hover:border-primary-500/35">
+                <span class="flex min-w-0 items-center gap-3">
+                  <input
+                    type="checkbox"
+                    name="appearance_events"
+                    value={event.id}
+                    class="checkbox checkbox-primary checkbox-sm shrink-0"
+                    checked={props.selectedIds.includes(event.id)}
+                    onChange={(inputEvent) =>
+                      props.onAssign(event.id, inputEvent.currentTarget.checked)
+                    }
+                  />
+                  <span class="min-w-0">
+                    <span class="block text-sm font-bold text-white [overflow-wrap:anywhere]">
+                      {event.name}
+                    </span>
+                    <span class="block text-xs font-mono text-base-content/55 [overflow-wrap:anywhere]">
+                      Ribbon: {event.compact_label || event.name}
+                    </span>
+                  </span>
+                </span>
+                <span class={`badge badge-sm shrink-0 font-mono ${event.published ? "badge-success" : "badge-ghost"}`}>
+                  <Show when={event.published} fallback="Draft">
+                    Published
+                  </Show>
+                </span>
+              </label>
+            )}
+          </For>
+        </fieldset>
+      </Show>
+    </>
+  );
+}
+
+interface SpeakersEmptyStateProps {
+  filtersActive: boolean;
+  showInviteForm: boolean;
+  onInvite: () => void;
+}
+
+function SpeakersEmptyState(props: SpeakersEmptyStateProps) {
+  return (
+    <AdminDataPanel>
+      <div class="p-12 text-center">
+        <Icon icon="ph:microphone-stage-bold" class="text-4xl text-base-content/40 mb-4" aria-hidden="true" />
+        <p class="text-white font-bold mb-2">
+          {props.filtersActive ? "No speakers match these filters" : "No speaker profiles yet"}
+        </p>
+        <p class="text-sm text-base-content/60 font-mono max-w-md mx-auto leading-relaxed text-pretty">
+          {props.filtersActive
+            ? "Try changing the origin or visibility filters above."
+            : "Create a profile from an accepted applicant or invite a speaker."}
+        </p>
+        <Show when={!props.filtersActive && !props.showInviteForm}>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm font-mono mt-4"
+            onClick={() => props.onInvite()}
+          >
+            Invite speaker
+          </button>
+        </Show>
+      </div>
+    </AdminDataPanel>
   );
 }

@@ -4,26 +4,34 @@ import { loadLiveQaProgramme } from "~/lib/live-qa-client";
 import type { LiveQaProgrammeSession } from "~/lib/live-qa-contract";
 import { createAsyncResource as createResource } from "~/lib/async-resource";
 
-interface LiveQaStagesProps { moderation?: boolean }
-
 const sessionTime = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Europe/Skopje", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
 });
 
-function talkStatus(session: LiveQaProgrammeSession, serverNow: string | undefined, verified: boolean) {
+function verifiedTimes(session: LiveQaProgrammeSession, serverNow: string | undefined, verified: boolean) {
   const now = Date.parse(serverNow ?? "");
   const start = Date.parse(session.startAt);
   const end = Date.parse(session.endAt);
-  if (!verified || !Number.isFinite(now) || !Number.isFinite(start) || !Number.isFinite(end)) {
+  if (!verified || !Number.isFinite(now) || !Number.isFinite(start) || !Number.isFinite(end)) return undefined;
+  return { now, start, end };
+}
+
+function questionAvailability(session: LiveQaProgrammeSession, finished: boolean) {
+  if (session.accepting) return "Questions open";
+  return session.mode === "closed" || finished ? "Questions closed" : "Questions not open yet";
+}
+
+function talkStatus(session: LiveQaProgrammeSession, serverNow: string | undefined, verified: boolean) {
+  const times = verifiedTimes(session, serverNow, verified);
+  if (!times) {
     return { label: "Question availability unverified", highlighted: false, accepting: false, finished: false };
   }
+  const { now, start, end } = times;
   const finished = now >= end;
   const current = now >= start && now < end;
   const timing = finished ? "Finished" : current ? "Scheduled now" : "Upcoming";
-  const availability = session.accepting ? "Questions open"
-    : session.mode === "closed" || finished ? "Questions closed" : "Questions not open yet";
   return {
-    label: `${timing} · ${availability}`,
+    label: `${timing} · ${questionAvailability(session, finished)}`,
     highlighted: current || session.accepting,
     accepting: session.accepting,
     finished,
@@ -31,7 +39,7 @@ function talkStatus(session: LiveQaProgrammeSession, serverNow: string | undefin
 }
 
 /** Public programme metadata only. Question queues remain inside the session's authority gate. */
-export function LiveQaStages(props: LiveQaStagesProps) {
+export function LiveQaStages() {
   const [params, setParams] = useSearchParams();
   const [mounted, setMounted] = createSignal(false);
   const [error, setError] = createSignal("");
@@ -51,7 +59,8 @@ export function LiveQaStages(props: LiveQaStagesProps) {
       throw cause;
     } finally { inFlight = false; }
   });
-  const loading = () => programme.loading;
+  // A background read must not insert a loading row or disable focused controls.
+  const loading = () => programme.loading && !programme();
 
   const selectedStage = createMemo(() => {
     const stages = programme()?.stages ?? [];
@@ -93,11 +102,7 @@ export function LiveQaStages(props: LiveQaStagesProps) {
             {day().title} · <time datetime={day().localDate}>{day().localDate}</time> · All times Europe/Skopje (24-hour).
           </p>}
         </Show>
-        <Show when={props.moderation} fallback={
-          <p class="text-sm text-primary-200">Browse talks without logging in. Log in to submit a question. Questions are visible only to their author, MCs and administrators.</p>
-        }>
           <p class="text-sm text-primary-200">Choose a talk to view its question queue and MC controls. Questions are visible only to their author, MCs and administrators.</p>
-        </Show>
         <div class="flex flex-wrap items-center gap-3">
           <button type="button" class="btn btn-outline min-h-12" disabled={loading()} onClick={() => { void refresh(); }}>Refresh sessions</button>
           <p class="text-sm text-primary-200">Refreshes every 15 seconds while visible.</p>
@@ -110,13 +115,13 @@ export function LiveQaStages(props: LiveQaStagesProps) {
           <Show when={data().day} fallback={<p role="status">The main-day Q&A programme is not published yet.</p>}>
             <Show when={data().stages.length} fallback={<p>No stages are published for the main conference day yet.</p>}>
               <div role="group" aria-label="Conference stages" class="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                <For each={data().stages}>
+                <For each={data().stages} keyed={stage => stage.key}>
                   {(stage) => <button
                     type="button"
-                    aria-pressed={selectedStage()?.key === stage.key ? "true" : "false"}
-                    class={`btn min-h-12 h-auto min-w-0 whitespace-normal break-words px-3 py-3 ${selectedStage()?.key === stage.key ? "btn-primary" : "btn-outline"}`}
-                    onClick={() => { setSearch(""); setParams({ stage: stage.key }, { replace: false, scroll: false }); }}
-                  >{stage.name}</button>}
+                    aria-pressed={selectedStage()?.key === stage().key ? "true" : "false"}
+                    class={`btn min-h-12 h-auto min-w-0 whitespace-normal break-words px-3 py-3 ${selectedStage()?.key === stage().key ? "btn-primary" : "btn-outline"}`}
+                    onClick={() => { setSearch(""); setParams({ stage: stage().key }, { replace: false, scroll: false }); }}
+                  >{stage().name}</button>}
                 </For>
               </div>
               <Show when={unknownStage()}>
@@ -135,18 +140,16 @@ export function LiveQaStages(props: LiveQaStagesProps) {
                     </div>
                     <Show when={sessions().length} fallback={<p>No talks in this stage match your search.</p>}>
                       <ul class="space-y-3 list-none p-0 min-w-0">
-                        <For each={sessions()}>
+                        <For each={sessions()} keyed={session => session.slug}>
                           {(session) => {
-                            const status = createMemo(() => talkStatus(session, programme()?.serverNow, !error()));
-                            const action = createMemo(() => props.moderation ? "View question queue"
-                              : status().accepting ? "Ask a question" : status().finished ? "View your questions" : "View talk");
+                            const status = createMemo(() => talkStatus(session(), programme()?.serverNow, !error()));
                             return <li class={`rounded-xl border p-4 space-y-3 min-w-0 ${status().highlighted ? "border-primary-400 bg-primary-400/10" : "border-white/15"}`}>
                               <p class="font-mono text-sm text-secondary-200">
-                                <time datetime={session.startAt}>{sessionTime.format(new Date(session.startAt))}</time>–<time datetime={session.endAt}>{sessionTime.format(new Date(session.endAt))}</time>
+                                <time datetime={session().startAt}>{sessionTime.format(new Date(session().startAt))}</time>–<time datetime={session().endAt}>{sessionTime.format(new Date(session().endAt))}</time>
                               </p>
-                              <h4 class="font-bold text-white break-words">{session.title}</h4>
+                              <h4 class="font-bold text-white break-words">{session().title}</h4>
                               <p class={`text-sm ${status().highlighted ? "font-bold text-secondary-300" : "text-primary-200"}`}>{status().label}</p>
-                              <a href={`/sessions/${encodeURIComponent(session.slug)}#live-qa`} class="btn btn-outline min-h-12 h-auto whitespace-normal py-3 max-w-full" aria-label={`${action()}: ${session.title}`}>{action()}</a>
+                              <a href={`/mc?stage=${encodeURIComponent(stage().key)}&session=${encodeURIComponent(session().slug)}#live-qa`} class="btn btn-outline min-h-12 h-auto whitespace-normal py-3 max-w-full" aria-label={`View question queue: ${session().title}`}>View question queue</a>
                             </li>;
                           }}
                         </For>
@@ -157,7 +160,6 @@ export function LiveQaStages(props: LiveQaStagesProps) {
               </Show>
             </Show>
           </Show>
-          <a href={data().day ? `/agenda?day=${encodeURIComponent(data().day!.localDate)}` : "/agenda"} class="inline-flex min-h-12 items-center underline underline-offset-4 text-secondary-300">View full agenda</a>
         </>}
       </Show>
     </section>

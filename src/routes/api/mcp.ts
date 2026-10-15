@@ -106,28 +106,33 @@ interface PartnerToolCall {
   invalidArguments: boolean;
 }
 
+function partnerToolCall(message: unknown): [string, PartnerToolCall] | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const request = message as {
+    id?: unknown;
+    method?: unknown;
+    params?: { name?: unknown; arguments?: unknown };
+  };
+  const id = requestIdKey(request.id);
+  const name = request.params?.name;
+  if (
+    id === undefined ||
+    request.method !== "tools/call" ||
+    typeof name !== "string" ||
+    !Object.hasOwn(PARTNER_MCP_TOOL_SCOPES, name)
+  ) return undefined;
+  const tool = name as keyof typeof PARTNER_MCP_TOOL_SCOPES;
+  return [id, {
+    tool,
+    invalidArguments: !hasValidPartnerMcpToolInput(tool, request.params?.arguments),
+  }];
+}
+
 function partnerToolCalls(value: unknown): Map<string, PartnerToolCall> {
   const calls = new Map<string, PartnerToolCall>();
   for (const message of Array.isArray(value) ? value : [value]) {
-    if (!message || typeof message !== "object") continue;
-    const request = message as {
-      id?: unknown;
-      method?: unknown;
-      params?: { name?: unknown; arguments?: unknown };
-    };
-    const id = requestIdKey(request.id);
-    const name = request.params?.name;
-    if (
-      id === undefined ||
-      request.method !== "tools/call" ||
-      typeof name !== "string" ||
-      !Object.hasOwn(PARTNER_MCP_TOOL_SCOPES, name)
-    ) continue;
-    const tool = name as keyof typeof PARTNER_MCP_TOOL_SCOPES;
-    calls.set(id, {
-      tool,
-      invalidArguments: !hasValidPartnerMcpToolInput(tool, request.params?.arguments),
-    });
+    const call = partnerToolCall(message);
+    if (call) calls.set(...call);
   }
   return calls;
 }

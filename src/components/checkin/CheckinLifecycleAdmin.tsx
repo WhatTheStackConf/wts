@@ -1,12 +1,13 @@
 import { For, Show, createSignal } from "solid-js";
 import { createAsyncResource } from "~/lib/async-resource";
 import { createCheckinLifecycleClient, type CheckinLifecycleClient } from "~/lib/checkin-lifecycle-client";
-import type { LifecycleApprovalCommand } from "~/lib/checkin-lifecycle-contract";
+import type { LifecycleApprovalCommand, LifecycleStatus } from "~/lib/checkin-lifecycle-contract";
 
 export interface CheckinLifecycleAdminProps {
   /** Mount only inside the existing admin route guard. Server enforces admin. */
   client?: CheckinLifecycleClient;
 }
+const restoreReviewable = (status: LifecycleStatus) => status.restoreRequired && !!status.reconciledAt;
 export function CheckinLifecycleAdmin(props: CheckinLifecycleAdminProps) {
   // A command-owning client is fixed for this mount; a reactive prop getter
   // must not replace its retained UUID between mutation and retry.
@@ -36,6 +37,8 @@ export function CheckinLifecycleAdmin(props: CheckinLifecycleAdminProps) {
     }
   });
   const locked = () => state.loading || mutating();
+  const unverified = () => locked() || stale();
+  const confirmBlocked = () => locked() || (stale() && !attempted()) || confirmation() !== "WTS2026";
   async function refresh() {
     if (locked()) return;
     setError("");
@@ -43,17 +46,17 @@ export function CheckinLifecycleAdmin(props: CheckinLifecycleAdminProps) {
     await statusActions.refetch().catch(() => undefined);
   }
   function choose(value: "close" | "approve") {
-    if (locked() || stale() || closeFrozen() || approval()) return;
+    if (unverified() || closeFrozen() || approval()) return;
     const current = state();
     if (!current || current.closedAt) return;
-    if (value === "approve" && (!current.restoreRequired || !current.reconciledAt)) return;
+    if (value === "approve" && !restoreReviewable(current)) return;
     setAttempted(false); setIntent(value); setConfirmation(""); setError(""); setMessage("");
     if (value === "approve") setApproval({ generation: current.restoreGeneration, confirmEdition: "WTS2026" });
     requestAnimationFrame(() => { confirmationInput?.focus(); confirmationInput?.scrollIntoView({ block: "center" }); });
   }
   async function confirm(event: SubmitEvent) {
     event.preventDefault();
-    if (locked() || (stale() && !attempted()) || confirmation() !== "WTS2026" || !intent()) return;
+    if (confirmBlocked() || !intent()) return;
     setAttempted(true);
     setMutating(true); setError(""); setMessage("");
     try {
@@ -101,9 +104,9 @@ export function CheckinLifecycleAdmin(props: CheckinLifecycleAdminProps) {
       <p>Reconcile original attempt identities against agents and Hi.Events, apply overdue purges, and rotate ownership generations through the operator procedure. This surface cannot mark reconciliation complete, force print, reset admission or re-enable a closed edition.</p>
       <Show when={!s().closedAt && !intent()}>
         <div class="flex flex-wrap gap-3">
-          <button type="button" class="btn btn-error min-h-12" disabled={locked() || stale()} onClick={() => choose("close")}>Close WTS2026 permanently</button>
+          <button type="button" class="btn btn-error min-h-12" disabled={unverified()} onClick={() => choose("close")}>Close WTS2026 permanently</button>
           <Show when={s().restoreRequired}>
-            <button type="button" class="btn btn-warning min-h-12" disabled={locked() || stale() || !s().reconciledAt} onClick={() => choose("approve")}>Review restore approval</button>
+            <button type="button" class="btn btn-warning min-h-12" disabled={unverified() || !s().reconciledAt} onClick={() => choose("approve")}>Review restore approval</button>
           </Show>
         </div>
       </Show>
@@ -115,7 +118,7 @@ export function CheckinLifecycleAdmin(props: CheckinLifecycleAdminProps) {
         <Show when={closeFrozen()}><p role="status">Closure outcome unconfirmed. The original command UUID is retained for an explicit same-command retry.</p></Show>
         <label class="block" for="lifecycle-confirmation">Type WTS2026 exactly to confirm</label>
         <input ref={(el) => { confirmationInput = el; }} id="lifecycle-confirmation" name="confirmEdition" class="input input-bordered min-h-12 w-full min-w-0 text-base" autocomplete="off" required pattern="WTS2026" maxlength={7} value={confirmation()} disabled={locked() || closeFrozen()} onInput={(event) => setConfirmation(event.currentTarget.value)} />
-        <button type="submit" class="btn btn-warning min-h-12 max-w-full whitespace-normal" disabled={locked() || (stale() && !attempted()) || confirmation() !== "WTS2026"}>{closeFrozen() ? "Retry same closure command" : intent() === "close" ? "Confirm permanent closure" : "Confirm restore approval"}</button>
+        <button type="submit" class="btn btn-warning min-h-12 max-w-full whitespace-normal" disabled={confirmBlocked()}>{closeFrozen() ? "Retry same closure command" : intent() === "close" ? "Confirm permanent closure" : "Confirm restore approval"}</button>
         <Show when={!attempted()}><button type="button" class="btn btn-ghost min-h-12" disabled={locked()} onClick={() => { setIntent(undefined); setApproval(undefined); setConfirmation(""); refreshButton?.focus(); }}>Cancel</button></Show>
       </form>
     </Show>

@@ -6,7 +6,7 @@ import { CheckinLayout } from "~/components/checkin/CheckinLayout";
 import { CheckinEventSelector } from "~/components/checkin/CheckinEventSelector";
 import { BoundAgentReadiness } from "~/components/checkin/AgentReadiness";
 import { useRequireCheckinOperator } from "~/lib/route-guards";
-import { createAsyncResource } from "~/lib/async-resource";
+import { createCheckinPollingResource } from "./checkin-polling-resource";
 import { bindCheckinStation, checkinStatus, previewCheckinStation } from "~/lib/checkin-client";
 import type { CheckinPreviewDTO, CheckinStationDTO } from "~/lib/checkin-contract";
 
@@ -45,7 +45,8 @@ export default function CheckinStationPage() {
   const [pending, setPending] = createSignal(false);
   const [message, setMessage] = createSignal("");
   const [error, setError] = createSignal("");
-  const [status, actions] = createAsyncResource(() => guard.authorized() ? true : undefined, checkinStatus);
+  const [status, actions] = createCheckinPollingResource(() => guard.authorized() ? true : undefined, checkinStatus);
+  const recoveryScope = () => guard.authorized() && guard.user()?.id && !status.error && status()?.bindingState === "bound" && status()?.binding ? `${guard.user()!.id}:${guard.user()!.role}:${status()!.binding!.id}:${status()!.binding!.version}` : undefined;
 
   onSettled(() => {
     const fragment = window.location.hash;
@@ -57,7 +58,7 @@ export default function CheckinStationPage() {
       else setError("Invalid provisioning link. Scan the current station QR again.");
     }
     const refreshStatus = () => {
-      if (guard.authorized() && !document.hidden) void actions.refetch().catch(() => undefined);
+      if (guard.authorized() && !document.hidden) void actions.poll().catch(() => undefined);
     };
     const timer = window.setInterval(refreshStatus, 5000);
     window.addEventListener("focus", refreshStatus);
@@ -124,7 +125,7 @@ export default function CheckinStationPage() {
             </div>
           </section>
         )}</Show>
-        <CheckinOperatorRecovery scopeKey={guard.authorized() && guard.user()?.id && !status.error && status()?.bindingState === "bound" && status()?.binding ? `${guard.user()!.id}:${guard.user()!.role}:${status()!.binding!.id}:${status()!.binding!.version}` : undefined} />
+        <CheckinOperatorRecovery scopeKey={recoveryScope()} />
         <CheckinEventSelector status={status()} verifying={status.loading || !!status.error} />
         <section class="rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-4">
           <h2 class="text-xl font-bold">Provision this phone</h2>

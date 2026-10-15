@@ -9,7 +9,7 @@ import {
   adminTextareaClass,
 } from "~/components/admin/AdminPageShell";
 import { adminSaveConfiguredEventMissionDraft } from "~/lib/gamification-operations-actions";
-import type { AdminGamificationOperationsDto } from "~/lib/gamification-operations";
+import type { AdminGamificationOperationsDto, AdminConfiguredEventMissionDraftInput } from "~/lib/gamification-operations";
 import type { ConfiguredEventKind } from "~/lib/gamification-event-missions";
 import { scheduleLocalDateTimeToInstant } from "~/lib/programme";
 
@@ -74,6 +74,36 @@ export default function AdminConfiguredEventMissions(props: AdminConfiguredEvent
     setScoreScheduleId(""); setScoreDay(""); setSortOrder("0"); setReason(""); setConfigurationOperationId("");
   };
 
+  const draftInput = (stableOperationId: string): AdminConfiguredEventMissionDraftInput => ({
+    eventKey: eventKey(),
+    kind: kind(),
+    title: title(),
+    missionTitle: missionTitle(),
+    summary: summary(),
+    visibility: visibility(),
+    locationLabel: locationLabel() || undefined,
+    hostPartnerId: hostPartnerId() || undefined,
+    capGroupKey: capGroupKey(),
+    flow: flow(),
+    relatedEventTwoCodeApproved: relatedApproval(),
+    suggested: suggested(),
+    evidenceChannel: evidenceChannel(),
+    attendanceDeploymentLabel: attendanceDeployment(),
+    finishDeploymentLabel: flow() === "two_code" ? finishDeployment() : undefined,
+    activeFrom: scheduleLocalDateTimeToInstant(activeFrom()),
+    activeUntil: scheduleLocalDateTimeToInstant(activeUntil()),
+    perUserClaimLimit: 1,
+    maxClaims: Number(maxClaims()),
+    attendanceAchievementId: attendanceAchievementId() || undefined,
+    completionAchievementId: flow() === "two_code" ? completionAchievementId() || undefined : undefined,
+    metaEligible: metaEligible(),
+    scoreScheduleId: scoreScheduleId(),
+    scoreDay: scoreDay(),
+    sortOrder: Number(sortOrder()),
+    reason: reason() || undefined,
+    operationId: stableOperationId,
+  });
+
   const save = async (event: Event) => {
     event.preventDefault();
     if (busy()) return;
@@ -82,35 +112,7 @@ export default function AdminConfiguredEventMissions(props: AdminConfiguredEvent
     const stableOperationId = configurationOperationId() || operationId();
     setConfigurationOperationId(stableOperationId);
     try {
-      const result = await adminSaveConfiguredEventMissionDraft({
-        eventKey: eventKey(),
-        kind: kind(),
-        title: title(),
-        missionTitle: missionTitle(),
-        summary: summary(),
-        visibility: visibility(),
-        locationLabel: locationLabel() || undefined,
-        hostPartnerId: hostPartnerId() || undefined,
-        capGroupKey: capGroupKey(),
-        flow: flow(),
-        relatedEventTwoCodeApproved: relatedApproval(),
-        suggested: suggested(),
-        evidenceChannel: evidenceChannel(),
-        attendanceDeploymentLabel: attendanceDeployment(),
-        finishDeploymentLabel: flow() === "two_code" ? finishDeployment() : undefined,
-        activeFrom: scheduleLocalDateTimeToInstant(activeFrom()),
-        activeUntil: scheduleLocalDateTimeToInstant(activeUntil()),
-        perUserClaimLimit: 1,
-        maxClaims: Number(maxClaims()),
-        attendanceAchievementId: attendanceAchievementId() || undefined,
-        completionAchievementId: flow() === "two_code" ? completionAchievementId() || undefined : undefined,
-        metaEligible: metaEligible(),
-        scoreScheduleId: scoreScheduleId(),
-        scoreDay: scoreDay(),
-        sortOrder: Number(sortOrder()),
-        reason: reason() || undefined,
-        operationId: stableOperationId,
-      });
+      const result = await adminSaveConfiguredEventMissionDraft(draftInput(stableOperationId));
       if (!result.success) throw new Error(result.error || "Could not save the configured event Mission.");
       await props.onChanged();
       reset();

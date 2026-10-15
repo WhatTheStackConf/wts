@@ -1,5 +1,5 @@
 import { For, Show, createSignal, onSettled } from "solid-js";
-import { createAsyncResource } from "~/lib/async-resource";
+import { createCheckinPollingResource } from "./checkin-polling-resource";
 import type { AgentReadinessDTO } from "~/lib/checkin-agent-contract";
 import type { MonitoringDashboard, MonitoringIncident, MonitoringConfigureCommand } from "~/lib/checkin-monitoring-contract";
 import { monitoringDashboard, configureMonitoring, acknowledgeMonitoring, CheckinMonitoringRequestError } from "~/lib/checkin-monitoring-client";
@@ -8,6 +8,7 @@ const category: Record<MonitoringIncident["category"], string> = { station_unava
 const action: Record<MonitoringIncident["nextAction"], string> = { configure_recipients: "Ask an admin to designate notification recipients.", investigate_delivery_no_retry: "Email may have been sent. Investigate delivery; automatic retry is blocked.", await_worker: "Email pending; waiting for the monitoring worker.", none: "No further notification action.", wait_for_repeat: "Unresolved incidents may notify again only at the permitted repeat time." };
 function time(ms: number) { return ms ? new Date(ms).toISOString() : "Not yet"; }
 function safeError(error: unknown) { return error instanceof CheckinMonitoringRequestError ? error.message : "Monitoring unavailable. Refresh or retry the same action."; }
+function rejectedConfiguration(error: unknown) { return error instanceof CheckinMonitoringRequestError && !error.ambiguous && (error.status === 409 || error.status === 400); }
 export interface CheckinMonitoringViewProps {
   dashboard: MonitoringDashboard;
   readiness: AgentReadinessDTO[];
@@ -52,8 +53,10 @@ function MonitoringConfiguration(props: ConfigProps) {
   const [conflict, setConflict] = createSignal(false);
   const [reloading, setReloading] = createSignal(false);
   const [busy, setBusy] = createSignal(false); const [message, setMessage] = createSignal("");
+  const locked = () => busy() || !!pending() || reloading();
+  const saveUnavailable = () => busy() || conflict() || reloading();
   async function reload() {
-    if (busy() || pending() || reloading()) return;
+    if (locked()) return;
     setReloading(true);
     try {
       const fresh = await props.reload();
@@ -65,7 +68,7 @@ function MonitoringConfiguration(props: ConfigProps) {
     finally { setReloading(false); }
   }
   async function save() {
-    if (busy() || conflict() || reloading()) return;
+    if (saveUnavailable()) return;
     const retrying = !!pending();
     const command = pending() || { operationId: crypto.randomUUID(), expectedVersion: snapshot().config!.version, recipientUserIds: [...selected()], waitingMs: waiting() * 1000, incidentMs: incident() * 1000, repeatMs: repeat() * 60000 };
     setPending(command); setBusy(true); setMessage("");
@@ -73,7 +76,7 @@ function MonitoringConfiguration(props: ConfigProps) {
     catch (e) {
       setMessage(safeError(e));
       // A later rejection cannot resolve an earlier possibly committed attempt.
-      if (!retrying && e instanceof CheckinMonitoringRequestError && !e.ambiguous && (e.status === 409 || e.status === 400)) {
+      if (!retrying && rejectedConfiguration(e)) {
         setPending(undefined); setConflict(true);
       }
     }
@@ -82,7 +85,7 @@ function MonitoringConfiguration(props: ConfigProps) {
   return <form class="space-y-3 border rounded p-4" onSubmit={(e) => { e.preventDefault(); void save(); }}>
     <h3 class="font-bold">Designated admin notifications</h3>
     <p>Only selected, currently verified admins receive email. Selecting nobody disables email and leaves a visible warning.</p>
-    <fieldset disabled={busy() || !!pending() || conflict() || reloading()} class="space-y-3">
+    <fieldset disabled={locked() || conflict()} class="space-y-3">
       <legend>Notification recipients and thresholds</legend>
       <For each={snapshot().adminChoices}>{(admin) => <label class="flex items-center gap-3 min-h-11 break-all"><input type="checkbox" class="checkbox" checked={selected().includes(admin.id)} onChange={(e) => setSelected((ids) => e.currentTarget.checked ? [...ids, admin.id] : ids.filter((id) => id !== admin.id))} />{admin.email}</label>}</For>
       <label class="block">Waiting warning (seconds)<input class="input w-full" type="number" required min="1" max="3600" step="1" value={waiting()} onInput={(e) => setWaiting(e.currentTarget.valueAsNumber)} /></label>
@@ -91,9 +94,9 @@ function MonitoringConfiguration(props: ConfigProps) {
     </fieldset>
     <Show when={pending()}><p role="status">Submitted configuration is frozen. Retry the exact command to resolve its outcome; refreshing observations does not resolve it.</p></Show>
     <Show when={conflict()}><p role="alert">Configuration rejected. Discard and reload the latest configuration before a new action, or cancel.</p></Show>
-    <button class="btn min-h-11" type="submit" disabled={busy() || conflict() || reloading()}>{pending() ? "Retry same notification configuration" : "Save notification configuration"}</button>
-    <button class="btn min-h-11" type="button" disabled={busy() || !!pending() || reloading()} onClick={() => void reload()}>Discard edits and reload configuration</button>
-    <button class="btn min-h-11" type="button" disabled={busy() || !!pending() || reloading()} onClick={() => props.onCancel()}>Cancel notification editing</button>
+    <button class="btn min-h-11" type="submit" disabled={saveUnavailable()}>{pending() ? "Retry same notification configuration" : "Save notification configuration"}</button>
+    <button class="btn min-h-11" type="button" disabled={locked()} onClick={() => void reload()}>Discard edits and reload configuration</button>
+    <button class="btn min-h-11" type="button" disabled={locked()} onClick={() => props.onCancel()}>Cancel notification editing</button>
     <p role="status">{message()}</p>
   </form>;
 }
@@ -110,8 +113,8 @@ export function CheckinMonitoringPanel(props: CheckinMonitoringPanelProps) {
   const [editor, setEditor] = createSignal<MonitoringDashboard>();
   const editing = () => !!editor();
   const client = props.client ?? defaultClient;
-  const [dashboard, dashboardActions] = createAsyncResource(() => mounted() && { audience: props.audience, offset: offset() }, async (query) => client.dashboard(query.audience, query.offset));
-  onSettled(() => { setNow(Date.now()); setMounted(true); const refresh = () => { setNow(Date.now()); if (!document.hidden && !dashboard.loading && !editing()) void dashboardActions.refetch().catch(() => undefined); }; const timer = setInterval(refresh, 5000); window.addEventListener("focus", refresh); return () => { clearInterval(timer); window.removeEventListener("focus", refresh); }; });
+  const [dashboard, dashboardActions] = createCheckinPollingResource(() => mounted() ? `${props.audience}:${offset()}` : undefined, async (query) => { const [audience, page] = query.split(":"); return client.dashboard(audience as "admin" | "operator", Number(page)); });
+  onSettled(() => { setNow(Date.now()); setMounted(true); const refresh = () => { setNow(Date.now()); if (!document.hidden && !dashboard.refreshing && !editing()) void dashboardActions.poll().catch(() => undefined); }; const timer = setInterval(refresh, 5000); window.addEventListener("focus", refresh); return () => { clearInterval(timer); window.removeEventListener("focus", refresh); }; });
   async function acknowledge(id: string) {
     if (acknowledging()) return; setAcknowledging(id); setMessage("");
     try { await client.acknowledge(id); setMessage("Incident acknowledged. Operational state is unchanged."); void dashboardActions.refetch().catch(() => undefined); }

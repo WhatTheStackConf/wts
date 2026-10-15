@@ -8,6 +8,19 @@ import type { AgentReadinessDTO } from "~/lib/checkin-agent-contract";
 
 type Intent = { operation: "admin_issue"; station: AgentReadinessDTO; identity: { agentIdentity: string; printerIdentity: string; journalIdentity: string; profileId: string; credentialLifetimeHours: number } }
   | { operation: "admin_revoke"; station: AgentReadinessDTO & { agentId: string } };
+const outcomeMessages: Record<AgentMutation["operation"], string> = {
+  admin_issue: "Agent credential issued once. Existing agent authority was replaced; printer/media approval is separate.",
+  admin_revoke: "Agent revoked. Future work and starts are denied; already-started outcomes may still be reported.",
+};
+function outcomeMessage(replayed: boolean, operation: AgentMutation["operation"]) {
+  return replayed ? "Agent action was already saved. No action was repeated. A lost credential cannot be recovered; review a new issuance to replace it." : outcomeMessages[operation];
+}
+function agentMutation(action: Intent, reason: CheckinReasonCode, note: string): AgentMutation {
+  const common = { operationId: crypto.randomUUID(), stationId: action.station.stationId, expectedStationVersion: action.station.stationVersion, reason, note };
+  return action.operation === "admin_issue"
+    ? { operation: "admin_issue", command: { ...common, ...action.identity } }
+    : { operation: "admin_revoke", command: { ...common, agentId: action.station.agentId } };
+}
 
 export function CheckinAgentAdmin() {
   const { data, refresh, failures } = createAgentReadinessResource(() => true, agentAdminList);
@@ -25,6 +38,7 @@ export function CheckinAgentAdmin() {
   let reasonInput: HTMLSelectElement | undefined;
   const available = () => !!data() && !data.error && !data.loading;
   const locked = () => pending() || !!intent() || !!frozen();
+  const confirmable = () => !!frozen() || (available() && !!reason());
   async function refreshAll() {
     await Promise.all([refresh(), profileActions.refetch().catch(() => undefined)]);
   }
@@ -53,24 +67,16 @@ export function CheckinAgentAdmin() {
   async function confirm(event: SubmitEvent) {
     event.preventDefault();
     if (pending()) return;
-    const action = intent(); const selectedReason = reason();
-    if (!action || (!frozen() && (!available() || !selectedReason))) return;
-    let mutation = frozen();
-    if (!mutation) {
-      const common = { operationId: crypto.randomUUID(), stationId: action.station.stationId, expectedStationVersion: action.station.stationVersion, reason: selectedReason as CheckinReasonCode, note: note() };
-      mutation = action.operation === "admin_issue"
-        ? { operation: "admin_issue", command: { ...common, ...action.identity } }
-        : { operation: "admin_revoke", command: { ...common, agentId: action.station.agentId } };
-    }
+    const action = intent();
+    if (!action || !confirmable()) return;
+    const mutation = frozen() ?? agentMutation(action, reason() as CheckinReasonCode, note());
     setFrozen(mutation); setPending(true); setError("");
     try {
       const result = await mutateAgent(mutation);
       setFrozen(undefined); setIntent(undefined); setSelected(undefined);
       setIssued(result.credential ? { credential: result.credential, stationLabel: result.station.stationLabel } : undefined);
       setRevealCredential(false);
-      setMessage(result.replayed ? "Agent action was already saved. No action was repeated. A lost credential cannot be recovered; review a new issuance to replace it."
-        : mutation.operation === "admin_issue" ? "Agent credential issued once. Existing agent authority was replaced; printer/media approval is separate."
-        : "Agent revoked. Future work and starts are denied; already-started outcomes may still be reported.");
+      setMessage(outcomeMessage(result.replayed, mutation.operation));
       await refreshAll();
     } catch (failure) {
       setError(failure instanceof CheckinAgentRequestError ? failure.message : "Agent action could not be confirmed. Retry the same action.");

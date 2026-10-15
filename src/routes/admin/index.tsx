@@ -33,7 +33,8 @@ const destinations = [
 export const AdminDashboard = () => {
   const guard = useRequireAdmin();
   const { toast, showToast } = useAdminToast();
-  const [toggling, setToggling] = createSignal(false);
+  const [savingCfpConfig, setSavingCfpConfig] = createSignal(false);
+  const [deadlineDraft, setDeadlineDraft] = createSignal<string | null>(null);
   const [cfpData, { mutate: setCfpData }] = createResource(
     () => authorizedResourceSource(guard.authorized()),
     async () => {
@@ -42,23 +43,30 @@ export const AdminDashboard = () => {
     },
   );
 
-  const handleCfpToggle = async () => {
+  const cfpAvailable = () => cfpData()?.cfp_available;
+  const deadlineValue = () => deadlineDraft() ?? cfpData()?.cfp_deadline ?? "";
+
+  const handleSaveClosedCfpConfig = async () => {
     const current = cfpData();
-    if (!current || toggling()) return;
-    setToggling(true);
-    const newValue = !current.cfp_open;
+    if (savingCfpConfig()) return;
+    setSavingCfpConfig(true);
+    const draft = deadlineDraft();
+    const deadline = draft === null ? current?.cfp_deadline ?? null : draft.trim() || null;
     try {
-      const result = await adminUpdateCfpConfig({ cfp_open: newValue });
+      const result = await adminUpdateCfpConfig({ cfp_open: false, cfp_deadline: deadline });
       if (result.success) {
-        setCfpData((prev) => prev ? { ...prev, cfp_open: newValue } : prev);
-        showToast("success", newValue ? "CFP opened." : "CFP closed.");
+        setCfpData((prev) => prev
+          ? { ...prev, cfp_open: false, cfp_available: false, cfp_deadline: deadline }
+          : { cfp_open: false, cfp_available: false, cfp_deadline: deadline });
+        setDeadlineDraft(deadline);
+        showToast("success", "Closed CFP configuration saved.");
       } else {
-        showToast("error", result.error || "Could not update CFP status. Refresh to check its status before retrying.");
+        showToast("error", result.error || "Could not save closed CFP configuration.");
       }
     } catch {
-      showToast("error", "Could not confirm the CFP change. Refresh to check its status before retrying.");
+      showToast("error", "Could not confirm the CFP configuration change.");
     } finally {
-      setToggling(false);
+      setSavingCfpConfig(false);
     }
   };
 
@@ -90,25 +98,28 @@ export const AdminDashboard = () => {
           <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 id="cfp-settings-title" class="text-lg font-bold text-white">Call for papers</h2>
-              <p class="mt-1 text-sm text-base-content/65">Open or close proposal submissions.</p>
+              <p class="mt-1 text-sm text-base-content/65">Saving this configuration keeps participant and reviewer workflows unavailable.</p>
               <Show when={cfpData()} fallback={
                 <p class="mt-2 text-sm text-base-content/65" role="status">
-                  {cfpData.loading ? "Loading CFP status…" : "CFP status unavailable. Refresh to try again."}
+                  <Show when={cfpData.loading} fallback="Configuration unavailable or incomplete. Save a new closed configuration to initialize it.">
+                    Loading CFP configuration…
+                  </Show>
                 </p>
               }>
                 <div class="mt-3 flex flex-wrap items-center gap-3 text-sm">
-                  <span class={`badge font-mono ${cfpData()?.cfp_open ? "badge-success" : "badge-error"}`}>
-                    {cfpData()?.cfp_open ? "Open" : "Closed"}
+                  <span class="text-base-content/70">Current CFP status:</span>
+                  <span class={`badge font-mono ${cfpAvailable() ? "badge-success" : "badge-error"}`}>
+                    {cfpAvailable() ? "Active" : "Closed"}
                   </span>
-                  <span class="text-base-content/70">Deadline: {cfpData()?.cfp_deadline
-                    ? new Date(cfpData()!.cfp_deadline!).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
-                    : "Not set"}</span>
+                  <span class="text-base-content/70">Deadline: {cfpData()?.cfp_deadline || "Not set"}</span>
                 </div>
               </Show>
+              <label class="mt-4 block text-sm text-base-content/70" for="cfp-deadline">Preparation deadline</label>
+              <input id="cfp-deadline" type="date" class="input input-bordered mt-1" value={deadlineValue()} onInput={(event) => setDeadlineDraft(event.currentTarget.value)} />
             </div>
-            <button type="button" onClick={handleCfpToggle} disabled={toggling() || !cfpData()}
-              class={`btn btn-outline shrink-0 font-mono ${cfpData()?.cfp_open ? "btn-error" : "btn-success"}`}>
-              {toggling() ? "Saving…" : cfpData()?.cfp_open ? "Close CFP" : "Open CFP"}
+            <button type="button" onClick={handleSaveClosedCfpConfig} disabled={savingCfpConfig() || cfpData.loading}
+              class="btn btn-outline btn-error shrink-0 font-mono">
+              <Show when={savingCfpConfig()} fallback="Save closed configuration">Saving…</Show>
             </button>
           </div>
         </section>

@@ -1,4 +1,5 @@
 import { createSignal, onSettled, Show } from "solid-js";
+import { typeText } from "./typewriter";
 
 interface MultiLineCyberpunkTextProps {
   firstLineText: string;
@@ -23,48 +24,25 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
   onSettled(() => {
     if (!shouldAnimate) return;
 
-    // Delay before typing starts
     const startDelay = props.delay || 0;
 
     setTimeout(() => {
-      // Start typing the first text
-      let i = 0;
-      const firstText = props.firstLineText;
-      const typingSpeed = 150; // Consistent speed for all text
-
-      const typeInterval = setInterval(() => {
-        if (i < firstText.length) {
-          setDisplayText(firstText.slice(0, i + 1));
-          i++;
-        } else {
-          clearInterval(typeInterval);
-
-          // After first text is fully typed, pause briefly then start typing second text
-          setTimeout(() => {
-            setIsTypingFirst(false);
-            setDisplayText(""); // Reset display text for the second line
-
-            let j = 0;
-            const secondText = props.secondLineText;
-
-            const secondTypeInterval = setInterval(() => {
-              if (j < secondText.length) {
-                setDisplayText(secondText.slice(0, j + 1));
-                j++;
-              } else {
-                clearInterval(secondTypeInterval);
-
-                // After all typing is done, show effects
-                setTimeout(() => {
-                  setShowEffect(true);
-                }, 1000);
-              }
-            }, typingSpeed);
-          }, 500); // Delay before starting second line
-        }
-      }, typingSpeed);
+      typeText(props.firstLineText, setDisplayText, () => {
+        // Pause briefly between the first and second lines.
+        setTimeout(() => {
+          setIsTypingFirst(false);
+          setDisplayText("");
+          typeText(props.secondLineText, setDisplayText, () => {
+            setTimeout(() => {
+              setShowEffect(true);
+            }, 1000);
+          });
+        }, 500);
+      });
     }, startDelay);
   });
+
+  const glowClass = () => props.hasGlow ? "neon-glow-subtle" : "";
 
   // Function to render WhatTheStack text with specific colors
   const renderWhatTheStackText = () => {
@@ -98,7 +76,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
           <div>
             {isTypingFirst() ? (
               <span
-                class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}
+                class={`relative ${glowClass()}`}
               >
                 {renderWhatTheStackText()}
                 {typingIndicator() && (
@@ -107,7 +85,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
               </span>
             ) : (
               <span
-                class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}
+                class={`relative ${glowClass()}`}
               >
                 <span class="text-secondary-300">What</span>
                 <span class="text-secondary-300">The</span>
@@ -118,7 +96,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
           <div class="mt-0 md:mt-2">
             {!isTypingFirst() && (
               <span
-                class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""} whitespace-nowrap`}
+                class={`relative ${glowClass()} whitespace-nowrap`}
               >
                 <span
                   class={`text-primary-400 text-xs md:text-2xl ${props.trackingYear || "tracking-[1em]"}`}
@@ -149,7 +127,7 @@ const MultiLineCyberpunkText = (props: MultiLineCyberpunkTextProps) => {
       <Show when={!shouldAnimate}>
         <div class={`flex flex-col ${props.className} relative leading-none`}>
           <div>
-            <span class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}>
+            <span class={`relative ${glowClass()}`}>
               <span class="text-secondary-300">What</span>
               <span class="text-secondary-300">The</span>
               <span class="text-secondary-300">Stack</span>

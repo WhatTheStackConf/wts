@@ -1,4 +1,5 @@
 import { createSignal, onSettled, Show } from "solid-js";
+import { typeText } from "./typewriter";
 
 interface CyberpunkTextProps {
   text: string;
@@ -20,85 +21,36 @@ export const CyberpunkText = (props: CyberpunkTextProps) => {
   const [showEffect, setShowEffect] = createSignal(false);
   const [isTypingFirst, setIsTypingFirst] = createSignal(true); // true for typing first text, false for second text
 
-  onSettled(() => {
-    // Delay before typing starts
-    const startDelay = props.delay || 0;
+  const twoLines = () => props.isWhatTheStack && props.firstLineText && props.secondLineText;
+  const showEffectSoon = () => setTimeout(() => {
+    setShowEffect(true);
+    props.onTypingComplete?.();
+  }, 1000);
 
-    // Don't start typing if component is disabled
+  onSettled(() => {
+    const startDelay = props.delay || 0;
     if (props.disabled) {
       return;
     }
 
-    // Check if we are handling multi-line typing
-    if (props.isWhatTheStack && props.firstLineText && props.secondLineText) {
+    if (twoLines()) {
       setTimeout(() => {
-        // Start typing the first text
-        let i = 0;
-        const firstText = props.firstLineText!;
-        const typingSpeed = 150; // Consistent speed for all text
-
-        const typeInterval = setInterval(() => {
-          if (i < firstText.length) {
-            setDisplayText(firstText.slice(0, i + 1));
-            i++;
-          } else {
-            clearInterval(typeInterval);
-
-            // After first text is fully typed, pause briefly then start typing second text
-            setTimeout(() => {
-              setIsTypingFirst(false);
-              setDisplayText(""); // Reset display text for the second line
-
-              let j = 0;
-              const secondText = props.secondLineText!;
-
-              const secondTypeInterval = setInterval(() => {
-                if (j < secondText.length) {
-                  setDisplayText(secondText.slice(0, j + 1));
-                  j++;
-                } else {
-                  clearInterval(secondTypeInterval);
-
-                  // After all typing is done, show effects
-                  setTimeout(() => {
-                    setShowEffect(true);
-                    // Call the completion callback if provided
-                    if (props.onTypingComplete) {
-                      props.onTypingComplete();
-                    }
-                  }, 1000);
-                }
-              }, typingSpeed);
-            }, 500); // Delay before starting second line
-          }
-        }, typingSpeed);
+        typeText(props.firstLineText!, setDisplayText, () => {
+          // Pause briefly between the first and second lines.
+          setTimeout(() => {
+            setIsTypingFirst(false);
+            setDisplayText("");
+            typeText(props.secondLineText!, setDisplayText, showEffectSoon);
+          }, 500);
+        });
       }, startDelay);
     } else {
-      // Handle single line typing as before
       setTimeout(() => {
-        let i = 0;
-        const text = props.text;
-        const typingSpeed = 150; // Consistent speed for all text
-
-        const typeInterval = setInterval(() => {
-          if (i < text.length) {
-            setDisplayText(text.slice(0, i + 1));
-            i++;
-          } else {
-            clearInterval(typeInterval);
-            // Keep the typing indicator visible even after typing completes
-            setTypingIndicator(true);
-
-            // After typing is complete, start effects after a delay
-            setTimeout(() => {
-              setShowEffect(true);
-              // Call the completion callback if provided
-              if (props.onTypingComplete) {
-                props.onTypingComplete();
-              }
-            }, 1000); // Delay before effects start
-          }
-        }, typingSpeed);
+        typeText(props.text, setDisplayText, () => {
+          // Keep the typing indicator visible even after typing completes
+          setTypingIndicator(true);
+          showEffectSoon();
+        });
       }, startDelay);
     }
   });
@@ -134,6 +86,25 @@ export const CyberpunkText = (props: CyberpunkTextProps) => {
     }
   };
 
+  const cursor = () => <span class="ml-0.5 inline-block w-1 h-6 bg-current align-middle animate-pulse"></span>;
+
+  const renderLines = () => (
+    <div class="flex flex-col">
+      <div>
+        {isTypingFirst() ? renderWhatTheStackText() : props.firstLineText}
+        {isTypingFirst() && typingIndicator() && cursor()}
+      </div>
+      {!isTypingFirst() && (
+        <div class="mt-2">
+          {" "}
+          {/* Add some space between lines */}
+          {displayText()}
+          {typingIndicator() && !isTypingFirst() && cursor()}
+        </div>
+      )}
+    </div>
+  );
+
   // Function to render year text with specific color and external tracking
   const renderYearText = () => {
     return (
@@ -146,38 +117,15 @@ export const CyberpunkText = (props: CyberpunkTextProps) => {
   return (
     <span class={`relative ${props.className || ""}`}>
       <span class={`relative ${props.hasGlow ? "neon-glow-subtle" : ""}`}>
-        {props.isWhatTheStack && props.firstLineText && props.secondLineText ? (
-          <div class="flex flex-col">
-            <div>
-              {isTypingFirst() ? renderWhatTheStackText() : props.firstLineText}
-              {isTypingFirst() && typingIndicator() && (
-                <span class="ml-0.5 inline-block w-1 h-6 bg-current align-middle animate-pulse"></span>
-              )}
-            </div>
-            {!isTypingFirst() && (
-              <div class="mt-2">
-                {" "}
-                {/* Add some space between lines */}
-                {displayText()}
-                {typingIndicator() && !isTypingFirst() && (
-                  <span class="ml-0.5 inline-block w-1 h-6 bg-current align-middle animate-pulse"></span>
-                )}
-              </div>
-            )}
-          </div>
-        ) : props.isYear ? (
+        {twoLines() ? renderLines() : props.isYear ? (
           <>
             {renderYearText()}
-            {typingIndicator() && (
-              <span class="ml-0.5 inline-block w-1 h-6 bg-current align-middle animate-pulse"></span>
-            )}
+            {typingIndicator() && cursor()}
           </>
         ) : (
           <>
             {displayText()}
-            {typingIndicator() && (
-              <span class="ml-0.5 inline-block w-1 h-6 bg-current align-middle animate-pulse"></span>
-            )}
+            {typingIndicator() && cursor()}
           </>
         )}
       </span>

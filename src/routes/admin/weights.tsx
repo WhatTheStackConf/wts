@@ -1,3 +1,5 @@
+import { Show } from "solid-js";
+import { Layout } from "~/layouts/Layout";
 import { createEffect } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { clientOnly } from "@solidjs/web";
@@ -16,7 +18,13 @@ const AdminWeightsRedirect = () => {
       },
     );
 
-    return null;
+    return (
+      <Layout title="Reviewer weights" description="Reviewer scoring weights">
+        <Show when={guard.authorized()}>
+          <p role="status">Opening reviewer weights…</p>
+        </Show>
+      </Layout>
+    );
 };
 
 export default clientOnly(async () => ({ default: AdminWeightsRedirect }), {

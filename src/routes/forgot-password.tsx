@@ -1,5 +1,5 @@
 import { createSignal, Show } from "solid-js";
-import { Layout } from "~/layouts/Layout";
+import { PublicPageShell } from "~/components/PublicPageShell";
 import { Icon } from "~/components/Icon";
 
 const ForgotPasswordPage = () => {
@@ -31,8 +31,8 @@ const ForgotPasswordPage = () => {
     };
 
     return (
-        <Layout title="Reset Password" description="Request a password reset">
-            <div class="container mx-auto px-4 py-8">
+        <PublicPageShell title="Reset password" description="Request a password reset for your WhatTheStack account.">
+            <div class="support-auth container mx-auto px-4 py-8">
                 <Show when={success()} fallback={
                     <div class="max-w-md mx-auto bg-base-100 rounded-lg shadow-xl p-6">
                         <h1 class="text-2xl font-bold text-center mb-6">Reset Password</h1>
@@ -100,7 +100,7 @@ const ForgotPasswordPage = () => {
                     </div>
                 </Show>
             </div>
-        </Layout>
+        </PublicPageShell>
     );
 };
 

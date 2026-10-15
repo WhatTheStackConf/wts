@@ -10,6 +10,7 @@ const OpsBoardPage = () => {
   const [page, setPage] = createSignal(1);
   const [board, { refetch }] = createResource(page, (currentPage) => getPublicOpsBoard(currentPage, 50));
   const rows = () => board()?.items || [];
+  const totalPages = () => board()?.totalPages || 1;
 
   return (
     <Layout title="Ops Board // WhatTheStack" description="Public WhatTheStack field progress rankings">
@@ -145,12 +146,12 @@ const OpsBoardPage = () => {
                   Previous page
                 </button>
                 <p class="font-mono text-xs text-secondary-200" aria-live="polite">
-                  Page {board()?.page || page()} of {board()?.totalPages || 1}
+                  Page {board()?.page || page()} of {totalPages()}
                 </p>
                 <button
                   type="button"
                   class="btn btn-outline btn-primary min-h-12 font-mono"
-                  disabled={board.loading || page() >= (board()?.totalPages || 1)}
+                  disabled={board.loading || page() >= totalPages()}
                   onClick={() => setPage((current) => current + 1)}
                 >
                   Next page

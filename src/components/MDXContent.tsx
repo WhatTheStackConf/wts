@@ -55,8 +55,7 @@ const mdxRuntime = {
   jsxs: mdxJsx,
 };
 
-/** Shared with blog-style article surfaces (e.g. speaker bio). */
-export const proseArticleClasses =
+const proseArticleClasses =
   "prose prose-invert prose-lg md:prose-2xl max-w-none prose-strong:text-secondary-400 prose-headings:font-star prose-headings:text-secondary-400 prose-a:text-primary-400 prose-a:no-underline hover:prose-a:text-primary-300 prose-img:mx-auto prose-img:rounded-xl prose-img:border-2 prose-img:border-primary-500/40 prose-img:shadow-lg prose-img:shadow-primary-500/10";
 
 export const MDXContent = (props: MDXProps): JSX.Element => {

@@ -29,19 +29,21 @@ export function CheckinArrivalWork(props: CheckinArrivalWorkProps) {
       seen.add(id); return true;
     });
   };
+  const title = () => props.allStations ? "All-station arrival work" : "Station arrival work";
+  const visibleHistory = () => !!key() && !props.unavailable && !data.error && !data.loading && data();
   function refresh() {
     if (pages().length) setPages([]);
     else void actions.refetch().catch(() => undefined);
   }
-  return <section aria-label={props.allStations ? "All-station arrival work" : "Station arrival work"} class={props.compact ? "wts-tools-arrival-work" : "rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-4 break-words"}>
-    <h2 class="text-xl font-bold">{props.allStations ? "All-station arrival work" : "Station arrival work"}</h2>
+  return <section aria-label={title()} class={props.compact ? "wts-tools-arrival-work" : "rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-4 break-words"}>
+    <h2 class="text-xl font-bold">{title()}</h2>
     <Show when={props.compact} fallback={<p>All unresolved work, including earlier days, and current-day completed history. Work stays at its originating station and event; changing this phone's event never retargets it.</p>}><p>Unresolved arrivals and today's completed work. Resume to review; nothing is retried automatically.</p></Show>
     <button type="button" class="btn btn-outline min-h-12" disabled={!key() || data.loading} onClick={refresh}>Refresh arrival work</button>
     <div aria-live="polite" class="space-y-3">
       <Show when={!key()}><p>Verify this phone's station binding to read its arrival work.</p></Show>
       <Show when={data.loading}><p role="status">Loading arrival work…</p></Show>
       <Show when={data.error}><p role="alert" class="alert alert-error">Arrival work is unavailable. Refresh explicitly; this is not an empty queue.</p></Show>
-      <Show when={!!key() && !props.unavailable && !data.error && !data.loading && data()}>{(current) => <>
+      <Show when={visibleHistory()}>{(current) => <>
         <p>Completed-history day: {current().day} (Europe/Skopje). Unresolved work has no day cutoff.</p>
         <Show when={!items().length}><p>No arrival work on this page.</p></Show>
         <ul class="space-y-3"><For each={items()}>{(item) => <li class="border border-base-content/20 rounded-lg p-4 space-y-2">

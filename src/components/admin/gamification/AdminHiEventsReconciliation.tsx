@@ -5,6 +5,7 @@ import {
   adminPreviewHiEventsReconciliation,
 } from "~/lib/gamification-hievents-actions";
 import type { AdminHiEventsReconciliationDto } from "~/lib/gamification-hievents-evidence";
+import { requireActionData } from "~/components/admin/gamification/action-result";
 
 function formatTime(value?: string): string {
   return value ? new Date(value).toLocaleString() : "Not available";
@@ -25,12 +26,11 @@ export default function AdminHiEventsReconciliation() {
     if (busy()) return;
     setBusy(true);
     try {
-      const result = await adminPreviewHiEventsReconciliation();
-      if (!result.success || !result.data) throw new Error(result.error || "Could not inspect Hi.Events.");
-      setPreview(result.data);
+      const snapshot = requireActionData(await adminPreviewHiEventsReconciliation(), "Could not inspect Hi.Events.");
+      setPreview(snapshot);
       setApplied(null);
       setSyncOperationId(operationId());
-      showToast("success", result.data.state === "complete" ? "Complete source snapshot ready for review." : "Hi.Events source was not complete. No accounting will be changed.");
+      showToast("success", snapshot.state === "complete" ? "Complete source snapshot ready for review." : "Hi.Events source was not complete. No accounting will be changed.");
     } catch (error) {
       showToast("error", error instanceof Error ? error.message : "Could not inspect Hi.Events.");
     } finally {
@@ -39,14 +39,14 @@ export default function AdminHiEventsReconciliation() {
   };
 
   const sync = async () => {
-    if (!preview() || preview()!.state !== "complete" || busy()) return;
+    const snapshot = preview();
+    if (snapshot?.state !== "complete" || busy()) return;
     if (!window.confirm("Sync and apply this complete Hi.Events snapshot? Source evidence, XP, and Badges may be corrected only where the source no longer supports them.")) return;
     setBusy(true);
     try {
-      const result = await adminApplyHiEventsReconciliation(true, preview()!.snapshotFingerprint || "", syncOperationId());
-      if (!result.success || !result.data) throw new Error(result.error || "Could not apply Hi.Events reconciliation.");
-      setApplied(result.data);
-      setPreview(result.data);
+      const reconciled = requireActionData(await adminApplyHiEventsReconciliation(true, snapshot.snapshotFingerprint || "", syncOperationId()), "Could not apply Hi.Events reconciliation.");
+      setApplied(reconciled);
+      setPreview(reconciled);
       showToast("success", "Hi.Events reconciliation applied from a fresh complete snapshot.");
     } catch (error) {
       showToast("error", error instanceof Error ? error.message : "Could not apply Hi.Events reconciliation.");

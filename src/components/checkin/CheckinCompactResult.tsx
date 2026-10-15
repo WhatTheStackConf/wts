@@ -11,31 +11,37 @@ interface CheckinCompactResultProps {
   invalid?: boolean;
 }
 
+type Tone = "success" | "error" | "waiting";
+type WorkDecision = Extract<CheckinArrivalDecision, { workflow: unknown }>;
+const result = (tone: Tone, title: string, detail: string) => ({ tone, title, detail });
+const rejectionDetails = {
+  invalid_identity: "Use the attendee’s ticket QR.", not_in_list: "Ticket is not on this event’s list.",
+  cancelled: "This ticket is cancelled.", awaiting_payment: "Payment is still required.",
+  unknown_eligibility: "Ticket eligibility could not be verified.", already_checked_in: "Already checked in. No new label was authorized.",
+};
+
+function acceptedPresentation(decision: WorkDecision) {
+  const printState = decision.workflow.printState;
+  if (cameraDecisionSettled(decision)) return result("success", "Done", "Checked in. Collect the label.");
+  if (printState === "uncertain") return result("error", "Check printer output", "Admission recorded. Do not reprint; ask an admin.");
+  if (printState === "cancelled" || !printState) return result("error", "Admission recorded · no label", "Do not check in again. Resolve the label in Tools.");
+  return result("waiting", printState === "dispatched" ? "Printing label…" : "Label queued…", "Admission recorded. Keep this attendee here.");
+}
+
+function workPresentation(decision: WorkDecision) {
+  const state = decision.workflow.state;
+  if (state === "accepted") return acceptedPresentation(decision);
+  if (state === "admission_uncertain" || state === "existing_unattributed") return result("error", "Admission needs review", "Do not check in again. Ask an admin to resolve this arrival.");
+  if (state === "rejected") return result("error", "Admission not accepted", "Keep this attendee here. Review the arrival in Tools.");
+  return result("waiting", "Ticket captured", "Checking admission. Please wait.");
+}
+
 /** Presentation only: never infers completion from an accepted admission alone. */
 export function compactArrivalPresentation(decision?: CheckinArrivalDecision) {
-  const result = (tone: "success" | "error" | "waiting", title: string, detail: string) => ({ tone, title, detail });
   if (!decision) return result("waiting", "QR captured", "Checking this attendee…");
-  if ("workflow" in decision) {
-    const work = decision.workflow;
-    if (work.state === "accepted") {
-      if (cameraDecisionSettled(decision)) return result("success", "Done", "Checked in. Collect the label.");
-      if (work.printState === "uncertain") return result("error", "Check printer output", "Admission recorded. Do not reprint; ask an admin.");
-      if (work.printState === "cancelled" || !work.printState) return result("error", "Admission recorded · no label", "Do not check in again. Resolve the label in Tools.");
-      return result("waiting", work.printState === "dispatched" ? "Printing label…" : "Label queued…", "Admission recorded. Keep this attendee here.");
-    }
-    if (work.state === "admission_uncertain" || work.state === "existing_unattributed") return result("error", "Admission needs review", "Do not check in again. Ask an admin to resolve this arrival.");
-    if (work.state === "rejected") return result("error", "Admission not accepted", "Keep this attendee here. Review the arrival in Tools.");
-    return result("waiting", "Ticket captured", "Checking admission. Please wait.");
-  }
+  if ("workflow" in decision) return workPresentation(decision);
   if (decision.state === "already_handled") return result("error", "Already handled", "No new check-in or label. Ask the owning station if needed.");
-  if (decision.state === "rejected") {
-    const reasons = {
-      invalid_identity: "Use the attendee’s ticket QR.", not_in_list: "Ticket is not on this event’s list.",
-      cancelled: "This ticket is cancelled.", awaiting_payment: "Payment is still required.",
-      unknown_eligibility: "Ticket eligibility could not be verified.", already_checked_in: "Already checked in. No new label was authorized.",
-    };
-    return result("error", "Ticket not accepted", reasons[decision.reason]);
-  }
+  if (decision.state === "rejected") return result("error", "Ticket not accepted", rejectionDetails[decision.reason]);
   if (decision.state === "needs_affiliation_choice") return result("error", "Affiliation unavailable", "Retry the check or explicitly use a blank affiliation.");
   return result("error", "Check unavailable", "Keep this attendee held. Retry the same arrival or use Tools.");
 }

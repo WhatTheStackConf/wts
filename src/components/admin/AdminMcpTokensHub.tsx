@@ -51,6 +51,10 @@ function actionStatusClass(status: McpActivityItem["status"]) {
   return "badge-warning";
 }
 
+function activityTarget(item: McpActivityItem): string {
+  return `${item.targetCollection}:${item.targetId || ""}`;
+}
+
 function operationId(storageKey: string): string {
   if (typeof window === "undefined") throw new Error("MCP token operations require a browser.");
   const current = window.sessionStorage.getItem(storageKey);
@@ -111,14 +115,15 @@ export default function AdminMcpTokensHub() {
   });
 
   const activeCount = () => (tokens() || []).filter((token) => token.status === "active").length;
-  const filteredActivity = createMemo(() => (activity() || []).filter((item) => {
-    const target = `${item.targetCollection}:${item.targetId || ""}`;
-    return (!tokenFilter() || item.token?.id === tokenFilter()) &&
-      (!ownerFilter() || item.owner.id === ownerFilter()) &&
-      (!statusFilter() || item.status === statusFilter()) &&
-      (!operationFilter() || item.operationKind === operationFilter()) &&
-      (!targetFilter() || target === targetFilter());
-  }));
+  const activityFilters: [() => string, (item: McpActivityItem) => string | undefined][] = [
+    [tokenFilter, (item) => item.token?.id],
+    [ownerFilter, (item) => item.owner.id],
+    [statusFilter, (item) => item.status],
+    [operationFilter, (item) => item.operationKind],
+    [targetFilter, activityTarget],
+  ];
+  const filteredActivity = createMemo(() => (activity() || []).filter((item) =>
+    activityFilters.every(([filter, value]) => !filter() || value(item) === filter())));
   const activityOwners = createMemo(() => {
     const owners = new Map((activity() || []).map((item) => [item.owner.id, item.owner]));
     return [...owners.values()].sort((left, right) => left.name.localeCompare(right.name));
@@ -128,7 +133,7 @@ export default function AdminMcpTokensHub() {
   );
   const activityTargets = createMemo(() => {
     const targets = new Map((activity() || []).map((item) => [
-      `${item.targetCollection}:${item.targetId || ""}`,
+      activityTarget(item),
       `${item.targetCollection}${item.targetId ? ` / ${item.targetId}` : " / pending target"}`,
     ]));
     return [...targets.entries()].sort((left, right) => left[1].localeCompare(right[1]));

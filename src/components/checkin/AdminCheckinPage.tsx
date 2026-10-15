@@ -67,6 +67,7 @@ export default function AdminCheckinPage() {
   const [message, setMessage] = createSignal("");
   const [issued, setIssued] = createSignal<IssuedCheckinQR>();
   let reasonInput: HTMLSelectElement | undefined;
+  const locked = () => pending() || !!intent();
   function choose(command: ControlIntent, title: string) {
     setIntent({ command, title, operationId: crypto.randomUUID() });
     setReason(""); setNote(""); setError(""); setMessage(""); setIssued(undefined);
@@ -141,7 +142,7 @@ export default function AdminCheckinPage() {
             <section class="rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-3" aria-label="System controls">
               <h2 class="text-xl font-bold">System: {current().system.enabled ? "enabled for provisioning" : "stopped"}</h2>
               <p>Authorization generation {current().system.generation} · Configuration version {current().system.version}</p>
-              <button type="button" class="btn btn-warning min-h-12" disabled={pending() || !!intent()} onClick={() => choose({ operation: "set_system_enabled", expectedVersion: current().system.version, enabled: !current().system.enabled }, current().system.enabled ? "Stop system" : "Restore system")}>
+              <button type="button" class="btn btn-warning min-h-12" disabled={locked()} onClick={() => choose({ operation: "set_system_enabled", expectedVersion: current().system.version, enabled: !current().system.enabled }, current().system.enabled ? "Stop system" : "Restore system")}>
                 {current().system.enabled ? "Stop system" : "Restore system"}
               </button>
             </section>
@@ -150,10 +151,10 @@ export default function AdminCheckinPage() {
                 <article class="min-w-0 rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-5" aria-label={station.label}>
                   <StationReadiness station={station} />
                   <p class="text-xs font-mono">{station.id} · Version {station.version}</p>
-                  <StationConfiguration station={station} locked={pending() || !!intent()} submit={choose} />
+                  <StationConfiguration station={station} locked={locked()} submit={choose} />
                   <div class="flex flex-wrap gap-3">
-                    <button type="button" class="btn btn-warning min-h-12" disabled={pending() || !!intent()} onClick={() => choose({ operation: "set_station_enabled", stationId: station.id, expectedVersion: station.version, enabled: !station.enabled }, `${station.enabled ? "Disable" : "Restore"} station: ${station.label}`)}>{station.enabled ? "Disable station" : "Restore station"}</button>
-                    <button type="button" class="btn btn-outline min-h-12" disabled={pending() || !!intent()} onClick={() => choose({ operation: "rotate_provision_code", stationId: station.id, expectedVersion: station.version }, `Issue replacement QR: ${station.label}`)}>Issue replacement QR</button>
+                    <button type="button" class="btn btn-warning min-h-12" disabled={locked()} onClick={() => choose({ operation: "set_station_enabled", stationId: station.id, expectedVersion: station.version, enabled: !station.enabled }, `${station.enabled ? "Disable" : "Restore"} station: ${station.label}`)}>{station.enabled ? "Disable station" : "Restore station"}</button>
+                    <button type="button" class="btn btn-outline min-h-12" disabled={locked()} onClick={() => choose({ operation: "rotate_provision_code", stationId: station.id, expectedVersion: station.version }, `Issue replacement QR: ${station.label}`)}>Issue replacement QR</button>
                   </div>
                 </article>
               )}</For>
@@ -165,12 +166,12 @@ export default function AdminCheckinPage() {
                 <li class="rounded-lg border border-base-content/20 p-4 space-y-2">
                   <p class="break-all font-mono">{binding.id} · {binding.stationId}</p>
                   <p>{binding.revoked ? "Revoked" : "Valid"} · {binding.active ? "Recently active" : "Inactive"} · Last seen {binding.lastSeenAt || "Never"}</p>
-                  <button type="button" class="btn btn-outline min-h-12" disabled={binding.revoked || pending() || !!intent()} onClick={() => choose({ operation: "revoke_binding", bindingId: binding.id, expectedVersion: binding.version }, `Revoke binding: ${binding.id}`)}>Revoke binding</button>
+                  <button type="button" class="btn btn-outline min-h-12" disabled={binding.revoked || locked()} onClick={() => choose({ operation: "revoke_binding", bindingId: binding.id, expectedVersion: binding.version }, `Revoke binding: ${binding.id}`)}>Revoke binding</button>
                 </li>
               )}</For></ul>
               <div class="flex gap-3">
-                <button type="button" class="btn min-h-12" disabled={bindingPage() <= 1 || pending() || !!intent()} onClick={() => setBindingPage((value) => value - 1)}>Previous bindings</button>
-                <button type="button" class="btn min-h-12" disabled={!current().bindings.hasMore || pending() || !!intent()} onClick={() => setBindingPage((value) => value + 1)}>Next bindings</button>
+                <button type="button" class="btn min-h-12" disabled={bindingPage() <= 1 || locked()} onClick={() => setBindingPage((value) => value - 1)}>Previous bindings</button>
+                <button type="button" class="btn min-h-12" disabled={!current().bindings.hasMore || locked()} onClick={() => setBindingPage((value) => value + 1)}>Next bindings</button>
               </div>
             </section>
             <section class="space-y-3" aria-label="Check-in audit">
@@ -183,8 +184,8 @@ export default function AdminCheckinPage() {
                 </li>
               )}</For></ul>
               <div class="flex gap-3">
-                <button type="button" class="btn min-h-12" disabled={auditPage() <= 1 || pending() || !!intent()} onClick={() => setAuditPage((value) => value - 1)}>Previous audit</button>
-                <button type="button" class="btn min-h-12" disabled={!current().audit.hasMore || pending() || !!intent()} onClick={() => setAuditPage((value) => value + 1)}>Next audit</button>
+                <button type="button" class="btn min-h-12" disabled={auditPage() <= 1 || locked()} onClick={() => setAuditPage((value) => value - 1)}>Previous audit</button>
+                <button type="button" class="btn min-h-12" disabled={!current().audit.hasMore || locked()} onClick={() => setAuditPage((value) => value + 1)}>Next audit</button>
               </div>
             </section>
           </>
