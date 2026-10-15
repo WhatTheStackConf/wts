@@ -37,20 +37,48 @@ routerAdd("POST", "/api/wts/checkin-monitoring", (e) => {
       text: ["WTS2026", "Incident: " + incident.id, "Category: " + incident.getString("category"), "Notification: " + delivery.getString("kind"), "Station: " + incident.getString("station_id"), "Workflow: " + (incident.getString("workflow_id") || "none"), "Inspect the check-in monitoring dashboard. This message changes no operational authority."].join("\n"),
     };
   }
+  function validWindows(c) {
+    return Number.isSafeInteger(c.waitingMs) && c.waitingMs >= 1000 && c.waitingMs <= 3600000 && Number.isSafeInteger(c.incidentMs) && c.incidentMs >= c.waitingMs && c.incidentMs <= 3600000 && Number.isSafeInteger(c.repeatMs) && c.repeatMs >= 900000 && c.repeatMs <= 86400000;
+  }
+  function validRecipients(ids) { return Array.isArray(ids) && ids.length <= 20 && !ids.some((id) => typeof id !== "string" || !/^[a-z0-9]{15}$/.test(id)) && new Set(ids).size === ids.length; }
+  function validConfigureCommand(c) {
+    return !!c && Object.keys(c).sort().join(",") === "expectedVersion,incidentMs,operationId,recipientUserIds,repeatMs,waitingMs" && typeof c.operationId === "string" && /^[a-f0-9-]{36}$/.test(c.operationId) && Number.isSafeInteger(c.expectedVersion) && validWindows(c) && validRecipients(c.recipientUserIds);
+  }
+  function validReadiness(readiness) { return Array.isArray(readiness) && readiness.length === 3 && !stations.some((id) => readiness.filter((s) => s.stationId === id && typeof s.readyForAuthorization === "boolean").length !== 1); }
+  function humanViewer(app) {
+    const actor = typeof b.actorUserId === "string" && find(app, "users", "id = {:id} && verified = true", { id: b.actorUserId });
+    if (!actor || !["admin", "checkin_operator"].includes(actor.getString("role"))) fail("forbidden", 403);
+    const binding = typeof b.identityHash === "string" && /^[a-f0-9]{64}$/.test(b.identityHash) && find(app, "checkin_bindings", "identity_hash = {:hash} && revoked = false", { hash: b.identityHash });
+    return { actor, ownStation: binding ? binding.getString("station") : "" };
+  }
+  function nextAction(selected, state, incident) {
+    if (!selected.length) return "configure_recipients";
+    if (["unknown", "possibly_sent"].includes(state)) return "investigate_delivery_no_retry";
+    if (state === "pending") return "await_worker";
+    return incident.getInt("recovered_ms") ? "none" : "wait_for_repeat";
+  }
+  function incidentDTO(app, r, selected) {
+    const deliveries = rows(app, "checkin_monitoring_deliveries", "incident_id = {:id}", { id: r.id }, "-sequence", 1);
+    const latest = deliveries[0];
+    const state = latest ? latest.getString("state") : "none";
+    return { id: r.id, stationId: r.getString("station_id"), workflowId: r.getString("workflow_id") || null, category: r.getString("category"), sinceMs: r.getInt("since_ms"), openedMs: r.getInt("opened_ms"), recoveredMs: r.getInt("recovered_ms"), acknowledgedMs: r.getInt("acknowledged_ms"), nextDeliveryMs: r.getInt("next_delivery_ms"), delivery: state, deliveryKind: latest ? latest.getString("kind") : null, nextAction: nextAction(selected, state, r) };
+  }
+  function sinceMs(since) { return Number.isFinite(since) && since > 0 && since <= now ? since : now; }
   let result, sendJob = null;
   e.app.runInTransaction((app) => {
     const config = app.findRecordById("checkin_monitoring_config", "wts2026monitor0");
-    let actor = null, ownStation = "";
-    if (!machine) {
-      actor = typeof b.actorUserId === "string" && find(app, "users", "id = {:id} && verified = true", { id: b.actorUserId });
-      if (!actor || !["admin", "checkin_operator"].includes(actor.getString("role"))) fail("forbidden", 403);
-      const binding = typeof b.identityHash === "string" && /^[a-f0-9]{64}$/.test(b.identityHash) && find(app, "checkin_bindings", "identity_hash = {:hash} && revoked = false", { hash: b.identityHash });
-      ownStation = binding ? binding.getString("station") : "";
-    }
+    const viewer = machine ? { actor: null, ownStation: "" } : humanViewer(app);
+    const actor = viewer.actor, ownStation = viewer.ownStation;
     const isAdmin = actor && actor.getString("role") === "admin";
     function visible(incident) { return isAdmin || (ownStation && incident.getString("station_id") === ownStation); }
     function configuration() { return { version: config.getInt("version"), waitingMs: config.getInt("waiting_ms"), incidentMs: config.getInt("incident_ms"), repeatMs: config.getInt("repeat_ms"), recipientUserIds: json(config, "recipient_user_ids") || [] }; }
-    if (b.operation === "dashboard") {
+    function adminDetails() {
+      result.config = configuration();
+      result.adminChoices = [];
+      each(app, "users", "role = 'admin' && verified = true", (r) => result.adminChoices.push({ id: r.id, email: r.getString("email") }));
+      result.audit = rows(app, "checkin_monitoring_audit", "", {}, "-at_ms,id", 100).map((r) => ({ category: r.getString("category"), incidentId: r.getString("incident_id"), deliveryId: r.getString("delivery_id"), actorUserId: r.getString("actor_user_id"), atMs: r.getInt("at_ms") }));
+    }
+    function dashboard() {
       const selected = recipients(app, json(config, "recipient_user_ids"));
       const lastTickMs = config.getInt("last_tick_ms");
       const offset = Number.isSafeInteger(b.offset) && b.offset >= 0 ? b.offset : 0;
@@ -60,31 +88,20 @@ routerAdd("POST", "/api/wts/checkin-monitoring", (e) => {
       result = {
         scope: isAdmin ? "all" : ownStation || "unbound", lastTickMs,
         recipientsConfigured: selected.length > 0, hasMore: visibleRows.length > 100,
-        incidents: page.map((r) => {
-          const deliveries = rows(app, "checkin_monitoring_deliveries", "incident_id = {:id}", { id: r.id }, "-sequence", 1);
-          const latest = deliveries[0];
-          const state = latest ? latest.getString("state") : "none";
-          return { id: r.id, stationId: r.getString("station_id"), workflowId: r.getString("workflow_id") || null, category: r.getString("category"), sinceMs: r.getInt("since_ms"), openedMs: r.getInt("opened_ms"), recoveredMs: r.getInt("recovered_ms"), acknowledgedMs: r.getInt("acknowledged_ms"), nextDeliveryMs: r.getInt("next_delivery_ms"), delivery: state, deliveryKind: latest ? latest.getString("kind") : null, nextAction: !selected.length ? "configure_recipients" : ["unknown", "possibly_sent"].includes(state) ? "investigate_delivery_no_retry" : state === "pending" ? "await_worker" : r.getInt("recovered_ms") ? "none" : "wait_for_repeat" };
-        }),
+        incidents: page.map((r) => incidentDTO(app, r, selected)),
       };
-      if (isAdmin) {
-        result.config = configuration();
-        result.adminChoices = [];
-        each(app, "users", "role = 'admin' && verified = true", (r) => result.adminChoices.push({ id: r.id, email: r.getString("email") }));
-        result.audit = rows(app, "checkin_monitoring_audit", "", {}, "-at_ms,id", 100).map((r) => ({ category: r.getString("category"), incidentId: r.getString("incident_id"), deliveryId: r.getString("delivery_id"), actorUserId: r.getString("actor_user_id"), atMs: r.getInt("at_ms") }));
-      }
-      return;
+      if (isAdmin) adminDetails();
     }
-    if (b.operation === "acknowledge") {
+    function acknowledge() {
       const incident = typeof b.incidentId === "string" && find(app, "checkin_monitoring_incidents", "id = {:id}", { id: b.incidentId });
       if (!incident || !visible(incident)) fail("forbidden", 403);
       if (!incident.getInt("acknowledged_ms")) { set(incident, { acknowledged_ms: now, acknowledged_by: actor.id }); app.save(incident); audit(app, "acknowledged", incident.id, "", actor.id); }
-      result = { incidentId: incident.id, acknowledgedMs: incident.getInt("acknowledged_ms") }; return;
+      result = { incidentId: incident.id, acknowledgedMs: incident.getInt("acknowledged_ms") };
     }
-    if (b.operation === "configure") {
+    function configure() {
       if (!isAdmin) fail("forbidden", 403);
       const c = b.command;
-      if (!c || Object.keys(c).sort().join(",") !== "expectedVersion,incidentMs,operationId,recipientUserIds,repeatMs,waitingMs" || typeof c.operationId !== "string" || !/^[a-f0-9-]{36}$/.test(c.operationId) || !Number.isSafeInteger(c.expectedVersion) || !Number.isSafeInteger(c.waitingMs) || c.waitingMs < 1000 || c.waitingMs > 3600000 || !Number.isSafeInteger(c.incidentMs) || c.incidentMs < c.waitingMs || c.incidentMs > 3600000 || !Number.isSafeInteger(c.repeatMs) || c.repeatMs < 900000 || c.repeatMs > 86400000 || !Array.isArray(c.recipientUserIds) || c.recipientUserIds.length > 20 || c.recipientUserIds.some((id) => typeof id !== "string" || !/^[a-z0-9]{15}$/.test(id)) || new Set(c.recipientUserIds).size !== c.recipientUserIds.length) fail("invalid_input");
+      if (!validConfigureCommand(c)) fail("invalid_input");
       const fingerprint = $security.sha256(JSON.stringify([c.expectedVersion, c.waitingMs, c.incidentMs, c.repeatMs, c.recipientUserIds]));
       const previous = find(app, "checkin_monitoring_commands", "operation_id = {:id}", { id: c.operationId });
       if (previous) { if (previous.getString("actor_user_id") !== actor.id || previous.getString("fingerprint") !== fingerprint) fail("conflict", 409); result = json(previous, "result"); return; }
@@ -92,23 +109,15 @@ routerAdd("POST", "/api/wts/checkin-monitoring", (e) => {
       if (recipients(app, c.recipientUserIds).length !== c.recipientUserIds.length) fail("invalid_input");
       set(config, { version: c.expectedVersion + 1, waiting_ms: c.waitingMs, incident_ms: c.incidentMs, repeat_ms: c.repeatMs, recipient_user_ids: c.recipientUserIds }); app.save(config);
       result = configuration();
-      create(app, "checkin_monitoring_commands", { operation_id: c.operationId, actor_user_id: actor.id, fingerprint, result }); audit(app, "configured", "", "", actor.id); return;
+      create(app, "checkin_monitoring_commands", { operation_id: c.operationId, actor_user_id: actor.id, fingerprint, result }); audit(app, "configured", "", "", actor.id);
     }
-    if (b.operation === "machine_observe_begin") {
+    function observeBegin() {
       const observationSequence = config.getInt("observation_sequence") + 1;
       if (!Number.isSafeInteger(observationSequence)) fail("conflict", 409);
       set(config, { observation_sequence: observationSequence, observation_started_ms: now }); app.save(config);
-      result = { observationSequence }; return;
+      result = { observationSequence };
     }
-    if (b.operation === "machine_tick") {
-      if (!Array.isArray(b.readiness) || b.readiness.length !== 3 || stations.some((id) => b.readiness.filter((s) => s.stationId === id && typeof s.readyForAuthorization === "boolean").length !== 1)) fail("invalid_input");
-      if (!Number.isSafeInteger(b.observationSequence) || b.observationSequence < 1) fail("invalid_input");
-      if (b.observationSequence !== config.getInt("observation_sequence")) { result = { observed: false }; return; }
-      const fingerprint = $security.sha256(JSON.stringify(stations.map((id) => b.readiness.find((s) => s.stationId === id).readyForAuthorization)));
-      if (b.observationSequence === config.getInt("applied_observation_sequence")) {
-        if (fingerprint !== config.getString("observation_fingerprint")) fail("conflict", 409);
-        result = { observed: true }; return;
-      }
+    function observeTick(fingerprint) {
       // Time is captured at reservation, not after the asynchronous read. Only
       // the database sequence orders workers; backwards clocks cannot undo it.
       now = Math.max(config.getInt("observation_started_ms"), config.getInt("last_tick_ms"));
@@ -117,12 +126,24 @@ routerAdd("POST", "/api/wts/checkin-monitoring", (e) => {
         if (!stations.includes(station) || (workflow && !/^[a-z0-9]{15}$/.test(workflow))) fail("invalid_input");
         const key = category + ":" + station + ":" + (workflow || "");
         observed[key] = true;
-        let incident = find(app, "checkin_monitoring_incidents", "scope_key = {:key} && recovered_ms = 0", { key });
-        if (!incident) incident = create(app, "checkin_monitoring_incidents", { scope_key: key, station_id: station, workflow_id: workflow || "", category, since_ms: Number.isFinite(since) && since > 0 && since <= now ? since : now });
+        const incident = find(app, "checkin_monitoring_incidents", "scope_key = {:key} && recovered_ms = 0", { key }) || create(app, "checkin_monitoring_incidents", { scope_key: key, station_id: station, workflow_id: workflow || "", category, since_ms: sinceMs(since) });
+        openIfDue(incident, category);
+      }
+      function openIfDue(incident, category) {
         const immediate = category === "admission_uncertain" || category === "output_uncertain";
         if (!incident.getInt("opened_ms") && (immediate || now - incident.getInt("since_ms") >= config.getInt("incident_ms"))) {
           incident.set("opened_ms", now); app.save(incident); enqueue(app, incident, "open"); audit(app, "opened", incident.id);
         }
+      }
+      function recover(incident) {
+        incident.set("recovered_ms", now); app.save(incident);
+        each(app, "checkin_monitoring_deliveries", "incident_id = {:id} && state = 'pending'", (d) => { d.set("state", "cancelled"); app.save(d); }, { id: incident.id });
+        if (incident.getInt("opened_ms")) { enqueue(app, incident, "recovery"); audit(app, "recovered", incident.id); }
+      }
+      function repeatDue(incident) { return incident.getInt("opened_ms") && incident.getInt("last_boundary_ms") && now >= Math.max(incident.getInt("next_delivery_ms"), incident.getInt("last_boundary_ms") + config.getInt("repeat_ms")); }
+      function repeat(incident) {
+        const previous = rows(app, "checkin_monitoring_deliveries", "incident_id = {:id}", { id: incident.id }, "-sequence", 1)[0];
+        if (previous && ["sent", "failed"].includes(previous.getString("state"))) enqueue(app, incident, "repeat");
       }
       // Readiness is projected by the established checkin-agents service, not
       // recomputed here. Its heartbeat/auth safety contract is unchanged.
@@ -143,18 +164,23 @@ routerAdd("POST", "/api/wts/checkin-monitoring", (e) => {
         if (!attempt.getString("print_attempt_id")) observe("output_uncertain", attempt.getString("station"), "", now);
       });
       each(app, "checkin_monitoring_incidents", "recovered_ms = 0", (incident) => {
-        if (!observed[incident.getString("scope_key")]) {
-          incident.set("recovered_ms", now); app.save(incident);
-          each(app, "checkin_monitoring_deliveries", "incident_id = {:id} && state = 'pending'", (d) => { d.set("state", "cancelled"); app.save(d); }, { id: incident.id });
-          if (incident.getInt("opened_ms")) { enqueue(app, incident, "recovery"); audit(app, "recovered", incident.id); }
-        } else if (incident.getInt("opened_ms") && incident.getInt("last_boundary_ms") && now >= Math.max(incident.getInt("next_delivery_ms"), incident.getInt("last_boundary_ms") + config.getInt("repeat_ms"))) {
-          const previous = rows(app, "checkin_monitoring_deliveries", "incident_id = {:id}", { id: incident.id }, "-sequence", 1)[0];
-          if (previous && ["sent", "failed"].includes(previous.getString("state"))) enqueue(app, incident, "repeat");
-        }
+        if (!observed[incident.getString("scope_key")]) recover(incident);
+        else if (repeatDue(incident)) repeat(incident);
       });
-      set(config, { last_tick_ms: now, applied_observation_sequence: b.observationSequence, observation_fingerprint: fingerprint }); app.save(config); result = { observed: true }; return;
+      set(config, { last_tick_ms: now, applied_observation_sequence: b.observationSequence, observation_fingerprint: fingerprint }); app.save(config); result = { observed: true };
     }
-    if (b.operation === "machine_claim") {
+    function tick() {
+      if (!validReadiness(b.readiness)) fail("invalid_input");
+      if (!Number.isSafeInteger(b.observationSequence) || b.observationSequence < 1) fail("invalid_input");
+      if (b.observationSequence !== config.getInt("observation_sequence")) { result = { observed: false }; return; }
+      const fingerprint = $security.sha256(JSON.stringify(stations.map((id) => b.readiness.find((s) => s.stationId === id).readyForAuthorization)));
+      if (b.observationSequence === config.getInt("applied_observation_sequence")) {
+        if (fingerprint !== config.getString("observation_fingerprint")) fail("conflict", 409);
+        result = { observed: true }; return;
+      }
+      observeTick(fingerprint);
+    }
+    function claim() {
       const people = recipients(app, json(config, "recipient_user_ids"));
       if (!people.length) { result = { job: null }; return; }
       const d = rows(app, "checkin_monitoring_deliveries", "state = 'pending'", {}, "created_ms,id", 1)[0];
@@ -167,16 +193,14 @@ routerAdd("POST", "/api/wts/checkin-monitoring", (e) => {
       audit(app, "delivery_boundary", incident.id, d.id);
       // No freeform labels, summaries, diagnostics, or attendee data in email.
       const { subject, text } = formatMail(incident, d);
-      result = { job: { deliveryId: d.id, claimToken: token, incidentId: incident.id, kind: d.getString("kind"), subject, text, recipients: people.map((r) => r.getString("email")) } }; return;
+      result = { job: { deliveryId: d.id, claimToken: token, incidentId: incident.id, kind: d.getString("kind"), subject, text, recipients: people.map((r) => r.getString("email")) } };
     }
-    if (["machine_result", "machine_send"].includes(b.operation)) {
-      const d = typeof b.deliveryId === "string" && find(app, "checkin_monitoring_deliveries", "id = {:id}", { id: b.deliveryId });
-      if (!d || typeof b.claimToken !== "string" || d.getString("claim_token") !== b.claimToken) fail("forbidden", 403);
-      if (b.operation === "machine_result") {
-        if (!["sent", "failed", "unknown"].includes(b.outcome)) fail("invalid_input");
-        if (d.getString("state") !== "possibly_sent") { if (d.getString("state") !== b.outcome) fail("conflict", 409); result = { outcome: b.outcome }; return; }
-        set(d, { state: b.outcome, completed_ms: Math.max(now, d.getInt("boundary_ms")) }); app.save(d); audit(app, "delivery_" + b.outcome, d.getString("incident_id"), d.id); result = { outcome: b.outcome }; return;
-      }
+    function recordResult(d) {
+      if (!["sent", "failed", "unknown"].includes(b.outcome)) fail("invalid_input");
+      if (d.getString("state") !== "possibly_sent") { if (d.getString("state") !== b.outcome) fail("conflict", 409); result = { outcome: b.outcome }; return; }
+      set(d, { state: b.outcome, completed_ms: Math.max(now, d.getInt("boundary_ms")) }); app.save(d); audit(app, "delivery_" + b.outcome, d.getString("incident_id"), d.id); result = { outcome: b.outcome };
+    }
+    function prepareSend(d) {
       // A second durable CAS guards the actual mailer against HTTP replay.
       if (d.getString("state") !== "possibly_sent" || d.getBool("send_started")) { result = { outcome: ["sent", "failed"].includes(d.getString("state")) ? d.getString("state") : "unknown" }; return; }
       d.set("send_started", true); app.save(d);
@@ -185,9 +209,16 @@ routerAdd("POST", "/api/wts/checkin-monitoring", (e) => {
       const allowed = people.filter((r) => currentIds.includes(r.id));
       const incident = app.findRecordById("checkin_monitoring_incidents", d.getString("incident_id"));
       sendJob = { deliveryId: d.id, incidentId: incident.id, people: allowed.map((r) => r.getString("email")), ...formatMail(incident, d) };
-      return;
     }
-    fail("invalid_input");
+    function delivery() {
+      const d = typeof b.deliveryId === "string" && find(app, "checkin_monitoring_deliveries", "id = {:id}", { id: b.deliveryId });
+      if (!d || typeof b.claimToken !== "string" || d.getString("claim_token") !== b.claimToken) fail("forbidden", 403);
+      if (b.operation === "machine_result") recordResult(d);
+      else prepareSend(d);
+    }
+    const handlers = { dashboard, acknowledge, configure, machine_observe_begin: observeBegin, machine_tick: tick, machine_claim: claim, machine_result: delivery, machine_send: delivery };
+    if (!Object.prototype.hasOwnProperty.call(handlers, b.operation)) fail("invalid_input");
+    handlers[b.operation]();
   });
   if (sendJob) {
     // External effect OUTSIDE transaction; failures can be ambiguous SMTP acks.

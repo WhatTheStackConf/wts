@@ -38,15 +38,11 @@ routerAdd("POST", "/api/wts/mcp-tokens", (e) => {
   function assertSafePayload(value, label, maximumBytes) {
     if (toBytes(JSON.stringify(value)).length > maximumBytes) throw new BadRequestError(`${label} is too large.`);
     const blocked = ["accesstoken", "authorization", "bearertoken", "clientsecret", "password", "payload", "rawbody", "rawrequest", "refreshtoken", "requestbody", "secret", "secrethash", "tokenid"];
-    function visit(item, depth) {
-      if (depth > 6) throw new BadRequestError(`${label} is too deeply nested.`);
-      if (typeof item === "string" && hasBearerMaterial(item)) throw new BadRequestError(`${label} contains bearer material.`);
-      if (!item || typeof item !== "object") return;
-      if (Array.isArray(item)) {
-        if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
-        for (const child of item) visit(child, depth + 1);
-        return;
-      }
+    function visitArray(item, depth) {
+      if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
+      for (const child of item) visit(child, depth + 1);
+    }
+    function visitObject(item, depth) {
       const keys = Object.keys(item);
       if (keys.length > 50) throw new BadRequestError(`${label} contains too many fields.`);
       for (const key of keys) {
@@ -55,6 +51,13 @@ routerAdd("POST", "/api/wts/mcp-tokens", (e) => {
         }
         visit(item[key], depth + 1);
       }
+    }
+    function visit(item, depth) {
+      if (depth > 6) throw new BadRequestError(`${label} is too deeply nested.`);
+      if (typeof item === "string" && hasBearerMaterial(item)) throw new BadRequestError(`${label} contains bearer material.`);
+      if (!item || typeof item !== "object") return;
+      if (Array.isArray(item)) visitArray(item, depth);
+      else visitObject(item, depth);
     }
     visit(value, 0);
   }
@@ -79,26 +82,57 @@ routerAdd("POST", "/api/wts/mcp-tokens", (e) => {
       revocationReason: null,
     };
   }
+  function isObject(value) {
+    return value && typeof value === "object" && !Array.isArray(value);
+  }
+  function invalidName(name, normalizedInput) {
+    return !name || name.length > 120 || hasBearerMaterial(name) || name !== String(normalizedInput.name || "");
+  }
+  function invalidScopes(scopes, normalizedInput) {
+    return !Array.isArray(scopes) || JSON.stringify(scopes) !== JSON.stringify(normalizedInput.scopes || []);
+  }
+  function invalidCredential(tokenId, tokenPrefix, secretHash) {
+    return !/^[a-f0-9]{24}$/.test(tokenId) || tokenPrefix !== `wts_mcp_${tokenId.slice(0, 8)}` || !/^[a-f0-9]{64}$/.test(secretHash);
+  }
+  function invalidExpiry(expiresAt, normalizedInput) {
+    return !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now() ||
+      Date.parse(expiresAt) > Date.now() + 90 * 24 * 60 * 60 * 1000 + 60 * 1000 ||
+      (normalizedInput.expiresOn && !expiresAt.startsWith(`${normalizedInput.expiresOn}T`));
+  }
+  function isPendingAttempt(action, kind) {
+    return action.getString("status") === "pending" &&
+      action.getString("attempt_token") === String(body.admin_action_attempt_token || "") &&
+      action.getString("target_collection") === "mcp_tokens" &&
+      action.getString("operation_kind") === kind &&
+      action.getString("operation_kind") === String(body.admin_action_operation_kind || "");
+  }
+  function isReservedCreate(action, expectedFingerprint) {
+    return isPendingAttempt(action, "mcp_token.create") &&
+      !action.getString("target_id") && action.getString("input_fingerprint") === expectedFingerprint &&
+      action.getString("actor_user") === String(body.created_by || "");
+  }
+  function createFields() {
+    return {
+      name: String(body.name || "").trim(),
+      tokenId: String(body.token_id || ""),
+      tokenPrefix: String(body.token_prefix || ""),
+      secretHash: String(body.secret_hash || ""),
+      scopes: parseJson(body.scopes, []),
+      expiresAt: String(body.expires_at || ""),
+      createdBy: String(body.created_by || ""),
+    };
+  }
   const request = e.requestInfo();
   const body = request.body;
   const normalizedInput = parseJson(body.admin_action_normalized_input, null);
-  if (!normalizedInput || typeof normalizedInput !== "object" || Array.isArray(normalizedInput)) {
+  if (!isObject(normalizedInput)) {
     throw new BadRequestError("MCP token create input is invalid.");
   }
-  const name = String(body.name || "").trim();
-  const tokenId = String(body.token_id || "");
-  const tokenPrefix = String(body.token_prefix || "");
-  const secretHash = String(body.secret_hash || "");
-  const scopes = parseJson(body.scopes, []);
-  const expiresAt = String(body.expires_at || "");
+  const { name, tokenId, tokenPrefix, secretHash, scopes, expiresAt, createdBy } = createFields();
   if (
-    !name || name.length > 120 || hasBearerMaterial(name) || name !== String(normalizedInput.name || "") ||
-    !Array.isArray(scopes) || JSON.stringify(scopes) !== JSON.stringify(normalizedInput.scopes || []) ||
-    !/^[a-f0-9]{24}$/.test(tokenId) || tokenPrefix !== `wts_mcp_${tokenId.slice(0, 8)}` ||
-    !/^[a-f0-9]{64}$/.test(secretHash) || String(body.created_by || "") === "" ||
-    !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now() ||
-    Date.parse(expiresAt) > Date.now() + 90 * 24 * 60 * 60 * 1000 + 60 * 1000 ||
-    (normalizedInput.expiresOn && !expiresAt.startsWith(`${normalizedInput.expiresOn}T`))
+    invalidName(name, normalizedInput) || invalidScopes(scopes, normalizedInput) ||
+    invalidCredential(tokenId, tokenPrefix, secretHash) || createdBy === "" ||
+    invalidExpiry(expiresAt, normalizedInput)
   ) {
     throw new BadRequestError("MCP token create body does not match its reserved input.");
   }
@@ -108,15 +142,7 @@ routerAdd("POST", "/api/wts/mcp-tokens", (e) => {
     const expectedFingerprint = $security.sha256(canonicalJson({
       targetCollection: "mcp_tokens", targetId: null, normalizedInput,
     }));
-    if (
-      action.getString("status") !== "pending" ||
-      action.getString("attempt_token") !== String(body.admin_action_attempt_token || "") ||
-      action.getString("target_collection") !== "mcp_tokens" ||
-      action.getString("operation_kind") !== "mcp_token.create" ||
-      action.getString("operation_kind") !== String(body.admin_action_operation_kind || "") ||
-      action.getString("target_id") || action.getString("input_fingerprint") !== expectedFingerprint ||
-      action.getString("actor_user") !== String(body.created_by || "")
-    ) {
+    if (!isReservedCreate(action, expectedFingerprint)) {
       throw new BadRequestError("MCP token Admin Action attempt is no longer active.");
     }
     const actor = txApp.findRecordById("users", action.getString("actor_user"));
@@ -208,15 +234,33 @@ routerAdd("POST", "/api/wts/mcp-tokens/{id}/revoke", (e) => {
     if (record.getString("last_used_at")) value.lastUsedAt = record.getString("last_used_at");
     return value;
   }
+  function invalidReason(reason) {
+    return !reason || reason.length > 500 || hasBearerMaterial(reason);
+  }
+  function invalidRevocationInput(normalizedInput, id, reason) {
+    return !normalizedInput || typeof normalizedInput !== "object" || Array.isArray(normalizedInput) ||
+      normalizedInput.id !== id || normalizedInput.reason !== reason;
+  }
+  function isPendingAttempt(action, kind) {
+    return action.getString("status") === "pending" &&
+      action.getString("attempt_token") === String(body.admin_action_attempt_token || "") &&
+      action.getString("target_collection") === "mcp_tokens" &&
+      action.getString("operation_kind") === kind &&
+      action.getString("operation_kind") === String(body.admin_action_operation_kind || "");
+  }
+  function isReservedRevoke(action, id, expectedFingerprint) {
+    return isPendingAttempt(action, "mcp_token.revoke") && action.getString("target_id") === id &&
+      action.getString("input_fingerprint") === expectedFingerprint;
+  }
+  function statusBeforeRevocation(record, owner) {
+    if (Date.parse(record.getString("expires_at")) <= Date.now()) return "expired";
+    return owner.getString("role") !== "admin" ? "owner_disabled" : "active";
+  }
   const body = e.requestInfo().body;
   const id = e.request.pathValue("id");
   const reason = String(body.revocation_reason || "").trim();
   const normalizedInput = parseJson(body.admin_action_normalized_input, null);
-  if (
-    !reason || reason.length > 500 || hasBearerMaterial(reason) ||
-    !normalizedInput || typeof normalizedInput !== "object" || Array.isArray(normalizedInput) ||
-    normalizedInput.id !== id || normalizedInput.reason !== reason
-  ) {
+  if (invalidReason(reason) || invalidRevocationInput(normalizedInput, id, reason)) {
     throw new BadRequestError("MCP token revocation reason is invalid.");
   }
   let result;
@@ -225,14 +269,7 @@ routerAdd("POST", "/api/wts/mcp-tokens/{id}/revoke", (e) => {
     const expectedFingerprint = $security.sha256(canonicalJson({
       targetCollection: "mcp_tokens", targetId: id, normalizedInput,
     }));
-    if (
-      action.getString("status") !== "pending" ||
-      action.getString("attempt_token") !== String(body.admin_action_attempt_token || "") ||
-      action.getString("target_collection") !== "mcp_tokens" || action.getString("target_id") !== id ||
-      action.getString("operation_kind") !== "mcp_token.revoke" ||
-      action.getString("operation_kind") !== String(body.admin_action_operation_kind || "") ||
-      action.getString("input_fingerprint") !== expectedFingerprint
-    ) {
+    if (!isReservedRevoke(action, id, expectedFingerprint)) {
       throw new BadRequestError("MCP token Admin Action attempt is no longer active.");
     }
     const actor = txApp.findRecordById("users", action.getString("actor_user"));
@@ -240,9 +277,7 @@ routerAdd("POST", "/api/wts/mcp-tokens/{id}/revoke", (e) => {
     const record = txApp.findRecordById("mcp_tokens", id);
     const owner = txApp.findRecordById("users", record.getString("created_by"));
     if (record.getString("revoked_at")) throw new BadRequestError("This MCP token is already revoked.");
-    const beforeStatus = Date.parse(record.getString("expires_at")) <= Date.now()
-      ? "expired"
-      : owner.getString("role") !== "admin" ? "owner_disabled" : "active";
+    const beforeStatus = statusBeforeRevocation(record, owner);
     const beforeSummary = summary(record, beforeStatus, "");
     const revokedAt = new Date().toISOString();
     record.set("revoked_at", revokedAt);
@@ -271,18 +306,17 @@ onRecordValidate((e) => {
       throw new BadRequestError("MCP token credential and ownership fields are immutable.");
     }
   }
+  const revocationChanged = () =>
+    original.getString("revoked_at") !== e.record.getString("revoked_at") ||
+    original.getString("revoked_by") !== e.record.getString("revoked_by") ||
+    original.getString("revocation_reason") !== e.record.getString("revocation_reason");
+  const revocationIncomplete = () => !e.record.getString("revoked_by") || !e.record.getString("revocation_reason").trim();
   const previousRevokedAt = original.getString("revoked_at");
   const nextRevokedAt = e.record.getString("revoked_at");
-  if (previousRevokedAt && (
-    previousRevokedAt !== nextRevokedAt ||
-    original.getString("revoked_by") !== e.record.getString("revoked_by") ||
-    original.getString("revocation_reason") !== e.record.getString("revocation_reason")
-  )) {
+  if (previousRevokedAt && revocationChanged()) {
     throw new BadRequestError("MCP token revocation is immutable.");
   }
-  if (!previousRevokedAt && nextRevokedAt && (
-    !e.record.getString("revoked_by") || !e.record.getString("revocation_reason").trim()
-  )) {
+  if (!previousRevokedAt && nextRevokedAt && revocationIncomplete()) {
     throw new BadRequestError("MCP token revocation requires an admin and reason.");
   }
   return e.next();

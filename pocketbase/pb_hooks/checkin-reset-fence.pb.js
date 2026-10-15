@@ -7,32 +7,45 @@ routerAdd("POST", "/api/wts/checkin-reset-fence", e => {
   function deny() { throw new ApiError(409,"Reset send authorization rejected."); }
   function shape(v, keys) { return v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v,k)); }
   const keys = ["workflowId","resetId","sourceKey","upstreamEventId","upstreamListId","upstreamAttendeeId","checkinId","fingerprint"];
+  function pattern(k) { return ["workflowId","resetId"].includes(k) ? /^[a-z0-9]{15}$/ : ["sourceKey","fingerprint"].includes(k) ? /^[a-f0-9]{64}$/ : /^[1-9][0-9]{0,15}$/; }
+  function validField(j, k) { return typeof j[k] === "string" && pattern(k).test(j[k]) && (["workflowId","resetId","sourceKey","fingerprint"].includes(k) || Number.isSafeInteger(Number(j[k]))); }
   if (!shape(b,["operation","owner","nowMs","job"]) || b.operation !== "machine_reset_fence" || typeof b.owner !== "string" || !/^[a-f0-9]{64}$/.test(b.owner) || !Number.isSafeInteger(b.nowMs) || !shape(b.job,keys)) deny();
   const j = b.job;
-  for (const k of keys) {
-    const regex = ["workflowId","resetId"].includes(k) ? /^[a-z0-9]{15}$/ : ["sourceKey","fingerprint"].includes(k) ? /^[a-f0-9]{64}$/ : /^[1-9][0-9]{0,15}$/;
-    if (typeof j[k] !== "string" || !regex.test(j[k])) deny();
-    if (!["workflowId","resetId","sourceKey","fingerprint"].includes(k) && !Number.isSafeInteger(Number(j[k]))) deny();
+  for (const k of keys) if (!validField(j, k)) deny();
+  function differs(actual, expected) { return Object.keys(expected).some(k => actual[k] !== expected[k]); }
+  function assertLiveOwner(runtime, now) {
+    const seen = Date.parse(runtime.getString("last_seen_at"));
+    if (runtime.getString("owner") !== b.owner || !Number.isFinite(seen) || now < seen || now-seen >= runtime.getInt("heartbeat_timeout_ms")) deny();
+  }
+  function claimedThisGeneration(system, runtime, reset) { return reset.getInt("claim_system_generation") === system.getInt("generation") && reset.getInt("coordinator_generation") === runtime.getInt("generation"); }
+  function assertClaimedSend(system, runtime, reset) {
+    if (system.getBool("enabled") || reset.getInt("claim_system_generation") < 1 || !claimedThisGeneration(system, runtime, reset) || reset.getString("state") !== "possibly_sent" || !reset.getString("send_boundary_at") || reset.getString("delete_fence_at")) deny();
+    const claimed = JSON.parse(reset.getString("send_claim_target") || "null");
+    if (!shape(claimed,keys) || !keys.every(k => claimed[k] === j[k])) deny();
+  }
+  function assertJobTarget(w, reset) {
+    const actual = { edition: w.getString("edition"), workflowId: reset.getString("workflow_id"), checkinId: reset.getString("checkin_id"), fingerprint: reset.getString("fingerprint"), sourceKey: w.getString("source_key"), upstreamEventId: w.getString("upstream_event_id"), upstreamListId: w.getString("list_id"), upstreamAttendeeId: w.getString("upstream_attendee_id") };
+    if (differs(actual, { edition: "WTS2026", workflowId: w.id, checkinId: j.checkinId, fingerprint: j.fingerprint, sourceKey: j.sourceKey, upstreamEventId: j.upstreamEventId, upstreamListId: j.upstreamListId, upstreamAttendeeId: j.upstreamAttendeeId })) deny();
+  }
+  function assertPendingReset(recovery, current, command, w, reset) {
+    if (!recovery || recovery.getString("decision") !== "reset_pending" || !current || current.id !== reset.id || command.getString("workflow_id") !== w.id || command.getString("operation") !== "reset") deny();
   }
   e.app.runInTransaction(app => {
     const now = Date.now(); // Send authority uses the backend clock, not caller time.
     const runtime = app.findRecordById("checkin_coordinator","wts2026coord000");
-    const seen = Date.parse(runtime.getString("last_seen_at"));
-    if (runtime.getString("owner") !== b.owner || !Number.isFinite(seen) || now < seen || now-seen >= runtime.getInt("heartbeat_timeout_ms")) deny();
+    assertLiveOwner(runtime, now);
     const system = app.findRecordById("checkin_system","wts2026system00");
     const lifecycle = require(__hooks+"/checkin-lifecycle.js");
     lifecycle.assertNewWork(app); lifecycle.assertOutcome(app,now);
     const reset = app.findRecordById("checkin_recovery_resets",j.resetId);
-    if (system.getBool("enabled") || reset.getInt("claim_system_generation") < 1 || reset.getInt("claim_system_generation") !== system.getInt("generation") || reset.getInt("coordinator_generation") !== runtime.getInt("generation") || reset.getString("state") !== "possibly_sent" || !reset.getString("send_boundary_at") || reset.getString("delete_fence_at")) deny();
-    const claimed = JSON.parse(reset.getString("send_claim_target") || "null");
-    if (!shape(claimed,keys) || !keys.every(k => claimed[k] === j[k])) deny();
+    assertClaimedSend(system, runtime, reset);
     const w = app.findRecordById("checkin_arrival_workflows",j.workflowId);
-    if (w.getString("edition") !== "WTS2026" || reset.getString("workflow_id") !== w.id || reset.getString("checkin_id") !== j.checkinId || reset.getString("fingerprint") !== j.fingerprint || w.getString("source_key") !== j.sourceKey || w.getString("upstream_event_id") !== j.upstreamEventId || w.getString("list_id") !== j.upstreamListId || w.getString("upstream_attendee_id") !== j.upstreamAttendeeId) deny();
+    assertJobTarget(w, reset);
     const R = require(__hooks+"/checkin-recovery.js");
     const recovery = R.projection(app,w);
     const current = R.find(app,"checkin_recovery_resets","workflow_id = {:id}",{id:w.id});
     const command = app.findRecordById("checkin_recovery_commands",reset.getString("command_id"));
-    if (!recovery || recovery.getString("decision") !== "reset_pending" || !current || current.id !== reset.id || command.getString("workflow_id") !== w.id || command.getString("operation") !== "reset") deny();
+    assertPendingReset(recovery, current, command, w, reset);
     reset.set("delete_fence_at",new Date(now).toISOString()); app.save(reset);
   });
   // A lost response cannot be replayed into another grant: the field is committed.

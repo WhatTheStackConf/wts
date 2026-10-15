@@ -31,28 +31,32 @@ routerAdd("POST", "/api/wts/checkin-lifecycle-worker", (e) => {
     s.set("central_compacted_at", new Date(now).toISOString()); e.app.save(s);
     return e.json(200, d.status(e.app, now));
   }
-  e.app.runInTransaction((app) => {
-    const s = d.state(app);
-    if (b.operation === "tick") { result = d.purge(app, now); return; }
-    if (b.operation === "reconcile_restore") {
-      if (!s.getBool("restore_required") || b.generation !== s.getInt("restore_generation") || !/^[a-f0-9]{64}$/.test(b.evidenceDigest || "") || b.identitiesReconciled !== true || b.hiEventsReconciled !== true || b.unresolved !== 0 || s.getString("closed_at")) throw new BadRequestError("Restore evidence incomplete.");
-      // Evidence must be produced by the supervised read-only reconciliation
-      // worker, not browser checkboxes. Unknown journals never count as matching.
-      d.set(s, { reconciled_at: new Date(now).toISOString(), reconciliation_digest: b.evidenceDigest }); app.save(s);
-      d.audit(app, "restore_reconciled", "", "", now, b.generation); result = d.status(app, now); return;
-    }
+  function reconcileRestore(app, s) {
+    if (!s.getBool("restore_required") || b.generation !== s.getInt("restore_generation") || !/^[a-f0-9]{64}$/.test(b.evidenceDigest || "") || b.identitiesReconciled !== true || b.hiEventsReconciled !== true || b.unresolved !== 0 || s.getString("closed_at")) throw new BadRequestError("Restore evidence incomplete.");
+    // Evidence must be produced by the supervised read-only reconciliation
+    // worker, not browser checkboxes. Unknown journals never count as matching.
+    d.set(s, { reconciled_at: new Date(now).toISOString(), reconciliation_digest: b.evidenceDigest }); app.save(s);
+    d.audit(app, "restore_reconciled", "", "", now, b.generation); return d.status(app, now);
+  }
+  function acknowledgeRetirement(app, s, device) {
+    if (now < Date.parse(s.getString("purge_deadline")) || b.purgeToken !== device.getString("purge_token") || b.journalIdentity !== device.getString("journal_identity") || b.method !== "retired_and_compacted") throw new BadRequestError("Invalid retirement acknowledgement.");
+    if (!device.getString("completed_at")) { d.set(device, { completed_at: new Date(now).toISOString(), method: b.method }); d.audit(app, "device_retired", "", "", now, s.getInt("restore_generation")); }
+  }
+  function devicePolicy(app, s) {
     if (b.operation !== "device_policy" && b.operation !== "device_complete") throw new BadRequestError("Invalid worker command.");
     if (!s.getString("closed_at")) throw new BadRequestError("Edition is not closed.");
     const agent = app.findFirstRecordByFilter("checkin_agents", "credential_hash = {:hash}", { hash: b.credentialHash || "" });
     const device = app.findFirstRecordByFilter("checkin_lifecycle_devices", "station_id = {:station} && journal_identity = {:journal}", { station: agent.getString("station"), journal: agent.getString("journal_identity") });
     if (b.stationId !== agent.getString("station")) throw new ForbiddenError("Foreign station.");
     device.set("last_seen_at", new Date(now).toISOString());
-    if (b.operation === "device_complete") {
-      if (now < Date.parse(s.getString("purge_deadline")) || b.purgeToken !== device.getString("purge_token") || b.journalIdentity !== device.getString("journal_identity") || b.method !== "retired_and_compacted") throw new BadRequestError("Invalid retirement acknowledgement.");
-      if (!device.getString("completed_at")) { d.set(device, { completed_at: new Date(now).toISOString(), method: b.method }); d.audit(app, "device_retired", "", "", now, s.getInt("restore_generation")); }
-    }
+    if (b.operation === "device_complete") acknowledgeRetirement(app, s, device);
     app.save(device);
-    result = { edition: "WTS2026", mode: "purge_only", purgeDeadline: s.getString("purge_deadline"), purgeToken: device.getString("purge_token"), stationId: agent.getString("station"), journalIdentity: device.getString("journal_identity"), completed: !!device.getString("completed_at") };
+    return { edition: "WTS2026", mode: "purge_only", purgeDeadline: s.getString("purge_deadline"), purgeToken: device.getString("purge_token"), stationId: agent.getString("station"), journalIdentity: device.getString("journal_identity"), completed: !!device.getString("completed_at") };
+  }
+  e.app.runInTransaction((app) => {
+    const s = d.state(app);
+    if (b.operation === "tick") { result = d.purge(app, now); return; }
+    result = b.operation === "reconcile_restore" ? reconcileRestore(app, s) : devicePolicy(app, s);
   });
   return e.json(200, result);
 }, $apis.requireSuperuserAuth());

@@ -92,19 +92,22 @@ onRecordValidate((e) => {
   if (invalidationChanged && !statusChanged) {
     throw new BadRequestError("Mission Code invalidation history is immutable after the disable transition.");
   }
-  if (statusChanged && (
-    original.getString("status") !== "active" ||
-    record.getString("status") !== "disabled" ||
-    record.getBool("enabled") ||
-    !record.getString("invalidated_at") ||
-    !record.getString("invalidated_by") ||
-    !record.getString("invalidated_reason")
-  )) {
-    throw new BadRequestError("Mission Codes may only transition once from active to an audited disabled state.");
-  }
-  if (original.getString("status") === "disabled" && statusChanged) {
-    throw new BadRequestError("A disabled Mission Code cannot be reactivated.");
-  }
+  const isAuditedDisable = () =>
+    original.getString("status") === "active" &&
+    record.getString("status") === "disabled" &&
+    !record.getBool("enabled") &&
+    record.getString("invalidated_at") &&
+    record.getString("invalidated_by") &&
+    record.getString("invalidated_reason");
+  const assertStatusTransition = () => {
+    if (!isAuditedDisable()) {
+      throw new BadRequestError("Mission Codes may only transition once from active to an audited disabled state.");
+    }
+    if (original.getString("status") === "disabled") {
+      throw new BadRequestError("A disabled Mission Code cannot be reactivated.");
+    }
+  };
+  if (statusChanged) assertStatusTransition();
   return e.next();
 }, "gamification_codes");
 
@@ -204,10 +207,11 @@ onRecordValidate((e) => {
   if (record.getString("status") === "unlocked") {
     // Public visibility is a User preference, not a change to the Badge unlock history.
     const correctionFields = ["source_admin_action", "revoked_at", "revoked_by", "revoked_reason"];
-    for (const field of correctionFields) {
-      if (JSON.stringify(original.get(field)) !== JSON.stringify(record.get(field))) {
-        throw new BadRequestError("Only public Badge visibility may change before an audited revocation.");
-      }
+    const correctionChanged = correctionFields.some((field) =>
+      JSON.stringify(original.get(field)) !== JSON.stringify(record.get(field))
+    );
+    if (correctionChanged) {
+      throw new BadRequestError("Only public Badge visibility may change before an audited revocation.");
     }
     return e.next();
   }

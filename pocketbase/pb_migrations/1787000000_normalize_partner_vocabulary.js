@@ -1,6 +1,12 @@
 /// <reference path="../pb_data/types.d.ts" />
 migrate(
   (app) => {
+    const isValidHost = (host) =>
+      Boolean(host) && !host.startsWith(".") && !host.endsWith(".") && !host.includes("..");
+    const isValidPort = (authority, colon) => {
+      const port = authority.slice(colon + 1);
+      return authority.indexOf(":") === colon && /^\d+$/.test(port) && Number(port) <= 65535;
+    };
     const isValidHttpsPartnerUrl = (value) => {
       if (!value) return true;
       if (/\s/.test(value)) return false;
@@ -13,13 +19,8 @@ migrate(
       if (authority.startsWith("[")) return /^\[[0-9a-f:.]+\](?::\d+)?$/i.test(authority);
 
       const colon = authority.lastIndexOf(":");
-      const hasPort = colon >= 0;
-      if (hasPort) {
-        const port = authority.slice(colon + 1);
-        if (authority.indexOf(":") !== colon || !/^\d+$/.test(port) || Number(port) > 65535) return false;
-      }
-      const host = hasPort ? authority.slice(0, colon) : authority;
-      return Boolean(host) && !host.startsWith(".") && !host.endsWith(".") && !host.includes("..");
+      if (colon < 0) return isValidHost(authority);
+      return isValidPort(authority, colon) && isValidHost(authority.slice(0, colon));
     };
     const partners = app.findCollectionByNameOrId("partners");
     const type = partners.fields.getByName("type");

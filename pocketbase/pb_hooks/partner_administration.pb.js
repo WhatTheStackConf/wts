@@ -88,37 +88,102 @@ routerAdd("POST", "/api/wts/partners", (e) => {
       if (toBytes(JSON.stringify(value)).length > maximumBytes) throw new BadRequestError(`${label} is too large.`);
       const blocked = ["accesstoken", "authorization", "bearertoken", "clientsecret", "notes", "password", "payload", "rawbody", "rawrequest", "refreshtoken", "requestbody", "secret", "secrethash"];
       const safeNoteMetadata = ["noteagentvisible", "notechanged", "notelength", "notepresent"];
+      function isSensitiveKey(key) {
+        const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+        return blocked.includes(normalized) || (normalized.includes("note") && !safeNoteMetadata.includes(normalized));
+      }
+      function visitArray(item, depth) {
+        if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
+        for (const child of item) visit(child, depth + 1);
+      }
+      function visitObject(item, depth) {
+        const keys = Object.keys(item);
+        if (keys.length > 50) throw new BadRequestError(`${label} contains too many fields.`);
+        for (const key of keys) {
+          if (isSensitiveKey(key)) throw new BadRequestError(`${label} contains a sensitive field.`);
+          visit(item[key], depth + 1);
+        }
+      }
       function visit(item, depth) {
         if (depth > 6) throw new BadRequestError(`${label} is too deeply nested.`);
         if (typeof item === "string" && hasSecretMaterial(item)) throw new BadRequestError(`${label} contains credential or hash material.`);
         if (!item || typeof item !== "object") return;
-        if (Array.isArray(item)) {
-          if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
-          for (const child of item) visit(child, depth + 1);
-          return;
-        }
-        const keys = Object.keys(item);
-        if (keys.length > 50) throw new BadRequestError(`${label} contains too many fields.`);
-        for (const key of keys) {
-          const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
-          if (blocked.includes(normalized) || (normalized.includes("note") && !safeNoteMetadata.includes(normalized))) {
-            throw new BadRequestError(`${label} contains a sensitive field.`);
-          }
-          visit(item[key], depth + 1);
-        }
+        if (Array.isArray(item)) visitArray(item, depth);
+        else visitObject(item, depth);
       }
       visit(value, 0);
     }
+    function isObject(value) {
+      return value && typeof value === "object" && !Array.isArray(value);
+    }
+    function isPendingCreate(action) {
+      return action.getString("status") === "pending" &&
+        action.getString("attempt_token") === String(requestBody.admin_action_attempt_token || "") &&
+        action.getString("target_collection") === "partners" &&
+        action.getString("operation_kind") === "partner.create" &&
+        action.getString("operation_kind") === String(requestBody.admin_action_operation_kind || "") &&
+        !action.getString("target_id");
+    }
+    const reservedFields = [
+      { body: "name", input: "name" }, { body: "normalized_name", input: "normalizedName" },
+      { body: "type", input: "type" }, { body: "tier", input: "tier" },
+      { body: "logo_surface", input: "logoSurface" }, { body: "url", input: "urlValue" },
+      { body: "canonical_url", input: "url" },
+    ];
+    function createBodyMismatch(action, normalizedInput, expectedFingerprint) {
+      return expectedFingerprint !== action.getString("input_fingerprint") || !isObject(normalizedInput) ||
+        !reservedFields.every((field) => String(body[field.body] || "") === String(normalizedInput[field.input] || "")) ||
+        requestBool(body.published) || requestBool(body.note_agent_visible);
+    }
+    function noteMismatch(expectedNote, note) {
+      return !isObject(expectedNote) ||
+        Boolean(expectedNote.present) !== Boolean(note) ||
+        (note && (expectedNote.length !== note.length || expectedNote.fingerprint !== $security.sha256(note)));
+    }
+    function uploadedFileMismatch(expectedLogo, file) {
+      return String(file.originalName || file.name || "") !== String(expectedLogo.name || "") ||
+        Number(file.size || 0) !== Number(expectedLogo.bytes || -1);
+    }
+    function uploadDigestMismatch(expectedLogo) {
+      return !upload || upload.mediaType !== String(expectedLogo.mediaType || "") ||
+        upload.fingerprint !== String(expectedLogo.fingerprint || "");
+    }
+    function uploadMismatch(expectedLogo) {
+      return expectedLogo.present !== true || !requestBool(body.logo_uploaded_by_human) || !body.logo ||
+        uploadedFileMismatch(expectedLogo, body.logo) || uploadDigestMismatch(expectedLogo);
+    }
+    function assertCreateLogo(expectedLogo) {
+      if (!isObject(expectedLogo)) {
+        throw new BadRequestError("Partner create logo input is invalid.");
+      }
+      if (expectedLogo.changed === false) {
+        if (requestBool(body.logo_uploaded_by_human) || body.logo !== undefined) {
+          throw new BadRequestError("Partner create changed unreserved logo state.");
+        }
+      } else if (uploadMismatch(expectedLogo)) {
+        throw new BadRequestError("Partner create logo does not match its reserved input.");
+      }
+    }
+    function replayPartner() {
+      const stored = responseRecord(partnerRecord);
+      const partner = {
+        id: stored.id, name: safeReplayText(stored.name, "Redacted Partner name"), published: stored.published, type: stored.type,
+        logo: safeReplayText(stored.logo, "Redacted Partner logo"), logoSurface: stored.logo_surface,
+        noteAgentVisible: stored.note_agent_visible, createdAt: stored.created, updatedAt: stored.updated,
+        version: `${stored.updated}|${stored.mutation_token}`,
+      };
+      if (stored.tier) partner.tier = stored.tier;
+      if (stored.url) partner.url = safeReplayText(stored.url, "[redacted credential or hash]");
+      return partner;
+    }
+    function attachReplayPartner(replayResult) {
+      if (isObject(replayResult) && replayResult.kind === "partner_mutation" && isObject(replayResult.data)) {
+        replayResult.data.partner = replayPartner();
+      }
+    }
     const action = txApp.findRecordById("admin_actions", String(requestBody.admin_action_id || ""));
     const targetId = partnerRecord.id;
-    if (
-      action.getString("status") !== "pending" ||
-      action.getString("attempt_token") !== String(requestBody.admin_action_attempt_token || "") ||
-      action.getString("target_collection") !== "partners" ||
-      action.getString("operation_kind") !== "partner.create" ||
-      action.getString("operation_kind") !== String(requestBody.admin_action_operation_kind || "") ||
-      action.getString("target_id")
-    ) {
+    if (!isPendingCreate(action)) {
       throw new BadRequestError("Partner Admin Action attempt is no longer active.");
     }
     const normalizedInput = parseJson(requestBody.admin_action_normalized_input, null);
@@ -127,62 +192,19 @@ routerAdd("POST", "/api/wts/partners", (e) => {
       targetId: null,
       normalizedInput,
     }));
-    if (
-      expectedFingerprint !== action.getString("input_fingerprint") ||
-      !normalizedInput || typeof normalizedInput !== "object" || Array.isArray(normalizedInput) ||
-      String(body.name || "") !== String(normalizedInput.name || "") ||
-      String(body.normalized_name || "") !== String(normalizedInput.normalizedName || "") ||
-      String(body.type || "") !== String(normalizedInput.type || "") ||
-      String(body.tier || "") !== String(normalizedInput.tier || "") ||
-      String(body.logo_surface || "") !== String(normalizedInput.logoSurface || "") ||
-      String(body.url || "") !== String(normalizedInput.urlValue || "") ||
-      String(body.canonical_url || "") !== String(normalizedInput.url || "") ||
-      requestBool(body.published) || requestBool(body.note_agent_visible)
-    ) {
+    if (createBodyMismatch(action, normalizedInput, expectedFingerprint)) {
       throw new BadRequestError("Partner create body does not match its reserved input.");
     }
     const note = String(body.notes || "").trim();
-    const expectedNote = normalizedInput.partnerNote;
-    if (
-      !expectedNote || typeof expectedNote !== "object" || Array.isArray(expectedNote) ||
-      Boolean(expectedNote.present) !== Boolean(note) ||
-      (note && (expectedNote.length !== note.length || expectedNote.fingerprint !== $security.sha256(note)))
-    ) {
+    if (noteMismatch(normalizedInput.partnerNote, note)) {
       throw new BadRequestError("Partner create Note does not match its reserved input.");
     }
-    const expectedLogo = normalizedInput.logo;
-    if (!expectedLogo || typeof expectedLogo !== "object" || Array.isArray(expectedLogo)) {
-      throw new BadRequestError("Partner create logo input is invalid.");
-    }
-    if (expectedLogo.changed === false) {
-      if (requestBool(body.logo_uploaded_by_human) || body.logo !== undefined) {
-        throw new BadRequestError("Partner create changed unreserved logo state.");
-      }
-    } else if (
-      expectedLogo.present !== true || !requestBool(body.logo_uploaded_by_human) || !body.logo ||
-      String(body.logo.originalName || body.logo.name || "") !== String(expectedLogo.name || "") ||
-      Number(body.logo.size || 0) !== Number(expectedLogo.bytes || -1) ||
-      !upload || upload.mediaType !== String(expectedLogo.mediaType || "") ||
-      upload.fingerprint !== String(expectedLogo.fingerprint || "")
-    ) {
-      throw new BadRequestError("Partner create logo does not match its reserved input.");
-    }
+    assertCreateLogo(normalizedInput.logo);
     const beforeSummary = parseJson(requestBody.admin_action_before_summary, null);
     const afterSummary = parseJson(requestBody.admin_action_after_summary, null);
     const replayResult = parseJson(requestBody.admin_action_replay_result, null);
-    if (afterSummary && typeof afterSummary === "object" && !Array.isArray(afterSummary)) afterSummary.id = targetId;
-    if (replayResult && typeof replayResult === "object" && !Array.isArray(replayResult) && replayResult.kind === "partner_mutation" && replayResult.data && typeof replayResult.data === "object" && !Array.isArray(replayResult.data)) {
-      const stored = responseRecord(partnerRecord);
-      const replayPartner = {
-        id: stored.id, name: safeReplayText(stored.name, "Redacted Partner name"), published: stored.published, type: stored.type,
-        logo: safeReplayText(stored.logo, "Redacted Partner logo"), logoSurface: stored.logo_surface,
-        noteAgentVisible: stored.note_agent_visible, createdAt: stored.created, updatedAt: stored.updated,
-        version: `${stored.updated}|${stored.mutation_token}`,
-      };
-      if (stored.tier) replayPartner.tier = stored.tier;
-      if (stored.url) replayPartner.url = safeReplayText(stored.url, "[redacted credential or hash]");
-      replayResult.data.partner = replayPartner;
-    }
+    if (isObject(afterSummary)) afterSummary.id = targetId;
+    attachReplayPartner(replayResult);
     assertPayload(beforeSummary, "Admin Action before summary", 2048);
     assertPayload(afterSummary, "Admin Action after summary", 2048);
     assertPayload(replayResult, "Admin Action replay result", 32768);
@@ -221,6 +243,26 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
       if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
       return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
     }
+    function isObject(value) {
+      return value && typeof value === "object" && !Array.isArray(value);
+    }
+    function noteMismatch(expectedNote, note) {
+      return !isObject(expectedNote) ||
+        Boolean(expectedNote.present) !== Boolean(note) ||
+        (note && (expectedNote.length !== note.length || expectedNote.fingerprint !== $security.sha256(note)));
+    }
+    function uploadedFileMismatch(expectedLogo, file) {
+      return String(file.originalName || file.name || "") !== String(expectedLogo.name || "") ||
+        Number(file.size || 0) !== Number(expectedLogo.bytes || -1);
+    }
+    function uploadDigestMismatch(expectedLogo) {
+      return !upload || upload.mediaType !== String(expectedLogo.mediaType || "") ||
+        upload.fingerprint !== String(expectedLogo.fingerprint || "");
+    }
+    function uploadMismatch(expectedLogo) {
+      return expectedLogo.present !== true || !requestBool(body.logo_uploaded_by_human) || !body.logo ||
+        uploadedFileMismatch(expectedLogo, body.logo) || uploadDigestMismatch(expectedLogo);
+    }
     const normalizedInput = JSON.parse(String(requestBody.admin_action_normalized_input || "null"));
     const expectedFingerprint = $security.sha256(canonicalJson({
       targetCollection: "partners",
@@ -233,22 +275,65 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
     const kind = action.getString("operation_kind");
     const sameText = (field) => String(body[field] || "") === record.getString(field);
     const sameBool = (field) => requestBool(body[field]) === record.getBool(field);
-    if (kind === "partner.patch") {
+    const unchangedLogo = () => sameBool("logo_uploaded_by_human") && body.logo === undefined;
+    function concurrencyMatches() {
       const requestedVersion = String(requestBody.expected_version || "");
       const versionSeparator = requestedVersion.lastIndexOf("|");
       const requestedUpdatedAt = versionSeparator > 0
         ? requestedVersion.slice(0, versionSeparator)
         : requestedVersion;
-      const expectedConcurrencyMatches =
-        normalizedInput &&
+      return normalizedInput &&
         (normalizedInput.expectedVersion === requestedVersion ||
           normalizedInput.expectedUpdatedAt === requestedUpdatedAt);
-      if (
-        !normalizedInput || typeof normalizedInput !== "object" || Array.isArray(normalizedInput) ||
-        normalizedInput.id !== record.id ||
-        !expectedConcurrencyMatches ||
-        !normalizedInput.patch || typeof normalizedInput.patch !== "object" || Array.isArray(normalizedInput.patch)
-      ) {
+    }
+    function patchInputInvalid() {
+      return !isObject(normalizedInput) || normalizedInput.id !== record.id ||
+        !concurrencyMatches() || !isObject(normalizedInput.patch);
+    }
+    const patchTextFields = [
+      { body: "name", record: "name", patch: "name" },
+      { body: "normalized_name", record: "normalized_name", patch: "normalizedName" },
+      { body: "type", record: "type", patch: "type" },
+      { body: "tier", record: "tier", patch: "tier" },
+      { body: "logo_surface", record: "logo_surface", patch: "logoSurface" },
+      { body: "url", record: "url", patch: "urlValue" },
+      { body: "canonical_url", record: "canonical_url", patch: "url" },
+    ];
+    function patchedTextMatches(patch, has, field) {
+      const expected = has(field.patch)
+        ? field.body === "tier" && String(body.type || "") !== "sponsor" ? "" : patch[field.patch]
+        : record.getString(field.record);
+      return String(body[field.body] || "") === String(expected || "");
+    }
+    function assertPatchNote(patch, has) {
+      if (has("partnerNote")) {
+        if (noteMismatch(patch.partnerNote, String(body.notes || "").trim()) || requestBool(body.note_agent_visible)) {
+          throw new BadRequestError("Partner Note patch does not match its reserved input.");
+        }
+      } else if (!sameText("notes") || !sameBool("note_agent_visible")) {
+        throw new BadRequestError("Partner patch changed unreserved Partner Note state.");
+      }
+    }
+    function assertReservedLogo(expectedLogo) {
+      if (!isObject(expectedLogo)) {
+        throw new BadRequestError("Partner logo patch input is invalid.");
+      }
+      if (expectedLogo.changed === false) {
+        if (!unchangedLogo()) throw new BadRequestError("Partner patch changed unreserved logo state.");
+      } else if (expectedLogo.present === false) {
+        if (requestBool(body.logo_uploaded_by_human) || String(body.logo || "") !== "") {
+          throw new BadRequestError("Partner logo removal does not match its reserved input.");
+        }
+      } else if (uploadMismatch(expectedLogo)) {
+        throw new BadRequestError("Partner logo upload does not match its reserved input.");
+      }
+    }
+    function assertPatchLogo(patch, has) {
+      if (has("logo")) assertReservedLogo(patch.logo);
+      else if (!unchangedLogo()) throw new BadRequestError("Partner patch changed unreserved logo state.");
+    }
+    function assertPatchFields() {
+      if (patchInputInvalid()) {
         throw new BadRequestError("Partner patch input is invalid.");
       }
       const patch = normalizedInput.patch;
@@ -257,92 +342,50 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
         throw new BadRequestError("Partner patch input contains an unsupported field.");
       }
       const has = (field) => Object.prototype.hasOwnProperty.call(patch, field);
-      const expectedText = (bodyField, recordField, patchField = bodyField) => {
-        const expected = has(patchField)
-          ? bodyField === "tier" && String(body.type || "") !== "sponsor" ? "" : patch[patchField]
-          : record.getString(recordField);
-        return String(body[bodyField] || "") === String(expected || "");
-      };
-      if (
-        !expectedText("name", "name", "name") ||
-        !expectedText("normalized_name", "normalized_name", "normalizedName") ||
-        !expectedText("type", "type", "type") ||
-        !expectedText("tier", "tier", "tier") ||
-        !expectedText("logo_surface", "logo_surface", "logoSurface") ||
-        !expectedText("url", "url", "urlValue") ||
-        !expectedText("canonical_url", "canonical_url", "url")
-      ) {
+      if (!patchTextFields.every((field) => patchedTextMatches(patch, has, field))) {
         throw new BadRequestError("Partner patch body does not match its reserved input.");
       }
-      if (has("partnerNote")) {
-        const note = String(body.notes || "").trim();
-        const expectedNote = patch.partnerNote;
-        if (
-          !expectedNote || typeof expectedNote !== "object" || Array.isArray(expectedNote) ||
-          Boolean(expectedNote.present) !== Boolean(note) ||
-          (note && (expectedNote.length !== note.length || expectedNote.fingerprint !== $security.sha256(note))) ||
-          requestBool(body.note_agent_visible)
-        ) {
-          throw new BadRequestError("Partner Note patch does not match its reserved input.");
-        }
-      } else if (!sameText("notes") || !sameBool("note_agent_visible")) {
-        throw new BadRequestError("Partner patch changed unreserved Partner Note state.");
-      }
-      if (has("logo")) {
-        const expectedLogo = patch.logo;
-        if (!expectedLogo || typeof expectedLogo !== "object" || Array.isArray(expectedLogo)) {
-          throw new BadRequestError("Partner logo patch input is invalid.");
-        }
-        if (expectedLogo.changed === false) {
-          if (!sameBool("logo_uploaded_by_human") || body.logo !== undefined) {
-            throw new BadRequestError("Partner patch changed unreserved logo state.");
-          }
-        } else if (expectedLogo.present === false) {
-          if (requestBool(body.logo_uploaded_by_human) || String(body.logo || "") !== "") {
-            throw new BadRequestError("Partner logo removal does not match its reserved input.");
-          }
-        } else if (
-          expectedLogo.present !== true || !requestBool(body.logo_uploaded_by_human) || !body.logo ||
-          String(body.logo.originalName || body.logo.name || "") !== String(expectedLogo.name || "") ||
-          Number(body.logo.size || 0) !== Number(expectedLogo.bytes || -1) ||
-          !upload || upload.mediaType !== String(expectedLogo.mediaType || "") ||
-          upload.fingerprint !== String(expectedLogo.fingerprint || "")
-        ) {
-          throw new BadRequestError("Partner logo upload does not match its reserved input.");
-        }
-      } else if (!sameBool("logo_uploaded_by_human") || body.logo !== undefined) {
-        throw new BadRequestError("Partner patch changed unreserved logo state.");
-      }
+      assertPatchNote(patch, has);
+      assertPatchLogo(patch, has);
       if (!sameBool("published")) throw new BadRequestError("Partner patch cannot change publication.");
+    }
+    function assertSpecializedInput() {
+      if (
+        !isObject(normalizedInput) ||
+        normalizedInput.id !== record.id ||
+        normalizedInput.expectedVersion !== String(requestBody.expected_version || "")
+      ) {
+        throw new BadRequestError("Specialized Partner operation input is invalid.");
+      }
+      for (const field of ["name", "normalized_name", "type", "tier", "logo_surface", "url", "canonical_url", "notes"]) {
+        if (!sameText(field)) throw new BadRequestError("Specialized Partner operation changed unrelated fields.");
+      }
+      if (!unchangedLogo()) {
+        throw new BadRequestError("Specialized Partner operation changed logo state.");
+      }
+    }
+    function assertPublicationFields() {
+      const expectedPublished = kind === "partner.publish";
+      if (
+        requestBool(body.published) !== expectedPublished ||
+        Boolean(normalizedInput.published) !== expectedPublished ||
+        !sameBool("note_agent_visible")
+      ) {
+        throw new BadRequestError("Partner publication operation changed unrelated state.");
+      }
+    }
+    if (kind === "partner.patch") {
+      assertPatchFields();
       return;
     }
-    if (
-      !normalizedInput || typeof normalizedInput !== "object" || Array.isArray(normalizedInput) ||
-      normalizedInput.id !== record.id ||
-      normalizedInput.expectedVersion !== String(requestBody.expected_version || "")
-    ) {
-      throw new BadRequestError("Specialized Partner operation input is invalid.");
-    }
-    for (const field of ["name", "normalized_name", "type", "tier", "logo_surface", "url", "canonical_url", "notes"]) {
-      if (!sameText(field)) throw new BadRequestError("Specialized Partner operation changed unrelated fields.");
-    }
-    if (!sameBool("logo_uploaded_by_human") || body.logo !== undefined) {
-      throw new BadRequestError("Specialized Partner operation changed logo state.");
-    }
+    assertSpecializedInput();
     if (kind === "partner.note_approval") {
       if (!sameBool("published") || requestBool(body.note_agent_visible) !== Boolean(normalizedInput.approved)) {
         throw new BadRequestError("Partner Note approval does not match its reserved input.");
       }
       return;
     }
-    const expectedPublished = kind === "partner.publish";
-    if (
-      requestBool(body.published) !== expectedPublished ||
-      Boolean(normalizedInput.published) !== expectedPublished ||
-      !sameBool("note_agent_visible")
-    ) {
-      throw new BadRequestError("Partner publication operation changed unrelated state.");
-    }
+    assertPublicationFields();
   }
   function responseRecord(record) {
     return {
@@ -421,56 +464,70 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
       if (toBytes(JSON.stringify(value)).length > maximumBytes) throw new BadRequestError(`${label} is too large.`);
       const blocked = ["accesstoken", "authorization", "bearertoken", "clientsecret", "notes", "password", "payload", "rawbody", "rawrequest", "refreshtoken", "requestbody", "secret", "secrethash"];
       const safeNoteMetadata = ["noteagentvisible", "notechanged", "notelength", "notepresent"];
+      function isSensitiveKey(key) {
+        const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+        return blocked.includes(normalized) || (normalized.includes("note") && !safeNoteMetadata.includes(normalized));
+      }
+      function visitArray(item, depth) {
+        if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
+        for (const child of item) visit(child, depth + 1);
+      }
+      function visitObject(item, depth) {
+        const keys = Object.keys(item);
+        if (keys.length > 50) throw new BadRequestError(`${label} contains too many fields.`);
+        for (const key of keys) {
+          if (isSensitiveKey(key)) throw new BadRequestError(`${label} contains a sensitive field.`);
+          visit(item[key], depth + 1);
+        }
+      }
       function visit(item, depth) {
         if (depth > 6) throw new BadRequestError(`${label} is too deeply nested.`);
         if (typeof item === "string" && hasSecretMaterial(item)) throw new BadRequestError(`${label} contains credential or hash material.`);
         if (!item || typeof item !== "object") return;
-        if (Array.isArray(item)) {
-          if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
-          for (const child of item) visit(child, depth + 1);
-          return;
-        }
-        const keys = Object.keys(item);
-        if (keys.length > 50) throw new BadRequestError(`${label} contains too many fields.`);
-        for (const key of keys) {
-          const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
-          if (blocked.includes(normalized) || (normalized.includes("note") && !safeNoteMetadata.includes(normalized))) {
-            throw new BadRequestError(`${label} contains a sensitive field.`);
-          }
-          visit(item[key], depth + 1);
-        }
+        if (Array.isArray(item)) visitArray(item, depth);
+        else visitObject(item, depth);
       }
       visit(value, 0);
     }
-    const action = txApp.findRecordById("admin_actions", String(requestBody.admin_action_id || ""));
-    const targetId = partnerRecord.id;
-    const allowedOperationKinds = ["partner.patch", "partner.note_approval", "partner.publish", "partner.unpublish"];
-    if (
-      action.getString("status") !== "pending" ||
-      action.getString("attempt_token") !== String(requestBody.admin_action_attempt_token || "") ||
-      action.getString("target_collection") !== "partners" ||
-      !allowedOperationKinds.includes(action.getString("operation_kind")) ||
-      action.getString("operation_kind") !== String(requestBody.admin_action_operation_kind || "") ||
-      action.getString("target_id") !== targetId
-    ) {
-      throw new BadRequestError("Partner Admin Action attempt is no longer active.");
+    function isObject(value) {
+      return value && typeof value === "object" && !Array.isArray(value);
     }
-    const beforeSummary = parseJson(requestBody.admin_action_before_summary, null);
-    const afterSummary = parseJson(requestBody.admin_action_after_summary, null);
-    const replayResult = parseJson(requestBody.admin_action_replay_result, null);
-    if (afterSummary && typeof afterSummary === "object" && !Array.isArray(afterSummary)) afterSummary.id = targetId;
-    if (replayResult && typeof replayResult === "object" && !Array.isArray(replayResult) && replayResult.kind === "partner_mutation" && replayResult.data && typeof replayResult.data === "object" && !Array.isArray(replayResult.data)) {
+    function isPendingUpdate(action, targetId) {
+      const allowedOperationKinds = ["partner.patch", "partner.note_approval", "partner.publish", "partner.unpublish"];
+      return action.getString("status") === "pending" &&
+        action.getString("attempt_token") === String(requestBody.admin_action_attempt_token || "") &&
+        action.getString("target_collection") === "partners" &&
+        allowedOperationKinds.includes(action.getString("operation_kind")) &&
+        action.getString("operation_kind") === String(requestBody.admin_action_operation_kind || "") &&
+        action.getString("target_id") === targetId;
+    }
+    function replayPartner() {
       const stored = responseRecord(partnerRecord);
-      const replayPartner = {
+      const partner = {
         id: stored.id, name: safeReplayText(stored.name, "Redacted Partner name"), published: stored.published, type: stored.type,
         logo: safeReplayText(stored.logo, "Redacted Partner logo"), logoSurface: stored.logo_surface,
         noteAgentVisible: stored.note_agent_visible, createdAt: stored.created, updatedAt: stored.updated,
         version: `${stored.updated}|${stored.mutation_token}`,
       };
-      if (stored.tier) replayPartner.tier = stored.tier;
-      if (stored.url) replayPartner.url = safeReplayText(stored.url, "[redacted credential or hash]");
-      replayResult.data.partner = replayPartner;
+      if (stored.tier) partner.tier = stored.tier;
+      if (stored.url) partner.url = safeReplayText(stored.url, "[redacted credential or hash]");
+      return partner;
     }
+    function attachReplayPartner(replayResult) {
+      if (isObject(replayResult) && replayResult.kind === "partner_mutation" && isObject(replayResult.data)) {
+        replayResult.data.partner = replayPartner();
+      }
+    }
+    const action = txApp.findRecordById("admin_actions", String(requestBody.admin_action_id || ""));
+    const targetId = partnerRecord.id;
+    if (!isPendingUpdate(action, targetId)) {
+      throw new BadRequestError("Partner Admin Action attempt is no longer active.");
+    }
+    const beforeSummary = parseJson(requestBody.admin_action_before_summary, null);
+    const afterSummary = parseJson(requestBody.admin_action_after_summary, null);
+    const replayResult = parseJson(requestBody.admin_action_replay_result, null);
+    if (isObject(afterSummary)) afterSummary.id = targetId;
+    attachReplayPartner(replayResult);
     assertPayload(beforeSummary, "Admin Action before summary", 2048);
     assertPayload(afterSummary, "Admin Action after summary", 2048);
     assertPayload(replayResult, "Admin Action replay result", 32768);
@@ -554,55 +611,64 @@ routerAdd("DELETE", "/api/wts/partners/{id}", (e) => {
         return /wts_mcp_[a-f0-9]{24}_[a-z0-9_-]{20,}/i.test(text) ||
           /(^|[^a-f0-9])[a-f0-9]{64}([^a-f0-9]|$)/i.test(text);
       }
+      function isSensitiveKey(key) {
+        const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+        return blocked.includes(normalized) || (normalized.includes("note") && !safeNoteMetadata.includes(normalized));
+      }
+      function visitArray(item, depth) {
+        if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
+        for (const child of item) visit(child, depth + 1);
+      }
+      function visitObject(item, depth) {
+        const keys = Object.keys(item);
+        if (keys.length > 50) throw new BadRequestError(`${label} contains too many fields.`);
+        for (const key of keys) {
+          if (isSensitiveKey(key)) throw new BadRequestError(`${label} contains a sensitive field.`);
+          visit(item[key], depth + 1);
+        }
+      }
       function visit(item, depth) {
         if (depth > 6) throw new BadRequestError(`${label} is too deeply nested.`);
         if (typeof item === "string" && hasSecretMaterial(item)) throw new BadRequestError(`${label} contains credential or hash material.`);
         if (!item || typeof item !== "object") return;
-        if (Array.isArray(item)) {
-          if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
-          for (const child of item) visit(child, depth + 1);
-          return;
-        }
-        const keys = Object.keys(item);
-        if (keys.length > 50) throw new BadRequestError(`${label} contains too many fields.`);
-        for (const key of keys) {
-          const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
-          if (blocked.includes(normalized) || (normalized.includes("note") && !safeNoteMetadata.includes(normalized))) {
-            throw new BadRequestError(`${label} contains a sensitive field.`);
-          }
-          visit(item[key], depth + 1);
-        }
+        if (Array.isArray(item)) visitArray(item, depth);
+        else visitObject(item, depth);
       }
       visit(value, 0);
     }
+    function isObject(value) {
+      return value && typeof value === "object" && !Array.isArray(value);
+    }
+    function isPendingDelete(action) {
+      return action.getString("status") === "pending" &&
+        action.getString("attempt_token") === String(requestBody.admin_action_attempt_token || "") &&
+        action.getString("target_collection") === "partners" &&
+        action.getString("operation_kind") === "partner.delete" &&
+        action.getString("operation_kind") === String(requestBody.admin_action_operation_kind || "") &&
+        action.getString("target_id") === targetId;
+    }
+    function deleteInputMismatch(action, normalizedInput) {
+      return !isObject(normalizedInput) ||
+        normalizedInput.id !== targetId ||
+        normalizedInput.expectedVersion !== String(requestBody.expected_version || "") ||
+        $security.sha256(canonicalJson({
+          targetCollection: "partners",
+          targetId,
+          normalizedInput,
+        })) !== action.getString("input_fingerprint");
+    }
     const action = txApp.findRecordById("admin_actions", String(requestBody.admin_action_id || ""));
-    if (
-      action.getString("status") !== "pending" ||
-      action.getString("attempt_token") !== String(requestBody.admin_action_attempt_token || "") ||
-      action.getString("target_collection") !== "partners" ||
-      action.getString("operation_kind") !== "partner.delete" ||
-      action.getString("operation_kind") !== String(requestBody.admin_action_operation_kind || "") ||
-      action.getString("target_id") !== targetId
-    ) {
+    if (!isPendingDelete(action)) {
       throw new BadRequestError("Partner Admin Action attempt is no longer active.");
     }
     const normalizedInput = parseJson(requestBody.admin_action_normalized_input, null);
-    if (
-      !normalizedInput || typeof normalizedInput !== "object" || Array.isArray(normalizedInput) ||
-      normalizedInput.id !== targetId ||
-      normalizedInput.expectedVersion !== String(requestBody.expected_version || "") ||
-      $security.sha256(canonicalJson({
-        targetCollection: "partners",
-        targetId,
-        normalizedInput,
-      })) !== action.getString("input_fingerprint")
-    ) {
+    if (deleteInputMismatch(action, normalizedInput)) {
       throw new BadRequestError("Partner delete input does not match its reservation.");
     }
     const beforeSummary = parseJson(requestBody.admin_action_before_summary, null);
     const afterSummary = parseJson(requestBody.admin_action_after_summary, null);
     const replayResult = parseJson(requestBody.admin_action_replay_result, null);
-    if (replayResult && typeof replayResult === "object" && !Array.isArray(replayResult)) replayResult.targetId = targetId;
+    if (isObject(replayResult)) replayResult.targetId = targetId;
     assertPayload(beforeSummary, "Admin Action before summary", 2048);
     assertPayload(afterSummary, "Admin Action after summary", 2048);
     assertPayload(replayResult, "Admin Action replay result", 32768);

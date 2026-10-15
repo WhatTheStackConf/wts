@@ -1,6 +1,13 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 onRecordAfterCreateSuccess((e) => {
+    function listmonkListId() {
+        const listIdEnv = $os.getenv("LISTMONK_LIST_ID");
+        if (!listIdEnv) return 2;
+        const parsed = parseInt(listIdEnv, 10);
+        return isNaN(parsed) ? 2 : parsed;
+    }
+
     const user = e.record;
 
     try {
@@ -18,14 +25,7 @@ onRecordAfterCreateSuccess((e) => {
         let baseUrl = $os.getenv("LISTMONK_URL") || "https://listmonk.wts.sh";
         baseUrl = baseUrl.replace(/\/+$/, "");
 
-        let listId = 2;
-        const listIdEnv = $os.getenv("LISTMONK_LIST_ID");
-        if (listIdEnv) {
-            const parsed = parseInt(listIdEnv, 10);
-            if (!isNaN(parsed)) {
-                listId = parsed;
-            }
-        }
+        const listId = listmonkListId();
 
         const email = user.email();
         const name = user.get("name") || "";

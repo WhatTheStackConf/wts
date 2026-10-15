@@ -18,24 +18,39 @@ function actorFor(app, auth) {
   if (!actors.length || !actors[0].getBool('verified')) fail(403, 'A verified User is required.');
   return actors[0];
 }
-function validate(body) {
-  const fields = {
-    session: ['operation', 'slug', 'page'], catalogue: ['operation', 'page', 'search'],
-    ask: ['operation', 'slug', 'body', 'requestId'], mode: ['operation', 'slug', 'mode'],
-    answer: ['operation', 'slug', 'questionId', 'answered'],
-  };
-  if (!body || typeof body !== 'object' || Array.isArray(body) || !Object.prototype.hasOwnProperty.call(fields, body.operation)) fail(400, 'Invalid live Q&A operation.');
-  const keys = fields[body.operation];
-  if (Object.keys(body).length !== keys.length || !keys.every(key => Object.prototype.hasOwnProperty.call(body, key))) fail(400, 'Unexpected or missing live Q&A fields.');
-  if ('slug' in body && (typeof body.slug !== 'string' || !body.slug.trim() || body.slug.length > 2000)) fail(400, 'Invalid Session slug.');
-  if ('page' in body && (!Number.isInteger(body.page) || body.page < 1 || body.page > 1000000)) fail(400, 'Invalid page.');
-  if (body.operation === 'catalogue' && (typeof body.search !== 'string' || Array.from(body.search).length > 200)) fail(400, 'Invalid search.');
-  if (body.operation === 'ask') {
+const OPERATION_FIELDS = {
+  session: ['operation', 'slug', 'page'], catalogue: ['operation', 'page', 'search'],
+  ask: ['operation', 'slug', 'body', 'requestId'], mode: ['operation', 'slug', 'mode'],
+  answer: ['operation', 'slug', 'questionId', 'answered'],
+};
+function hasOwn(value, key) { return Object.prototype.hasOwnProperty.call(value, key); }
+function validateShape(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || !hasOwn(OPERATION_FIELDS, body.operation)) fail(400, 'Invalid live Q&A operation.');
+  const keys = OPERATION_FIELDS[body.operation];
+  if (Object.keys(body).length !== keys.length || !keys.every(key => hasOwn(body, key))) fail(400, 'Unexpected or missing live Q&A fields.');
+}
+function invalidSlug(body) { return 'slug' in body && (typeof body.slug !== 'string' || !body.slug.trim() || body.slug.length > 2000); }
+function invalidPage(body) { return 'page' in body && (!Number.isInteger(body.page) || body.page < 1 || body.page > 1000000); }
+const OPERATION_CHECKS = {
+  catalogue(body) {
+    if (typeof body.search !== 'string' || Array.from(body.search).length > 200) fail(400, 'Invalid search.');
+  },
+  ask(body) {
     if (typeof body.body !== 'string' || !body.body.trim() || Array.from(body.body.trim()).length > 1000) fail(400, 'Questions must contain 1–1000 characters.');
     if (typeof body.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId)) fail(400, 'A UUID requestId is required.');
-  }
-  if (body.operation === 'mode' && !['auto', 'open', 'closed'].includes(body.mode)) fail(400, 'Invalid mode.');
-  if (body.operation === 'answer' && (typeof body.answered !== 'boolean' || typeof body.questionId !== 'string' || !/^[a-z0-9]{15}$/.test(body.questionId))) fail(400, 'Invalid answer state or Question.');
+  },
+  mode(body) {
+    if (!['auto', 'open', 'closed'].includes(body.mode)) fail(400, 'Invalid mode.');
+  },
+  answer(body) {
+    if (typeof body.answered !== 'boolean' || typeof body.questionId !== 'string' || !/^[a-z0-9]{15}$/.test(body.questionId)) fail(400, 'Invalid answer state or Question.');
+  },
+};
+function validate(body) {
+  validateShape(body);
+  if (invalidSlug(body)) fail(400, 'Invalid Session slug.');
+  if (invalidPage(body)) fail(400, 'Invalid page.');
+  if (hasOwn(OPERATION_CHECKS, body.operation)) OPERATION_CHECKS[body.operation](body);
 }
 // A stored MC override only changes timing, never this publication/stage scope.
 const eligibleSlotFilter = 'kind = "session" && published = true && session.published = true && programme.day.key = "main-day" && programme.day.published = true && programme.appearance_event = "wts2026appevent" && programme.appearance_event.published = true && track != "" && track.programme = programme';
@@ -87,6 +102,71 @@ exports.programme = (app) => {
   });
   return reply;
 };
+function catalogue(tx, body) {
+  // Literal substring search: wildcard characters never broaden the query.
+  const search = body.search.trim().replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+  const slots = boundedRows(tx, 'agenda_slots', eligibleSlotFilter, 'start_at,id', MAX_PROGRAMME_ROWS);
+  const params = { pattern: '%' + search + '%' };
+  const scope = slots.map((slot, index) => {
+    const key = 'session' + index;
+    params[key] = slot.getString('session');
+    return '{:' + key + '}';
+  });
+  const filter = $dbx.exp("published = true AND id IN (" + (scope.length ? scope.join(',') : "''") + ") AND (title LIKE {:pattern} ESCAPE '\\' OR slug LIKE {:pattern} ESCAPE '\\')", params);
+  const total = tx.countRecords('sessions', filter);
+  // Use the same SQL expression for rows and count: PB's ~ operator has
+  // different empty-string and wildcard escaping semantics.
+  const sessions = arrayOf(new Record(tx.findCollectionByNameOrId('sessions')));
+  tx.recordQuery('sessions').andWhere(filter).orderBy('title', 'id').limit(50).offset((body.page - 1) * 50).all(sessions);
+  return { items: sessions.map(record => ({ slug: record.getString('slug'), title: record.getString('title') })), page: body.page, totalPages: Math.ceil(total / 50) };
+}
+function replayAsk(previous, body) {
+  const payload = JSON.parse(previous.getString('request_payload'));
+  if (payload.slug !== body.slug || payload.body !== body.body) fail(409, 'requestId was already used for a different question.');
+  return JSON.parse(previous.getString('request_reply'));
+}
+const SESSION_OPERATIONS = {
+  session(tx, body, actor, ctx, now, canModerate) {
+    const session = ctx.session;
+    const filter = 'session = {:session}' + (canModerate ? '' : ' && author = {:author}');
+    const params = { session: session.id, author: actor.id };
+    const total = tx.countRecords('live_qa_questions', $dbx.exp('session = {:session}' + (canModerate ? '' : ' AND author = {:author}'), params));
+    return { sessionId: session.id, slug: session.getString('slug'), title: session.getString('title'), mode: ctx.mode, accepting: ctx.accepting, startAt: ctx.startAt, endAt: ctx.endAt, serverNow: now, canModerate, questions: rows(tx, 'live_qa_questions', filter, 'created,id', 50, (body.page - 1) * 50, params).map(record => question(record, actor)), page: body.page, totalPages: Math.ceil(total / 50) };
+  },
+  ask(tx, body, actor, ctx, now) {
+    if (!ctx.accepting) fail(409, 'Live Q&A is not accepting questions.');
+    const recent = rows(tx, 'live_qa_questions', 'author = {:author}', '-created', 1, 0, { author: actor.id });
+    if (recent.length && new Date(now).getTime() - new Date(instant(recent[0].getString('created'))).getTime() < 10000) fail(429, 'Wait 10 seconds between new questions.');
+    const record = new Record(tx.findCollectionByNameOrId('live_qa_questions'));
+    record.set('session', ctx.session.id);
+    record.set('author', actor.id);
+    record.set('body', body.body.trim());
+    record.set('answered', false);
+    record.set('created', now);
+    record.set('request_id', body.requestId);
+    record.set('request_payload', { slug: body.slug, body: body.body });
+    record.set('request_reply', { pending: true });
+    tx.save(record);
+    const reply = { question: question(record, actor) };
+    record.set('request_reply', reply);
+    tx.save(record);
+    return reply;
+  },
+  mode(tx, body, actor, ctx) {
+    const control = ctx.controls[0] || new Record(tx.findCollectionByNameOrId('live_qa_controls'));
+    control.set('session', ctx.session.id);
+    control.set('mode', body.mode);
+    tx.save(control);
+    return { ok: true };
+  },
+  answer(tx, body, actor, ctx) {
+    const targets = rows(tx, 'live_qa_questions', 'id = {:id} && session = {:session}', '', 1, 0, { id: body.questionId, session: ctx.session.id });
+    if (!targets.length) fail(404, 'Question not found.');
+    targets[0].set('answered', body.answered);
+    tx.save(targets[0]);
+    return { ok: true };
+  },
+};
 exports.handle = (app, auth, body) => {
   validate(body);
   let reply;
@@ -97,78 +177,19 @@ exports.handle = (app, auth, body) => {
     const now = new Date().toISOString();
     if (['catalogue', 'mode', 'answer'].includes(body.operation) && !canModerate) fail(403, 'MC or admin authority is required.');
     if (body.operation === 'catalogue') {
-      // Literal substring search: wildcard characters never broaden the query.
-      const search = body.search.trim().replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-      const slots = boundedRows(tx, 'agenda_slots', eligibleSlotFilter, 'start_at,id', MAX_PROGRAMME_ROWS);
-      const params = { pattern: '%' + search + '%' };
-      const scope = slots.map((slot, index) => {
-        const key = 'session' + index;
-        params[key] = slot.getString('session');
-        return '{:' + key + '}';
-      });
-      const filter = $dbx.exp("published = true AND id IN (" + (scope.length ? scope.join(',') : "''") + ") AND (title LIKE {:pattern} ESCAPE '\\' OR slug LIKE {:pattern} ESCAPE '\\')", params);
-      const total = tx.countRecords('sessions', filter);
-      // Use the same SQL expression for rows and count: PB's ~ operator has
-      // different empty-string and wildcard escaping semantics.
-      const sessions = arrayOf(new Record(tx.findCollectionByNameOrId('sessions')));
-      tx.recordQuery('sessions').andWhere(filter).orderBy('title', 'id').limit(50).offset((body.page - 1) * 50).all(sessions);
-      reply = { items: sessions.map(record => ({ slug: record.getString('slug'), title: record.getString('title') })), page: body.page, totalPages: Math.ceil(total / 50) };
+      reply = catalogue(tx, body);
       return;
     }
     if (body.operation === 'ask') {
       const previous = rows(tx, 'live_qa_questions', 'author = {:author} && request_id = {:request}', '', 1, 0, { author: actor.id, request: body.requestId });
       if (previous.length) {
-        const payload = JSON.parse(previous[0].getString('request_payload'));
-        if (payload.slug !== body.slug || payload.body !== body.body) fail(409, 'requestId was already used for a different question.');
-        reply = JSON.parse(previous[0].getString('request_reply'));
+        reply = replayAsk(previous[0], body);
         return;
       }
     }
     const ctx = context(tx, body.slug, now);
-    const session = ctx.session;
-    if (body.operation === 'session') {
-      const filter = 'session = {:session}' + (canModerate ? '' : ' && author = {:author}');
-      const params = { session: session.id, author: actor.id };
-      const total = tx.countRecords('live_qa_questions', $dbx.exp('session = {:session}' + (canModerate ? '' : ' AND author = {:author}'), params));
-      reply = { sessionId: session.id, slug: session.getString('slug'), title: session.getString('title'), mode: ctx.mode, accepting: ctx.accepting, startAt: ctx.startAt, endAt: ctx.endAt, serverNow: now, canModerate, questions: rows(tx, 'live_qa_questions', filter, 'created,id', 50, (body.page - 1) * 50, params).map(record => question(record, actor)), page: body.page, totalPages: Math.ceil(total / 50) };
-      return;
-    }
-    if (body.operation === 'ask') {
-      if (!ctx.accepting) fail(409, 'Live Q&A is not accepting questions.');
-      const recent = rows(tx, 'live_qa_questions', 'author = {:author}', '-created', 1, 0, { author: actor.id });
-      if (recent.length && new Date(now).getTime() - new Date(instant(recent[0].getString('created'))).getTime() < 10000) fail(429, 'Wait 10 seconds between new questions.');
-      const record = new Record(tx.findCollectionByNameOrId('live_qa_questions'));
-      record.set('session', session.id);
-      record.set('author', actor.id);
-      record.set('body', body.body.trim());
-      record.set('answered', false);
-      record.set('created', now);
-      record.set('request_id', body.requestId);
-      record.set('request_payload', { slug: body.slug, body: body.body });
-      record.set('request_reply', { pending: true });
-      tx.save(record);
-      reply = { question: question(record, actor) };
-      record.set('request_reply', reply);
-      tx.save(record);
-      return;
-    }
-    if (body.operation === 'mode') {
-      const control = ctx.controls[0] || new Record(tx.findCollectionByNameOrId('live_qa_controls'));
-      control.set('session', session.id);
-      control.set('mode', body.mode);
-      tx.save(control);
-      reply = { ok: true };
-      return;
-    }
-    if (body.operation === 'answer') {
-      const targets = rows(tx, 'live_qa_questions', 'id = {:id} && session = {:session}', '', 1, 0, { id: body.questionId, session: session.id });
-      if (!targets.length) fail(404, 'Question not found.');
-      targets[0].set('answered', body.answered);
-      tx.save(targets[0]);
-      reply = { ok: true };
-      return;
-    }
-    fail(400, 'Invalid operation.');
+    if (!hasOwn(SESSION_OPERATIONS, body.operation)) fail(400, 'Invalid operation.');
+    reply = SESSION_OPERATIONS[body.operation](tx, body, actor, ctx, now, canModerate);
   });
   return reply;
 };

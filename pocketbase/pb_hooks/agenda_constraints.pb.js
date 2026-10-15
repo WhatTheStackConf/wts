@@ -148,6 +148,85 @@ onRecordValidate((e) => {
       }
     }
   };
+  const findSlotReference = (collection, id, message) => {
+    try {
+      return e.app.findRecordById(collection, id);
+    } catch {
+      throw new BadRequestError(message);
+    }
+  };
+  const assertSchedule = (record, start, end, context) => {
+    if (!start || !end || end <= start) {
+      throw new BadRequestError("Agenda Slot end time must be after its start time.");
+    }
+    if (skopjeDate(start) !== context.day.getString("local_date")) {
+      throw new BadRequestError("Agenda Slot must start on its Conference Day in Europe/Skopje.");
+    }
+    if (record.getBool("published") && !context.day.getBool("published")) {
+      throw new BadRequestError("Publish the Conference Day before publishing one of its Slots.");
+    }
+    if (record.getBool("published") && !context.appearanceEvent.getBool("published")) {
+      throw new BadRequestError("Publish the Appearance Event before publishing one of its Slots.");
+    }
+  };
+  const assertTrack = (trackId, programmeId) => {
+    if (!trackId) return;
+    const track = findSlotReference("agenda_tracks", trackId, "Agenda Slot Track must exist.");
+    if (track.getString("programme") !== programmeId) {
+      throw new BadRequestError("Agenda Slot Track must belong to the same Event Programme.");
+    }
+  };
+  const assertSessionSlot = (record, sessionId, context) => {
+    if (!sessionId) throw new BadRequestError("Session Slots must select one Session.");
+    const session = findSlotReference("sessions", sessionId, "Agenda Slot Session must exist.");
+    if (record.getBool("published")) {
+      if (!session.getBool("published")) {
+        throw new BadRequestError("Publish Session Slots through the coordinated programme operation.");
+      }
+      requireAppearances(session, context.appearanceEvent.id);
+    }
+    if (hasText(record.getString("title")) || hasText(record.getString("summary"))) {
+      throw new BadRequestError("Session Slots use their linked Session title and abstract.");
+    }
+  };
+  const assertNonSessionSlot = (record, sessionId) => {
+    if (sessionId) throw new BadRequestError("Non-Session Slots cannot select a Session.");
+    if (!hasText(record.getString("title")) || !hasText(record.getString("summary"))) {
+      throw new BadRequestError("Non-Session Slots require both a title and summary.");
+    }
+  };
+  const changesPublishedIdentity = (original, programmeId, kind, sessionId) =>
+    (original.getString("programme") && original.getString("programme") !== programmeId) ||
+    original.getString("kind") !== kind ||
+    original.getString("session") !== sessionId;
+  const assertStoredSlotChange = (record, kind, programmeId, sessionId) => {
+    const original = record.original();
+    if (!original.id) return;
+    if (
+      (kind === "session" || original.getString("kind") === "session") &&
+      original.getBool("published") !== record.getBool("published")
+    ) {
+      throw new BadRequestError("Change Session Slot publication through the coordinated programme operation.");
+    }
+    if (original.getBool("published") && changesPublishedIdentity(original, programmeId, kind, sessionId)) {
+      throw new BadRequestError("Unpublish this Slot before changing its Event Programme, kind, or linked Session.");
+    }
+  };
+  const conflictsWith = (other, trackId, start, end) => {
+    const otherStart = parseInstant(other.getString("start_at"));
+    const otherEnd = parseInstant(other.getString("end_at"));
+    if (!otherStart || !otherEnd || !(start < otherEnd && end > otherStart)) return false;
+    const otherTrackId = other.getString("track");
+    return !trackId || !otherTrackId || trackId === otherTrackId;
+  };
+  const assertNoOverlap = (record, programmeId, trackId, start, end) => {
+    const programmeSlots = e.app.findRecordsByFilter("agenda_slots", `programme = "${programmeId}"`, "", 0, 0);
+    for (const other of programmeSlots) {
+      if (other.id !== record.id && conflictsWith(other, trackId, start, end)) {
+        throw new BadRequestError("Agenda Slot overlaps a Programme-wide Slot or another Slot in the same Track.");
+      }
+    }
+  };
   const record = e.record;
   const programmeId = record.getString("programme");
   const trackId = record.getString("track");
@@ -159,85 +238,13 @@ onRecordValidate((e) => {
   const end = parseInstant(record.getString("end_at"));
   const context = findContext(programmeId);
 
-  if (!start || !end || end <= start) {
-    throw new BadRequestError("Agenda Slot end time must be after its start time.");
-  }
-  if (skopjeDate(start) !== context.day.getString("local_date")) {
-    throw new BadRequestError("Agenda Slot must start on its Conference Day in Europe/Skopje.");
-  }
-  if (record.getBool("published") && !context.day.getBool("published")) {
-    throw new BadRequestError("Publish the Conference Day before publishing one of its Slots.");
-  }
-  if (record.getBool("published") && !context.appearanceEvent.getBool("published")) {
-    throw new BadRequestError("Publish the Appearance Event before publishing one of its Slots.");
-  }
+  assertSchedule(record, start, end, context);
   if (!slotKinds.includes(kind)) throw new BadRequestError("Agenda Slot kind is invalid.");
-
-  if (trackId) {
-    let track;
-    try {
-      track = e.app.findRecordById("agenda_tracks", trackId);
-    } catch {
-      throw new BadRequestError("Agenda Slot Track must exist.");
-    }
-    if (track.getString("programme") !== programmeId) {
-      throw new BadRequestError("Agenda Slot Track must belong to the same Event Programme.");
-    }
-  }
-
-  if (kind === "session") {
-    if (!sessionId) throw new BadRequestError("Session Slots must select one Session.");
-    let session;
-    try {
-      session = e.app.findRecordById("sessions", sessionId);
-    } catch {
-      throw new BadRequestError("Agenda Slot Session must exist.");
-    }
-    if (record.getBool("published")) {
-      if (!session.getBool("published")) {
-        throw new BadRequestError("Publish Session Slots through the coordinated programme operation.");
-      }
-      requireAppearances(session, context.appearanceEvent.id);
-    }
-    if (hasText(record.getString("title")) || hasText(record.getString("summary"))) {
-      throw new BadRequestError("Session Slots use their linked Session title and abstract.");
-    }
-  } else {
-    if (sessionId) throw new BadRequestError("Non-Session Slots cannot select a Session.");
-    if (!hasText(record.getString("title")) || !hasText(record.getString("summary"))) {
-      throw new BadRequestError("Non-Session Slots require both a title and summary.");
-    }
-  }
-
-  const original = record.original();
-  if (
-    original.id &&
-    (kind === "session" || original.getString("kind") === "session") &&
-    original.getBool("published") !== record.getBool("published")
-  ) {
-    throw new BadRequestError("Change Session Slot publication through the coordinated programme operation.");
-  }
-  if (
-    original.id &&
-    original.getBool("published") &&
-    ((original.getString("programme") && original.getString("programme") !== programmeId) ||
-      original.getString("kind") !== kind ||
-      original.getString("session") !== sessionId)
-  ) {
-    throw new BadRequestError("Unpublish this Slot before changing its Event Programme, kind, or linked Session.");
-  }
-
-  const programmeSlots = e.app.findRecordsByFilter("agenda_slots", `programme = "${programmeId}"`, "", 0, 0);
-  for (const other of programmeSlots) {
-    if (other.id === record.id) continue;
-    const otherStart = parseInstant(other.getString("start_at"));
-    const otherEnd = parseInstant(other.getString("end_at"));
-    if (!otherStart || !otherEnd || !(start < otherEnd && end > otherStart)) continue;
-    const otherTrackId = other.getString("track");
-    if (!trackId || !otherTrackId || trackId === otherTrackId) {
-      throw new BadRequestError("Agenda Slot overlaps a Programme-wide Slot or another Slot in the same Track.");
-    }
-  }
+  assertTrack(trackId, programmeId);
+  if (kind === "session") assertSessionSlot(record, sessionId, context);
+  else assertNonSessionSlot(record, sessionId);
+  assertStoredSlotChange(record, kind, programmeId, sessionId);
+  assertNoOverlap(record, programmeId, trackId, start, end);
   return e.next();
 }, "agenda_slots");
 

@@ -83,26 +83,35 @@ routerAdd("POST", "/api/wts/admin-actions/{id}/complete", (e) => {
       return /wts_mcp_[a-f0-9]{24}_[a-z0-9_-]{20,}/i.test(text) ||
         /(^|[^a-f0-9])[a-f0-9]{64}([^a-f0-9]|$)/i.test(text);
     }
+    function isSensitiveKey(key) {
+      const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return blocked.includes(normalized) || (normalized.includes("note") && !safeNoteMetadata.includes(normalized));
+    }
+    function visitArray(item, depth) {
+      if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
+      for (const child of item) visit(child, depth + 1);
+    }
+    function visitObject(item, depth) {
+      const keys = Object.keys(item);
+      if (keys.length > 50) throw new BadRequestError(`${label} contains too many fields.`);
+      for (const key of keys) {
+        if (isSensitiveKey(key)) throw new BadRequestError(`${label} contains a sensitive field.`);
+        visit(item[key], depth + 1);
+      }
+    }
     function visit(item, depth) {
       if (depth > 6) throw new BadRequestError(`${label} is too deeply nested.`);
       if (typeof item === "string" && hasSecretMaterial(item)) throw new BadRequestError(`${label} contains credential or hash material.`);
       if (!item || typeof item !== "object") return;
-      if (Array.isArray(item)) {
-        if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
-        for (const child of item) visit(child, depth + 1);
-        return;
-      }
-      const keys = Object.keys(item);
-      if (keys.length > 50) throw new BadRequestError(`${label} contains too many fields.`);
-      for (const key of keys) {
-        const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
-        if (blocked.includes(normalized) || (normalized.includes("note") && !safeNoteMetadata.includes(normalized))) {
-          throw new BadRequestError(`${label} contains a sensitive field.`);
-        }
-        visit(item[key], depth + 1);
-      }
+      if (Array.isArray(item)) visitArray(item, depth);
+      else visitObject(item, depth);
     }
     visit(value, 0);
+  }
+  function assertActiveAttempt(record) {
+    if (record.getString("status") !== "pending" || record.getString("attempt_token") !== String(body.attempt_token || "")) {
+      throw new BadRequestError("Admin Action attempt is no longer active.");
+    }
   }
   const body = e.requestInfo().body;
   const beforeSummary = parseJson(body.before_summary, null);
@@ -114,9 +123,7 @@ routerAdd("POST", "/api/wts/admin-actions/{id}/complete", (e) => {
   let result;
   $app.runInTransaction((txApp) => {
     const record = txApp.findRecordById("admin_actions", e.request.pathValue("id"));
-    if (record.getString("status") !== "pending" || record.getString("attempt_token") !== String(body.attempt_token || "")) {
-      throw new BadRequestError("Admin Action attempt is no longer active.");
-    }
+    assertActiveAttempt(record);
     const reservedTargetId = record.getString("target_id");
     const completedTargetId = String(body.target_id || "");
     if (reservedTargetId && completedTargetId && reservedTargetId !== completedTargetId) {
@@ -163,26 +170,35 @@ routerAdd("POST", "/api/wts/admin-actions/{id}/fail", (e) => {
       return /wts_mcp_[a-f0-9]{24}_[a-z0-9_-]{20,}/i.test(text) ||
         /(^|[^a-f0-9])[a-f0-9]{64}([^a-f0-9]|$)/i.test(text);
     }
+    function isSensitiveKey(key) {
+      const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return blocked.includes(normalized) || (normalized.includes("note") && !safeNoteMetadata.includes(normalized));
+    }
+    function visitArray(item, depth) {
+      if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
+      for (const child of item) visit(child, depth + 1);
+    }
+    function visitObject(item, depth) {
+      const keys = Object.keys(item);
+      if (keys.length > 50) throw new BadRequestError(`${label} contains too many fields.`);
+      for (const key of keys) {
+        if (isSensitiveKey(key)) throw new BadRequestError(`${label} contains a sensitive field.`);
+        visit(item[key], depth + 1);
+      }
+    }
     function visit(item, depth) {
       if (depth > 6) throw new BadRequestError(`${label} is too deeply nested.`);
       if (typeof item === "string" && hasSecretMaterial(item)) throw new BadRequestError(`${label} contains credential or hash material.`);
       if (!item || typeof item !== "object") return;
-      if (Array.isArray(item)) {
-        if (item.length > 50) throw new BadRequestError(`${label} contains too many values.`);
-        for (const child of item) visit(child, depth + 1);
-        return;
-      }
-      const keys = Object.keys(item);
-      if (keys.length > 50) throw new BadRequestError(`${label} contains too many fields.`);
-      for (const key of keys) {
-        const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
-        if (blocked.includes(normalized) || (normalized.includes("note") && !safeNoteMetadata.includes(normalized))) {
-          throw new BadRequestError(`${label} contains a sensitive field.`);
-        }
-        visit(item[key], depth + 1);
-      }
+      if (Array.isArray(item)) visitArray(item, depth);
+      else visitObject(item, depth);
     }
     visit(value, 0);
+  }
+  function assertActiveAttempt(record) {
+    if (record.getString("status") !== "pending" || record.getString("attempt_token") !== String(body.attempt_token || "")) {
+      throw new BadRequestError("Admin Action attempt is no longer active.");
+    }
   }
   const body = e.requestInfo().body;
   const metadata = parseJson(body.failure_metadata, null);
@@ -195,9 +211,7 @@ routerAdd("POST", "/api/wts/admin-actions/{id}/fail", (e) => {
   let result;
   $app.runInTransaction((txApp) => {
     const record = txApp.findRecordById("admin_actions", e.request.pathValue("id"));
-    if (record.getString("status") !== "pending" || record.getString("attempt_token") !== String(body.attempt_token || "")) {
-      throw new BadRequestError("Admin Action attempt is no longer active.");
-    }
+    assertActiveAttempt(record);
     record.set("status", "failed");
     record.set("failure_code", String(body.failure_code || ""));
     record.set("failure_message", String(body.failure_message || ""));
