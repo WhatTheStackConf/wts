@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, login, status, phoneProvisioning, toolsView } from "./checkin-fixtures";
+import { test, expect, login, status, phoneProvisioning, selectPrinter, toolsView } from "./checkin-fixtures";
 import type { CheckinAdminDTO } from "~/lib/checkin-contract";
 import type { CheckinConfigureEventResult, CheckinEventCatalogue } from "~/lib/checkin-event-contract";
 
@@ -33,13 +33,10 @@ async function configure(page: Page, eventId: string, options: { enabled?: boole
   await expect(form).toHaveCount(0);
   return result.json() as Promise<CheckinConfigureEventResult>;
 }
-async function bind(page: Page, code: string) {
+async function bind(page: Page, stationId: string) {
   await page.goto("/checkin-tools");
   await phoneProvisioning(page);
-  await page.getByLabel("Station provisioning code").fill(code);
-  await page.getByRole("button", { name: "Review station", exact: true }).click();
-  await page.getByRole("button", { name: "Confirm station binding", exact: true }).click();
-  await expect.poll(async () => (await status(page)).bindingState).toBe("bound");
+  await selectPrinter(page, stationId);
 }
 async function select(page: Page, id: string, title: string) {
   await toolsView(page, "Phone");
@@ -87,10 +84,9 @@ test("synthetic upstream: real admin mapping and independent phone event selecti
     const changed = await command<{ station: typeof station }>(page, "/api/checkin", { operation: "admin_control", command: { ...base, operationId: crypto.randomUUID(), operation: "set_station_enabled", stationId: station.id, expectedVersion: station.version, enabled: true } });
     station = changed.station;
   }
-  const issued = await command<{ provisionCode: string }>(page, "/api/checkin", { operation: "admin_control", command: { ...base, operationId: crypto.randomUUID(), operation: "rotate_provision_code", stationId: station.id, expectedVersion: station.version } });
   const phone = await actorPage(state.users.operator);
   const other = await actorPage(state.users.handoff);
-  for (const target of [phone, other]) { target.on("pageerror", (error) => errors.push(error.message)); await target.setViewportSize({ width: 390, height: 844 }); await bind(target, issued.provisionCode); }
+  for (const target of [phone, other]) { target.on("pageerror", (error) => errors.push(error.message)); await target.setViewportSize({ width: 390, height: 844 }); await bind(target, station.id); }
   const options = phone.getByLabel("Event for this phone", { exact: true });
   await expect(options.getByRole("option").filter({ hasText: "Synthetic unconfigured" })).toBeDisabled();
   await expect(options.getByRole("option").filter({ hasText: "Synthetic disabled" })).toBeDisabled();

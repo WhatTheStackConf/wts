@@ -45,22 +45,24 @@ try {
   const errors = []; page.on("pageerror", error => errors.push(error.message));
   const commands = []; const offsets = [];
   let heldHistory, heldCommand, failPage = false, deny = false, acknowledge = false;
+  function answerHistory(route, body) {
+    offsets.push(body.offset);
+    if (body.offset === 1 && !heldHistory) { heldHistory = route; return; }
+    if (body.offset === 1 && failPage) return route.fulfill({ status: 503, json: { error: "offline" } });
+    return route.fulfill({ json: body.offset === 0 ? { items: [workflow], nextOffset: 1 } : { items: [], nextOffset: null } });
+  }
+  function answerCommand(route, body) {
+    commands.push(body.command);
+    if (commands.length === 1) { heldCommand = route; return; }
+    if (deny) return route.fulfill({ status: 403, json: { error: "denied" } });
+    if (acknowledge) return route.fulfill({ json: { operationId: body.command.operationId, workflow: { ...workflow, version: 1, parked: true } } });
+    return route.abort("failed");
+  }
   await page.route("**/api/checkin-recovery", async route => {
     const body = route.request().postDataJSON();
-    if (body.operation === "history") {
-      offsets.push(body.offset);
-      if (body.offset === 1 && !heldHistory) { heldHistory = route; return; }
-      if (body.offset === 1 && failPage) return route.fulfill({ status: 503, json: { error: "offline" } });
-      return route.fulfill({ json: body.offset === 0 ? { items: [workflow], nextOffset: 1 } : { items: [], nextOffset: null } });
-    }
+    if (body.operation === "history") return answerHistory(route, body);
     if (body.operation === "get") return deny ? route.fulfill({ status: 403, json: { error: "denied" } }) : route.fulfill({ json: workflow });
-    if (body.operation === "command") {
-      commands.push(body.command);
-      if (commands.length === 1) { heldCommand = route; return; }
-      if (deny) return route.fulfill({ status: 403, json: { error: "denied" } });
-      if (acknowledge) return route.fulfill({ json: { operationId: body.command.operationId, workflow: { ...workflow, version: 1, parked: true } } });
-      return route.abort("failed");
-    }
+    if (body.operation === "command") return answerCommand(route, body);
     return route.fulfill({ json: { workflowId: workflow.workflowId, items: [], nextOffset: null } });
   });
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);

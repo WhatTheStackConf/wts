@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { test, expect, type Browser, type Page, type TestInfo } from "@playwright/test";
 import PocketBase from "pocketbase";
-import { FALLBACK_CFP_DEADLINE } from "../src/lib/cfp-deadline";
 
 interface WorkspaceState {
   disposable: boolean;
@@ -17,7 +16,7 @@ if (!state.disposable || new URL(state.pbUrl).hostname !== "127.0.0.1") {
 }
 const widths = [320, 375, 414, 768];
 
-async function login(browser: Browser, role: string) {
+async function loginWithCredentials(browser: Browser, email: string, password: string) {
   const context = await browser.newContext({ baseURL: state.baseURL, viewport: { width: 1280, height: 900 } });
   const allowed = new Set([state.baseURL, state.pbUrl]);
   await context.route("**/*", route => {
@@ -28,11 +27,32 @@ async function login(browser: Browser, role: string) {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.goto("/login");
-  await page.getByLabel("Email", { exact: true }).fill(state.users[role].email);
-  await page.getByLabel("Password", { exact: true }).fill(state.users[role].password);
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Log In", exact: true }).click();
   await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
   return { context, page, errors };
+}
+
+async function login(browser: Browser, role: string) {
+  const user = state.users[role];
+  return loginWithCredentials(browser, user.email, user.password);
+}
+async function navigateClientSide(page: Page, path: string) {
+  await page.evaluate(({ target }) => {
+    let link = document.querySelector<HTMLAnchorElement>('[data-testid="capability-smoke-link"]');
+    if (!link) {
+      link = document.createElement("a");
+      link.dataset.testid = "capability-smoke-link";
+      link.textContent = "Navigate to protected route";
+      link.style.cssText = "position:fixed;top:0;left:0;z-index:99999;background:#fff;color:#000;padding:8px";
+      document.body.append(link);
+    }
+    link.href = target;
+  }, { target: path });
+  await page.getByTestId("capability-smoke-link").click();
+  await expect(page).toHaveURL(new URL(path, state.baseURL).href);
+  await expect(page.getByRole("heading", { name: "404", exact: true })).toBeVisible();
 }
 
 async function openContainingDetails(page: Page, selector: string) {
@@ -50,17 +70,8 @@ async function responsive(page: Page, info: TestInfo, label: string) {
     await page.evaluate(() => document.fonts.ready);
     const overflow = await page.locator("#main-content").evaluate(root => {
       const problems: string[] = [];
-      if (document.documentElement.scrollWidth > window.innerWidth) problems.push("Document scrolls horizontally");
-      for (const element of root.querySelectorAll<HTMLElement>("input:not([type=hidden]), textarea, select, .btn, h1, h2, summary")) {
-        if (!element.checkVisibility()) continue;
-        const rect = element.getBoundingClientRect();
-        // An intentionally scrollable data table is allowed; off-canvas primary
-        // controls are not. Root overflow clipping must not conceal a failure.
-        if (element.closest(".overflow-x-auto")) continue;
-        if (rect.left < -1 || rect.right > window.innerWidth + 1) {
-          problems.push(`Offscreen: ${element.id || element.textContent?.trim().slice(0, 70) || element.tagName}`);
-        }
-        if (!element.matches(".btn")) continue;
+      const nameOf = (element: HTMLElement) => element.id || element.textContent?.trim().slice(0, 70) || element.tagName;
+      const lineTops = (element: HTMLElement) => {
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
         const lines: number[] = [];
         while (walker.nextNode()) {
@@ -72,7 +83,20 @@ async function responsive(page: Page, info: TestInfo, label: string) {
             if (box.width && box.height && !lines.some(top => Math.abs(top - box.top) < 4)) lines.push(box.top);
           }
         }
-        if (lines.length > 1) problems.push(`Wrapped button: ${element.textContent?.trim()}`);
+        return lines;
+      };
+      if (document.documentElement.scrollWidth > window.innerWidth) problems.push("Document scrolls horizontally");
+      for (const element of root.querySelectorAll<HTMLElement>("input:not([type=hidden]), textarea, select, .btn, h1, h2, summary")) {
+        if (!element.checkVisibility()) continue;
+        const rect = element.getBoundingClientRect();
+        // An intentionally scrollable data table is allowed; off-canvas primary
+        // controls are not. Root overflow clipping must not conceal a failure.
+        if (element.closest(".overflow-x-auto")) continue;
+        if (rect.left < -1 || rect.right > window.innerWidth + 1) {
+          problems.push(`Offscreen: ${nameOf(element)}`);
+        }
+        if (!element.matches(".btn")) continue;
+        if (lineTops(element).length > 1) problems.push(`Wrapped button: ${element.textContent?.trim()}`);
       }
       return problems;
     });
@@ -120,26 +144,127 @@ for (const role of ["user", "reviewer", "admin", "mc", "checkin_operator"]) {
   });
 }
 
-test("admin destinations and CFP switch remain usable", async ({ browser }, info) => {
+test("admin destinations and closed CFP preparation remain usable", async ({ browser }, info) => {
   const actor = await login(browser, "admin");
   try {
     const { page } = actor;
+    const pb = new PocketBase(state.pbUrl);
+    await pb.collection("_superusers").authWithPassword(state.superuserEmail, state.password);
+    const configuration = await pb.collection("conference_config").getFirstListItem("");
+    await pb.collection("conference_config").update(configuration.id, {
+      cfp_open: true,
+      availability: { cfp: true, review: true },
+    });
     await page.goto("/admin");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(/admin/i);
     for (const href of ["/admin/checkin", "/admin/users", "/admin/proposals", "/admin/agenda", "/admin/gamification", "/reviewer/weights", "/reviewer/leaderboard", "/admin/speakers", "/admin/sessions", "/admin/partners", "/admin/mcp", "/admin/tickets"]) {
       await expect(page.locator("main").locator(`a[href="${href}"]`).first(), href).toBeVisible();
     }
+    await expect(page.locator('section[aria-labelledby="cfp-settings-title"]').getByText("Active", { exact: true })).toBeVisible();
     await responsive(page, info, "admin-dashboard");
-    const pb = new PocketBase(state.pbUrl);
-    await pb.collection("_superusers").authWithPassword(state.superuserEmail, state.password);
-    const checked = (await pb.collection("conference_config").getFirstListItem("")).cfp_open;
-    const toggle = page.getByRole("button", { name: checked ? /close.*(cfp|submissions)/i : /open.*(cfp|submissions)/i });
-    await expect(toggle).toBeEnabled();
-    await toggle.click();
-    await expect.poll(async () => (await pb.collection("conference_config").getFirstListItem("")).cfp_open).toBe(!checked);
+    const deadline = page.locator("#cfp-deadline");
+    await deadline.fill("2027-06-30");
+    await page.getByRole("button", { name: "Save closed configuration" }).click();
+    await expect.poll(async () => {
+      const updated = await pb.collection("conference_config").getOne(configuration.id);
+      return { cfp_open: updated.cfp_open, availability: updated.availability };
+    }).toEqual({ cfp_open: false, availability: { cfp: false, review: false } });
+    await expect(page.locator('section[aria-labelledby="cfp-settings-title"]').getByText("Closed", { exact: true })).toBeVisible();
+    for (const path of ["/cfp", "/cfp/", "/cfp/closed", "/cfp/my-submissions", "/cfp/01-intro", "/reviewer", "/reviewer/weights", "/reviewer/leaderboard", "/admin/weights", "/admin/weights/"]) {
+      const response = await page.request.get(new URL(path, state.baseURL).href);
+      expect(response.status(), path).toBe(404);
+      expect(response.headers()["cache-control"]).toContain("no-store");
+      const body = await response.text();
+      expect(body).not.toContain("<!DOCTYPE html");
+      expect(body).not.toMatch(/log in/i);
+    }
+
+    await page.locator('a[href="/reviewer/weights"]').click();
+    await expect(page).toHaveURL(new URL("/reviewer/weights", state.baseURL).href);
+    await expect(page.getByRole("heading", { name: "404", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Criteria weights", exact: true })).toHaveCount(0);
+
+    const anonymous = await browser.newContext({ baseURL: state.baseURL });
+    try {
+      const allowed = new Set([state.baseURL, state.pbUrl]);
+      await anonymous.route("**/*", route => {
+        const url = new URL(route.request().url());
+        return allowed.has(url.origin) || url.protocol === "data:" ? route.continue() : route.abort();
+      });
+      for (const path of ["/cfp/01-intro", "/reviewer/weights"]) {
+        const response = await anonymous.request.get(path);
+        expect(response.status(), `anonymous ${path}`).toBe(404);
+      }
+      const anonymousPage = await anonymous.newPage();
+      await anonymousPage.goto("/");
+      await navigateClientSide(anonymousPage, "/reviewer/weights");
+      await navigateClientSide(anonymousPage, "/admin/weights/");
+    } finally {
+      await anonymous.close();
+    }
+
+    for (const role of ["user", "reviewer"]) {
+      const staff = await login(browser, role);
+      try {
+        for (const path of ["/cfp/01-intro", "/reviewer/weights"]) {
+          const response = await staff.page.request.get(new URL(path, state.baseURL).href);
+          expect(response.status(), `${role} ${path}`).toBe(404);
+        }
+        await staff.page.goto("/");
+        await navigateClientSide(staff.page, role === "user" ? "/cfp/01-intro" : "/reviewer/weights");
+        await navigateClientSide(staff.page, role === "user" ? "/admin/weights/" : "/cfp/closed");
+        if (role === "user") {
+          await staff.page.goto("/admin");
+          await expect(staff.page).not.toHaveURL(/\/admin(?:\/|$)/);
+          await expect(staff.page.locator("#cfp-deadline")).toHaveCount(0);
+        }
+      } finally {
+        await staff.context.close();
+      }
+    }
+
+    const historicalAdmin = await pb.collection("users").create({
+      email: "historical-admin@example.test",
+      password: state.password,
+      passwordConfirm: state.password,
+      name: "Historical Staff",
+      role: "admin",
+      verified: true,
+    });
+    const staleStaff = await loginWithCredentials(browser, historicalAdmin.email, state.password);
+    try {
+      await staleStaff.page.goto("/admin");
+      for (const path of ["/cfp/01-intro", "/reviewer/weights"]) {
+        const response = await staleStaff.page.request.get(new URL(path, state.baseURL).href);
+        expect(response.status(), `historical admin ${path}`).toBe(404);
+      }
+      await staleStaff.page.locator("#cfp-deadline").fill("2030-06-30");
+      await staleStaff.page.getByRole("button", { name: "Save closed configuration" }).click();
+      await expect(staleStaff.page.getByRole("alert")).toContainText("Unauthorized");
+      await expect.poll(async () => {
+        const updated = await pb.collection("conference_config").getOne(configuration.id);
+        return { cfp_open: updated.cfp_open, availability: updated.availability };
+      }).toEqual({ cfp_open: false, availability: { cfp: false, review: false } });
+    } finally {
+      await staleStaff.context.close();
+    }
+
+    await page.goto("/admin");
+    await deadline.fill("");
+    await page.getByRole("button", { name: "Save closed configuration" }).click();
+    await expect.poll(async () =>
+      (await pb.collection("conference_config").getOne(configuration.id)).cfp_deadline,
+    ).toBeFalsy();
     await page.reload();
-    await page.getByRole("button", { name: checked ? /open.*(cfp|submissions)/i : /close.*(cfp|submissions)/i }).click();
-    await expect.poll(async () => (await pb.collection("conference_config").getFirstListItem("")).cfp_open).toBe(checked);
+    await expect(deadline).toHaveValue("");
+    await pb.collection("conference_config").update(configuration.id, {
+      cfp_open: true,
+      availability: { cfp: true, review: true },
+    });
+    await expect.poll(async () => {
+      const updated = await pb.collection("conference_config").getOne(configuration.id);
+      return { cfp_open: updated.cfp_open, availability: updated.availability };
+    }).toEqual({ cfp_open: true, availability: { cfp: true, review: true } });
     expect(actor.errors).toEqual([]);
   } finally { await actor.context.close(); }
 });
@@ -172,14 +297,8 @@ test("admin hubs and reviewer screens expose compact controls at mobile widths",
   const reviewer = await login(browser, "reviewer");
   try {
     for (const path of ["/reviewer", "/reviewer/leaderboard", "/reviewer/weights", "/cfp/my-submissions", "/cfp/01-intro", "/cfp/02-personal", "/cfp/03-proposal", "/cfp/04-experience", "/cfp/05-expenses", "/cfp/06-confirmation", "/missions/redeem"]) {
-      // Exercise CFP layouts inside their application window. Existing cold
-      // entry checks the fallback date before loading conference_config; this
-      // UI-only regression suite does not claim to fix late reopening behavior.
-      await reviewer.page.clock.setFixedTime(path.startsWith("/cfp/")
-        ? new Date(Date.parse(FALLBACK_CFP_DEADLINE) - 86_400_000)
-        : new Date());
       await reviewer.page.goto(path);
-      await expect(reviewer.page.getByRole("heading", { level: 1 })).toBeVisible();
+      await expect(reviewer.page.getByRole("heading", { level: 1 }), `Expected ${path} to render its main heading`).toBeVisible();
       await expect(reviewer.page).toHaveURL(new URL(path, state.baseURL).href);
       await responsive(reviewer.page, info, path.replaceAll("/", "-"));
     }

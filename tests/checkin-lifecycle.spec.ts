@@ -2,6 +2,8 @@ import { chromium, type Page, type Locator } from "@playwright/test";
 import { join } from "node:path";
 import { test, expect, login, status, phoneProvisioning, toolsView, sessionCookieHeader } from "./checkin-fixtures";
 import { delayedPreviewProxy } from "./checkin-delayed-preview-proxy";
+import { arrivalCommand } from "./checkin-arrival-fixture";
+import type { CheckinPrinterCatalogueDTO } from "~/lib/checkin-contract";
 
 async function confirmAdmin(page: Page, button: Locator) {
   await button.click();
@@ -27,17 +29,11 @@ async function issue(page: Page, station: Locator) {
   await expect(page.getByRole("img", { name: "Reusable Station Provisioning QR" })).toBeVisible();
   return code;
 }
-async function review(page: Page, code: string) {
+async function bind(page: Page, stationId: string) {
   await phoneProvisioning(page);
-  await page.getByLabel("Station provisioning code").fill(code);
-  await page.getByRole("button", { name: "Review station", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Confirm station binding", exact: true })).toBeVisible();
-}
-async function bind(page: Page, code: string) {
-  await review(page, code);
-  await page.getByRole("button", { name: "Confirm station binding", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Confirm station binding", exact: true })).toHaveCount(0);
-  await expect.poll(async () => (await status(page)).bindingState).toBe("bound");
+  await page.getByLabel("Printer", { exact: true }).selectOption(stationId);
+  await expect.poll(async () => (await status(page)).station?.id).toBe(stationId);
+  await expect(page.getByLabel("Printer", { exact: true })).toBeEnabled();
 }
 async function unready(page: Page) {
   const current = await status(page);
@@ -51,7 +47,7 @@ async function unready(page: Page) {
   }
 }
 
-test("real station provisioning, reusable QR, stops, rebind, rotation and revocation", async ({ page, state, db, actorPage }, info) => {
+test("real printer selection, stops, switching, legacy code rotation and revocation", async ({ page, state, db, actorPage }, info) => {
   test.setTimeout(180_000);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -69,19 +65,14 @@ test("real station provisioning, reusable QR, stops, rebind, rotation and revoca
   const code2 = await issue(page, second);
   await page.screenshot({ path: info.outputPath("admin-desktop.png"), fullPage: true });
   const phone = await actorPage(state.users.operator);
-  const requestUrls: string[] = [];
-  phone.on("request", (request) => requestUrls.push(request.url()));
   await phone.setViewportSize({ width: 390, height: 844 });
-  await phone.goto(`/checkin-tools#provision=${code1}`);
-  await expect(phone.getByLabel("Station provisioning code")).toHaveValue(code1);
+  await phone.goto("/checkin-tools");
   await expect(phone).toHaveURL(`${state.baseURL}/checkin-tools`);
   expect(await phone.evaluate(() => JSON.stringify({ local: Object.entries(localStorage), session: Object.entries(sessionStorage), history: history.state }))).not.toContain(code1);
-  expect(requestUrls.some((url) => url.includes(code1))).toBe(false);
-  await review(phone, code1);
+  await phoneProvisioning(phone);
   expect((await status(phone)).binding).toBeNull();
-  await phone.getByRole("button", { name: "Cancel", exact: true }).click();
-  expect((await status(phone)).binding).toBeNull();
-  await bind(phone, code1);
+  await expect(phone.getByLabel("Station provisioning code")).toHaveCount(0);
+  await bind(phone, "wts2026station1");
   const original = await status(phone);
   const clientCookie = (await phone.context().cookies()).find((c) => c.name === "wts_checkin_client");
   expect(clientCookie?.httpOnly).toBe(true); expect(clientCookie?.sameSite).toBe("Strict");
@@ -89,41 +80,40 @@ test("real station provisioning, reusable QR, stops, rebind, rotation and revoca
   expect(await phone.evaluate(() => document.cookie)).not.toContain("wts_checkin_client");
   await phone.reload();
   await expect.poll(async () => (await status(phone)).bindingState).toBe("bound");
-  await bind(phone, code1);
+  await bind(phone, "wts2026station1");
   expect((await status(phone)).binding.id).toBe(original.binding.id);
   const other = await actorPage(state.users.handoff);
-  await other.goto("/checkin-tools"); await bind(other, code1);
+  await other.goto("/checkin-tools"); await bind(other, "wts2026station1");
   const third = await actorPage(state.users.admin);
-  await third.goto("/checkin-tools"); await bind(third, code1);
+  await third.goto("/checkin-tools"); await bind(third, "wts2026station1");
   await phone.reload();
   await toolsView(phone, "Diagnostics");
   await expect(phone.getByText(/More than two phones are active/)).toBeVisible();
   await unready(phone);
   expect(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await phone.screenshot({ path: info.outputPath("operator-mobile-bound.png"), fullPage: true });
-  // Stale preview must fail after an administrator changes station generation.
-  await review(phone, code2);
+  // A captured dropdown choice must fail after an admin disables its target.
+  const choices = await arrivalCommand<CheckinPrinterCatalogueDTO>(phone, "/api/checkin", { operation: "printers" });
+  const selection = choices.printers.find(p => p.station.id === "wts2026station2")!.confirmation;
   await confirmAdmin(page, second.getByRole("button", { name: "Disable station", exact: true }));
-  await phone.getByRole("button", { name: "Confirm station binding", exact: true }).click();
-  await expect(phone.getByRole("alert").first()).toBeVisible();
+  const rejected = await phone.evaluate(async confirmation => (await fetch("/api/checkin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operation: "select_printer", confirmation }) })).status, selection);
+  expect(rejected).toBe(409);
   expect((await status(phone)).binding.stationId).toBe("wts2026station1");
   await confirmAdmin(page, second.getByRole("button", { name: "Restore station", exact: true }));
-  await bind(phone, code2);
+  await phone.reload(); await bind(phone, "wts2026station2");
   expect((await status(phone)).binding.id).toBe(original.binding.id);
   expect((await db.collection("checkin_bindings").getOne(original.binding.id)).station).toBe("wts2026station2");
   await confirmAdmin(page, page.getByRole("button", { name: "Stop system", exact: true }));
   await expect(phone.getByText("System stopped", { exact: true })).toBeVisible({ timeout: 12_000 });
-  await review(phone, code1);
-  await expect(phone.getByRole("button", { name: "Confirm station binding", exact: true })).toBeDisabled();
+  await phoneProvisioning(phone);
+  await expect(phone.getByLabel("Printer", { exact: true }).locator('option[value="wts2026station1"]')).toBeDisabled();
   await unready(phone);
   await confirmAdmin(page, page.getByRole("button", { name: "Restore system", exact: true }));
   await phone.reload(); await unready(phone);
   const replacement = await issue(page, second);
   expect(replacement).not.toBe(code2);
-  await phoneProvisioning(phone);
-  await phone.getByLabel("Station provisioning code").fill(code2);
-  await phone.getByRole("button", { name: "Review station", exact: true }).click();
-  await expect(phone.getByRole("alert").first()).toBeVisible();
+  const obsolete = await phone.evaluate(async code => (await fetch("/api/checkin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operation: "preview", code }) })).status, code2);
+  expect(obsolete).toBe(400);
   expect((await status(phone)).bindingState).toBe("bound");
   await page.getByRole("button", { name: "Refresh administration", exact: true }).click();
   const binding = page.getByRole("listitem").filter({ hasText: original.binding.id }).filter({ has: page.getByRole("button", { name: "Revoke binding", exact: true }) });
@@ -135,9 +125,8 @@ test("real station provisioning, reusable QR, stops, rebind, rotation and revoca
   await expect(phone).toHaveURL(/\/login(?:[?#]|$)/);
   await login(phone, state.users.handoff); await phone.goto("/checkin-tools");
   await expect(phone.getByText("Phone revoked · ask an admin", { exact: true })).toBeVisible();
-  await review(phone, replacement);
-  await phone.getByRole("button", { name: "Confirm station binding", exact: true }).click();
-  await expect(phone.getByRole("alert").first()).toBeVisible();
+  await phoneProvisioning(phone);
+  await expect(phone.getByLabel("Printer", { exact: true })).toBeDisabled();
   expect((await status(phone)).bindingState).toBe("revoked");
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -150,7 +139,7 @@ test("persistent browser restart and logout preserve station, clearing site data
   await login(page, state.users.admin); await page.goto("/admin/checkin");
   const station = page.getByRole("article", { name: "Station 3", exact: true });
   await expect(station).toBeVisible(); await enable(page, station);
-  const code = await issue(page, station);
+
   const profile = join(state.root, `browser-profile-${info.retry}-${info.repeatEachIndex}`);
   const unexpected: string[] = [];
   async function launch() {
@@ -165,7 +154,7 @@ test("persistent browser restart and logout preserve station, clearing site data
   let context = await launch();
   try {
     let phone = await context.newPage();
-    await login(phone, state.users.operator); await phone.goto("/checkin-tools"); await bind(phone, code);
+    await login(phone, state.users.operator); await phone.goto("/checkin-tools"); await bind(phone, "wts2026station3");
     const binding = (await status(phone)).binding.id;
     await phone.getByRole("button", { name: "Log out", exact: true }).click();
     await expect(phone).toHaveURL(/\/login(?:[?#]|$)/);
@@ -180,20 +169,20 @@ test("persistent browser restart and logout preserve station, clearing site data
     await context.clearCookies();
     await phone.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await login(phone, state.users.operator); await phone.goto("/checkin-tools");
-    await expect(phone.getByText("Pair this phone to a station", { exact: true })).toBeVisible();
+    await expect(phone.getByRole("status").getByText("Choose a printer", { exact: true })).toBeVisible();
     expect((await status(phone)).binding).toBeNull();
   } finally { await context.close(); }
   expect(unexpected).toEqual([]);
 });
 
-test("concurrent first previews in two tabs preserve one browser identity", async ({ browser, state, db, actorPage }) => {
+test("concurrent first printer catalogues in two tabs preserve one browser identity", async ({ browser, state, db, actorPage }) => {
   const admin = await actorPage(state.users.admin);
   await admin.goto("/admin/checkin");
   const station = admin.getByRole("article", { name: "Station 3", exact: true });
   await expect(station).toBeVisible(); await enable(admin, station);
-  const code = await issue(admin, station);
+
   const before = (await db.collection("checkin_bindings").getList(1, 1)).totalItems;
-  const proxy = await delayedPreviewProxy(state.baseURL);
+  const proxy = await delayedPreviewProxy(state.baseURL, "printers");
   const context = await browser.newContext({ baseURL: proxy.origin, serviceWorkers: "block" });
   const unexpected: string[] = [];
   await context.route("**/*", async (route) => {
@@ -205,24 +194,18 @@ test("concurrent first previews in two tabs preserve one browser identity", asyn
     const page = await context.newPage();
     await login(page, state.users.operator); await page.goto("/checkin-tools");
     const second = await context.newPage(); await second.goto("/checkin-tools");
-    await phoneProvisioning(page);
-    await page.getByLabel("Station provisioning code").fill(code);
-    await page.getByRole("button", { name: "Review station", exact: true }).click();
     await proxy.firstArrived.promise;
-    await phoneProvisioning(second);
-    await second.getByLabel("Station provisioning code").fill(code);
-    await second.getByRole("button", { name: "Review station", exact: true }).click();
-    await expect(second.getByRole("button", { name: "Review station", exact: true })).toBeDisabled();
+    await toolsView(page, "Phone"); await toolsView(second, "Phone");
+    await expect(second.getByLabel("Printer", { exact: true })).toBeDisabled();
     // Give an unsafe second request a bounded opportunity to leave before any
     // identity cookie exists. Safe cross-tab serialization keeps it queued.
-    await Promise.race([proxy.secondArrived.promise, new Promise((resolve) => setTimeout(resolve, 250))]);
+    expect(await Promise.race([proxy.secondArrived.promise.then(() => true), new Promise(resolve => setTimeout(() => resolve(false), 250))])).toBe(false);
     proxy.first.resolve();
-    await page.getByRole("button", { name: "Confirm station binding", exact: true }).click();
-    await expect.poll(async () => (await status(page)).bindingState).toBe("bound");
-    const original = (await status(page)).binding.id;
     await proxy.secondArrived.promise;
     proxy.second.resolve();
-    await second.getByRole("button", { name: "Confirm station binding", exact: true }).click();
+    await bind(page, "wts2026station3");
+    const original = (await status(page)).binding.id;
+    await bind(second, "wts2026station3");
     await expect.poll(async () => (await status(second)).bindingState).toBe("bound");
     expect((await status(second)).binding.id).toBe(original);
     expect((await db.collection("checkin_bindings").getList(1, 1)).totalItems).toBe(before + 1);

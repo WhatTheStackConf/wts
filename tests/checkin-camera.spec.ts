@@ -1,4 +1,4 @@
-import { test, expect, login, toolsView, status } from "./checkin-fixtures";
+import { test, expect, login, toolsView, status, selectPrinter } from "./checkin-fixtures";
 import { arrivalCommand, arrivalPrerequisites, bindArrivalPhone } from "./checkin-arrival-fixture";
 import type { CheckinEventCatalogue } from "~/lib/checkin-event-contract";
 import { installSyntheticCamera, showSyntheticQr } from "./checkin-camera-fixture";
@@ -162,10 +162,10 @@ test("camera unreadable held storage blocks both new camera and manual intake", 
   } finally { await setup.cleanup(); }
 });
 
-test("camera permission denial and recovery; station QR authority is separate from attendee admission", async ({ page, db, state, actorPage }, info) => {
+test("camera permission denial and recovery; station QR is rejected and printer selection needs no camera", async ({ page, db, state, actorPage }, info) => {
   test.setTimeout(180000);
   await login(page, state.users.admin);
-  const setup = await arrivalPrerequisites(page, db);
+  const setup = await arrivalPrerequisites(page, db, ["wts2026station1", "wts2026station2"]);
   const phone = await actorPage(state.users.handoff);
   const errors: string[] = [];
   phone.on("pageerror", error => errors.push(error.message));
@@ -187,17 +187,14 @@ test("camera permission denial and recovery; station QR authority is separate fr
     await camera(phone).getByRole("button", { name: "Stop attendee camera" }).click();
     await expect.poll(() => phone.evaluate(() => (window as unknown as { __wtsSyntheticCamera: { stopped: number } }).__wtsSyntheticCamera.stopped)).toBe(1);
     await toolsView(phone, "Phone");
-    const station = phone.getByRole("region", { name: "Station camera", exact: true });
-    await station.getByRole("button", { name: "Start scanning", exact: true }).click();
-    await expect(station.getByText("Ready for your station QR", { exact: true })).toBeVisible();
-    await showSyntheticQr(phone, "A-CAM0001");
-    await expect(phone.getByText("Not a station provisioning QR for this site. Attendee QRs cannot bind a phone.", { exact: true })).toBeVisible();
-    await phone.getByRole("button", { name: "Dismiss message", exact: true }).click();
-    await showSyntheticQr(phone, `${state.baseURL}/checkin#provision=${setup.stations[0].provisionCode}`);
-    await expect(phone.getByRole("button", { name: "Confirm station binding", exact: true })).toBeVisible();
-    await phone.getByRole("button", { name: "Confirm station binding", exact: true }).click();
+    await expect(phone.getByRole("region", { name: "Station camera", exact: true })).toHaveCount(0);
+    const requests = await phone.evaluate(() => (window as unknown as { __wtsSyntheticCamera: { requests: number } }).__wtsSyntheticCamera.requests);
+    await session.send("Browser.setPermission", { permission: { name: "camera" }, setting: "denied", origin: state.baseURL, browserContextId: targetInfo.browserContextId });
+    await selectPrinter(phone, setup.stations[1].stationId);
     await expect(phone.getByRole("button", { name: "Confirm station binding", exact: true })).toHaveCount(0);
-    await expect.poll(async () => (await status(phone)).binding.stationId).toBe(setup.stations[0].stationId);
+    expect((await status(phone)).binding.stationId).toBe(setup.stations[1].stationId);
+    expect((await arrivalCommand<CheckinEventCatalogue>(phone, "/api/checkin-events", { operation: "catalogue" })).context?.eventId).toBe(setup.events[0].id);
+    expect(await phone.evaluate(() => (window as unknown as { __wtsSyntheticCamera: { requests: number } }).__wtsSyntheticCamera.requests)).toBe(requests);
     expect(errors).toEqual([]);
   } catch (error) {
     await camera(phone).screenshot({ path: info.outputPath("actual-camera-failure.png"), timeout: 3000 }).catch(() => undefined);

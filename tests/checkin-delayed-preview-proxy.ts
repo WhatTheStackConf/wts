@@ -2,7 +2,7 @@ import { createServer, request } from "node:http";
 
 /** Test-only transport fault injection. Hold real upstream preview responses
  * before Chromium can process their Set-Cookie headers; fabricate no responses. */
-export async function delayedPreviewProxy(target: string) {
+export async function delayedPreviewProxy(target: string, operation = "preview") {
   const upstreamUrl = new URL(target);
   if (upstreamUrl.hostname !== "127.0.0.1" || upstreamUrl.protocol !== "http:") throw new Error("Proxy requires a disposable loopback target");
   const first = Promise.withResolvers<void>();
@@ -17,7 +17,7 @@ export async function delayedPreviewProxy(target: string) {
       const body = Buffer.concat(chunks);
       let preview = false;
       if (incoming.url === "/api/checkin") {
-        try { preview = JSON.parse(body.toString()).operation === "preview"; } catch { /* forward unchanged */ }
+        try { preview = JSON.parse(body.toString()).operation === operation; } catch { /* forward unchanged */ }
       }
       // Preserve Host and Origin: this is a normal same-origin reverse proxy,
       // not a bypass of the app's browser mutation protection.

@@ -1,4 +1,4 @@
-import { test, expect, login, status } from "./checkin-fixtures";
+import { test, expect, login, phoneProvisioning, selectPrinter } from "./checkin-fixtures";
 import { arrivalCommand, arrivalPrerequisites } from "./checkin-arrival-fixture";
 import type { CheckinEventCatalogue } from "~/lib/checkin-event-contract";
 import type { CheckinArrivalResult } from "~/lib/checkin-arrival-contract";
@@ -6,10 +6,10 @@ import type { CheckinArrivalResult } from "~/lib/checkin-arrival-contract";
 test("Tools is a compact unbound dashboard with explicit setup", async ({ page, state }, info) => {
   await login(page, state.users.operator); await page.goto("/checkin-tools");
   await expect(page.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
-  await expect(page.getByText("No station paired", { exact: true })).toBeVisible();
+  await expect(page.getByText("No printer selected", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Arrivals", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Phone", exact: true })).toBeEnabled();
-  await expect(page.getByLabel("Station provisioning code", { exact: true })).not.toBeVisible();
+  await expect(page.getByLabel("Printer", { exact: true })).not.toBeVisible();
   await expect(page.getByText("Not ready for event use", { exact: false })).toHaveCount(0);
   for (const size of [{ width: 390, height: 844 }, { width: 320, height: 568 }, { width: 844, height: 390 }]) {
     await page.setViewportSize(size);
@@ -19,8 +19,9 @@ test("Tools is a compact unbound dashboard with explicit setup", async ({ page, 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: info.outputPath("tools-unbound.png"), fullPage: true });
   await page.getByRole("button", { name: "Phone", exact: true }).click();
-  await page.getByText("Enter station code instead", { exact: true }).click();
-  await expect(page.getByLabel("Station provisioning code", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Printer", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Printer", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Station provisioning code", { exact: true })).toHaveCount(0);
 });
 
 test("Tools keeps recovery concise, fenced, and mounted through view changes", async ({ page, state, db, actorPage }, info) => {
@@ -31,13 +32,13 @@ test("Tools keeps recovery concise, fenced, and mounted through view changes", a
   const printCount = (await db.collection("checkin_print_attempts").getList(1, 1)).totalItems;
   try {
     await phone.setViewportSize({ width: 390, height: 844 });
-    await phone.goto(`/checkin-tools#provision=${setup.stations[0].provisionCode}`);
-    await phone.getByRole("button", { name: "Review station", exact: true }).click();
-    await phone.getByRole("button", { name: "Confirm station binding", exact: true }).click();
-    await expect.poll(async () => (await status(phone)).bindingState).toBe("bound");
+    await phone.goto("/checkin-tools");
+    await phoneProvisioning(phone);
+    await selectPrinter(phone, setup.stations[0].stationId);
     await phone.getByLabel("Event for this phone", { exact: true }).selectOption(setup.events[0].id);
     await phone.getByRole("button", { name: "Select event for this phone", exact: true }).click();
     await expect(phone.locator(".wts-tools-context")).toContainText("Synthetic conference");
+    await expect(phone.getByText("Printer ready", { exact: true })).toBeVisible();
     const catalogue = await arrivalCommand<CheckinEventCatalogue>(phone, "/api/checkin-events", { operation: "catalogue" });
     const result = await arrivalCommand<CheckinArrivalResult>(phone, "/api/checkin-arrivals", { operation: "preflight", command: { operationId: crypto.randomUUID(), context: catalogue.context, qrIdentity: "A-TOOLS01", affiliationChoice: "fetch" } });
     expect(result.state).toBe("reserved");
@@ -47,7 +48,7 @@ test("Tools keeps recovery concise, fenced, and mounted through view changes", a
     const attendee = recovery.locator(".recovery-list-row").filter({ hasText: "Јана Tools dashboard" });
     await expect(attendee).toBeVisible();
     await expect(phone.getByText("Authorization generation", { exact: true })).not.toBeVisible();
-    await expect(phone.getByLabel("Station provisioning code", { exact: true })).not.toBeVisible();
+    await expect(phone.getByLabel("Printer", { exact: true })).not.toBeVisible();
     expect(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await phone.screenshot({ path: info.outputPath("tools-recent-work.png"), fullPage: true });
     await attendee.click();

@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Page } from "@playwright/test";
 import type PocketBase from "pocketbase";
-import { expect, status, phoneProvisioning, toolsView } from "./checkin-fixtures";
-import type { CheckinAdminDTO, CheckinStationId } from "~/lib/checkin-contract";
+import { expect, phoneProvisioning, selectPrinter, toolsView } from "./checkin-fixtures";
+import type { CheckinAdminDTO, CheckinPreviewDTO, CheckinStationId } from "~/lib/checkin-contract";
 import type { CheckinLabelCatalogue } from "~/lib/checkin-label-client";
 import type { CheckinLabelProfileResult } from "~/lib/checkin-label-profile-contract";
 import type { AgentControlResult } from "~/lib/checkin-agent-contract";
@@ -90,13 +90,17 @@ export async function arrivalPrerequisites(admin: Page, db: PocketBase, stationI
 export async function bindArrivalPhone(page: Page, code: string, eventId: string) {
   await page.goto("/checkin-tools");
   await phoneProvisioning(page);
-  await page.getByLabel("Station provisioning code", { exact: true }).fill(code);
-  await page.getByRole("button", { name: "Review station", exact: true }).click();
-  await page.getByRole("button", { name: "Confirm station binding", exact: true }).click();
-  await expect.poll(async () => (await status(page)).bindingState).toBe("bound");
-  await page.getByLabel("Event for this phone", { exact: true }).selectOption(eventId);
-  await page.getByRole("button", { name: "Select event for this phone", exact: true }).click();
-  await expect(page.getByText("Event selection saved for this phone only. Other phones and existing work are unchanged.", { exact: true })).toBeVisible();
+  // Preserve existing callers' fixture codes, but use preview only to resolve
+  // their station ID. Selection itself exercises the new authenticated UI.
+  await expect(page.getByLabel("Printer", { exact: true })).toBeEnabled();
+  const preview = await arrivalCommand<CheckinPreviewDTO>(page, "/api/checkin", { operation: "preview", code });
+  await selectPrinter(page, preview.station.id);
+  const catalogue = await arrivalCommand<CheckinEventCatalogue>(page, "/api/checkin-events", { operation: "catalogue" });
+  if (catalogue.context?.eventId !== eventId) {
+    await page.getByLabel("Event for this phone", { exact: true }).selectOption(eventId);
+    await page.getByRole("button", { name: "Select event for this phone", exact: true }).click();
+    await expect(page.getByText("Event selection saved for this phone only. Other phones and existing work are unchanged.", { exact: true })).toBeVisible();
+  }
   await expect(page.getByRole("button", { name: "Select event for this phone", exact: true })).toBeDisabled();
   expect((await arrivalCommand<CheckinEventCatalogue>(page, "/api/checkin-events", { operation: "catalogue" })).context).toMatchObject({ eventId });
   await toolsView(page, "Arrivals");

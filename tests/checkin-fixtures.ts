@@ -16,15 +16,21 @@ export interface CheckinFixtureState {
   upstreamToken: string;
   users: Record<"admin" | "operator" | "ordinary" | "handoff", Account>;
 }
+function ownsDisposableRoot(path: string, state: CheckinFixtureState) {
+  return state.disposable === true && dirname(state.root) === tmpdir() && basename(state.root).startsWith("wts-checkin-browser-") && dirname(path) === state.root;
+}
+function isLoopback(url: string, protocol: "http:" | "https:") {
+  return new URL(url).hostname === "127.0.0.1" && new URL(url).protocol === protocol;
+}
 export function fixtureState(): CheckinFixtureState {
   const path = process.env.WTS_CHECKIN_BROWSER_STATE;
   if (!path) throw new Error("Use pnpm test:checkin-browser; external app/database URLs are deliberately unsupported");
   const state = JSON.parse(readFileSync(path, "utf8")) as CheckinFixtureState;
-  if (state.disposable !== true || dirname(state.root) !== tmpdir() || !basename(state.root).startsWith("wts-checkin-browser-") || dirname(path) !== state.root) throw new Error("Missing disposable fixture ownership marker");
+  if (!ownsDisposableRoot(path, state)) throw new Error("Missing disposable fixture ownership marker");
   for (const url of [state.baseURL, state.pbUrl]) {
-    if (new URL(url).hostname !== "127.0.0.1" || new URL(url).protocol !== "http:") throw new Error("Refusing non-loopback fixture");
+    if (!isLoopback(url, "http:")) throw new Error("Refusing non-loopback fixture");
   }
-  if (new URL(state.upstreamURL).hostname !== "127.0.0.1" || new URL(state.upstreamURL).protocol !== "https:") throw new Error("Refusing non-loopback synthetic upstream");
+  if (!isLoopback(state.upstreamURL, "https:")) throw new Error("Refusing non-loopback synthetic upstream");
   return state;
 }
 
@@ -99,8 +105,17 @@ export async function openToolsDisclosure(page: Page, name: string) {
 
 export async function phoneProvisioning(page: Page) {
   await toolsView(page, "Phone");
-  await openToolsDisclosure(page, "Enter station code instead");
-  await expect(page.getByLabel("Station provisioning code", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Printer", { exact: true })).toBeVisible();
+}
+
+/** Exercise immediate printer selection and wait for authoritative reconciliation. */
+export async function selectPrinter(page: Page, stationId: string) {
+  const printer = page.getByLabel("Printer", { exact: true });
+  await expect(printer).toBeEnabled();
+  await printer.selectOption(stationId);
+  await expect(printer).toHaveValue(stationId);
+  await expect(printer).toBeEnabled();
+  await expect.poll(async () => (await status(page)).binding?.stationId).toBe(stationId);
 }
 
 export async function status(page: Page) {

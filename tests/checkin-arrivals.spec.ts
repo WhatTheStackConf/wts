@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, login, status, phoneProvisioning, toolsView, sessionCookieHeader, type CheckinFixtureState } from "./checkin-fixtures";
+import { test, expect, login, status, phoneProvisioning, selectPrinter, toolsView, sessionCookieHeader, type CheckinFixtureState } from "./checkin-fixtures";
 import { arrivalCommand, arrivalPrerequisites, bindArrivalPhone } from "./checkin-arrival-fixture";
 import type { CheckinArrivalInput, CheckinArrivalResult, CheckinArrivalHistory } from "~/lib/checkin-arrival-contract";
 
@@ -217,9 +217,7 @@ test("arrival rebinding hides prior and delayed foreign-station results without 
   const phone = await actorPage(state.users.operator);
   async function rebind(index: number, target: Page = phone) {
     await phoneProvisioning(target);
-    await target.getByLabel("Station provisioning code", { exact: true }).fill(setup.stations[index].provisionCode);
-    await target.getByRole("button", { name: "Review station", exact: true }).click();
-    await target.getByRole("button", { name: "Confirm station binding", exact: true }).click();
+    await selectPrinter(target, setup.stations[index].stationId);
     await toolsView(target, "Arrivals");
     await expect(preflight(target).getByText(`Current station: ${setup.stations[index].label}`, { exact: false })).toBeVisible();
   }
@@ -233,7 +231,8 @@ test("arrival rebinding hides prior and delayed foreign-station results without 
     await expect(result(phone)).not.toContainText("Ана O’Neill");
     await expect(result(phone)).not.toContainText("Synthetic organisation");
     await rebind(0);
-    await changeEvent(phone, setup.events[0].id);
+    // Switching printers preserves the event, without moving the frozen work.
+    expect((await arrivalCommand<{ context: { eventId: string } | null }>(phone, "/api/checkin-events", { operation: "catalogue" })).context?.eventId).toBe(setup.events[0].id);
     await newArrival(phone);
     const held = new Promise<void>((resolve) => { release = resolve; });
     let fetched: (() => void) | undefined;

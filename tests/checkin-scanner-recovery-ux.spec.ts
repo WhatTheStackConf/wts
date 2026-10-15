@@ -1,4 +1,4 @@
-import { test, expect, login } from "./checkin-fixtures";
+import { test, expect, login, selectPrinter } from "./checkin-fixtures";
 import { arrivalPrerequisites } from "./checkin-arrival-fixture";
 import { installSyntheticCamera, showSyntheticQr } from "./checkin-camera-fixture";
 
@@ -22,9 +22,8 @@ test("failed preflight stays visibly held across status and readiness polls", as
     });
     await phone.context().grantPermissions(["camera"]);
     await phone.setViewportSize({ width: 390, height: 844 });
-    await phone.goto(`/checkin#provision=${setup.stations[0].provisionCode}`);
-    await phone.getByRole("button", { name: "Review station", exact: true }).click();
-    await phone.getByRole("button", { name: "Confirm station", exact: true }).click();
+    await phone.goto("/checkin");
+    await selectPrinter(phone, setup.stations[0].stationId);
     await phone.getByLabel("Event", { exact: true }).selectOption(setup.events[0].id);
     await phone.getByRole("button", { name: "Use event", exact: true }).click();
     // Explicit UI-only failure fixture; real login, authority, readiness and QR decoder.
@@ -60,6 +59,7 @@ test("failed preflight stays visibly held across status and readiness polls", as
     await showSyntheticQr(phone, "A-UXS0001");
     await expect(phone.getByRole("heading", { name: "Check unavailable", exact: true })).toBeVisible();
     await expect(phone.getByRole("button", { name: "Retry check", exact: true })).toBeEnabled();
+    await phone.getByRole("button", { name: "Retry check", exact: true }).focus();
     const before = { ...counts };
     // Exercise the parent scanner's focus-triggered event verification too.
     await phone.route("**/api/checkin-events", async route => {
@@ -72,15 +72,20 @@ test("failed preflight stays visibly held across status and readiness polls", as
       const focusPoll = window.setInterval(() => window.dispatchEvent(new Event("focus")), 5000);
       const w = window as any;
       const video = document.querySelector("video")!;
+      const retryNode = Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Retry check")!;
+      const initialBox = retryNode.getBoundingClientRect().toJSON();
       const initial = { cues: { ...w.__failedCues }, requests: w.__wtsSyntheticCamera.requests, stopped: w.__wtsSyntheticCamera.stopped, time: video.currentTime, held: Object.entries(localStorage).filter(([key]) => key.startsWith("wts:camera-held:")) };
       const bad: object[] = [];
       const until = performance.now() + 16200;
+      const resultHeld = (title: HTMLElement | null, retry: HTMLButtonElement | undefined) => title?.textContent === "Check unavailable" && !!title.offsetParent && !!retry?.offsetParent && !retry.disabled && retry === retryNode && document.activeElement === retryNode && JSON.stringify(retry.getBoundingClientRect().toJSON()) === JSON.stringify(initialBox);
+      const cameraLive = () => video === document.querySelector("video") && !video.paused && !!video.srcObject;
+      const failureOf = (title: HTMLElement | null, retry: HTMLButtonElement | undefined) => ({ title: title?.textContent, visible: !!title?.offsetParent, retry: !!retry?.offsetParent, disabled: retry?.disabled, focused: document.activeElement === retryNode, paused: video.paused });
       await new Promise<void>(resolve => {
         const frame = () => {
           const title = document.querySelector<HTMLElement>(".checkin-result-title");
           const retry = Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Retry check");
-          if (title?.textContent !== "Check unavailable" || !title.offsetParent || !retry?.offsetParent || video !== document.querySelector("video") || video.paused || !video.srcObject) {
-            if (bad.length < 10) bad.push({ title: title?.textContent, visible: !!title?.offsetParent, retry: !!retry?.offsetParent, paused: video.paused });
+          if (!resultHeld(title, retry) || !cameraLive()) {
+            if (bad.length < 10) bad.push(failureOf(title, retry));
           }
           if (performance.now() < until) requestAnimationFrame(frame); else resolve();
         }; frame();
@@ -120,7 +125,7 @@ test("Tools URL variants keep operational headers and exclude marketing scripts"
   }
 });
 
-test("station QR recovery, lost event selection and lookup rejection stay actionable", async ({ page, db, state, actorPage }, info) => {
+test("printer selection recovery, lost event selection and lookup rejection stay actionable", async ({ page, db, state, actorPage }, info) => {
   test.setTimeout(90000);
   await login(page, state.users.admin);
   const setup = await arrivalPrerequisites(page, db);
@@ -128,19 +133,19 @@ test("station QR recovery, lost event selection and lookup rejection stay action
   try {
     await installSyntheticCamera(phone); await phone.context().grantPermissions(["camera"]);
     await phone.setViewportSize({ width: 390, height: 844 });
+    let printerCatalogueUnavailable = true;
+    await phone.route("**/api/checkin", route => route.request().postDataJSON()?.operation === "printers" && printerCatalogueUnavailable
+      ? route.fulfill({ status: 503, json: { error: "Synthetic printer catalogue outage" } }) : route.continue());
     await phone.goto("/checkin");
-    await phone.getByRole("button", { name: "Start scanning", exact: true }).click();
-    await expect(phone.getByText("Ready for your station QR", { exact: true })).toBeVisible();
-    await showSyntheticQr(phone, "A-UXS0001");
-    await expect(phone.getByRole("alert")).toContainText("not a station QR");
-    await showSyntheticQr(phone, state.baseURL + "/checkin#provision=" + setup.stations[0].provisionCode);
-    await expect(phone.getByRole("button", { name: "Confirm station", exact: true })).toBeVisible();
-    await phone.getByRole("button", { name: "Scan a different station", exact: true }).click();
-    await expect(phone.getByRole("button", { name: "Start scanning", exact: true })).toBeVisible();
-    await phone.getByRole("button", { name: "Start scanning", exact: true }).click();
-    await expect(phone.getByText("Ready for your station QR", { exact: true })).toBeVisible();
-    await showSyntheticQr(phone, state.baseURL + "/checkin#provision=" + setup.stations[0].provisionCode);
-    await phone.getByRole("button", { name: "Confirm station", exact: true }).click();
+    await expect(phone.getByRole("alert")).toHaveText("Couldn't load printers.");
+    await expect(phone.getByLabel("Printer", { exact: true })).toBeDisabled();
+    await expect(phone.getByRole("button", { name: "Start scanning", exact: true })).toHaveCount(0);
+    printerCatalogueUnavailable = false;
+    await phone.getByRole("button", { name: "Refresh printers", exact: true }).click();
+    await selectPrinter(phone, setup.stations[0].stationId);
+    await phone.unroute("**/api/checkin");
+    await expect(phone.locator("video").first()).not.toBeVisible();
+    expect(await phone.evaluate(() => (window as unknown as { __wtsSyntheticCamera: { requests: number } }).__wtsSyntheticCamera.requests)).toBe(0);
     await phone.getByLabel("Event", { exact: true }).selectOption(setup.events[0].id);
     await phone.getByRole("button", { name: "Use event", exact: true }).click();
     await expect(phone.getByRole("button", { name: "Start scanning", exact: true })).toBeEnabled();
