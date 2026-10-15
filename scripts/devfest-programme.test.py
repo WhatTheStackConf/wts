@@ -37,6 +37,10 @@ class FakePocketBase:
         return copy.deepcopy(next(row for row in self.state[collection] if row['id'] == rid))
 
 
+def without_speakers(row):
+    return {k: v for k, v in row.items() if k != 'speakers'}
+
+
 class DevFestTests(unittest.TestCase):
     def test_dry_run_uses_confirmed_assignments_without_timed_slots(self):
         pb = FakePocketBase()
@@ -81,8 +85,7 @@ class DevFestTests(unittest.TestCase):
         after = pb.snapshot()
         self.assertEqual(after['speakers'], before['speakers'])
         for previous, current in zip(before['sessions'], after['sessions']):
-            self.assertEqual({k:v for k,v in previous.items() if k != 'speakers'},
-                             {k:v for k,v in current.items() if k != 'speakers'})
+            self.assertEqual(without_speakers(previous), without_speakers(current))
         self.assertEqual(devfest.run(pb, True)['writes'], 0)
 
     def test_rejects_hidden_unrelated_missing_or_duplicate_speakers(self):

@@ -1,0 +1,417 @@
+{
+  "version": 2,
+  "revision_note": "Organizer approved Santosh Yadav as a fourth open-source guest, retaining his complexity fireside appearance. All other assignments and timings are unchanged.",
+  "date": "2026-09-19",
+  "timezone": "Europe/Skopje",
+  "attendance_confirmation": "Organizer confirmed Nicolas Frizzarin and Michael Egger-Zikes for Saturday in publication approval.",
+  "baseline_manifest_sha256": "618003cfc94d1577f0539efb2099ba51dd93917cafc273bdfb5bb112578707cb",
+  "speaker_bindings": [
+    {
+      "id": "ma8p9bv90wl2llh",
+      "slug": "elena-kolevska",
+      "display_name": "Elena Kolevska",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent"
+      ]
+    },
+    {
+      "id": "h73wmh5udfljxmn",
+      "slug": "andrej-acevski",
+      "display_name": "Andrej Acevski",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent"
+      ]
+    },
+    {
+      "id": "kleqx55avrqboa7",
+      "slug": "serena-sensini",
+      "display_name": "Serena Sensini",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent"
+      ]
+    },
+    {
+      "id": "f5gcgj80682zig5",
+      "slug": "bogdan-ilie",
+      "display_name": "Bogdan Ilie",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent"
+      ]
+    },
+    {
+      "id": "g2vul2641xi295j",
+      "slug": "domagoj-maric",
+      "display_name": "Domagoj Maric",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent"
+      ]
+    },
+    {
+      "id": "vffka1uatianrnh",
+      "slug": "michael-egger-zikes",
+      "display_name": "Michael Egger-Zikes",
+      "published": true,
+      "appearance_events": [
+        "usj5npdkjw72msh"
+      ]
+    },
+    {
+      "id": "hcylucb8r3b5usi",
+      "slug": "santosh-yadav",
+      "display_name": "Santosh Yadav",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent",
+        "usj5npdkjw72msh"
+      ]
+    },
+    {
+      "id": "vl41q7fdwl3moap",
+      "slug": "wekoslav-stefanovski",
+      "display_name": "Wekoslav Stefanovski",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent",
+        "frlsuzmnu3jju4o"
+      ]
+    },
+    {
+      "id": "mhlpe4vba6ztst2",
+      "slug": "goran-david",
+      "display_name": "Goran David",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent"
+      ]
+    },
+    {
+      "id": "xe9wtz06z6gys1k",
+      "slug": "bojan-jakimovski",
+      "display_name": "Bojan Jakimovski",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent"
+      ]
+    },
+    {
+      "id": "va52g3it8h1n3s1",
+      "slug": "alem-tuzlak",
+      "display_name": "Alem Tuzlak",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent"
+      ]
+    },
+    {
+      "id": "59opafqmr90tgij",
+      "slug": "nicolas-frizzarin",
+      "display_name": "Nicolas Frizzarin",
+      "published": true,
+      "appearance_events": [
+        "usj5npdkjw72msh"
+      ]
+    },
+    {
+      "id": "hel4xsue86mhmb7",
+      "slug": "gerald-versluis",
+      "display_name": "Gerald Versluis",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent",
+        "ltc5lm10p0bpmuo"
+      ]
+    },
+    {
+      "id": "wdjcgntwy0frqnq",
+      "slug": "nino-risteski",
+      "display_name": "Nino Risteski",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent"
+      ]
+    },
+    {
+      "id": "xqrncy4m8nfujed",
+      "slug": "faris-aziz",
+      "display_name": "Faris Aziz",
+      "published": true,
+      "appearance_events": [
+        "wts2026appevent",
+        "p011k62396jaegx"
+      ]
+    }
+  ],
+  "membership_updates": [
+    {
+      "id": "vffka1uatianrnh",
+      "before": [
+        "usj5npdkjw72msh"
+      ],
+      "after": [
+        "usj5npdkjw72msh",
+        "wts2026appevent"
+      ]
+    },
+    {
+      "id": "59opafqmr90tgij",
+      "before": [
+        "usj5npdkjw72msh"
+      ],
+      "after": [
+        "usj5npdkjw72msh",
+        "wts2026appevent"
+      ]
+    }
+  ],
+  "sessions": [
+    {
+      "id": "fs26f7995331c81",
+      "slug": "fireside-who-owes-open-source-what",
+      "title": "Who owes open source what?",
+      "abstract": "<p>What do maintainers, users, companies and sponsors owe one another? Where does each group’s responsibility begin and end, and how does money change those expectations?</p>",
+      "format": "Fireside chat",
+      "published": true,
+      "speakers": [
+        "ma8p9bv90wl2llh",
+        "h73wmh5udfljxmn",
+        "kleqx55avrqboa7",
+        "hcylucb8r3b5usi"
+      ],
+      "starts_at": "",
+      "track": "",
+      "room": "",
+      "cfp_submission": ""
+    },
+    {
+      "id": "fs2674cf818b29b",
+      "slug": "fireside-being-a-good-developer",
+      "title": "What does being a good developer mean now?",
+      "abstract": "<p>If writing code is getting easier, what distinguishes someone good at the job? When “code is cheap,” which skills should we spend more time developing?</p>",
+      "format": "Fireside chat",
+      "published": true,
+      "speakers": [
+        "f5gcgj80682zig5",
+        "g2vul2641xi295j"
+      ],
+      "starts_at": "",
+      "track": "",
+      "room": "",
+      "cfp_submission": ""
+    },
+    {
+      "id": "fs26ef8a9c617d3",
+      "slug": "fireside-software-development-complexity",
+      "title": "Have we made software development too complicated?",
+      "abstract": "<p>Frameworks, infrastructure, abstractions and tooling: which complexity earns its keep, and which have we simply learned to accept? What could we do without?</p>",
+      "format": "Fireside chat",
+      "published": true,
+      "speakers": [
+        "vffka1uatianrnh",
+        "hcylucb8r3b5usi",
+        "vl41q7fdwl3moap"
+      ],
+      "starts_at": "",
+      "track": "",
+      "room": "",
+      "cfp_submission": ""
+    },
+    {
+      "id": "fs262ce9f31b4f2",
+      "slug": "fireside-the-way-into-the-industry",
+      "title": "Is the way into this industry broken?",
+      "abstract": "<p>Junior jobs, degrees, bootcamps, self-teaching, mentorship and AI: what would starting today look like? Which fundamentals still matter, and how do newcomers get the experience everyone expects them to have?</p>",
+      "format": "Fireside chat",
+      "published": true,
+      "speakers": [
+        "mhlpe4vba6ztst2",
+        "xe9wtz06z6gys1k"
+      ],
+      "starts_at": "",
+      "track": "",
+      "room": "",
+      "cfp_submission": ""
+    },
+    {
+      "id": "fs263c3cbc9227b",
+      "slug": "fireside-choosing-frameworks-with-ai",
+      "title": "Would you choose a different framework if AI wrote most of the code?",
+      "abstract": "<p>Does boilerplate still matter? Do explicit conventions become more useful than flexibility? Would you choose the framework the model knows best, or the one you can most confidently understand and debug?</p>",
+      "format": "Fireside chat",
+      "published": true,
+      "speakers": [
+        "va52g3it8h1n3s1",
+        "59opafqmr90tgij"
+      ],
+      "starts_at": "",
+      "track": "",
+      "room": "",
+      "cfp_submission": ""
+    },
+    {
+      "id": "fs26513e80f4656",
+      "slug": "fireside-building-our-own-products",
+      "title": "Why don’t we build more of our own products?",
+      "abstract": "<p>What stops developers from turning their skills into products? Finding customers, money, confidence, time—or simply not wanting the lifestyle that comes with running a business?</p>",
+      "format": "Fireside chat",
+      "published": true,
+      "speakers": [
+        "hel4xsue86mhmb7",
+        "wdjcgntwy0frqnq",
+        "xqrncy4m8nfujed"
+      ],
+      "starts_at": "",
+      "track": "",
+      "room": "",
+      "cfp_submission": ""
+    }
+  ],
+  "slots": [
+    {
+      "id": "fs264a3930b5288",
+      "programme": "md260b1f5e44856",
+      "track": "md26debf72ff7e4",
+      "kind": "session",
+      "session": "fs26f7995331c81",
+      "start_at": "2026-09-19 09:50:00.000Z",
+      "end_at": "2026-09-19 10:25:00.000Z",
+      "published": true,
+      "display_order": 1150,
+      "title": "",
+      "summary": "",
+      "location_label": ""
+    },
+    {
+      "id": "fs269d96a95f414",
+      "programme": "md260b1f5e44856",
+      "track": "md26debf72ff7e4",
+      "kind": "session",
+      "session": "fs2674cf818b29b",
+      "start_at": "2026-09-19 10:35:00.000Z",
+      "end_at": "2026-09-19 11:10:00.000Z",
+      "published": true,
+      "display_order": 1235,
+      "title": "",
+      "summary": "",
+      "location_label": ""
+    },
+    {
+      "id": "fs26e781c58c673",
+      "programme": "md260b1f5e44856",
+      "track": "md26debf72ff7e4",
+      "kind": "session",
+      "session": "fs26ef8a9c617d3",
+      "start_at": "2026-09-19 11:50:00.000Z",
+      "end_at": "2026-09-19 12:25:00.000Z",
+      "published": true,
+      "display_order": 1350,
+      "title": "",
+      "summary": "",
+      "location_label": ""
+    },
+    {
+      "id": "fs266c5360766e2",
+      "programme": "md260b1f5e44856",
+      "track": "md26debf72ff7e4",
+      "kind": "session",
+      "session": "fs262ce9f31b4f2",
+      "start_at": "2026-09-19 12:45:00.000Z",
+      "end_at": "2026-09-19 13:05:00.000Z",
+      "published": true,
+      "display_order": 1445,
+      "title": "",
+      "summary": "",
+      "location_label": ""
+    },
+    {
+      "id": "fs262066ec14605",
+      "programme": "md260b1f5e44856",
+      "track": "md26debf72ff7e4",
+      "kind": "session",
+      "session": "fs263c3cbc9227b",
+      "start_at": "2026-09-19 13:10:00.000Z",
+      "end_at": "2026-09-19 13:35:00.000Z",
+      "published": true,
+      "display_order": 1510,
+      "title": "",
+      "summary": "",
+      "location_label": ""
+    },
+    {
+      "id": "fs26df0a5af0074",
+      "programme": "md260b1f5e44856",
+      "track": "md26debf72ff7e4",
+      "kind": "session",
+      "session": "fs26513e80f4656",
+      "start_at": "2026-09-19 13:40:00.000Z",
+      "end_at": "2026-09-19 14:05:00.000Z",
+      "published": true,
+      "display_order": 1540,
+      "title": "",
+      "summary": "",
+      "location_label": ""
+    }
+  ],
+  "removed_placeholders": [
+    {
+      "id": "md26ffd5d05d07e",
+      "programme": "md260b1f5e44856",
+      "track": "md26debf72ff7e4",
+      "start_at": "2026-09-19 08:10:00.000Z",
+      "end_at": "2026-09-19 09:30:00.000Z",
+      "kind": "other",
+      "published": true,
+      "display_order": 1010,
+      "location_label": "",
+      "session": "",
+      "title": "TBD",
+      "summary": "Programme to be announced."
+    },
+    {
+      "id": "md2635c9636d85f",
+      "programme": "md260b1f5e44856",
+      "track": "md26debf72ff7e4",
+      "start_at": "2026-09-19 09:50:00.000Z",
+      "end_at": "2026-09-19 11:10:00.000Z",
+      "kind": "other",
+      "published": true,
+      "display_order": 1150,
+      "location_label": "",
+      "session": "",
+      "title": "TBD",
+      "summary": "Programme to be announced."
+    },
+    {
+      "id": "md263b8bb3d14ce",
+      "programme": "md260b1f5e44856",
+      "track": "md26debf72ff7e4",
+      "start_at": "2026-09-19 11:50:00.000Z",
+      "end_at": "2026-09-19 12:25:00.000Z",
+      "kind": "other",
+      "published": true,
+      "display_order": 1350,
+      "location_label": "",
+      "session": "",
+      "title": "TBD",
+      "summary": "Programme to be announced."
+    },
+    {
+      "id": "md2662fd64da0ca",
+      "programme": "md260b1f5e44856",
+      "track": "md26debf72ff7e4",
+      "start_at": "2026-09-19 12:45:00.000Z",
+      "end_at": "2026-09-19 14:05:00.000Z",
+      "kind": "other",
+      "published": true,
+      "display_order": 1445,
+      "location_label": "",
+      "session": "",
+      "title": "TBD",
+      "summary": "Programme to be announced."
+    }
+  ]
+}

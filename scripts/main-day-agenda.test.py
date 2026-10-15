@@ -57,12 +57,31 @@ class ManifestTests(unittest.TestCase):
         slots = FIXTURE["records"]["agenda_slots"]
         bindings = {b["session"]["id"]: b for b in FIXTURE["bindings"]}
         tracks = {t["id"]: t["key"] for t in FIXTURE["records"]["agenda_tracks"]}
-        self.assertEqual(len(slots), 39)
+        self.assertEqual(len(slots), 36)
         self.assertEqual(len([s for s in slots if not s["track"]]), 5)
         self.assertEqual([t["name"] for t in FIXTURE["records"]["agenda_tracks"]],
                          ["Stage 3", "Stage 1", "Stage 2", "Stage 4", "Stage 5"])
         self.assertEqual([t["name"] for t in sorted(FIXTURE["records"]["agenda_tracks"], key=lambda t: t["display_order"])],
                          [f"Stage {i}" for i in range(1, 6)])
+        actual = self.talk_placements(slots, bindings, tracks)
+        self.assertEqual(actual["gerald-versluis"], ("stage-3", "10:10"))
+        self.assertEqual(actual["santosh-yadav"], ("stage-3", "10:55"))
+        self.assertEqual(actual["ramona-schwering"], ("stage-3", "11:50"))
+        self.assertEqual(actual["sam-vloeberghs"], ("stage-2", "11:50"))
+        self.assertEqual(actual["alem-tuzlak"], ("stage-2", "10:55"))
+        self.assertEqual(actual["alexander-lichter"], ("stage-2", "10:10"))
+        self.assertEqual(actual["kiril-zafirov"], ("stage-2", "12:35"))
+        self.assertEqual(actual["andjelina-maksimovic"], ("stage-1", "15:05"))
+        self.assertEqual(actual["riste-oreshkovski"], ("stage-3", "14:45"))
+        self.assertEqual(actual["dragan-shahpaski"], ("stage-1", "14:45"))
+        self.assertEqual(actual["faris-aziz"], ("stage-4", "11:50"))
+        self.assertEqual(actual["stefan-andonov"], ("stage-4", "12:35"))
+        self.assertEqual(actual["bogdan-ilie"], ("stage-4", "13:50"))
+        self.assertEqual(actual["domagoj-maric"], ("stage-4", "14:45"))
+        self.assert_stage5_windows(slots, tracks)
+        self.assert_placeholders_only_on_stage5(slots, tracks)
+
+    def talk_placements(self, slots, bindings, tracks):
         actual = {}
         for slot in slots:
             if slot["session"]:
@@ -71,27 +90,30 @@ class ManifestTests(unittest.TestCase):
                 duration = (datetime.fromisoformat(slot["end_at"].replace("Z", "+00:00")) -
                             datetime.fromisoformat(slot["start_at"].replace("Z", "+00:00"))).total_seconds() / 60
                 self.assertEqual(duration, 20 if binding["short_15_plus_5"] else 35)
-        self.assertEqual(actual["gerald-versluis"], ("stage-3", "10:10"))
-        self.assertEqual(actual["santosh-yadav"], ("stage-3", "10:55"))
-        self.assertEqual(actual["ramona-schwering"], ("stage-3", "11:50"))
-        self.assertEqual(actual["sam-vloeberghs"], ("stage-2", "11:50"))
-        self.assertEqual(actual["alem-tuzlak"], ("stage-2", "10:55"))
-        self.assertEqual(actual["alexander-lichter"], ("stage-2", "10:10"))
-        self.assertEqual(actual["kiril-zafirov"], ("stage-2", "12:35"))
-        self.assertEqual(actual["andjelina-maksimovic"], ("stage-4", "11:50"))
-        self.assertEqual(actual["riste-oreshkovski"], ("stage-1", "14:45"))
-        self.assertEqual(actual["dragan-shahpaski"], ("stage-1", "15:05"))
+        return actual
+
+    def assert_stage5_windows(self, slots, tracks):
         stage5 = [s for s in slots if tracks.get(s["track"]) == "stage-5"]
         self.assertEqual([(local_time(s["start_at"]), local_time(s["end_at"])) for s in stage5],
                          [("10:10", "11:30"), ("11:50", "13:10"), ("13:50", "14:25"), ("14:45", "16:05")])
         self.assertTrue(all(s["title"] == "TBD" and not s["session"] for s in stage5))
+
+    def assert_placeholders_only_on_stage5(self, slots, tracks):
         placeholders = [s for s in slots if s["track"] and not s["session"]]
-        self.assertEqual(len(placeholders), 7)
+        self.assertEqual(len(placeholders), 4)
         self.assertEqual({(s["title"], s["summary"]) for s in placeholders},
                          {("TBD", "Programme to be announced.")})
-        short_placeholder = next(s for s in placeholders if tracks[s["track"]] == "stage-4")
-        self.assertEqual((local_time(short_placeholder["start_at"]), local_time(short_placeholder["end_at"])),
-                         ("12:10", "12:30"))
+        self.assertTrue(all(tracks[s["track"]] == "stage-5" for s in placeholders))
+
+    def test_pinned_session_verification_allows_unrelated_weekday_talk(self):
+        state = full_state(True)
+        santosh = next(b for b in FIXTURE["bindings"] if b["speaker"]["slug"] == "santosh-yadav")
+        extra = {**santosh["session"], "id": "z" * 15, "slug": "weekday-only", "title": "Unrelated weekday talk"}
+        state["sessions"].append(extra)
+        self.assertEqual(agenda.inspect_state(FIXTURE, state, complete=True, expect="published")["phase"], "published")
+        state["sessions"] = [s for s in state["sessions"] if s["id"] != santosh["session"]["id"]]
+        with self.assertRaises(agenda.SafetyError):
+            agenda.inspect_state(FIXTURE, state)
 
     def test_refuses_foreign_collision_and_owned_field_drift(self):
         for collection in agenda.WRITABLE:
@@ -174,7 +196,7 @@ class PocketBaseIntegrationTests(unittest.TestCase):
                 with self.assertRaisesRegex(agenda.SafetyError, "incomplete"):
                     agenda.run_operation(pb, FIXTURE, "publish", root / "backups")
                 staged = agenda.run_operation(pb, FIXTURE, "stage", root / "backups")
-                self.assertEqual(staged["writes"], 46)
+                self.assertEqual(staged["writes"], 43)
                 self.assertFalse(staged["day_published"])
                 first = pb.snapshot()
                 self.assertEqual(agenda.unrelated(first, FIXTURE), agenda.unrelated(before, FIXTURE))
@@ -220,8 +242,8 @@ class PocketBaseIntegrationTests(unittest.TestCase):
                 with self.assertRaisesRegex(agenda.SafetyError, "Expected published"):
                     agenda.run_operation(pb, FIXTURE, "verify", expect="published")
                 published = agenda.run_operation(pb, FIXTURE, "publish", root / "backups")
-                self.assertEqual(published["writes"], 38)
-                self.assertEqual(published["published_slots"], 39)
+                self.assertEqual(published["writes"], 35)
+                self.assertEqual(published["published_slots"], 36)
                 self.assertTrue(published["day_published"])
                 verified = agenda.run_operation(pb, FIXTURE, "verify", expect="published")
                 self.assertEqual(verified["missing_records"], 0)

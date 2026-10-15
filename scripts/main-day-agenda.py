@@ -82,7 +82,87 @@ def one(rows, label):
     return rows[0]
 
 
-def build_manifest(source, revision=2):
+def published_member(speaker):
+    return speaker["published"] is True and EVENT in speaker["appearance_events"]
+
+
+def talk_binding(source, slug, short):
+    speaker = one([s for s in source["speakers"] if s["slug"] == slug], f"speaker {slug}")
+    require(published_member(speaker), f"Speaker {slug} lacks published main-event membership.")
+    candidates = [s for s in source["sessions"] if speaker["id"] in s["speakers"]
+                  and s.get("format", "").lower() == "talk"]
+    session = one(candidates, f"talk for {slug}")
+    require(session["published"] is True, f"Talk for {slug} is not published.")
+    # A co-speaker also needs an explicit published main-event appearance.
+    for sid in session["speakers"]:
+        co = one([s for s in source["speakers"] if s["id"] == sid], "session speaker")
+        require(published_member(co), "Session co-speaker lacks published main-event membership.")
+    return {"speaker": project(speaker, ("id", "slug", "published", "appearance_events")),
+            "session": project(session, ("id", "slug", "title", "published", "format", "speakers")),
+            "short_15_plus_5": short}
+
+
+def retime(slot, times, **fields):
+    start, end = times.split("-")
+    slot.update(**fields, start_at=instant(start), end_at=instant(end), display_order=int(start.replace(":", "")))
+
+
+def talk_slot(records, sessions_by_speaker, slug, label):
+    return one([s for s in records["agenda_slots"] if s["session"] == sessions_by_speaker[slug]], label)
+
+
+def revise_stage_order(records, bindings, sessions_by_speaker):
+    # Keep immutable Track keys and Slot/Session identities from revision 1.
+    # Only public stage labels/order and the four approved clock windows move.
+    stage_numbers = {1: 3, 2: 1, 3: 2, 4: 4, 5: 5}
+    for track in records["agenda_tracks"]:
+        number = stage_numbers[track["display_order"]]
+        track.update(name=f"Stage {number}", display_order=number)
+    reordered = {"sam-vloeberghs": 2, "kiril-zafirov": 3, "alem-tuzlak": 1, "alexander-lichter": 0}
+    for slug, index in reordered.items():
+        retime(talk_slot(records, sessions_by_speaker, slug, "rescheduled talk"), TIMES[index])
+
+
+def revise_stage_moves(records, bindings, sessions_by_speaker):
+    # Public Stage 2 is immutable stage-3; public Stage 3 is stage-1.
+    moves = {
+        "riste-oreshkovski": (3, "14:45-15:20"),
+        "dragan-shahpaski": (1, "14:45-15:05"),
+        "andjelina-maksimovic": (4, "15:30-15:50"),
+        "faris-aziz": (4, "11:50-12:25"),
+        "stefan-andonov": (4, "12:35-13:10"),
+        "bogdan-ilie": (4, "13:50-14:25"),
+        "domagoj-maric": (4, "14:45-15:20"),
+    }
+    for slug, (stage, times) in moves.items():
+        retime(talk_slot(records, sessions_by_speaker, slug, "revision-3 talk"), times, track=stable_id(f"stage-{stage}"))
+    for binding in bindings:
+        if binding["speaker"]["slug"] == "riste-oreshkovski":
+            binding["short_15_plus_5"] = False
+    records["agenda_slots"] = [s for s in records["agenda_slots"]
+                              if s["session"] or not s["track"] or s["track"] == stable_id("stage-5")]
+
+
+def revise_short_talk(records, bindings, sessions_by_speaker):
+    slot = talk_slot(records, sessions_by_speaker, "andjelina-maksimovic", "revision-4 short talk")
+    slot.update(track=stable_id("stage-1"), start_at=instant("15:05"), end_at=instant("15:25"), display_order=1505)
+
+
+REVISIONS = ((2, revise_stage_order), (3, revise_stage_moves), (4, revise_short_talk))
+SPLIT_TALKS = {
+    "riste-oreshkovski": (("14:45-15:05", "riste-oreshkovski", True), ("15:05-15:25", "dragan-shahpaski", True)),
+    "andjelina-maksimovic": (("11:50-12:10", "andjelina-maksimovic", True), ("12:10-12:30", None, False)),
+}
+
+
+def revision_one_grid():
+    for stage, speakers in enumerate(LINEUP, 1):
+        for index, slug in enumerate(speakers):
+            for times, talk, short in SPLIT_TALKS.get(slug, ((TIMES[index], slug, False),)):
+                yield stage, times, talk, short
+
+
+def build_manifest(source, revision=4):
     """Resolve ONLY public speaker slugs with explicit main-event appearances + talk."""
     day_id, programme_id = stable_id("day"), stable_id("programme")
     records = {
@@ -103,22 +183,9 @@ def build_manifest(source, revision=2):
         start, end = times.split("-")
         session_id = ""
         if slug and slug != "TBD":
-            speaker = one([s for s in source["speakers"] if s["slug"] == slug], f"speaker {slug}")
-            require(speaker["published"] is True and EVENT in speaker["appearance_events"],
-                    f"Speaker {slug} lacks published main-event membership.")
-            candidates = [s for s in source["sessions"] if speaker["id"] in s["speakers"]
-                          and s.get("format", "").lower() == "talk"]
-            session = one(candidates, f"talk for {slug}")
-            require(session["published"] is True, f"Talk for {slug} is not published.")
-            # A co-speaker also needs an explicit published main-event appearance.
-            for sid in session["speakers"]:
-                co = one([s for s in source["speakers"] if s["id"] == sid], "session speaker")
-                require(co["published"] is True and EVENT in co["appearance_events"],
-                        "Session co-speaker lacks published main-event membership.")
-            bindings.append({"speaker": project(speaker, ("id", "slug", "published", "appearance_events")),
-                             "session": project(session, ("id", "slug", "title", "published", "format", "speakers")),
-                             "short_15_plus_5": short})
-            session_id, kind, title, summary = session["id"], "session", "", ""
+            binding = talk_binding(source, slug, short)
+            bindings.append(binding)
+            session_id, kind, title, summary = binding["session"]["id"], "session", "", ""
         records["agenda_slots"].append({
             "id": stable_id(f"slot:{stage}:{start}"), "programme": programme_id,
             "track": stable_id(f"stage-{stage}") if stage else "",
@@ -127,34 +194,17 @@ def build_manifest(source, revision=2):
             "location_label": "", "session": session_id, "title": title, "summary": summary,
         })
 
-    for stage, speakers in enumerate(LINEUP, 1):
-        for index, slug in enumerate(speakers):
-            if slug == "riste-oreshkovski":
-                add(stage, "14:45-15:05", slug, short=True)
-                add(stage, "15:05-15:25", "dragan-shahpaski", short=True)
-            elif slug == "andjelina-maksimovic":
-                add(stage, "11:50-12:10", slug, short=True)
-                add(stage, "12:10-12:30")
-            else:
-                add(stage, TIMES[index], slug)
+    for stage, times, talk, short in revision_one_grid():
+        add(stage, times, talk, short=short)
     for times in ("10:10-11:30", "11:50-13:10", "13:50-14:25", "14:45-16:05"):
         add(5, times)
     for kind, times, title, summary in SHARED:
         add(0, times, kind=kind, title=title, summary=summary)
-    require(revision in (1, 2), "Unknown main-day schedule revision.")
-    if revision == 2:
-        # Keep immutable Track keys and Slot/Session identities from revision 1.
-        # Only public stage labels/order and the four approved clock windows move.
-        stage_numbers = {1: 3, 2: 1, 3: 2, 4: 4, 5: 5}
-        for track in records["agenda_tracks"]:
-            number = stage_numbers[track["display_order"]]
-            track.update(name=f"Stage {number}", display_order=number)
-        reordered = {"sam-vloeberghs": 2, "kiril-zafirov": 3, "alem-tuzlak": 1, "alexander-lichter": 0}
-        sessions_by_speaker = {b["speaker"]["slug"]: b["session"]["id"] for b in bindings}
-        for slug, index in reordered.items():
-            slot = one([s for s in records["agenda_slots"] if s["session"] == sessions_by_speaker[slug]], "rescheduled talk")
-            start, end = TIMES[index].split("-")
-            slot.update(start_at=instant(start), end_at=instant(end), display_order=int(start.replace(":", "")))
+    require(revision in (1, 2, 3, 4), "Unknown main-day schedule revision.")
+    sessions_by_speaker = {b["speaker"]["slug"]: b["session"]["id"] for b in bindings}
+    for number, revise in REVISIONS:
+        if revision >= number:
+            revise(records, bindings, sessions_by_speaker)
     return {"version": revision, "event_id": EVENT, "local_date": DATE, "timezone": ZONE,
             "ownership_prefix": PREFIX, "bindings": bindings, "records": records}
 
@@ -167,25 +217,42 @@ def validate_manifest(manifest):
     require(build_manifest(source, revision=manifest["version"]) == manifest, "Manifest differs from deterministic reviewed schedule.")
     records = manifest["records"]
     slots = records["agenda_slots"]
-    ids = [r["id"] for rows in records.values() for r in rows]
-    require(len(ids) == len(set(ids)) and all(re.fullmatch(r"[a-z0-9]{15}", x) for x in ids), "Invalid/duplicate owned IDs.")
+    require_owned_ids(records)
     links = [s["session"] for s in slots if s["kind"] == "session"]
     require(len(links) == len(set(links)) == 27, "Expected exactly 27 unique talk links.")
     for i, slot in enumerate(slots):
         require(slot["end_at"] > slot["start_at"], "Nonpositive slot duration.")
-        require((slot["kind"] == "session" and not slot["title"] and not slot["summary"])
-                or (slot["kind"] != "session" and not slot["session"] and slot["title"] and slot["summary"]),
-                "Slot violates title/summary/session constraints.")
+        require(slot_content_valid(slot), "Slot violates title/summary/session constraints.")
         for other in slots[i + 1:]:
-            conflicts = not slot["track"] or not other["track"] or slot["track"] == other["track"]
-            overlap = slot["start_at"] < other["end_at"] and slot["end_at"] > other["start_at"]
-            require(not (conflicts and overlap), "Overlapping track or shared slots.")
+            require(not slots_collide(slot, other), "Overlapping track or shared slots.")
+
+
+def require_owned_ids(records):
+    ids = [r["id"] for rows in records.values() for r in rows]
+    require(len(ids) == len(set(ids)) and all(re.fullmatch(r"[a-z0-9]{15}", x) for x in ids), "Invalid/duplicate owned IDs.")
+
+
+def slot_content_valid(slot):
+    if slot["kind"] == "session":
+        return not slot["title"] and not slot["summary"]
+    return not slot["session"] and slot["title"] and slot["summary"]
+
+
+def slots_collide(slot, other):
+    conflicts = not slot["track"] or not other["track"] or slot["track"] == other["track"]
+    overlap = slot["start_at"] < other["end_at"] and slot["end_at"] > other["start_at"]
+    return conflicts and overlap
 
 
 def normalized(key, value):
     if key in ("start_at", "end_at") and isinstance(value, str):
         return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
     return value
+
+
+def same_record(expected, actual):
+    return expected.keys() == actual.keys() and all(
+        normalized(k, v) == normalized(k, actual[k]) for k, v in expected.items())
 
 
 def matches(actual, expected, allow_day_gate=False):
@@ -200,45 +267,92 @@ def matches(actual, expected, allow_day_gate=False):
     return not (set(actual) - set(expected) - {"collectionId", "collectionName", "created", "updated"})
 
 
-def inspect_state(manifest, state, complete=False, expect=None):
-    """Validate pins, collisions, exact owned fields, extras and publication gate."""
+def require_snapshot(state):
     for name in COLLECTIONS:
         require(name in state and isinstance(state[name], list), f"Missing collection snapshot: {name}.")
         ids = [r["id"] for r in state[name]]
         require(len(ids) == len(set(ids)), f"Duplicate record IDs in {name} snapshot.")
-    require(build_manifest(state, revision=manifest["version"]) == manifest, "Live source bindings/titles/membership drifted; review a new manifest.")
-    expected = manifest["records"]
+
+
+def scope_rules(expected):
+    """Per collection, the predicates that put a foreign row inside the owned agenda scope."""
     day = expected["conference_days"][0]
     programme = expected["event_programmes"][0]
+    track_ids = {t["id"] for t in expected["agenda_tracks"]}
+    session_ids = {s["session"] for s in expected["agenda_slots"] if s["session"]}
+
+    def in_programme(row):
+        return row.get("programme") == programme["id"]
+
+    return {
+        "conference_days": (lambda row: row.get("key") == day["key"] or row.get("local_date") == DATE,),
+        "event_programmes": (lambda row: row.get("day") == day["id"] or row.get("appearance_event") == EVENT,),
+        "agenda_tracks": (in_programme,),
+        "agenda_slots": (in_programme, lambda row: row.get("track") in track_ids,
+                         lambda row: row.get("session") in session_ids),
+    }
+
+
+def require_no_collisions(collection, rows, expected_rows, rules):
+    allowed = {r["id"] for r in expected_rows}
+    for row in rows:
+        rid = row["id"]
+        related = any([rule(row) for rule in rules])
+        require(rid in allowed or not (rid.startswith(PREFIX) or related),
+                f"Unexpected owned/scope/unique-session collision: {collection}/{rid}.")
+
+
+def missing_owned(collection, expected_rows, actual_by_id):
+    missing = []
+    for row in expected_rows:
+        actual = actual_by_id.get(row["id"])
+        if actual is None:
+            missing.append((collection, row))
+        else:
+            require(matches(actual, row, collection in ("conference_days", "agenda_slots")),
+                    f"Owned ID collision or field drift: {collection}/{row['id']}.")
+    return missing
+
+
+def pinned_source(manifest, state):
+    # A speaker may also have a weekday talk. Verify the explicitly pinned
+    # Session identities rather than requiring one talk across the whole week.
+    pinned_sessions = {b["session"]["id"] for b in manifest["bindings"]}
+    return {**state, "sessions": [s for s in state["sessions"] if s["id"] in pinned_sessions]}
+
+
+def published_slot_count(expected_slots, actual_by_id):
+    owned_slots = [actual_by_id[s["id"]] for s in expected_slots if s["id"] in actual_by_id]
+    return sum(s["published"] is True for s in owned_slots)
+
+
+def phase_of(published, published_slots, slot_count, staged):
+    if published_slots == slot_count:
+        return "published"
+    if published:
+        return "partial"
+    return "staged" if staged else "incomplete"
+
+
+def inspect_state(manifest, state, complete=False, expect=None):
+    """Validate pins, collisions, exact owned fields, extras and publication gate."""
+    require_snapshot(state)
+    require(build_manifest(pinned_source(manifest, state), revision=manifest["version"]) == manifest, "Live source bindings/titles/membership drifted; review a new manifest.")
+    expected = manifest["records"]
+    day = expected["conference_days"][0]
     by_id = {c: {r["id"]: r for r in state[c]} for c in WRITABLE}
+    rules = scope_rules(expected)
     missing = []
     for collection in WRITABLE:
-        allowed = {r["id"] for r in expected[collection]}
-        for row in state[collection]:
-            rid = row["id"]
-            related = (collection == "conference_days" and (row.get("key") == day["key"] or row.get("local_date") == DATE))
-            related |= collection == "event_programmes" and (row.get("day") == day["id"] or row.get("appearance_event") == EVENT)
-            related |= collection in ("agenda_tracks", "agenda_slots") and row.get("programme") == programme["id"]
-            related |= collection == "agenda_slots" and row.get("track") in {t["id"] for t in expected["agenda_tracks"]}
-            related |= collection == "agenda_slots" and row.get("session") in {s["session"] for s in expected["agenda_slots"] if s["session"]}
-            require(rid in allowed or not (rid.startswith(PREFIX) or related),
-                    f"Unexpected owned/scope/unique-session collision: {collection}/{rid}.")
-        for row in expected[collection]:
-            actual = by_id[collection].get(row["id"])
-            if actual is None:
-                missing.append((collection, row))
-            else:
-                require(matches(actual, row, collection in ("conference_days", "agenda_slots")),
-                        f"Owned ID collision or field drift: {collection}/{row['id']}.")
+        require_no_collisions(collection, state[collection], expected[collection], rules[collection])
+        missing += missing_owned(collection, expected[collection], by_id[collection])
     current_day = by_id["conference_days"].get(day["id"])
     published = current_day is not None and current_day["published"] is True
     require(not (published and missing), "Published day is incomplete; refusing any automatic repair.")
-    owned_slots = [by_id["agenda_slots"][s["id"]] for s in expected["agenda_slots"] if s["id"] in by_id["agenda_slots"]]
-    published_slots = sum(s["published"] is True for s in owned_slots)
+    published_slots = published_slot_count(expected["agenda_slots"], by_id["agenda_slots"])
     require(published or not published_slots, "Published Slots under unpublished Day; inconsistent hook state.")
     require(not complete or not missing, f"Staging incomplete: {len(missing)} records missing.")
-    phase = ("published" if published_slots == len(expected["agenda_slots"]) else "partial" if published
-             else "staged" if current_day and not missing else "incomplete")
+    phase = phase_of(published, published_slots, len(expected["agenda_slots"]), current_day and not missing)
 
     if expect is not None:
         require(phase == expect, f"Expected {expect} state, found {phase}.")
@@ -257,6 +371,49 @@ def unrelated(state, manifest):
         if row["id"] in linked:
             row.pop("updated", None)
     return result
+
+
+def draft_create(collection, payload):
+    return (payload.get("id", "").startswith(PREFIX)
+            and (collection not in ("conference_days", "agenda_slots") or payload.get("published") is False))
+
+
+def day_publication(collection, rid, payload):
+    return (collection == "conference_days" and rid == stable_id("day")
+            and set(payload) == {"published"} and type(payload["published"]) is bool)
+
+
+RELATIONS = {("event_programmes", "day"): "conference_days",
+             ("event_programmes", "appearance_event"): "appearance_events",
+             ("agenda_tracks", "programme"): "event_programmes",
+             ("agenda_slots", "programme"): "event_programmes",
+             ("agenda_slots", "track"): "agenda_tracks", ("agenda_slots", "session"): "sessions"}
+LOCKED_RULES = ("listRule", "viewRule", "createRule", "updateRule", "deleteRule")
+
+
+def field_type(name, key, value):
+    if (name, key) in RELATIONS:
+        return "relation"
+    if key in ("start_at", "end_at"):
+        return "date"
+    if key == "kind":
+        return "select"
+    if isinstance(value, bool):
+        return "bool"
+    return "number" if isinstance(value, int) else "text"
+
+
+def require_schema(schemas, name, sample):
+    fields = {f["name"]: f for f in schemas[name]["fields"] if f["name"] not in ("created", "updated")}
+    require(set(fields) == set(sample), f"Unexpected live schema fields for {name}.")
+    for key, value in sample.items():
+        expected_type = field_type(name, key, value)
+        require(fields[key]["type"] == expected_type, f"Schema field type drift: {name}/{key}.")
+        if expected_type == "relation":
+            require(fields[key]["collectionId"] == schemas[RELATIONS[name, key]]["id"]
+                    and fields[key]["maxSelect"] == 1 and not fields[key].get("cascadeDelete"),
+                    f"Schema relation drift: {name}/{key}.")
+    require(all(schemas[name].get(rule) is None for rule in LOCKED_RULES), f"Raw agenda rules are not locked: {name}.")
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -280,10 +437,8 @@ class PocketBase:
         require(not rid or re.fullmatch(r"[a-z0-9]{15}", rid), "Invalid target ID.")
         if method != "GET":
             require(collection in WRITABLE and method in ("POST", "PATCH"), "Write outside exact agenda scope.")
-            require(payload is not None and ((method == "POST" and payload.get("id", "").startswith(PREFIX)
-                     and (collection not in ("conference_days", "agenda_slots") or payload.get("published") is False))
-                    or (method == "PATCH" and collection == "conference_days" and rid == stable_id("day")
-                        and set(payload) == {"published"} and type(payload["published"]) is bool)),
+            require(payload is not None and ((method == "POST" and draft_create(collection, payload))
+                                             or (method == "PATCH" and day_publication(collection, rid, payload))),
                     "Write payload outside allowed draft-create/day-publication scope.")
         path = f"/api/collections/{collection}/records" + (f"/{rid}" if rid else "") + query
         return self.raw(method, path, payload)
@@ -327,25 +482,8 @@ class PocketBase:
 
     def schemas(self, manifest):
         schemas = {c: self.raw("GET", f"/api/collections/{c}") for c in COLLECTIONS}
-        relations = {("event_programmes", "day"): "conference_days",
-                     ("event_programmes", "appearance_event"): "appearance_events",
-                     ("agenda_tracks", "programme"): "event_programmes",
-                     ("agenda_slots", "programme"): "event_programmes",
-                     ("agenda_slots", "track"): "agenda_tracks", ("agenda_slots", "session"): "sessions"}
         for name in WRITABLE:
-            fields = {f["name"]: f for f in schemas[name]["fields"] if f["name"] not in ("created", "updated")}
-            require(set(fields) == set(manifest["records"][name][0]), f"Unexpected live schema fields for {name}.")
-            for key, value in manifest["records"][name][0].items():
-                expected_type = ("relation" if (name, key) in relations else "date" if key in ("start_at", "end_at")
-                                 else "select" if key == "kind" else "bool" if isinstance(value, bool)
-                                 else "number" if isinstance(value, int) else "text")
-                require(fields[key]["type"] == expected_type, f"Schema field type drift: {name}/{key}.")
-                if expected_type == "relation":
-                    require(fields[key]["collectionId"] == schemas[relations[name, key]]["id"]
-                            and fields[key]["maxSelect"] == 1 and not fields[key].get("cascadeDelete"),
-                            f"Schema relation drift: {name}/{key}.")
-            require(all(schemas[name].get(rule) is None for rule in ("listRule", "viewRule", "createRule", "updateRule", "deleteRule")),
-                    f"Raw agenda rules are not locked: {name}.")
+            require_schema(schemas, name, manifest["records"][name][0])
         require(set(next(f for f in schemas["agenda_slots"]["fields"] if f["name"] == "kind")["values"])
                 == {"session", "break", "meal", "networking", "opening", "closing", "other"}, "Slot kind schema drift.")
         return schemas
@@ -388,76 +526,95 @@ def secure_backup(directory, state, schemas, manifest, mode, target):
     return str(path)
 
 
+def operation_report(manifest, mode, inspection):
+    return {"mode": mode, "manifest_sha256": digest(manifest),
+            "records": {c: len(v) for c, v in manifest["records"].items()},
+            "session_links": len(manifest["bindings"]), "missing_records": len(inspection["missing"]),
+            "day_published": inspection["published"], "published_slots": inspection["published_slots"],
+            "phase": inspection["phase"], "atomic": False, "writes": 0}
+
+
+def require_writable(mode, inspection, before, manifest):
+    if mode == "stage":
+        require(not inspection["published"], "Stage cannot modify a public Day; use publish to resume or rollback.")
+    if mode == "rollback":
+        owned = {r["id"] for r in manifest["records"]["agenda_slots"]}
+        require(not any(s["published"] and s["session"] for s in before["agenda_slots"] if s["id"] in owned),
+                "Rollback blocked: coordinated unpublish would hide existing public talks. Resume publish instead; no writes attempted.")
+
+
+CONVERGED = {"publish": lambda i: i["phase"] == "published",
+             "rollback": lambda i: i["phase"] == "staged",
+             "stage": lambda i: not i["missing"]}
+
+
+def stage_missing(client, missing, expected_day, report):
+    for collection, desired in missing:
+        row = {**desired, "published": False} if collection == "agenda_slots" else desired
+        if collection != "conference_days":
+            require(matches(client.request("GET", "conference_days", stable_id("day")), expected_day),
+                    "Day gate changed during staging.")
+        client.request("POST", collection, payload=row)
+        require(matches(client.request("GET", collection, row["id"]), row),
+                f"Created record readback mismatch: {collection}/{row['id']}.")
+        report["writes"] += 1
+
+
+def set_day_gate(client, expected_day, published, report):
+    day_id = stable_id("day")
+    client.request("PATCH", "conference_days", day_id, payload={"published": published})
+    report["writes"] += 1
+    require(matches(client.request("GET", "conference_days", day_id), {**expected_day, "published": published}),
+            "Day publication readback mismatch.")
+
+
+def publish_slots(client, manifest, before, target, report):
+    slots = {s["id"]: s for s in before["agenda_slots"]}
+    for slot in manifest["records"]["agenda_slots"]:
+        if slots[slot["id"]]["published"] is target:
+            continue
+        client.publication(slot, target, manifest)
+        report["writes"] += 1
+        require(matches(client.request("GET", "agenda_slots", slot["id"]), {**slot, "published": target}),
+                "Slot publication readback mismatch.")
+        if slot["session"]:
+            require(client.request("GET", "sessions", slot["session"])["published"] is target,
+                    "Coordinated Session publication readback mismatch.")
+
+
+def toggle_publication(client, manifest, mode, inspection, before, report):
+    # Existing API transactions cover ONE Slot + Session, not a Day.
+    # Publication intentionally exposes a resumable partial programme.
+    expected_day = manifest["records"]["conference_days"][0]
+    if mode == "publish" and not inspection["published"]:
+        set_day_gate(client, expected_day, True, report)
+    publish_slots(client, manifest, before, mode == "publish", report)
+    if mode == "rollback" and inspection["published"]:
+        # The hook rejects hiding a Day with published Slots. Do this last.
+        set_day_gate(client, expected_day, False, report)
+
+
 def run_operation(client, manifest, mode, backup_dir=None, expect=None):
     require(mode in ("dry-run", "verify", "stage", "publish", "rollback"), "Unsupported operation.")
     validate_manifest(manifest)
     schemas = client.schemas(manifest)
     before = client.snapshot()
     inspection = inspect_state(manifest, before, complete=mode in ("publish", "verify", "rollback"), expect=expect)
-    report = {"mode": mode, "manifest_sha256": digest(manifest),
-              "records": {c: len(v) for c, v in manifest["records"].items()},
-              "session_links": len(manifest["bindings"]), "missing_records": len(inspection["missing"]),
-              "day_published": inspection["published"], "published_slots": inspection["published_slots"],
-              "phase": inspection["phase"], "atomic": False, "writes": 0}
+    report = operation_report(manifest, mode, inspection)
     if mode in ("dry-run", "verify"):
         return report
-    if mode == "stage":
-        require(not inspection["published"], "Stage cannot modify a public Day; use publish to resume or rollback.")
-    if mode == "rollback":
-        require(not any(s["published"] and s["session"] for s in before["agenda_slots"]
-                        if s["id"] in {r["id"] for r in manifest["records"]["agenda_slots"]}),
-                "Rollback blocked: coordinated unpublish would hide existing public talks. Resume publish instead; no writes attempted.")
-    if ((mode == "publish" and inspection["phase"] == "published")
-            or (mode == "rollback" and inspection["phase"] == "staged")
-            or (mode == "stage" and not inspection["missing"])):
+    require_writable(mode, inspection, before, manifest)
+    if CONVERGED[mode](inspection):
         return report
     require(backup_dir is not None, "An explicit private backup directory is required.")
     report["backup"] = secure_backup(backup_dir, before, schemas, manifest, mode, client.url)
     # Read again after backup: a non-transactional REST client must not act on a stale baseline.
     require(client.snapshot() == before, "State drifted during backup; no writes attempted.")
-    day_id = stable_id("day")
-    expected_day = manifest["records"]["conference_days"][0]
-
-    def day_gate(published):
-        client.request("PATCH", "conference_days", day_id, payload={"published": published})
-        report["writes"] += 1
-        require(matches(client.request("GET", "conference_days", day_id), {**expected_day, "published": published}),
-                "Day publication readback mismatch.")
-
-
     try:
         if mode == "stage":
-            for collection, desired in inspection["missing"]:
-                row = {**desired, "published": False} if collection == "agenda_slots" else desired
-                if collection != "conference_days":
-                    require(matches(client.request("GET", "conference_days", day_id), expected_day),
-                            "Day gate changed during staging.")
-                client.request("POST", collection, payload=row)
-                require(matches(client.request("GET", collection, row["id"]), row),
-                        f"Created record readback mismatch: {collection}/{row['id']}.")
-                report["writes"] += 1
+            stage_missing(client, inspection["missing"], manifest["records"]["conference_days"][0], report)
         else:
-            # Existing API transactions cover ONE Slot + Session, not a Day.
-            # Publication intentionally exposes a resumable partial programme.
-            if mode == "publish" and not inspection["published"]:
-                day_gate(True)
-
-            slots = {s["id"]: s for s in before["agenda_slots"]}
-            target = mode == "publish"
-            for slot in manifest["records"]["agenda_slots"]:
-                if slots[slot["id"]]["published"] is target:
-                    continue
-                client.publication(slot, target, manifest)
-                report["writes"] += 1
-                require(matches(client.request("GET", "agenda_slots", slot["id"]), {**slot, "published": target}),
-                        "Slot publication readback mismatch.")
-                if slot["session"]:
-                    require(client.request("GET", "sessions", slot["session"])["published"] is target,
-                            "Coordinated Session publication readback mismatch.")
-
-            if mode == "rollback" and inspection["published"]:
-                # The hook rejects hiding a Day with published Slots. Do this last.
-                day_gate(False)
+            toggle_publication(client, manifest, mode, inspection, before, report)
         after = client.snapshot()
         final = inspect_state(manifest, after, complete=True, expect="published" if mode == "publish" else "staged")
         require(unrelated(before, manifest) == unrelated(after, manifest),
@@ -470,6 +627,34 @@ def run_operation(client, manifest, mode, backup_dir=None, expect=None):
     report.update(missing_records=0, day_published=final["published"], published_slots=final["published_slots"],
                   phase=final["phase"], verified=True)
     return report
+
+
+def offline_dry_run(manifest, args):
+    require(args.mode == "dry-run" and not args.execute, "Offline snapshots can only dry-run.")
+    state = json.loads(args.snapshot.read_text())
+    result = inspect_state(manifest, state)
+    print(json.dumps({"mode": "offline-dry-run", "manifest_sha256": digest(manifest),
+                      "records": {c: len(v) for c, v in manifest["records"].items()},
+                      "session_links": len(manifest["bindings"]), "missing_records": len(result["missing"]),
+                      "day_published": result["published"], "writes": 0}, indent=2))
+    return 0
+
+
+def require_write_guards(args, writes):
+    require(not writes or (args.execute and args.exclusive_writer and args.backup_dir is not None),
+            "Writes require --execute --exclusive-writer --backup-dir PRIVATE_DIRECTORY.")
+    require(args.mode not in ("publish", "rollback") or args.accept_partial_publication,
+            "Publish/rollback require --accept-partial-publication; the supported API is not Day-atomic.")
+    require(writes or not args.execute, "--execute is only for stage/publish/rollback.")
+
+
+def locked_operation(client, manifest, args):
+    lockpath = Path.home() / ".cache" / "wts-main-day-agenda.lock"
+    lockpath.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd = os.open(lockpath, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return run_operation(client, manifest, args.mode, args.backup_dir)
 
 
 def main(argv=None):
@@ -489,29 +674,13 @@ def main(argv=None):
         manifest = json.loads(MANIFEST.read_text())
         validate_manifest(manifest)
         if args.snapshot:
-            require(args.mode == "dry-run" and not args.execute, "Offline snapshots can only dry-run.")
-            state = json.loads(args.snapshot.read_text())
-            result = inspect_state(manifest, state)
-            print(json.dumps({"mode": "offline-dry-run", "manifest_sha256": digest(manifest),
-                              "records": {c: len(v) for c, v in manifest["records"].items()},
-                              "session_links": len(manifest["bindings"]), "missing_records": len(result["missing"]),
-                              "day_published": result["published"], "writes": 0}, indent=2))
-            return 0
+            return offline_dry_run(manifest, args)
         writes = args.mode in ("stage", "publish", "rollback")
-        require(not writes or (args.execute and args.exclusive_writer and args.backup_dir is not None),
-                "Writes require --execute --exclusive-writer --backup-dir PRIVATE_DIRECTORY.")
-        require(args.mode not in ("publish", "rollback") or args.accept_partial_publication,
-                "Publish/rollback require --accept-partial-publication; the supported API is not Day-atomic.")
-        require(writes or not args.execute, "--execute is only for stage/publish/rollback.")
+        require_write_guards(args, writes)
         client = PocketBase(*credentials(args.credentials_file))
         # Same-user, same-host exclusion only. Cross-host exclusivity is an operator prerequisite.
         if writes:
-            lockpath = Path.home() / ".cache" / "wts-main-day-agenda.lock"
-            lockpath.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            fd = os.open(lockpath, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-            with os.fdopen(fd, "w") as lock:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                report = run_operation(client, manifest, args.mode, args.backup_dir)
+            report = locked_operation(client, manifest, args)
         else:
             report = run_operation(client, manifest, args.mode, expect=(args.expect or "published") if args.mode == "verify" else None)
         print(json.dumps(report, indent=2))

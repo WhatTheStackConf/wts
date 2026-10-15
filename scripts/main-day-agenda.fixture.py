@@ -97,8 +97,7 @@ def client(url):
     return agenda.PocketBase(url, auth["token"])
 
 
-def provision(directory, snapshot=None, stage="empty"):
-    directory = Path(directory).resolve()
+def prepare(directory):
     directory.mkdir(mode=0o700, parents=False, exist_ok=False)
     # Exact repository migrations, including current programme relations/indexes.
     shutil.copytree(ROOT / "pocketbase/pb_migrations", directory / "pb_migrations")
@@ -115,58 +114,101 @@ def provision(directory, snapshot=None, stage="empty"):
                                     stdout=log, stderr=subprocess.STDOUT, env=environment())
             if result.returncode:
                 raise RuntimeError(f"Fixture migration failed; see {logpath}")
+
+
+def synthetic_state(manifest):
+    # Explicit synthetic test source from the reviewed public bindings;
+    # never represent these generated records as production API data.
+    event_ids = {agenda.EVENT} | {event_id for b in manifest["bindings"] for event_id in b["speaker"]["appearance_events"]}
+    return {**{c: [] for c in agenda.WRITABLE},
+            "speakers": [b["speaker"] for b in manifest["bindings"]],
+            "sessions": [b["session"] for b in manifest["bindings"]],
+            "appearance_events": [{"id": event_id, "name": f"TEST event {event_id}", "published": True}
+                                  for event_id in sorted(event_ids)]}
+
+
+def seed_request(collection, original):
+    row = dict(original)
+    if collection == "speakers":
+        row.setdefault("origin", "invite")  # TEST ONLY; snapshot omits private provenance.
+    if collection == "sessions":
+        row.setdefault("abstract", "<p>TEST FIXTURE: abstract not included in the public preflight snapshot.</p>")
+    if collection == "appearance_events" and row["id"] == agenda.EVENT:
+        return "PATCH", "/" + row["id"], row  # migration already seeds main event.
+    return "POST", "", row
+
+
+def seed(url, token, state):
+    counts = {}
+    for collection in ("appearance_events", "speakers", "sessions", *agenda.WRITABLE):
+        counts[collection] = 0
+        for original in state[collection]:
+            method, suffix, row = seed_request(collection, original)
+            local_request(url, method, f"/api/collections/{collection}/records{suffix}", row, token)
+            counts[collection] += 1
+    return counts
+
+
+def advance(pb, manifest, stage, directory):
+    agenda.run_operation(pb, manifest, "dry-run")
+    if stage in ("staged", "published"):
+        agenda.run_operation(pb, manifest, "stage", directory / "backups")
+    if stage == "published":
+        agenda.run_operation(pb, manifest, "publish", directory / "backups")
+    if stage != "empty":
+        agenda.run_operation(pb, manifest, "verify", expect=stage)
+
+
+def write_marker(directory, stage, snapshot, counts, manifest):
+    # Keep public fixture source available for deterministic future test runs.
+    (directory / MARKER).write_text(json.dumps({"local_fixture_only": True, "state": stage,
+                                               "binary": str(BINARY),
+                                               "binary_version": subprocess.check_output([str(BINARY), "--version"], text=True).strip(),
+                                               "source": "synthetic-manifest-bindings" if snapshot is None else str(snapshot),
+                                               "hooks_sha256": {name: hashlib.sha256((directory / "pb_hooks" / name).read_bytes()).hexdigest()
+                                                                for name in HOOKS},
+                                               "snapshot_counts": counts, "manifest_sha256": agenda.digest(manifest)}, indent=2))
+
+
+def provision(directory, snapshot=None, stage="empty"):
+    directory = Path(directory).resolve()
+    prepare(directory)
     process, url = start(directory, free_port())
     try:
         pb = client(url)
         # Only public allowlisted snapshot fields are seeded; these are not private DB backups.
         manifest = json.loads(agenda.MANIFEST.read_text())
-        if snapshot is None:
-            # Explicit synthetic test source from the reviewed public bindings;
-            # never represent these generated records as production API data.
-            state = {**{c: [] for c in agenda.WRITABLE},
-                     "speakers": [b["speaker"] for b in manifest["bindings"]],
-                     "sessions": [b["session"] for b in manifest["bindings"]],
-                     "appearance_events": [{"id": event_id, "name": f"TEST event {event_id}", "published": True}
-                                           for event_id in sorted({agenda.EVENT} | {event_id for b in manifest["bindings"]
-                                                                                  for event_id in b["speaker"]["appearance_events"]})]}
-        else:
-            state = json.loads(Path(snapshot).read_text())
+        state = synthetic_state(manifest) if snapshot is None else json.loads(Path(snapshot).read_text())
         (directory / "fixture-source.json").write_text(json.dumps(state, indent=2))
-        counts = {}
-        for collection in ("appearance_events", "speakers", "sessions", *agenda.WRITABLE):
-            counts[collection] = 0
-            for original in state[collection]:
-                row = dict(original)
-                if collection == "speakers":
-                    row.setdefault("origin", "invite")  # TEST ONLY; snapshot omits private provenance.
-                if collection == "sessions":
-                    row.setdefault("abstract", "<p>TEST FIXTURE: abstract not included in the public preflight snapshot.</p>")
-                if collection == "appearance_events" and row["id"] == agenda.EVENT:
-                    method, suffix = "PATCH", "/" + row["id"]  # migration already seeds main event.
-                else:
-                    method, suffix = "POST", ""
-                local_request(url, method, f"/api/collections/{collection}/records{suffix}", row, pb.token)
-                counts[collection] += 1
-        agenda.run_operation(pb, manifest, "dry-run")
-        if stage in ("staged", "published"):
-            agenda.run_operation(pb, manifest, "stage", directory / "backups")
-        if stage == "published":
-            agenda.run_operation(pb, manifest, "publish", directory / "backups")
-        if stage != "empty":
-            agenda.run_operation(pb, manifest, "verify", expect=stage)
-        # Keep public fixture source available for deterministic future test runs.
-        (directory / MARKER).write_text(json.dumps({"local_fixture_only": True, "state": stage,
-                                                   "binary": str(BINARY),
-                                                   "binary_version": subprocess.check_output([str(BINARY), "--version"], text=True).strip(),
-                                                   "source": "synthetic-manifest-bindings" if snapshot is None else str(snapshot),
-                                                   "hooks_sha256": {name: hashlib.sha256((directory / "pb_hooks" / name).read_bytes()).hexdigest()
-                                                                    for name in HOOKS},
-                                                   "snapshot_counts": counts, "manifest_sha256": agenda.digest(manifest)}, indent=2))
+        counts = seed(url, pb.token, state)
+        advance(pb, manifest, stage, directory)
+        write_marker(directory, stage, snapshot, counts, manifest)
     finally:
         stop(process)
     return {"directory": str(directory), "state": stage, "snapshot_counts": counts,
             "login_email": EMAIL, "login_password": PASSWORD,
             "warning": "Nonsecret LOCAL credentials only. Abstract/origin are labeled test defaults; photos are not copied."}
+
+
+def cli_command(directory, mode, expected):
+    command = ["python3", str(ROOT / "scripts/main-day-agenda.py"), mode]
+    if mode in ("stage", "publish", "rollback"):
+        command += ["--execute", "--exclusive-writer", "--backup-dir", str(directory / "backups")]
+    if mode in ("publish", "rollback"):
+        command += ["--accept-partial-publication"]
+    if expected:
+        command += ["--expect", expected]
+    return command
+
+
+def cli_result(mode, result):
+    if mode == "rollback":
+        if result.returncode != 1 or "Rollback blocked" not in result.stderr:
+            raise RuntimeError("Rollback did not safely refuse published Session Slots")
+        return {"refused": True, "writes": 0, "reason": result.stderr.strip()}
+    if result.returncode:
+        raise RuntimeError(result.stderr)
+    return json.loads(result.stdout)
 
 
 def exercise(directory, snapshot=None):
@@ -181,24 +223,11 @@ def exercise(directory, snapshot=None):
                                ("stage", None), ("publish", None), ("verify", "published"),
                                ("publish", None), ("rollback", None), ("verify", "published"),
                                ("publish", None), ("verify", "published")):
-            command = ["python3", str(ROOT / "scripts/main-day-agenda.py"), mode]
-            if mode in ("stage", "publish", "rollback"):
-                command += ["--execute", "--exclusive-writer", "--backup-dir", str(directory / "backups")]
-            if mode in ("publish", "rollback"):
-                command += ["--accept-partial-publication"]
-            if expected:
-                command += ["--expect", expected]
+            command = cli_command(directory, mode, expected)
             result = subprocess.run(command, capture_output=True, text=True,
                                     env={**environment(), "PYTHONDONTWRITEBYTECODE": "1",
                                          "WTS_PB_URL": url, "WTS_PB_API_KEY": pb.token})
-            if mode == "rollback":
-                if result.returncode != 1 or "Rollback blocked" not in result.stderr:
-                    raise RuntimeError("Rollback did not safely refuse published Session Slots")
-                reports.append({"command": command, "result": {"refused": True, "writes": 0, "reason": result.stderr.strip()}})
-            elif result.returncode:
-                raise RuntimeError(result.stderr)
-            else:
-                reports.append({"command": command, "result": json.loads(result.stdout)})
+            reports.append({"command": command, "result": cli_result(mode, result)})
             (directory / "exercise-report.json").write_text(json.dumps(reports, indent=2))
         after = pb.snapshot()
         manifest = json.loads(agenda.MANIFEST.read_text())
@@ -207,7 +236,8 @@ def exercise(directory, snapshot=None):
             raise RuntimeError("Unrelated source data changed during CLI exercise")
         (directory / "verified-final-snapshot.json").write_text(json.dumps(after, indent=2))
         return {"directory": str(directory), "report": str(directory / "exercise-report.json"),
-                "verified": True, "operations": len(reports), "published_slots": 39, "local_only": True}
+                "verified": True, "operations": len(reports),
+                "published_slots": len(manifest["records"]["agenda_slots"]), "local_only": True}
     finally:
         stop(process)
 

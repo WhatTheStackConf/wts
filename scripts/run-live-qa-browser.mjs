@@ -1,16 +1,17 @@
 import { spawn } from "node:child_process";
-import { cp, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { copyApp, freePort } from "./browser-runner-support.mjs";
 import { startLiveQaPocketBase } from "../src/lib/live-qa-pocketbase-test-helper.ts";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = await mkdtemp(join(tmpdir(), "wts-live-qa-browser-"));
 const appDir = join(root, "app");
 const children = new Set();
-const workspace = process.argv.includes("--workspace");
+const gamification = process.argv.includes("--gamification");
+const workspace = process.argv.includes("--workspace") || gamification;
 let fixture;
 let cleanupPromise;
 async function clean() {
@@ -39,22 +40,41 @@ async function run(command, args, options) {
   const code = await new Promise((resolve, reject) => { child.once("error", reject); child.once("exit", resolve); });
   if (code !== 0) throw new Error(`${command} exited ${code}`);
 }
-try {
-  fixture = await startLiveQaPocketBase({ workspace });
-  await mkdir(appDir);
-  for (const name of ["src", "public", "content", "scripts", "runtime"]) {
-    await cp(join(repo, name), join(appDir, name), { recursive: true, filter: path => !path.split(/[\\/]/).some(part => part.startsWith(".env")) });
+async function createUsers() {
+  const users = {};
+  for (const role of ["user", "reviewer", "checkin_operator", "mc", "admin"]) {
+    const user = await fixture.user(role, `Browser ${role}`);
+    users[role] = { id: user.record.id, email: user.record.email, password: fixture.password };
   }
-  for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.json", "tsconfig.checkin-runtime.json", "vite.config.ts", "velite.config.ts"]) await cp(join(repo, name), join(appDir, name));
-  await mkdir(join(appDir, "node_modules"));
-  for (const name of await readdir(join(repo, "node_modules"))) {
-    if ([".nitro", ".vite", ".cache", ".vite-temp"].includes(name)) continue;
-    await symlink(join(repo, "node_modules", name), join(appDir, "node_modules", name));
+  if (workspace) env.WTS_2027_ADMIN_USER_IDS = users.admin.id;
+  const other = await fixture.user("user", "Browser other attendee");
+  users.other = { id: other.record.id, email: other.record.email, password: fixture.password };
+  return users;
+}
+async function openWorkspaceCfp() {
+  const config = await fixture.pb.collection("conference_config").getFirstListItem("");
+  await fixture.pb.collection("conference_config").update(config.id, {
+    cfp_open: true,
+    cfp_deadline: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
+    availability: { cfp: true, review: true },
+  });
+}
+async function waitForQa(app, baseURL) {
+  for (let i = 0; i < 120; i++) {
+    if (app.exitCode !== null) throw new Error("Built Q&A server exited before readiness");
+    try { if ((await fetch(`${baseURL}/login`, { signal: AbortSignal.timeout(500) })).ok) return; } catch { /* Booting. */ }
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
-  const listener = createServer();
-  await new Promise((resolve, reject) => { listener.once("error", reject); listener.listen(0, "127.0.0.1", resolve); });
-  const port = listener.address().port;
-  await new Promise(resolve => listener.close(resolve));
+  throw new Error("Built Q&A server did not become ready");
+}
+function playwrightConfig() {
+  if (gamification) return "playwright.gamification.config.ts";
+  return workspace ? "playwright.workspace.config.ts" : "playwright.live-qa.config.ts";
+}
+async function main() {
+  fixture = await startLiveQaPocketBase({ workspace, binary: process.env.WTS_AUTH_TEST_PB_BINARY });
+  await copyApp(repo, appDir, ["tokens.css"]);
+  const port = await freePort();
   const baseURL = `http://127.0.0.1:${port}`;
   Object.assign(env, {
     NODE_ENV: "production", HOST: "127.0.0.1", PORT: String(port),
@@ -65,42 +85,27 @@ try {
     GAMIFICATION_CODE_PEPPER: workspace ? `disposable-workspace-${crypto.randomUUID()}` : "",
     VITE_TURNSTILE_SITE_KEY: "", VITE_LISTMONK_LIST_ID: "",
   });
-  const users = {};
-  for (const role of ["user", "reviewer", "checkin_operator", "mc", "admin"]) {
-    const user = await fixture.user(role, `Browser ${role}`);
-    users[role] = { id: user.record.id, email: user.record.email, password: fixture.password };
-  }
-  const other = await fixture.user("user", "Browser other attendee");
-  users.other = { id: other.record.id, email: other.record.email, password: fixture.password };
+  const users = await createUsers();
   const talk = await fixture.session({ slug: "live-qa-browser-talk", stageKey: "stage-3", stageName: "Stage 2", displayOrder: 2, locationLabel: "Engineering Hall" });
   await fixture.session({ slug: "main-stage-one", stageKey: "stage-2", stageName: "Stage 1", displayOrder: 1, locationLabel: "Web Hall" });
   await fixture.pb.collection("agenda_tracks").create({ programme: talk.programme.id, key: "stage-5", name: "Stage 5", display_order: 5 });
   const weekday = await fixture.session({ slug: "weekday-qa-excluded", mainDay: false });
-  if (workspace) {
-    const config = await fixture.pb.collection("conference_config").getFirstListItem("");
-    await fixture.pb.collection("conference_config").update(config.id, {
-      cfp_open: true,
-      cfp_deadline: new Date(Date.now() + 86_400_000).toISOString(),
-    });
-  }
+  if (workspace) await openWorkspaceCfp();
   // Public page dependencies absent from the narrow backend fixture are created
   // via their real migrations, never through a mocked public response.
   await run("pnpm", ["build"]);
   const app = start(process.execPath, ["--import", join(repo, "scripts/checkin-browser-egress.mjs"), join(appDir, ".output/server/index.mjs")]);
-  let ready = false;
-  for (let i = 0; i < 120; i++) {
-    if (app.exitCode !== null) throw new Error("Built Q&A server exited before readiness");
-    try { if ((await fetch(`${baseURL}/login`, { signal: AbortSignal.timeout(500) })).ok) { ready = true; break; } } catch { /* Booting. */ }
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  if (!ready) throw new Error("Built Q&A server did not become ready");
+  await waitForQa(app, baseURL);
   const statePath = join(root, "fixture.json");
   await writeFile(statePath, JSON.stringify({ disposable: true, baseURL, pbUrl: fixture.baseUrl, superuserEmail: fixture.superuserEmail, password: fixture.password, users, slug: talk.slug, slotId: talk.slot.id, sessionId: talk.session.id, weekdaySlug: weekday.slug }), { mode: 0o600 });
   if (process.argv.includes("--inspect")) {
     console.log(`Disposable Q&A inspection ready: ${baseURL}\nFixture: ${statePath}\nStop runner ${process.pid} with SIGTERM to remove the disposable services and data.`);
     await new Promise(() => {});
   }
-  await run("pnpm", ["exec", "playwright", "test", `--config=${workspace ? "playwright.workspace.config.ts" : "playwright.live-qa.config.ts"}`, ...process.argv.slice(2).filter(argument => argument !== "--workspace")], { cwd: repo, env: { ...env, WTS_LIVE_QA_BROWSER_STATE: statePath } });
+  await run("pnpm", ["exec", "playwright", "test", `--config=${playwrightConfig()}`, ...process.argv.slice(2).filter(argument => argument !== "--workspace" && argument !== "--gamification")], { cwd: repo, env: { ...env, WTS_LIVE_QA_BROWSER_STATE: statePath } });
+}
+try {
+  await main();
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;

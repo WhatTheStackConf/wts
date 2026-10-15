@@ -1,12 +1,12 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { get as httpsGet } from "node:https";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import PocketBase from "pocketbase";
+import { copyApp, freePort } from "./browser-runner-support.mjs";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = await mkdtemp(join(tmpdir(), "wts-checkin-browser-"));
@@ -25,15 +25,6 @@ const clean = () => cleanupPromise ??= (async () => {
   await rm(root, { recursive: true, force: true });
 })();
 for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, async () => { await clean(); process.exit(130); });
-
-async function port() {
-  const server = createServer();
-  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
-  const address = server.address();
-  await new Promise((resolve) => server.close(resolve));
-  if (!address || typeof address === "string") throw new Error("Could not allocate disposable port");
-  return address.port;
-}
 
 function start(command, args, options = {}) {
   const child = spawn(command, args, { cwd: appDir, env, stdio: "inherit", ...options });
@@ -57,53 +48,28 @@ async function ready(url, child) {
 
 // Allowlist rather than inheriting shell secrets. No dotenv file is copied/read.
 const env = Object.fromEntries(["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "CI", "PLAYWRIGHT_BROWSERS_PATH", "PNPM_HOME"].flatMap((key) => process.env[key] ? [[key, process.env[key]]] : []));
-try {
-  await mkdir(appDir);
-  for (const directory of ["src", "public", "content", "scripts", "runtime"]) {
-    await cp(join(repo, directory), join(appDir, directory), { recursive: true, filter: (path) => !path.split(/[\\/]/).some((part) => part.startsWith(".env")) });
-  }
-  for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.json", "tsconfig.checkin-runtime.json", "vite.config.ts", "velite.config.ts"]) {
-    await cp(join(repo, name), join(appDir, name));
-  }
-  await mkdir(join(appDir, "node_modules"));
-  for (const name of await readdir(join(repo, "node_modules"))) {
-    if ([".nitro", ".vite", ".cache", ".vite-temp"].includes(name)) continue;
-    await symlink(join(repo, "node_modules", name), join(appDir, "node_modules", name));
-  }
-  const pbPort = await port();
-  const appPort = await port();
-  const pbUrl = `http://127.0.0.1:${pbPort}`;
-  const baseURL = `http://127.0.0.1:${appPort}`;
-  const upstreamURL = `https://127.0.0.1:${await port()}`;
-  const upstreamToken = `${Buffer.from('{"alg":"HS256","typ":"JWT"}').toString("base64url")}.${Buffer.from('{"account_id":77}').toString("base64url")}.${randomBytes(24).toString("base64url")}`;
-  const certPath = join(root, "upstream-cert.pem");
-  // Trust only this per-run synthetic TLS certificate, not arbitrary upstreams.
-  const certificate = spawnSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-noenc", "-keyout", join(root, "upstream-key.pem"), "-out", certPath, "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"], { env, stdio: "ignore" });
-  if (certificate.status !== 0) throw new Error("Could not generate disposable upstream TLS certificate; openssl is required");
-  const password = `Disposable-${randomBytes(24).toString("hex")}!`;
-  const superuserEmail = "browser-root@example.test";
-  Object.assign(env, {
-    NODE_ENV: "production", HOST: "127.0.0.1", PORT: String(appPort),
-    POCKETBASE_URL: pbUrl, PUBLIC_POCKETBASE_URL: pbUrl, POCKETBASE_PUBLIC_URL: pbUrl, VITE_POCKETBASE_URL: pbUrl,
-    POCKETBASE_SUPERUSER_EMAIL: superuserEmail, POCKETBASE_SUPERUSER_PASSWORD: password,
-    PUBLIC_SITE_URL: baseURL, SITE_URL: baseURL, VITE_SITE_URL: baseURL,
-    HIEVENTS_API_URL: `${upstreamURL}/api`, HIEVENTS_API_KEY: upstreamToken, HIEVENTS_ACCOUNT_ID: "77", HIEVENTS_EMAIL: "", HIEVENTS_PASSWORD: "", HIEVENTS_EVENT_ID: "",
-    NODE_EXTRA_CA_CERTS: certPath, WTS_SYNTHETIC_UPSTREAM_ROOT: root,
-    VITE_TURNSTILE_SITE_KEY: "", VITE_LISTMONK_LIST_ID: "",
+
+function upstreamHealthy(upstreamURL, ca) {
+  return new Promise((resolve) => {
+    const req = httpsGet(`${upstreamURL}/health`, { ca, timeout: 500 }, (response) => { response.resume(); resolve(response.statusCode === 200); });
+    req.on("error", () => resolve(false)); req.on("timeout", () => { req.destroy(); resolve(false); });
   });
+}
+
+async function startUpstream(upstreamURL, certPath) {
   const upstreamProcess = start(process.execPath, [join(repo, "scripts/checkin-hievents-fixture.mjs")]);
   const ca = await readFile(certPath);
   let upstreamReady = false;
   for (let attempt = 0; attempt < 100; attempt++) {
     if (upstreamProcess.exitCode !== null) throw new Error("Synthetic upstream exited before readiness");
-    upstreamReady = await new Promise((resolve) => {
-      const req = httpsGet(`${upstreamURL}/health`, { ca, timeout: 500 }, (response) => { response.resume(); resolve(response.statusCode === 200); });
-      req.on("error", () => resolve(false)); req.on("timeout", () => { req.destroy(); resolve(false); });
-    });
+    upstreamReady = await upstreamHealthy(upstreamURL, ca);
     if (upstreamReady) break;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   if (!upstreamReady) throw new Error("Synthetic upstream TLS health check failed");
+}
+
+async function startPocketBase(pbPort, pbUrl, superuserEmail, password) {
   const migrationsDir = join(root, "pb_migrations");
   const hooksDir = join(root, "pb_hooks");
   const dataDir = join(root, "pb_data");
@@ -133,6 +99,9 @@ try {
   await run(binary, ["superuser", "create", superuserEmail, password, ...pbArgs]);
   const pbProcess = start(binary, ["serve", `--http=127.0.0.1:${pbPort}`, "--hooksWatch=false", ...pbArgs]);
   await ready(`${pbUrl}/api/health`, pbProcess);
+}
+
+async function createUsers(pbUrl, superuserEmail, password) {
   const pb = new PocketBase(pbUrl);
   await pb.collection("_superusers").authWithPassword(superuserEmail, password);
   const users = {};
@@ -143,6 +112,35 @@ try {
     });
     users[key] = { id: record.id, email, password };
   }
+  return users;
+}
+
+async function main() {
+  await copyApp(repo, appDir);
+  const pbPort = await freePort();
+  const appPort = await freePort();
+  const pbUrl = `http://127.0.0.1:${pbPort}`;
+  const baseURL = `http://127.0.0.1:${appPort}`;
+  const upstreamURL = `https://127.0.0.1:${await freePort()}`;
+  const upstreamToken = `${Buffer.from('{"alg":"HS256","typ":"JWT"}').toString("base64url")}.${Buffer.from('{"account_id":77}').toString("base64url")}.${randomBytes(24).toString("base64url")}`;
+  const certPath = join(root, "upstream-cert.pem");
+  // Trust only this per-run synthetic TLS certificate, not arbitrary upstreams.
+  const certificate = spawnSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-noenc", "-keyout", join(root, "upstream-key.pem"), "-out", certPath, "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"], { env, stdio: "ignore" });
+  if (certificate.status !== 0) throw new Error("Could not generate disposable upstream TLS certificate; openssl is required");
+  const password = `Disposable-${randomBytes(24).toString("hex")}!`;
+  const superuserEmail = "browser-root@example.test";
+  Object.assign(env, {
+    NODE_ENV: "production", HOST: "127.0.0.1", PORT: String(appPort),
+    POCKETBASE_URL: pbUrl, PUBLIC_POCKETBASE_URL: pbUrl, POCKETBASE_PUBLIC_URL: pbUrl, VITE_POCKETBASE_URL: pbUrl,
+    POCKETBASE_SUPERUSER_EMAIL: superuserEmail, POCKETBASE_SUPERUSER_PASSWORD: password,
+    PUBLIC_SITE_URL: baseURL, SITE_URL: baseURL, VITE_SITE_URL: baseURL,
+    HIEVENTS_API_URL: `${upstreamURL}/api`, HIEVENTS_API_KEY: upstreamToken, HIEVENTS_ACCOUNT_ID: "77", HIEVENTS_EMAIL: "", HIEVENTS_PASSWORD: "", HIEVENTS_EVENT_ID: "",
+    NODE_EXTRA_CA_CERTS: certPath, WTS_SYNTHETIC_UPSTREAM_ROOT: root,
+    VITE_TURNSTILE_SITE_KEY: "", VITE_LISTMONK_LIST_ID: "",
+  });
+  await startUpstream(upstreamURL, certPath);
+  await startPocketBase(pbPort, pbUrl, superuserEmail, password);
+  const users = await createUsers(pbUrl, superuserEmail, password);
   await run("pnpm", ["build"]);
   const appProcess = start(process.execPath, ["--import", join(repo, "scripts/checkin-browser-egress.mjs"), join(appDir, ".output/server/index.mjs")]);
   await ready(`${baseURL}/login`, appProcess);
@@ -155,6 +153,10 @@ try {
   await run("pnpm", ["exec", "playwright", "test", ...process.argv.slice(2)], {
     cwd: repo, env: { ...env, WTS_CHECKIN_BROWSER_STATE: statePath },
   });
+}
+
+try {
+  await main();
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;

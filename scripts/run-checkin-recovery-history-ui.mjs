@@ -16,6 +16,10 @@ await server.listen();
 const profile={id:"ppppppppppppppp",stationId:"wts2026station1",version:1,approval:"unapproved",config:{rendererVersion:"wts-name-label-v1",fontVersion:"noto-sans-2.008-latin-cyrillic-v1",printerRef:"synthetic-preview",stockRef:"synthetic-50x30-gap",synthetic:true,media:{widthMm:50,heightMm:30,kind:"precut-gap"},raster:{width:600,height:360},printable:{x:12,y:12,width:576,height:336},margins:{top:24,right:18,bottom:24,left:18},offset:{x:0,y:0},direction:0,feed:{mode:"gap",gapDots:24,advanceDots:0},density:3,threshold:160}};
 const attempts=Array.from({length:51},(_,i)=>({id:`history${String(i).padStart(8,"0")}`,purpose:i?"replacement":"initial",state:"completed",name:`Private Ж ${i}`,affiliation:"界",predecessorId:i?`history${String(i-1).padStart(8,"0")}`:"",observation:null,cancellation:null}));
 const workflow={workflowId:"aaaaaaaaaaaaaaa",stationId:"wts2026station1",eventId:"eeeeeeeeeeeeeee",eventTitle:"Synthetic event",admissionState:"accepted",version:0,name:"Private attendee",affiliation:"界",decision:"",fulfillment:"protocol_complete",parked:false,completedDay:"2026-09-11",isolated:false,profile,admissionReadRetryEligible:false,attempts:attempts.slice(-25),attemptsTruncated:true,reads:[],admissionAttempts:[],resets:[],operationsEnabled:false};
+function attemptPage(offset) {
+ const items=attempts.slice(offset,offset+25);
+ return {workflowId:workflow.workflowId,items,nextOffset:offset+items.length<attempts.length?offset+items.length:null};
+}
 let browser;
 try {
  browser=await chromium.launch({headless:true});
@@ -29,7 +33,7 @@ try {
    if(body.operation==="attempt_history") {
     if(denying) return route.fulfill({status:Number(mode)||403,json:{error:"denied"}});
     if(body.offset===25 && mode==="rebind") {held=route;return;}
-    const items=attempts.slice(body.offset,body.offset+25);return route.fulfill({json:{workflowId:workflow.workflowId,items,nextOffset:body.offset+items.length<attempts.length?body.offset+items.length:null}});
+    return route.fulfill({json:attemptPage(body.offset)});
    }
    return route.fulfill({json:{items:mode==="compact"?[workflow]:[],nextOffset:null}});
   });

@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "source_checked": "2026-09-17",
+  "event_id": "wts2026appevent",
+  "profiles": [
+    {
+      "source_url": "https://darko.io/about",
+      "social_source_url": "https://darko.io/",
+      "photo_source_url": "https://darko.io/_astro/profile.BR6Np9bU_ZUTTWF.jpg",
+      "photo_asset": "hosts-2026-assets/darko-bozhinovski.jpg",
+      "photo_sha256": "da3841ada1419b84421eb94745614a37784f7393151acaf9ad91d98ffd9d68a8",
+      "record": {
+        "id": "host26darko0001",
+        "slug": "darko-bozhinovski",
+        "display_name": "Darko Bozhinovski",
+        "affiliation": "Co-founder @ Axiomatic & WhatTheStack | SolidJS contributor",
+        "bio": "<p>Darko Bozhinovski co-founded Axiomatic and writes software for the web platform. Before that, he worked in developer relations and wrote code across the full stack. He is part of the SolidJS ecosystem, contributing to SolidStart.</p><p>He runs a branch of BeerJS, helps curate the global BeerJS network, and is active at base42, a community space in Skopje. He co-founded WhatTheStack, a developer conference that brings together people who care about the craft.</p><p>Darko speaks at meetups and conferences on web components, developer experience and community building, and writes about web development, community and conferences.</p>",
+        "social_handles": [
+          "https://darko.io/",
+          "https://bsky.app/profile/darko.io",
+          "https://github.com/DBozhinovski",
+          "https://www.linkedin.com/in/darkobozhinovski/",
+          "https://twitter.com/d_bozhinovski",
+          "https://www.youtube.com/channel/UCtCyVHiEXMOHaVGbnKuU4VA"
+        ],
+        "appearance_events": ["wts2026appevent"],
+        "is_mc": true,
+        "published": false,
+        "origin": "invite",
+        "user": "",
+        "cfp_applicant": "",
+        "promo": null
+      }
+    },
+    {
+      "source_url": "https://2025.wts.sh/speakers/h9h0gx78e9npo81",
+      "photo_source_url": "https://pocketbase.wts.sh/api/files/pbc_1636713223/h9h0gx78e9npo81/viber_image_2025_07_24_13_08_08_803_8fl33xbq8n.jpg",
+      "photo_asset": "hosts-2026-assets/miodrag-cekikj.jpg",
+      "photo_sha256": "8882ff8c3f10b9d4e09eb61757e171fd020a18af9b08765da42ec5329cf5789a",
+      "record": {
+        "id": "host26miodrag01",
+        "slug": "miodrag-cekikj",
+        "display_name": "Miodrag Cekikj",
+        "affiliation": "Founder @ Adopt Intelligence | Microsoft MVP",
+        "bio": "<p>Founder of Adopt Intelligence: Microsoft MVP for Azure AI Services and Azure AI Studio, contributing to the applied AI field in different business domains and industry areas. With a PhD in bio engineering and a software engineering background, I've led as a tech lead and solution architect, specializing in Microsoft tech. Deeply involved in Applied AI, cloud-native trends, LLMs, and Generative AI. Passionate about innovation, I actively support global tech communities and educational centers, always eager to drive progress in the tech landscape.</p>",
+        "social_handles": [
+          "https://www.linkedin.com/in/miodragcekikj/",
+          "https://medium.com/@cekikjmiodrag"
+        ],
+        "appearance_events": ["wts2026appevent"],
+        "is_mc": true,
+        "published": false,
+        "origin": "invite",
+        "user": "",
+        "cfp_applicant": "",
+        "promo": null
+      }
+    }
+  ],
+  "hosts": {
+    "fs26f7995331c81": "host26darko0001",
+    "fs2674cf818b29b": "host26miodrag01",
+    "fs26ef8a9c617d3": "host26miodrag01",
+    "fs262ce9f31b4f2": "host26darko0001",
+    "fs263c3cbc9227b": "host26miodrag01",
+    "fs26513e80f4656": "host26darko0001"
+  },
+  "shared_host": "host26darko0001"
+}

@@ -49,61 +49,53 @@ function page(path, rows, current) {
   const url = (page) => `${origin}${path}?page=${page}&per_page=${perPage}`;
   return { data, links: { first: url(1), last: url(last), prev: current > 1 ? url(current - 1) : null, next: current < last ? url(current + 1) : null }, meta: { path: `${origin}${path}`, total: rows.length, current_page: current, per_page: perPage, last_page: last, from: rows.length ? (current - 1) * perPage + 1 : null, to: rows.length ? (current - 1) * perPage + data.length : null } };
 }
-const server = createServer({ key: readFileSync(`${root}/upstream-key.pem`), cert: readFileSync(`${root}/upstream-cert.pem`) }, async (request, response) => {
-  const url = new URL(request.url, origin);
-  const send = (status, body) => {
-    if (Date.now() >= rateResetAt) { rateResetAt = Date.now() + 60000; rateRemaining = 10000; }
-    rateRemaining--;
-    response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", "X-RateLimit-Limit": "10000", "X-RateLimit-Remaining": String(rateRemaining), "X-RateLimit-Reset": String(Math.ceil(rateResetAt / 1000)) });
-    response.end(JSON.stringify(body));
-  };
-  if (url.pathname === "/health" && request.method === "GET") return send(200, { synthetic: true });
-  const publicAttendees = url.pathname === "/api/public/check-in-lists/synthetic-list-capability/attendees";
-  if (!publicAttendees && request.headers.authorization !== `Bearer ${token}`) return send(401, { error: "Synthetic authorization required" });
-  if (url.pathname === "/__test/control" && request.method === "POST") {
-    let body = "";
-    for await (const chunk of request) { body += chunk; if (body.length > 1024) return send(413, {}); }
-    try {
-      const command = JSON.parse(body);
-      if (!["complete", "unavailable", "partial", "expired_list", "affiliation_failure", "arrival_unavailable"].includes(command.mode)) return send(400, {});
-      mode = command.mode; return send(200, { synthetic: true, mode, forbiddenEffects });
-    } catch { return send(400, {}); }
-  }
-  if (url.pathname === "/__test/status" && request.method === "GET") return send(200, { synthetic: true, mode, forbiddenEffects, arrivalReads, affiliationReads });
-  if (request.method !== "GET") { forbiddenEffects++; return send(405, { error: "No admission or upstream mutation exists in this fixture" }); }
-  if (mode === "unavailable") return send(503, { error: "Synthetic dependency outage" });
-  const current = Number(url.searchParams.get("page") || "1");
-  if (publicAttendees) {
-    arrivalReads++;
-    if (mode === "arrival_unavailable") return send(503, { error: "Synthetic arrival outage" });
-    const query = url.searchParams.get("query");
-    const rows = attendees.filter((row) => query === null || row.public_id === query).map((row) => row.id === 907 ? { ...row, check_in: { id: 1101, short_id: "synthetic-checkin-capability", check_in_list_id: 701, attendee_id: row.id, order_id: row.order_id, checked_in_at: "2026-09-09T08:00:00Z" } } : row);
-    const path = `${origin}${url.pathname}`;
-    // Pinned Hi.Events list attendees use Laravel simplePaginate, not totals.
-    return send(200, { data: rows, links: { first: `${path}?page=1`, last: null, prev: null, next: null }, meta: { path, current_page: 1, per_page: 25, from: rows.length ? 1 : null, to: rows.length || null } });
-  }
-  if (url.pathname === "/api/events/5/attendees") {
-    if (url.searchParams.get("sort_by") !== "id" || url.searchParams.get("sort_direction") !== "asc" || url.searchParams.has("query")) return send(400, {});
-    const rows = [15, 15, 16, 17, 999, 15, 9, 14, 2, 4].map((product_id, index) => ({ id: 95000 + index, event_id: 5, product_id, first_name: "Synthetic", last_name: `Roster ${index}`, email: `roster${index}@example.invalid`, status: product_id === 14 ? "CANCELLED" : "ACTIVE", short_id: "never-expose" }));
-    return send(200, page(url.pathname, rows, current));
-  }
-  const attendeeList = /^\/api\/events\/(501|502)\/attendees$/.exec(url.pathname);
-  if (attendeeList) {
-    if (url.searchParams.has("query")) return send(400, { error: "Private queries must never reach upstream URLs" });
-    return send(200, page(url.pathname, attendees.map(row => ({ ...row, event_id: Number(attendeeList[1]), email: "private-arrival@example.test" })), current));
-  }
-  const detail = /^\/api\/events\/(501|502)\/attendees\/(90[1-7]|911|915|921|922|925|926|931|941)$/.exec(url.pathname);
-  if (detail) {
-    affiliationReads++;
-    if (mode === "affiliation_failure") return send(503, { error: "Synthetic answer fetch failure, never missing data" });
-    const attendee = attendees.find((row) => row.id === Number(detail[2]));
-    return send(200, { data: { ...attendee, event_id: Number(detail[1]), email: "private-arrival@example.test", question_answers: [902, 922].includes(attendee.id) ? [] : [{ question_id: 801, answer: "Synthetic organisation", text_answer: "Synthetic organisation" }] } });
-  }
-  if (url.pathname === "/api/events") {
-    const result = page(url.pathname, events, current);
-    if (mode === "partial" && current === 2) result.meta.total = 99;
-    return send(200, result);
-  }
+const publicAttendeesPath = "/api/public/check-in-lists/synthetic-list-capability/attendees";
+const testModes = ["complete", "unavailable", "partial", "expired_list", "affiliation_failure", "arrival_unavailable"];
+function sendJson(response, status, body) {
+  if (Date.now() >= rateResetAt) { rateResetAt = Date.now() + 60000; rateRemaining = 10000; }
+  rateRemaining--;
+  response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", "X-RateLimit-Limit": "10000", "X-RateLimit-Remaining": String(rateRemaining), "X-RateLimit-Reset": String(Math.ceil(rateResetAt / 1000)) });
+  response.end(JSON.stringify(body));
+}
+async function setTestMode({ request, send }) {
+  let body = "";
+  for await (const chunk of request) { body += chunk; if (body.length > 1024) return send(413, {}); }
+  try {
+    const command = JSON.parse(body);
+    if (!testModes.includes(command.mode)) return send(400, {});
+    mode = command.mode; return send(200, { synthetic: true, mode, forbiddenEffects });
+  } catch { return send(400, {}); }
+}
+function publicArrivals({ url, send }) {
+  arrivalReads++;
+  if (mode === "arrival_unavailable") return send(503, { error: "Synthetic arrival outage" });
+  const query = url.searchParams.get("query");
+  const rows = attendees.filter((row) => query === null || row.public_id === query).map((row) => row.id === 907 ? { ...row, check_in: { id: 1101, short_id: "synthetic-checkin-capability", check_in_list_id: 701, attendee_id: row.id, order_id: row.order_id, checked_in_at: "2026-09-09T08:00:00Z" } } : row);
+  const path = `${origin}${url.pathname}`;
+  // Pinned Hi.Events list attendees use Laravel simplePaginate, not totals.
+  return send(200, { data: rows, links: { first: `${path}?page=1`, last: null, prev: null, next: null }, meta: { path, current_page: 1, per_page: 25, from: rows.length ? 1 : null, to: rows.length || null } });
+}
+function rosterAttendees({ url, current, send }) {
+  if (url.searchParams.get("sort_by") !== "id" || url.searchParams.get("sort_direction") !== "asc" || url.searchParams.has("query")) return send(400, {});
+  const rows = [15, 15, 16, 17, 999, 15, 9, 14, 2, 4].map((product_id, index) => ({ id: 95000 + index, event_id: 5, product_id, first_name: "Synthetic", last_name: `Roster ${index}`, email: `roster${index}@example.invalid`, status: product_id === 14 ? "CANCELLED" : "ACTIVE", short_id: "never-expose" }));
+  return send(200, page(url.pathname, rows, current));
+}
+function eventAttendees({ url, current, send }, attendeeList) {
+  if (url.searchParams.has("query")) return send(400, { error: "Private queries must never reach upstream URLs" });
+  return send(200, page(url.pathname, attendees.map(row => ({ ...row, event_id: Number(attendeeList[1]), email: "private-arrival@example.test" })), current));
+}
+function attendeeDetail({ send }, detail) {
+  affiliationReads++;
+  if (mode === "affiliation_failure") return send(503, { error: "Synthetic answer fetch failure, never missing data" });
+  const attendee = attendees.find((row) => row.id === Number(detail[2]));
+  return send(200, { data: { ...attendee, event_id: Number(detail[1]), email: "private-arrival@example.test", question_answers: [902, 922].includes(attendee.id) ? [] : [{ question_id: 801, answer: "Synthetic organisation", text_answer: "Synthetic organisation" }] } });
+}
+function eventCatalogue({ url, current, send }) {
+  const result = page(url.pathname, events, current);
+  if (mode === "partial" && current === 2) result.meta.total = 99;
+  return send(200, result);
+}
+function eventResource({ url, current, send }) {
   const match = /^\/api\/events\/(501|502|503|504)\/(check-in-lists|questions|products)$/.exec(url.pathname);
   if (!match) return send(404, { error: "Unknown synthetic endpoint" });
   const eventId = Number(match[1]);
@@ -111,6 +103,30 @@ const server = createServer({ key: readFileSync(`${root}/upstream-key.pem`), cer
   if (match[2] === "products") return send(200, page(url.pathname, [product], current));
   if (match[2] === "questions") return send(200, { data: [{ id: 801, event_id: eventId, title: "Synthetic affiliation", type: "SINGLE_LINE_TEXT", belongs_to: "PRODUCT", product_ids: [601] }] });
   return send(200, page(url.pathname, [{ id: 701, name: "Synthetic admission list", short_id: "synthetic-list-capability", is_active: true, is_expired: mode === "expired_list", products: [product] }], current));
-});
+}
+const routes = [
+  [({ url, request }) => url.pathname === "/health" && request.method === "GET", ({ send }) => send(200, { synthetic: true })],
+  [({ authorized }) => !authorized, ({ send }) => send(401, { error: "Synthetic authorization required" })],
+  [({ url, request }) => url.pathname === "/__test/control" && request.method === "POST", setTestMode],
+  [({ url, request }) => url.pathname === "/__test/status" && request.method === "GET", ({ send }) => send(200, { synthetic: true, mode, forbiddenEffects, arrivalReads, affiliationReads })],
+  [({ request }) => request.method !== "GET", ({ send }) => { forbiddenEffects++; return send(405, { error: "No admission or upstream mutation exists in this fixture" }); }],
+  [() => mode === "unavailable", ({ send }) => send(503, { error: "Synthetic dependency outage" })],
+  [({ url }) => url.pathname === publicAttendeesPath, publicArrivals],
+  [({ url }) => url.pathname === "/api/events/5/attendees", rosterAttendees],
+  [({ url }) => /^\/api\/events\/(501|502)\/attendees$/.exec(url.pathname), eventAttendees],
+  [({ url }) => /^\/api\/events\/(501|502)\/attendees\/(90[1-7]|911|915|921|922|925|926|931|941)$/.exec(url.pathname), attendeeDetail],
+  [({ url }) => url.pathname === "/api/events", eventCatalogue],
+];
+async function handle(request, response) {
+  const url = new URL(request.url, origin);
+  const context = { request, url, send: (status, body) => sendJson(response, status, body), current: Number(url.searchParams.get("page") || "1") };
+  context.authorized = url.pathname === publicAttendeesPath || request.headers.authorization === `Bearer ${token}`;
+  for (const [matches, reply] of routes) {
+    const matched = matches(context);
+    if (matched) return reply(context, matched);
+  }
+  return eventResource(context);
+}
+const server = createServer({ key: readFileSync(`${root}/upstream-key.pem`), cert: readFileSync(`${root}/upstream-cert.pem`) }, handle);
 server.listen(Number(new URL(base).port), "127.0.0.1", () => console.log("Synthetic Hi.Events fixture listening on private loopback"));
 for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, () => server.close(() => process.exit(0)));

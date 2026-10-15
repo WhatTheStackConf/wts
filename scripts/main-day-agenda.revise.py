@@ -20,7 +20,10 @@ spec = importlib.util.spec_from_file_location('agenda', ROOT / 'main-day-agenda.
 assert spec is not None and spec.loader is not None
 agenda = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(agenda)
-TARGET = json.loads(agenda.MANIFEST.read_text())
+_bindings = json.loads(agenda.MANIFEST.read_text())['bindings']
+TARGET = agenda.build_manifest({'appearance_events': [{'id': agenda.EVENT, 'published': True}],
+                               'speakers': [b['speaker'] for b in _bindings],
+                               'sessions': [b['session'] for b in _bindings]}, revision=2)
 HOLDING = agenda.stable_id('revision-2-holding-track')
 
 
@@ -67,6 +70,28 @@ def plan(state):
     return requests
 
 
+def approved_changes(collection, old, target):
+    if not (target and collection in ('agenda_tracks', 'agenda_slots')):
+        return {}
+    keys = ('name', 'display_order') if collection == 'agenda_tracks' else ('start_at', 'end_at', 'display_order')
+    return {k: target[k] for k in keys if agenda.normalized(k, target[k]) != agenda.normalized(k, old[k])}
+
+
+def same_fields(expected, actual):
+    return (all(agenda.normalized(k, v) == agenda.normalized(k, actual.get(k)) for k, v in expected.items())
+            and expected.keys() == actual.keys())
+
+
+def require_record_delta(collection, rid, old, actual, target):
+    expected = copy.deepcopy(old)
+    changes = approved_changes(collection, old, target)
+    if changes:
+        expected.update(changes)
+        expected.pop('updated', None)
+        actual = {k: v for k, v in actual.items() if k != 'updated'}
+    agenda.require(same_fields(expected, actual), f'Unexpected change to {collection}/{rid}.')
+
+
 def verify_delta(before, after):
     agenda.inspect_state(TARGET, after, complete=True, expect='published')
     desired = {c: {r['id']: r for r in rows} for c, rows in TARGET['records'].items()}
@@ -75,21 +100,7 @@ def verify_delta(before, after):
         current = {r['id']: r for r in after[collection]}
         agenda.require(previous.keys() == current.keys(), 'Migration changed record identities or left a holding track.')
         for rid, old in previous.items():
-            expected = copy.deepcopy(old)
-            target = desired.get(collection, {}).get(rid)
-            if target and collection in ('agenda_tracks', 'agenda_slots'):
-                keys = ('name', 'display_order') if collection == 'agenda_tracks' else ('start_at', 'end_at', 'display_order')
-                changes = {k: target[k] for k in keys if agenda.normalized(k, target[k]) != agenda.normalized(k, old[k])}
-                if changes:
-                    expected.update(changes)
-                    expected.pop('updated', None)
-                    actual = {k: v for k, v in current[rid].items() if k != 'updated'}
-                else:
-                    actual = current[rid]
-            else:
-                actual = current[rid]
-            agenda.require(all(agenda.normalized(k, v) == agenda.normalized(k, actual.get(k)) for k, v in expected.items())
-                           and expected.keys() == actual.keys(), f'Unexpected change to {collection}/{rid}.')
+            require_record_delta(collection, rid, old, current[rid], desired.get(collection, {}).get(rid))
 
 
 def run(client, execute=False, backup_dir=None):

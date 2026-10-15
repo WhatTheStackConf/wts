@@ -1,0 +1,20 @@
+{
+  "source": "Organizer-provided name, biography, portrait and LinkedIn URL",
+  "photo_asset": "mc-2026-assets/marijana-ilovska-zlatanovska.jpg",
+  "photo_sha256": "f7a25f12b75e44f7fa17340a552f999d26ab5418edd7f14b797baf448c120f96",
+  "record": {
+    "id": "mc26marijana001",
+    "slug": "marijana-ilovska-zlatanovska",
+    "display_name": "Marijana Ilovska Zlatanovska",
+    "affiliation": "Head of Partnerships — Women in Tech Macedonia",
+    "bio": "<p>For almost a decade I've worked with companies through digital transformation, modernizing legacy systems, developing custom software where standard tools fall short, and figuring out where AI actually adds value versus where it just adds noise.</p><p>Technology taught me that the best solutions start with the deep analyze, right roadmap, then visibility, then the code.</p><p>I serve as Head of Partnerships for Women in Tech Macedonia chapter, because more inclusive tech communities lead to better technology.</p><p>My life motto: Make an impact! Embrace the challenges! Be kind!</p>",
+    "social_handles": ["https://www.linkedin.com/in/ilovska/"],
+    "appearance_events": ["wts2026appevent"],
+    "is_mc": true,
+    "published": false,
+    "origin": "invite",
+    "user": "",
+    "cfp_applicant": "",
+    "promo": null
+  }
+}

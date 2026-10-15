@@ -34,6 +34,24 @@ function combineFlip(parentValue, ownValue) {
   return Boolean(parentValue) !== Boolean(ownValue);
 }
 
+const BOX_DEFAULTS = { left: 0, top: 0, width: 16, height: 16 };
+
+function iconBox(icon, collection) {
+  return Object.fromEntries(Object.entries(BOX_DEFAULTS).map(([field, fallback]) => [field, icon[field] ?? collection[field] ?? fallback]));
+}
+
+function aliasBox(alias) {
+  return Object.fromEntries(Object.keys(BOX_DEFAULTS).filter((field) => alias[field] !== undefined).map((field) => [field, alias[field]]));
+}
+
+function transforms(rotate, hFlip, vFlip) {
+  return {
+    ...(rotate ? { rotate } : {}),
+    ...(hFlip ? { hFlip: true } : {}),
+    ...(vFlip ? { vFlip: true } : {}),
+  };
+}
+
 function resolveIcon(prefix, name, seen = new Set()) {
   const collection = collections.get(prefix);
   const key = `${prefix}:${name}`;
@@ -41,18 +59,7 @@ function resolveIcon(prefix, name, seen = new Set()) {
   seen.add(key);
 
   const icon = collection.icons?.[name];
-  if (icon) {
-    return {
-      body: icon.body,
-      left: icon.left ?? collection.left ?? 0,
-      top: icon.top ?? collection.top ?? 0,
-      width: icon.width ?? collection.width ?? 16,
-      height: icon.height ?? collection.height ?? 16,
-      ...(icon.rotate ? { rotate: icon.rotate } : {}),
-      ...(icon.hFlip ? { hFlip: true } : {}),
-      ...(icon.vFlip ? { vFlip: true } : {}),
-    };
-  }
+  if (icon) return { body: icon.body, ...iconBox(icon, collection), ...transforms(icon.rotate, icon.hFlip, icon.vFlip) };
 
   const alias = collection.aliases?.[name];
   if (!alias) throw new Error(`Icon not found in @iconify-json/${prefix}: ${name}`);
@@ -61,13 +68,8 @@ function resolveIcon(prefix, name, seen = new Set()) {
   const rotate = ((parent.rotate ?? 0) + (alias.rotate ?? 0)) % 4;
   return {
     ...parent,
-    ...(alias.left === undefined ? {} : { left: alias.left }),
-    ...(alias.top === undefined ? {} : { top: alias.top }),
-    ...(alias.width === undefined ? {} : { width: alias.width }),
-    ...(alias.height === undefined ? {} : { height: alias.height }),
-    ...(rotate ? { rotate } : {}),
-    ...(combineFlip(parent.hFlip, alias.hFlip) ? { hFlip: true } : {}),
-    ...(combineFlip(parent.vFlip, alias.vFlip) ? { vFlip: true } : {}),
+    ...aliasBox(alias),
+    ...transforms(rotate, combineFlip(parent.hFlip, alias.hFlip), combineFlip(parent.vFlip, alias.vFlip)),
   };
 }
 

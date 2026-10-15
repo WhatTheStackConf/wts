@@ -37,10 +37,58 @@ def photo_data(profile):
     return data
 
 
-def inspect(client, state):
+def mc_only(desired):
+    return (desired['is_mc'] is True and desired['published'] is False and desired['origin'] == 'invite'
+            and desired['appearance_events'] == ['wts2026appevent'] and not desired['user']
+            and not desired['cfp_applicant'])
+
+
+def matching_profiles(state, desired):
+    return [r for r in state['speakers'] if r['id'] == desired['id'] or r['slug'] == desired['slug']
+            or r.get('display_name', '').casefold() == desired['display_name'].casefold()]
+
+
+def uploaded_photo(client, row, failure):
+    url = client.url + '/api/files/speakers/' + row['id'] + '/' + urllib.parse.quote(row['photo'], safe='')
+    request = urllib.request.Request(url, headers={'Authorization': client.token})
+    try:
+        with client.opener.open(request, timeout=30) as response:
+            return response.read()
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise agenda.SafetyError(failure) from None
+
+
+def require_mc_profile(actual, desired):
+    agenda.require(actual['id'] == desired['id'], 'Existing profile identity collision; review instead of duplicating.')
+    agenda.require(all(actual.get(k) == v for k, v in desired.items() if k != 'published')
+                   and type(actual.get('published')) is bool and bool(actual.get('photo')), 'MC profile drift; refusing overwrite.')
+    agenda.require(actual.get('is_dj', False) is False, 'Unexpected DJ designation on imported MC.')
+    allowed = set(desired) | {'photo', 'is_dj', 'collectionId', 'collectionName', 'created', 'updated'}
+    agenda.require(set(actual) <= allowed, 'Unexpected MC profile fields.')
+
+
+def staged_profile(client, state, profile):
+    desired = profile['record']
+    agenda.require(mc_only(desired), 'Profile exceeds reviewed MC-only scope.')
+    photo_data(profile)
+    matches = matching_profiles(state, desired)
+    if not matches:
+        return None
+    actual = agenda.one(matches, 'existing MC profile')
+    require_mc_profile(actual, desired)
+    data = uploaded_photo(client, actual, 'MC photo readback failed; raw request suppressed.')
+    agenda.require(hashlib.sha256(data).hexdigest() == profile['photo_sha256'], 'Uploaded MC photo differs from reviewed original.')
+    return actual
+
+
+def require_mc_schema(client):
     fields = client.raw('GET', '/api/collections/speakers')['fields']
     role = [f for f in fields if f['name'] == 'is_mc']
     agenda.require(len(role) == 1 and role[0]['type'] == 'bool', 'Deploy the compatible is_mc schema first.')
+
+
+def inspect(client, state):
+    require_mc_schema(client)
     agenda.require(tuple(p['record']['display_name'] for p in MANIFEST['profiles']) == NAMES, 'Reviewed MC roster changed.')
     event = agenda.one([e for e in state['appearance_events'] if e['id'] == MANIFEST['event_id']], 'main event')
     agenda.require(event['published'] is True, 'Main event is not published.')
@@ -48,31 +96,11 @@ def inspect(client, state):
     agenda.require(len(ids) == 4, 'Expected four unique MC identities.')
     missing, existing = [], []
     for profile in MANIFEST['profiles']:
-        desired = profile['record']
-        agenda.require(desired['is_mc'] is True and desired['published'] is False and desired['origin'] == 'invite'
-                       and desired['appearance_events'] == ['wts2026appevent'] and not desired['user']
-                       and not desired['cfp_applicant'], 'Profile exceeds reviewed MC-only scope.')
-        photo_data(profile)
-        matches = [r for r in state['speakers'] if r['id'] == desired['id'] or r['slug'] == desired['slug']
-                   or r.get('display_name', '').casefold() == desired['display_name'].casefold()]
-        if not matches:
+        actual = staged_profile(client, state, profile)
+        if actual is None:
             missing.append(profile)
-            continue
-        actual = agenda.one(matches, 'existing MC profile')
-        agenda.require(actual['id'] == desired['id'], 'Existing profile identity collision; review instead of duplicating.')
-        agenda.require(all(actual.get(k) == v for k, v in desired.items() if k != 'published')
-                       and type(actual.get('published')) is bool and bool(actual.get('photo')), 'MC profile drift; refusing overwrite.')
-        allowed = set(desired) | {'photo', 'collectionId', 'collectionName', 'created', 'updated'}
-        agenda.require(set(actual) <= allowed, 'Unexpected MC profile fields.')
-        url = client.url + '/api/files/speakers/' + actual['id'] + '/' + urllib.parse.quote(actual['photo'], safe='')
-        request = urllib.request.Request(url, headers={'Authorization': client.token})
-        try:
-            with client.opener.open(request, timeout=30) as response:
-                data = response.read()
-        except (urllib.error.URLError, TimeoutError, OSError):
-            raise agenda.SafetyError('MC photo readback failed; raw request suppressed.') from None
-        agenda.require(hashlib.sha256(data).hexdigest() == profile['photo_sha256'], 'Uploaded MC photo differs from reviewed original.')
-        existing.append(actual)
+        else:
+            existing.append(actual)
     agenda.require(not any(ids.intersection(s.get('speakers', [])) for s in state['sessions']),
                    'MC unexpectedly linked to a Session; review before publishing.')
     published = sum(r['published'] for r in existing)
@@ -99,6 +127,13 @@ def upload(client, profile):
         raise agenda.SafetyError('MC upload outcome uncertain; inspect state before retry.') from None
 
 
+def require_record_delta(collection, rid, old, actual, ids, mode):
+    if collection == 'speakers' and rid in ids and mode == 'publish' and not old['published']:
+        old = {k: v for k, v in {**old, 'published': True}.items() if k != 'updated'}
+        actual = {k: v for k, v in actual.items() if k != 'updated'}
+    agenda.require(actual == old, f'Unexpected change to {collection}/{rid}.')
+
+
 def verify_delta(before, after, mode):
     ids = {p['record']['id'] for p in MANIFEST['profiles']}
     for collection in agenda.COLLECTIONS:
@@ -107,11 +142,27 @@ def verify_delta(before, after, mode):
         agenda.require(current.keys() == (previous.keys() | ids if collection == 'speakers' else previous.keys()),
                        'Unexpected record creation/deletion.')
         for rid, old in previous.items():
-            actual = current[rid]
-            if collection == 'speakers' and rid in ids and mode == 'publish' and not old['published']:
-                old = {k: v for k, v in {**old, 'published': True}.items() if k != 'updated'}
-                actual = {k: v for k, v in actual.items() if k != 'updated'}
-            agenda.require(actual == old, f'Unexpected change to {collection}/{rid}.')
+            require_record_delta(collection, rid, old, current[rid], ids, mode)
+
+
+def already_applied(mode, missing, published):
+    return (mode == 'stage' and not missing) or (mode == 'publish' and published == 4)
+
+
+def stage_profiles(client, missing, report):
+    for profile in missing:
+        upload(client, profile)
+        # Re-read exact target plus all reviewed profiles after each upload.
+        inspect(client, client.snapshot())
+        report['writes'] += 1
+
+
+def publish_profiles(client, existing):
+    batch = client.raw('GET', '/api/settings')['batch']
+    agenda.require(batch['enabled'] and batch['maxRequests'] >= 4, 'Publication requires existing enabled batch API.')
+    requests = [{'method': 'PATCH', 'url': f'/api/collections/speakers/records/{r["id"]}', 'body': {'published': True}} for r in existing]
+    result = client.raw('POST', '/api/batch', {'requests': requests})
+    agenda.require(len(result) == 4 and all(200 <= r['status'] < 300 for r in result), 'Incomplete batch response; inspect state.')
 
 
 def run(client, mode='dry-run', execute=False, backup_dir=None):
@@ -126,24 +177,16 @@ def run(client, mode='dry-run', execute=False, backup_dir=None):
     agenda.require(mode in ('stage', 'publish'), 'Unsupported MC operation.')
     if mode == 'publish':
         agenda.require(not missing, 'Stage and verify all profiles before publication.')
-    if (mode == 'stage' and not missing) or (mode == 'publish' and report['published'] == 4):
+    if already_applied(mode, missing, report['published']):
         return report
     agenda.require(backup_dir is not None, 'Verified native backup and private audit directory required.')
     schema = client.raw('GET', '/api/collections/speakers')
     audit = agenda.secure_backup(backup_dir, before, {'speakers': schema}, MANIFEST, mode, client.url)
     agenda.require(client.snapshot() == before, 'State changed since preflight; no writes attempted.')
     if mode == 'stage':
-        for profile in missing:
-            upload(client, profile)
-            # Re-read exact target plus all reviewed profiles after each upload.
-            inspect(client, client.snapshot())
-            report['writes'] += 1
+        stage_profiles(client, missing, report)
     else:
-        batch = client.raw('GET', '/api/settings')['batch']
-        agenda.require(batch['enabled'] and batch['maxRequests'] >= 4, 'Publication requires existing enabled batch API.')
-        requests = [{'method': 'PATCH', 'url': f'/api/collections/speakers/records/{r["id"]}', 'body': {'published': True}} for r in existing]
-        result = client.raw('POST', '/api/batch', {'requests': requests})
-        agenda.require(len(result) == 4 and all(200 <= r['status'] < 300 for r in result), 'Incomplete batch response; inspect state.')
+        publish_profiles(client, existing)
         report['writes'] = 4
     after = client.snapshot()
     missing, existing = inspect(client, after)

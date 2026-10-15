@@ -63,25 +63,29 @@ export async function packageRuntime(source, destination) {
   return manifest;
 }
 
+const manifestShape = manifest => manifest.formatVersion === 1 && manifest.files && typeof manifest.files === "object" && !Array.isArray(manifest.files);
+const releasePath = (root, name, path, expected) => !isAbsolute(name) && !relative(root, path).startsWith("..") && path.startsWith(root + sep) && /^[a-f0-9]{64}$/.test(String(expected));
+const completeManifest = manifest => requiredFiles.every(name => Object.hasOwn(manifest.files, name)) && Object.hasOwn(manifest.files, `${runtimeDirectory}/runtime/checkin/cli.js`) && sha256(JSON.stringify(manifest.files)) === manifest.artifactDigest;
+async function verifyReleaseFile(root, name, expected) {
+  const path = resolve(root, name);
+  if (!releasePath(root, name, path, expected)) throw new Error("Invalid runtime manifest path");
+  // Reject symlink traversal in every directory, not only the leaf file.
+  let current = root;
+  for (const part of relative(root, path).split(sep)) {
+    current = join(current, part);
+    if ((await lstat(current)).isSymbolicLink()) throw new Error("Invalid runtime symlink");
+  }
+  await regularFile(path);
+  if (sha256(await readFile(path)) !== expected) throw new Error("Runtime checksum mismatch");
+}
+
 /** Integrity verification only, not a signed-origin or physical-device assertion. */
 export async function verifyRuntimeManifest(directory) {
   const root = resolve(directory);
   const manifest = JSON.parse(await readFile(join(root, "checkin-runtime-manifest.json"), "utf8"));
-  if (manifest.formatVersion !== 1 || !manifest.files || typeof manifest.files !== "object" || Array.isArray(manifest.files)) throw new Error("Invalid runtime manifest");
-  for (const [name, expected] of Object.entries(manifest.files)) {
-    const path = resolve(root, name);
-    if (isAbsolute(name) || relative(root, path).startsWith("..") || !path.startsWith(root + sep) || !/^[a-f0-9]{64}$/.test(String(expected))) throw new Error("Invalid runtime manifest path");
-    // Reject symlink traversal in every directory, not only the leaf file.
-    let current = root;
-    for (const part of relative(root, path).split(sep)) {
-      current = join(current, part);
-      if ((await lstat(current)).isSymbolicLink()) throw new Error("Invalid runtime symlink");
-    }
-    await regularFile(path);
-    if (sha256(await readFile(path)) !== expected) throw new Error("Runtime checksum mismatch");
-  }
-  for (const name of requiredFiles) if (!Object.hasOwn(manifest.files, name)) throw new Error("Incomplete runtime manifest");
-  if (!Object.hasOwn(manifest.files, `${runtimeDirectory}/runtime/checkin/cli.js`) || sha256(JSON.stringify(manifest.files)) !== manifest.artifactDigest) throw new Error("Incomplete runtime manifest");
+  if (!manifestShape(manifest)) throw new Error("Invalid runtime manifest");
+  for (const [name, expected] of Object.entries(manifest.files)) await verifyReleaseFile(root, name, expected);
+  if (!completeManifest(manifest)) throw new Error("Incomplete runtime manifest");
   return manifest;
 }
 

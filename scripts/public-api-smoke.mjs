@@ -67,42 +67,42 @@ const clean = () => cleaning ??= (async () => {
 })();
 for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, async () => { await clean(); process.exit(130); });
 
-try {
+// Unmodified named migrations; legacy ID-specific edits are not fresh-DB safe.
+const migrations = [
+  "1735401500_create_cfp_applicants.js", "1735401600_create_cfp_submissions.js",
+  "1768850000_roles_and_reviews.js", "1768850001_fix_user_role.js",
+  "1776000000_create_speakers_and_sessions.js", "1785000000_create_programme_agenda.js",
+  "1786000010_harden_programme_api_rules.js", "1788000003_create_appearance_events.js",
+  "1788000004_create_event_programmes.js",
+];
+const hooks = ["programme_public_fields.pb.js", "appearance_event_constraints.pb.js", "agenda_constraints.pb.js"];
+
+async function prepareRoot() {
   await cp(join(repo, ".output"), join(root, ".output"), { recursive: true });
   await symlink(join(repo, "node_modules"), join(root, "node_modules"));
   const migrationsDir = join(root, "pb_migrations");
   const hooksDir = join(root, "pb_hooks");
   const dataDir = join(root, "pb_data");
   await Promise.all([migrationsDir, hooksDir, dataDir].map((dir) => mkdir(dir)));
-  // Unmodified named migrations; legacy ID-specific edits are not fresh-DB safe.
-  const migrations = [
-    "1735401500_create_cfp_applicants.js", "1735401600_create_cfp_submissions.js",
-    "1768850000_roles_and_reviews.js", "1768850001_fix_user_role.js",
-    "1776000000_create_speakers_and_sessions.js", "1785000000_create_programme_agenda.js",
-    "1786000010_harden_programme_api_rules.js", "1788000003_create_appearance_events.js",
-    "1788000004_create_event_programmes.js",
-  ];
   for (const name of migrations) await cp(join(repo, "pocketbase/pb_migrations", name), join(migrationsDir, name));
-  for (const name of ["programme_public_fields.pb.js", "appearance_event_constraints.pb.js", "agenda_constraints.pb.js"]) {
+  for (const name of hooks) {
     await cp(join(repo, "pocketbase/pb_hooks", name), join(hooksDir, name));
   }
+  return [`--dir=${dataDir}`, `--migrationsDir=${migrationsDir}`, `--hooksDir=${hooksDir}`];
+}
+
+function migratedPocketBase(args) {
   const binary = join(repo, "pocketbase/pocketbase");
   const version = spawnSync(binary, ["--version"], { env, encoding: "utf8" });
   assert.match(version.stdout || "", /0\.30\.4/, "Run pnpm pocketbase:download-test for PocketBase 0.30.4");
-  const args = [`--dir=${dataDir}`, `--migrationsDir=${migrationsDir}`, `--hooksDir=${hooksDir}`];
   run(binary, ["migrate", "up", ...args]);
   const email = "public-api-smoke@example.test";
   const password = `Disposable-${randomBytes(24).toString("hex")}!`;
   run(binary, ["superuser", "create", email, password, ...args, "--automigrate=false"]);
-  const pbPort = await port();
-  const appPort = await port();
-  const pbUrl = `http://127.0.0.1:${pbPort}`;
-  const baseUrl = `http://127.0.0.1:${appPort}`;
-  const pbProcess = start(binary, ["serve", `--http=127.0.0.1:${pbPort}`, ...args, "--automigrate=false", "--hooksWatch=false"]);
-  await ready(`${pbUrl}/api/health`, pbProcess);
-  const pb = new PocketBase(pbUrl);
-  pb.autoCancellation(false);
-  await pb.collection("_superusers").authWithPassword(email, password);
+  return { binary, version, email, password };
+}
+
+async function seedProgramme(pb, password) {
   const event = await pb.collection("appearance_events").getOne("wts2026appevent");
   const user = await pb.collection("users").create({ email: "PRIVATE_EMAIL@example.test", password, passwordConfirm: password, role: "user" });
   const ada = await pb.collection("speakers").create({
@@ -128,16 +128,10 @@ try {
   await pb.send(`/api/wts/programme/agenda-slots/${slot.id}/publication`, { method: "POST", body: { published: true } });
   assert.equal((await pb.collection("agenda_slots").getOne(slot.id)).published, true);
   assert.equal((await pb.collection("sessions").getOne(session.id)).published, true);
+  return user;
+}
 
-  Object.assign(env, {
-    NODE_ENV: "production", HOST: "127.0.0.1", PORT: String(appPort),
-    POCKETBASE_URL: pbUrl, PUBLIC_POCKETBASE_URL: pbUrl,
-    POCKETBASE_SUPERUSER_EMAIL: email, POCKETBASE_SUPERUSER_PASSWORD: password,
-    PUBLIC_SITE_URL: baseUrl, SITE_URL: baseUrl,
-  });
-  const app = start(process.execPath, [join(root, ".output/server/index.mjs")]);
-  const api = `${baseUrl}/api/public/v1`;
-  await ready(`${api}/speakers`, app);
+async function discoverSpec(api) {
   let spec;
   for (const suffix of ["", "/", "/openapi.json"]) {
     for (const accept of ["application/json", "text/html"]) {
@@ -151,35 +145,40 @@ try {
       } else assert.equal(data.data.openapi, "/api/public/v1/openapi.json");
     }
   }
-  await SwaggerParser.validate(structuredClone(spec));
-  const ajv = new Ajv2020({ strictSchema: false, allErrors: true });
-  addFormats(ajv);
-  const results = [];
-  for (const path of ["speakers", "speakers/ada", "sessions", "sessions/engines", "agenda"]) {
-    const response = await fetch(`${api}/${path}`, { headers: { Origin: "https://workshop.example" } });
-    assert.equal(response.status, 200, `${path}: ${app.logs()}`);
-    assert.equal(response.headers.get("access-control-allow-origin"), "*");
-    const text = await response.text();
-    assert(!text.includes("PRIVATE_") && !text.includes(user.id) && !text.includes("draft-speaker") && !text.includes("draft-session"), path);
-    assert(!/"(?:origin|user|cfp_applicant|collectionId|collectionName|room|published)":/.test(text), path);
-    const body = JSON.parse(text);
-    const specPath = `/${path.includes("/") ? `${path.split("/")[0]}/{slug}` : path}`;
-    const schema = spec.paths[specPath].get.responses["200"].content["application/json"].schema;
-    const validate = ajv.compile({ ...schema, components: spec.components });
-    assert(validate(body), `${path}: ${JSON.stringify(validate.errors)}`);
-    assert.equal(body.meta.apiVersion, "1");
-    if (path === "speakers") assert.deepEqual(body.data.map((s) => s.slug), ["ada"]);
-    if (path === "sessions") assert.deepEqual(body.data.map((s) => s.slug), ["engines"]);
-    if (path === "speakers/ada") assert.equal(body.data.sessions[0].slug, "engines");
-    if (path === "sessions/engines") {
-      assert.deepEqual(body.data.speakers.map((s) => s.slug), ["ada"]);
-      assert.equal(body.data.schedule.startAt, "2026-09-19 08:00:00.000Z");
-    }
-    if (path === "agenda") assert.equal(body.data.days[0].programmes[0].slots[0].session.slug, "engines");
-    const cached = await fetch(`${api}/${path}`, { headers: { "If-None-Match": response.headers.get("etag") } });
-    assert.equal(cached.status, 304);
-    results.push({ path, status: response.status, revalidation: cached.status });
-  }
+  return spec;
+}
+
+const publishedBodies = {
+  speakers: (body) => assert.deepEqual(body.data.map((s) => s.slug), ["ada"]),
+  "speakers/ada": (body) => assert.equal(body.data.sessions[0].slug, "engines"),
+  sessions: (body) => assert.deepEqual(body.data.map((s) => s.slug), ["engines"]),
+  "sessions/engines": (body) => {
+    assert.deepEqual(body.data.speakers.map((s) => s.slug), ["ada"]);
+    assert.equal(body.data.schedule.startAt, "2026-09-19 08:00:00.000Z");
+  },
+  agenda: (body) => assert.equal(body.data.days[0].programmes[0].slots[0].session.slug, "engines"),
+};
+
+async function checkPublished({ api, path, spec, ajv, user, app }) {
+  const response = await fetch(`${api}/${path}`, { headers: { Origin: "https://workshop.example" } });
+  assert.equal(response.status, 200, `${path}: ${app.logs()}`);
+  assert.equal(response.headers.get("access-control-allow-origin"), "*");
+  const text = await response.text();
+  assert(!text.includes("PRIVATE_") && !text.includes(user.id) && !text.includes("draft-speaker") && !text.includes("draft-session"), path);
+  assert(!/"(?:origin|user|cfp_applicant|collectionId|collectionName|room|published)":/.test(text), path);
+  const body = JSON.parse(text);
+  const specPath = `/${path.includes("/") ? `${path.split("/")[0]}/{slug}` : path}`;
+  const schema = spec.paths[specPath].get.responses["200"].content["application/json"].schema;
+  const validate = ajv.compile({ ...schema, components: spec.components });
+  assert(validate(body), `${path}: ${JSON.stringify(validate.errors)}`);
+  assert.equal(body.meta.apiVersion, "1");
+  publishedBodies[path](body);
+  const cached = await fetch(`${api}/${path}`, { headers: { "If-None-Match": response.headers.get("etag") } });
+  assert.equal(cached.status, 304);
+  return { path, status: response.status, revalidation: cached.status };
+}
+
+async function checkRejections(api, app) {
   for (const path of ["partners", "speakers/draft-speaker", "sessions/draft-session", "speakers/not-found"]) {
     const response = await fetch(`${api}/${path}`);
     assert.equal(response.status, 404, path);
@@ -200,12 +199,54 @@ try {
   assert.equal((await fetch(`${api}/agenda`, { method: "HEAD" })).status, 200);
   assert.equal((await fetch(`${api}/agenda`, { method: "OPTIONS" })).status, 204);
   assert.equal((await fetch(`${api}/speakers`)).status, 200, "Server remains alive after malformed requests");
+}
+
+async function checkRawPocketBaseLocked(pbUrl) {
   for (const collection of ["speakers", "sessions", "conference_days", "appearance_events", "event_programmes", "agenda_tracks", "agenda_slots"]) {
     const raw = await fetch(`${pbUrl}/api/collections/${collection}/records`);
     assert.equal(raw.status, 403, `Raw ${collection} must remain private`);
   }
+}
+
+async function main() {
+  const args = await prepareRoot();
+  const { binary, version, email, password } = migratedPocketBase(args);
+  const pbPort = await port();
+  const appPort = await port();
+  const pbUrl = `http://127.0.0.1:${pbPort}`;
+  const baseUrl = `http://127.0.0.1:${appPort}`;
+  const pbProcess = start(binary, ["serve", `--http=127.0.0.1:${pbPort}`, ...args, "--automigrate=false", "--hooksWatch=false"]);
+  await ready(`${pbUrl}/api/health`, pbProcess);
+  const pb = new PocketBase(pbUrl);
+  pb.autoCancellation(false);
+  await pb.collection("_superusers").authWithPassword(email, password);
+  const user = await seedProgramme(pb, password);
+
+  Object.assign(env, {
+    NODE_ENV: "production", HOST: "127.0.0.1", PORT: String(appPort),
+    POCKETBASE_URL: pbUrl, PUBLIC_POCKETBASE_URL: pbUrl,
+    POCKETBASE_SUPERUSER_EMAIL: email, POCKETBASE_SUPERUSER_PASSWORD: password,
+    PUBLIC_SITE_URL: baseUrl, SITE_URL: baseUrl,
+  });
+  const app = start(process.execPath, [join(root, ".output/server/index.mjs")]);
+  const api = `${baseUrl}/api/public/v1`;
+  await ready(`${api}/speakers`, app);
+  const spec = await discoverSpec(api);
+  await SwaggerParser.validate(structuredClone(spec));
+  const ajv = new Ajv2020({ strictSchema: false, allErrors: true });
+  addFormats(ajv);
+  const results = [];
+  for (const path of ["speakers", "speakers/ada", "sessions", "sessions/engines", "agenda"]) {
+    results.push(await checkPublished({ api, path, spec, ajv, user, app }));
+  }
+  await checkRejections(api, app);
+  await checkRawPocketBaseLocked(pbUrl);
   console.log(JSON.stringify({ result: "passed", fixture: "synthetic", pocketbase: version.stdout.trim(), endpoints: results,
     verified: ["OpenAPI validation and response conformance", "root discovery", "publication filtering", "private fields excluded", "raw PocketBase locked", "CORS", "ETag/304", "HEAD/OPTIONS", "write rejection", "malformed input and liveness"] }, null, 2));
+}
+
+try {
+  await main();
 } finally {
   await clean();
 }
