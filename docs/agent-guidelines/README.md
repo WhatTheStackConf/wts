@@ -8,7 +8,7 @@ This folder keeps task-specific guidance out of the root `AGENTS.md`. Open only 
 - `docs/agent-guidelines/project-map.md`: directories, route groups, and high-level architecture.
 - `docs/agent-guidelines/solidstart-typescript.md`: SolidStart, SolidJS, TypeScript, server functions, and client/server boundaries.
 - `docs/agent-guidelines/pocketbase.md`: PocketBase clients, admin access, migrations, and manual types.
-- `docs/agent-guidelines/content.md`: Velite content rules.
+- `docs/agent-guidelines/content.md`: Markdown and conference content rules.
 - `docs/agent-guidelines/styling.md`: Tailwind, DaisyUI, and global stylesheet guidance.
 - `docs/agent-guidelines/deployment.md`: Coolify and Docker Compose deployment facts.
 - `docs/agent-guidelines/issue-workflow.md`: entrypoint for issue tracker, triage, and domain docs.

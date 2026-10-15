@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10101c">
+<title>WTS · Check-in & label recovery prototype</title>
+<style>
+:root{color-scheme:dark;font-family:"Space Grotesk",system-ui,sans-serif;color:#f5f5fa;background:#10101c;--muted:#bdc0d2;--line:#454559;--surface:#1a1a2a;--accent:#ef91d3;--cyan:#8ce3dc;--warn:#ffce80}
+*{box-sizing:border-box}body{margin:0;font-size:16px;line-height:1.5}main{max-width:1100px;margin:auto;padding:24px max(16px,env(safe-area-inset-right)) max(40px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}h1{font-size:1.6rem;line-height:1.2;margin:0 0 12px}h2{font-size:1.2rem;margin:0 0 12px}h3{font-size:1rem;margin:16px 0 8px}p{max-width:73ch;margin:8px 0 16px}small,.muted{color:var(--muted)}small{font-size:.875rem}section{padding:22px 0;border-bottom:1px solid var(--line)}label{display:block;margin:8px 0 4px}button,input,select{font:inherit;font-size:16px;min-height:46px;border:1px solid #77778d;border-radius:4px}input,select{width:100%;min-width:0;padding:10px;background:#12121f;color:inherit}button{padding:10px 14px;background:#2b2b3e;color:inherit;cursor:pointer;touch-action:manipulation;white-space:normal;text-align:left}button.primary{background:var(--accent);color:#22101e;border-color:var(--accent);font-weight:700}button:disabled{color:#aaaabc;background:#242433;border-color:#4f4f62;cursor:not-allowed}button:active:not(:disabled){background:#59516b}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible{outline:3px solid var(--cyan);outline-offset:3px}@media(hover:hover) and (pointer:fine){button:hover:not(:disabled){border-color:var(--cyan)}}.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.columns{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:30px}.columns>*{min-width:0}.status{padding:16px;background:var(--surface);border:1px solid var(--line);margin:12px 0}.status p:last-child{margin-bottom:0}.badge{color:var(--cyan)}.warning{color:var(--warn)}.context{position:sticky;top:0;z-index:1;padding:12px max(16px,env(safe-area-inset-left));background:#202030;border-bottom:1px solid var(--line);padding-top:max(12px,env(safe-area-inset-top));overflow-wrap:anywhere}.context strong{color:var(--cyan)}dl{display:grid;grid-template-columns:minmax(100px,.7fr) minmax(0,1fr);gap:6px 14px;margin:12px 0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}ul,ol{padding-left:22px}li{margin:8px 0;overflow-wrap:anywhere}#queue{padding:0;list-style:none}#queue button{width:100%}.tabs{display:flex;flex-wrap:wrap;gap:8px}.tabs button[aria-selected="true"]{border-color:var(--accent);color:var(--accent)}.steps button{width:100%;margin:4px 0}canvas{display:block;width:100%;max-width:500px;height:auto;aspect-ratio:5/3;background:white;border-radius:3px}.preview-wrap{max-width:500px}summary{cursor:pointer;min-height:44px;padding:10px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.875rem}#announcement{min-height:3em;overflow-wrap:anywhere}#lookupResults button{display:block;width:100%;margin:8px 0;overflow-wrap:anywhere}.checklist label{display:flex;gap:12px;align-items:center;min-height:44px}.checklist input{width:22px;min-height:22px;flex:none}.hidden,[hidden]{display:none!important}.inline-note{border:1px solid var(--line);padding:12px;margin-top:12px}a{color:var(--cyan)}@media(max-width:720px){.columns,.fields{grid-template-columns:minmax(0,1fr)}.columns{gap:0}main{padding-top:20px}.context{font-size:.9rem}h1{font-size:1.4rem}.row>button{flex:1 1 140px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+@font-face{font-family:"WTS Demo";src:local("Noto Sans");font-weight:100 900;font-display:block}
+body{font-family:"WTS Demo","Noto Sans",sans-serif}
+</style>
+</head>
+<body>
+<header class="context" aria-label="Always-visible operating context"><strong id="activeContext"></strong><br><span id="identity"></span></header>
+<main>
+<h1>Check-in & label recovery</h1>
+<p><strong>Throwaway logic prototype · synthetic demo data.</strong> Can an operator distinguish confirmed check-in from uncertain output, avoid duplicate initial labels, and recover only at the owning station—even after changing events?</p>
+<p class="muted">Open this file directly. Everything lives in memory until reload/reset. No camera, network, authentication, Hi.Events, Raspberry Pi or printer is connected. Every external outcome below is a manual simulation, not live status.</p>
+<section aria-labelledby="setupTitle">
+<h2 id="setupTitle">Phone context</h2>
+<div class="fields"><div><label for="event">Active Hi.Events event (demo catalogue)</label><select id="event"></select><small>Unconfigured events remain visible but cannot be selected. Choice applies to this simulated phone only.</small></div><div><label for="station">Simulate provisioned phone at station</label><select id="station"><option value="1">Station 1 · Pi 1 + USB B1</option><option value="2">Station 2 · Pi 2 + USB B1</option><option value="3">Station 3 · Pi 3 + USB B1</option></select><small>Demo-only device switch. Real clients are provisioned to one fixed station; this is not a transfer action.</small></div></div>
+</section>
+<section aria-labelledby="truthTitle">
+<h2 id="truthTitle">Current result</h2>
+<div id="announcement" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="truth" class="status"></div>
+<div class="row"><button id="park">Park this exception</button><button id="handwritten">Record handwritten label</button></div>
+<small>Parking preserves the workflow. It releases this phone's admission hold, not an unresolved physical printer task. Open a queue item to resume it.</small>
+</section>
+<div class="columns">
+<div>
+<section aria-labelledby="scanTitle">
+<h2 id="scanTitle">Scan an attendee</h2>
+<label for="list">Admin-configured admission list</label><select id="list" disabled></select>
+<label for="fixture">Synthetic QR fixture</label><select id="fixture"></select>
+<p><small>QR is primary. A scan requests check-in automatically; simulated upstream acceptance immediately starts the initial print attempt.</small></p>
+<button class="primary" id="scan">SIMULATE QR scan</button>
+<p id="scanGate" class="muted"></p>
+<details><summary>Manual name / email lookup</summary>
+<form id="lookupForm"><label for="query">Search active event and selected list</label><input id="query" type="search" autocomplete="off" placeholder="Name or email"><button type="submit">Find attendee</button></form>
+<div id="lookupResults"></div>
+<div id="confirmation" class="inline-note" hidden><h3>Confirm this attendee</h3><p id="confirmText"></p><div class="row"><button id="confirmCheckin" class="primary">Confirm identity & check in</button><button id="cancelLookup">Cancel</button></div></div>
+<small>Full email appears only in lookup and this confirmation. Selecting a result does not check anyone in.</small>
+</details>
+</section>
+<section aria-labelledby="outcomeTitle">
+<h2 id="outcomeTitle">Simulate external outcomes</h2>
+<p class="muted">These are the test harness, not operator controls in a live app. Nothing progresses on a timer.</p>
+<div class="row"><button id="accepted">SIMULATE upstream: accepted</button><button id="lost">SIMULATE upstream: response lost</button><button id="rejected">SIMULATE upstream: rejected</button></div>
+<h3>Printer result</h3>
+<div class="row"><button id="printed">SIMULATE known print success</button><button id="unknown">SIMULATE output unknown</button><button id="notPrinted">SIMULATE known: did not print</button></div>
+<div id="recovery" class="inline-note" hidden><h3>Operator physical check</h3><p>Unknown is not failure. Inspect this station’s printer and label before choosing.</p><div class="row"><button id="confirmPrinted">I confirm: label printed</button><button id="confirmNotPrinted">I confirm: label did not print</button></div></div>
+<p id="adminNote" class="warning" hidden>Admin needed: upstream truth is unknown. No print was started. Normal operators cannot declare check-in accepted, retry check-in, or print here. Admin reconciliation is intentionally outside this prototype.</p>
+</section>
+</div>
+<div>
+<section aria-labelledby="labelTitle">
+<h2 id="labelTitle">Label text & explicit replacement</h2>
+<p class="muted">50 × 30 mm pre-cut gap stock. Screen preview only—<strong>not a calibrated production raster</strong>. Text drafts do not change an existing attempt.</p>
+<form id="labelForm"><label for="name">Name · row 1, bold</label><input id="name" maxlength="240" required value="Александра Петровска"><label for="affiliation">Affiliation · row 2, blank if missing</label><input id="affiliation" maxlength="240" value="Факултет за информатички науки"><div class="preview-wrap"><p><canvas id="labelCanvas" width="1000" height="600" role="img" aria-label="Two-line label preview"></canvas></p><small id="fitInfo"></small></div>
+<label for="reason">Replacement action · no written reason required</label><select id="reason"><option value="correction">Name / affiliation correction</option><option value="missing">Confirmed did not print</option><option value="damaged">Damaged or lost label</option></select><p><button id="replace" type="submit">Create explicit replacement & print</button></p></form>
+<p id="replacementHelp" class="muted"></p><button id="cyrillic">Load long Cyrillic text into preview</button>
+</section>
+<section aria-labelledby="queueTitle"><h2 id="queueTitle">Station queue & history</h2><p id="queueScope" class="muted"></p><ul id="queue"></ul><details><summary>Station action history</summary><ol id="history"></ol></details></section>
+</div>
+</div>
+<section aria-labelledby="guideTitle"><h2 id="guideTitle">Guided scenarios</h2><p>Choose a scenario, then press each step. Choosing or restarting a scenario clears all in-memory work. Free play pauses the walkthrough.</p><div id="tabs" class="tabs" role="tablist" aria-label="Recovery scenarios"></div><div id="guidePanel" role="tabpanel" tabindex="0"><p id="guideDescription"></p><ol id="steps" class="steps"></ol><p id="guideProgress" role="status"></p><button id="restart">Restart selected scenario</button></div></section>
+<section class="checklist" aria-labelledby="reviewTitle"><h2 id="reviewTitle">Human-review checklist</h2>
+<label><input type="checkbox">Scan → accepted starts exactly one initial attempt; repeat scan does not print.</label>
+<label><input type="checkbox">Lost upstream response remains “unknown / admin needed” with zero print attempts.</label>
+<label><input type="checkbox">Unknown physical output blocks scanning; either confirmation resolves it without automatically printing.</label>
+<label><input type="checkbox">“Did not print” requires an explicit replacement; correction preserves the old attempt text.</label>
+<label><input type="checkbox">Only the owning station can replace; changing event does not hide its unresolved work.</label>
+<label><input type="checkbox">Manual lookup is event/list scoped, email stays in lookup, and identity confirmation is explicit.</label>
+<label><input type="checkbox">Long Cyrillic and empty affiliation fit independently; preview is understood as uncalibrated.</label>
+<label><input type="checkbox">Phone layout, focus, keyboard, zoom and physical readability are acceptable.</label>
+<p class="muted">Approval gaps: real iPhone/Android behavior, authenticated permissions, durable recovery after reload, multi-phone concurrency, upstream reconciliation, actual QR decoding, USB acknowledgements, gap calibration and thermal print quality are not validated here. Park an uncertain admission to continue with another attendee; unresolved physical output still makes the station printer unavailable. Manual testing and event-use approval remain the owner's responsibility, without a prescribed rehearsal count.</p>
+<button id="reset">Reset all demo state</button>
+</section>
+</main>
+<script id="logic">
+/* Pure state model: no DOM, timers, IO, storage, or implicit external results. */
+const Model = (() => {
+  const events = [
+    {id:'main',name:'WTS 2026 · Conference',configured:true,lists:['General admission']},
+    {id:'workshop',name:'WTS 2026 · Workshop',configured:true,lists:['Workshop admission']},
+    {id:'social',name:'WTS 2026 · Community evening — unconfigured',configured:false,lists:[]}
+  ];
+  const attendees = [
+    {id:'ana',event:'main',list:'General admission',name:'Ana Demo',email:'ana.demo@example.test',affiliation:'Demo Systems'},
+    {id:'alex',event:'main',list:'General admission',name:'Александра Петровска',email:'aleksandra.demo@example.test',affiliation:'Факултет за информатички науки'},
+    {id:'lee',event:'main',list:'General admission',name:'Lee Demo',email:'lee.demo@example.test',affiliation:''},
+    {id:'speaker',event:'main',list:'Speakers',name:'Milan Demo',email:'milan.demo@example.test',affiliation:'Example Labs'},
+    {id:'ana',event:'workshop',list:'Workshop admission',name:'Ana Demo',email:'ana.demo@example.test',affiliation:'Demo Systems'}
+  ];
+  const initial = () => ({event:'main',list:'General admission',station:'1',selected:null,phoneWork:null,records:{},history:[],notice:'Ready for a synthetic scan. No live connections.',sequence:0});
+  const key = a => a.event + ':' + a.id;
+  const last = r => r?.attempts.at(-1);
+  const unresolved = r => ['pending','unknown'].includes(r.checkin) || ['pending','unknown'].includes(last(r)?.outcome);
+  const lock = s => {
+    const current=s.records[s.phoneWork];
+    return (current?.station===s.station && unresolved(current) ? current : null)
+      || Object.values(s.records).find(r=>r.station===s.station && ['pending','unknown'].includes(last(r)?.outcome));
+  };
+  const selected = s => {const r=s.records[s.selected];return r?.station===s.station?r:undefined;};
+  const eventName = id => events.find(e=>e.id===id)?.name || id;
+  const canReplace = (s,r=selected(s)) => !!r && r.station===s.station && r.checkin==='accepted' && !lock(s) && ['printed','not_printed'].includes(last(r)?.outcome);
+  const checkinIs = value => (s,r) => r?.checkin===value;
+  const outcomeIs = value => (s,r) => last(r)?.outcome===value;
+  const guidance = [
+    [(s,r) => r && r.station!==s.station, (s,r) => `Use owning Station ${r.station}; no transfer or replacement here.`],
+    [checkinIs('pending'), 'Wait for a manually simulated upstream result. No printing yet.'],
+    [checkinIs('unknown'), 'Admin reconciliation required. No check-in retry and no printing.'],
+    [outcomeIs('pending'), 'Wait for a manually simulated print outcome; next scan is held.'],
+    [outcomeIs('unknown'), 'Inspect physical output, then confirm printed or did not print.'],
+    [s => lock(s), s => `Resolve or explicitly park ${eventName(lock(s).event)} / ${lock(s).name}; physical output must be known before the printer is ready.`],
+    [checkinIs('rejected'), 'No check-in or print. Seek admin help for rejection; other attendees may scan.'],
+    [(s,r) => r?.fulfillment==='handwritten', 'Handwritten label recorded. Scan next attendee; no automatic later printing.'],
+    [outcomeIs('not_printed'), 'Explicit replacement is available. Rescanning will not print.'],
+    [outcomeIs('printed'), 'Scan next attendee, or explicitly replace for a correction / damaged label.'],
+    [() => true, 'Scan QR or find an attendee and explicitly confirm identity.']
+  ];
+  const next = (s,r=selected(s)) => {
+    const [,say]=guidance.find(([when])=>when(s,r));
+    return typeof say==='function' ? say(s,r) : say;
+  };
+  function admit(s, action, log) {
+    if(lock(s)) {log('Scan held: resolve this station’s unresolved work first.');return s;}
+    const a=attendees.find(a=>a.id===action.id && a.event===s.event && a.list===s.list);
+    if(!a) {log('Blocked: attendee is not in the active event and list.');return s;}
+    const k=key(a);s.selected=k;
+    if(s.records[k]) {
+      const r=s.records[k];
+      if(r.station!==s.station)s.selected=null;
+      else s.phoneWork=k;
+      log(r.station!==s.station ? `Blocked: owned by Station ${r.station}. Existing result only; no print or transfer.` : 'Repeat attendee: existing result returned. No new check-in request or print attempt.',r.event);return s;
+    }
+    s.phoneWork=k;
+    s.records[k]={key:k,id:a.id,event:a.event,list:a.list,name:a.name,affiliation:a.affiliation,station:s.station,checkin:'pending',checkinRequests:1,attempts:[]};
+    log(action.type==='SCAN' ? 'QR recognized in demo: check-in request started. Await simulated acceptance.' : 'Identity explicitly confirmed: check-in request started.',a.event);return s;
+  }
+  const phoneActions = {
+    EVENT(s, action, log) {
+      const e=events.find(e=>e.id===action.id && e.configured);
+      if(!e) {log('Blocked: event is not configured.');return s;}
+      s.event=e.id;s.list=e.lists[0];s.selected=null;log('Phone event changed. Existing station work retained.');return s;
+    },
+    STATION(s, action, log, state) {
+      if(!['1','2','3'].includes(action.id)) return state;
+      s.station=action.id;s.selected=null;s.phoneWork=null;log('Demo now represents a different provisioned phone. Ownership did not change.');return s;
+    },
+    LIST(s, action) {
+      if(events.find(e=>e.id===s.event).lists.includes(action.list)) s.list=action.list;
+      return s;
+    },
+    SELECT(s, action, log) {
+      const r=s.records[action.key];
+      if(r?.station===s.station) {
+        if(lock(s) && lock(s).key!==r.key) {log('Finish or explicitly park this phone’s current work before resuming another record.');return s;}
+        s.selected=action.key;s.phoneWork=action.key;log('Resumed station work; active scan event did not change.',r.event);
+      }
+      return s;
+    },
+    PARK(s, action, log) {
+      const r=selected(s);
+      if(r && unresolved(r)) {s.phoneWork=null;s.selected=null;log('Exception parked. No cancellation, transfer or retry. Unresolved physical output still holds printer readiness.',r.event);}
+      return s;
+    },
+    SCAN: admit,
+    MANUAL_CONFIRM: admit
+  };
+  const recordActions = {
+    HANDWRITTEN: {
+      allowed: (s,r) => r.checkin==='accepted' && last(r)?.outcome==='not_printed' && !lock(s),
+      apply(s, r, action, log) {r.fulfillment='handwritten';log('Operator recorded handwritten fulfillment after known no-output. No new check-in or print; no queued task remains in this simulation.',r.event);}
+    },
+    UPSTREAM: {
+      allowed: (s,r,action) => r.checkin==='pending' && ['accepted','unknown','rejected'].includes(action.outcome),
+      apply(s, r, action, log) {
+        r.checkin=action.outcome;
+        if(action.outcome==='accepted') {
+          r.attempts.push({number:1,kind:'initial',reason:'First accepted check-in',name:r.name,affiliation:r.affiliation,outcome:'pending'});
+          log('SIMULATED upstream accepted. Initial print attempt #1 automatically started; scanning held.',r.event);
+        } else log(action.outcome==='unknown' ? 'SIMULATED upstream response lost. Check-in truth UNKNOWN; admin needed. Zero print attempts.' : 'SIMULATED upstream rejected. Not checked in; no print attempt.',r.event);
+      }
+    },
+    OUTPUT: {
+      allowed: (s,r,action) => last(r)?.outcome==='pending' && ['printed','unknown','not_printed'].includes(action.outcome),
+      apply(s, r, action, log) {last(r).outcome=action.outcome;log(`SIMULATED print attempt #${last(r).number}: ${action.outcome.replaceAll('_',' ')}. No automatic retry.`,r.event);}
+    },
+    PHYSICAL_CONFIRM: {
+      allowed: (s,r,action) => last(r)?.outcome==='unknown' && ['printed','not_printed'].includes(action.outcome),
+      apply(s, r, action, log) {last(r).outcome=action.outcome;log(`Operator confirmed ${action.outcome.replaceAll('_',' ')} for attempt #${last(r).number}. No new attempt created.`,r.event);}
+    },
+    REPLACE: {
+      allowed: (s,r) => canReplace(s,r),
+      apply(s, r, action, log) {
+        const name=String(action.name||'').trim(),affiliation=String(action.affiliation||'').trim();
+        if(!name || !['correction','missing','damaged'].includes(action.reason)) {log('Replacement requires a name and reason.',r.event);return;}
+        if(action.reason==='missing' && last(r).outcome!=='not_printed') {log('Blocked: did-not-print replacement requires a confirmed did-not-print outcome.',r.event);return;}
+        r.name=name;r.affiliation=affiliation;
+        s.phoneWork=r.key;r.fulfillment='pending';
+        r.attempts.push({number:r.attempts.length+1,kind:'replacement',reason:action.reason,name,affiliation,outcome:'pending'});
+        log(`Explicit replacement #${last(r).number} started (${action.reason}). Check-in truth unchanged. Scanning held.`,r.event);
+      }
+    }
+  };
+  function reduce(state, action) {
+    if(action.type==='RESET') return initial();
+    const s=structuredClone(state);
+    const log=(text,event=s.event)=>{s.notice=text;s.history.push({n:++s.sequence,station:s.station,event,text});};
+    if(Object.hasOwn(phoneActions,action.type)) return phoneActions[action.type](s,action,log,state);
+    const r=selected(s);
+    if(!r) {log('Choose a station record first.');return s;}
+    if(r.station!==s.station) {log(`Blocked: only Station ${r.station} owns this record. No transfer.`,r.event);return s;}
+    const recordAction=Object.hasOwn(recordActions,action.type) && recordActions[action.type];
+    if(recordAction && recordAction.allowed(s,r,action)) {recordAction.apply(s,r,action,log);return s;}
+    log('Action blocked in this state. Follow the next allowed action.',r.event);return s;
+  }
+  return {events,attendees,initial,reduce,key,last,lock,selected,unresolved,canReplace,next,eventName};
+})();
+</script>
+<script id="ui">
+/* DOM adapter only: dispatch actions and render state. Browser owns scrolling,
+   selection, pinch zoom, focus, native controls and keyboard. No gesture layer. */
+const $=id=>document.getElementById(id);
+const escapeHTML=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let state=Model.initial(),lookupChoice=null,guideIndex=0,guideStep=0,guidePaused=false;
+const scan={type:'SCAN',id:'ana'},accepted={type:'UPSTREAM',outcome:'accepted'},printed={type:'OUTPUT',outcome:'printed'},unknown={type:'OUTPUT',outcome:'unknown'};
+const step=(label,action)=>({label,action});
+const base=[step('Scan Ana’s QR',scan),step('SIMULATE upstream accepted',accepted)];
+const scenarios=[
+  {title:'Normal / repeat',description:'One accepted attendee, one initial print. A repeat returns the existing result without another attempt.',steps:[...base,step('SIMULATE print success',printed),step('Scan Ana again: no new attempt',scan)]},
+  {title:'Lost response',description:'Acceptance is not known. The ordinary operator cannot print or retry; admin intervention is required.',steps:[step('Scan Ana’s QR',scan),step('SIMULATE lost upstream response',{type:'UPSTREAM',outcome:'unknown'}),step('Try scan again: held',scan)]},
+  {title:'Park admission',description:'An admin-only admission exception may be parked. Another attendee can proceed; no retry or print is created for the parked record.',steps:[step('Scan Ana’s QR',scan),step('SIMULATE lost response',{type:'UPSTREAM',outcome:'unknown'}),step('Explicitly park Ana',{type:'PARK'}),step('Scan Lee instead',{type:'SCAN',id:'lee'}),step('SIMULATE Lee accepted',accepted),step('SIMULATE Lee printed',printed)]},
+  {title:'Unknown → printed',description:'Physical confirmation resolves the uncertainty. It must not create another print attempt.',steps:[...base,step('SIMULATE unknown output',unknown),step('Operator confirms label printed',{type:'PHYSICAL_CONFIRM',outcome:'printed'}),step('Scan again: existing result only',scan)]},
+  {title:'Unknown → missing',description:'Confirming no label does not print. A separate explicit replacement is required.',steps:[...base,step('SIMULATE unknown output',unknown),step('Operator confirms did not print',{type:'PHYSICAL_CONFIRM',outcome:'not_printed'}),step('Explicitly request replacement',{type:'REPLACE',reason:'missing',name:'Ana Demo',affiliation:'Demo Systems'}),step('SIMULATE replacement success',printed)]},
+  {title:'Name correction',description:'Correct label text in a new attempt. Original text remains in attempt history; no new check-in request.',steps:[...base,step('SIMULATE print success',printed),step('Explicit replacement: corrected name',{type:'REPLACE',reason:'correction',name:'Ana Petrova Demo',affiliation:'Demo Systems'}),step('SIMULATE corrected label success',printed)]},
+  {title:'Handwritten',description:'After a known no-output result, record handwritten fulfillment. This starts neither a second check-in nor a later print.',steps:[...base,step('SIMULATE known no output',{type:'OUTPUT',outcome:'not_printed'}),step('Record handwritten label',{type:'HANDWRITTEN'}),step('Rescan: no new printing',scan)]},
+  {title:'Wrong station',description:'A different provisioned phone may view the duplicate result, but cannot print, correct, or take ownership.',steps:[...base,step('SIMULATE print success',printed),step('Use Station 2’s provisioned phone',{type:'STATION',id:'2'}),step('Scan Ana at Station 2: blocked',scan),step('Try replacement at Station 2: blocked',{type:'REPLACE',reason:'damaged',name:'Ana Demo',affiliation:'Demo Systems'})]},
+  {title:'Change event',description:'Pending work stays under its original event in the owning station queue. Resolve it without switching the scan event back.',steps:[...base,step('SIMULATE unknown output',unknown),step('Choose Workshop event',{type:'EVENT',id:'workshop'}),step('Try workshop scan: held',scan),step('Open Conference work from queue',{type:'SELECT',key:'main:ana'}),step('Confirm original Conference label printed',{type:'PHYSICAL_CONFIRM',outcome:'printed'}),step('Scan Ana in Workshop: new event identity',scan),step('SIMULATE workshop accepted',accepted),step('SIMULATE workshop label success',printed)]}
+];
+function dispatch(action,guided=false){
+  if(!guided)guidePaused=true;
+  const previous=state.selected;
+  state=Model.reduce(state,action);
+  if(['EVENT','STATION','LIST','RESET'].includes(action.type)){lookupChoice=null;$('query').value='';$('lookupResults').replaceChildren();}
+  if(state.selected!==previous || ['REPLACE','RESET'].includes(action.type))loadDraft();
+  render();
+}
+function loadDraft(){const r=Model.selected(state);$('name').value=r?.name||'Александра Петровска';$('affiliation').value=r?.affiliation??'Факултет за информатички науки';}
+function options(items,value){return items.map(i=>`<option value="${escapeHTML(i.id)}" ${i.id===value?'selected':''} ${i.disabled?'disabled':''}>${escapeHTML(i.name)}</option>`).join('');}
+function renderTruth(r,last,owner){
+  const truthLabels={pending:'Pending response — not confirmed',accepted:'Accepted (simulated confirmed check-in)',unknown:'UNKNOWN — admin needed',rejected:'Rejected — not checked in'};
+  $('truth').innerHTML=(r?`<h3>${escapeHTML(r.name)}</h3><dl><dt>Record event</dt><dd>${escapeHTML(Model.eventName(r.event))}</dd><dt>List / identity</dt><dd>${escapeHTML(r.list)} / ${escapeHTML(r.key)}</dd><dt>Owning station</dt><dd>Station ${r.station}${owner?'':' · current station blocked'}</dd><dt>Check-in truth</dt><dd>${truthLabels[r.checkin]}</dd><dt>Check-in requests</dt><dd>${r.checkinRequests}</dd><dt>Print attempts</dt><dd>${r.attempts.length} total · ${r.attempts.filter(a=>a.kind==='initial').length} initial · ${r.attempts.filter(a=>a.kind==='replacement').length} replacement</dd><dt>Latest output</dt><dd>${last?escapeHTML(last.outcome.replaceAll('_',' ')):'No print attempt'}</dd></dl>`:'<p>No attendee selected. Use QR, manual confirmation, or a station queue record.</p>')+`<p><strong>Next allowed action:</strong> ${escapeHTML(Model.next(state))}</p>`;
+}
+function renderRecordControls(r,last,lock,owner){
+  $('park').disabled=!(owner&&Model.unresolved(r));
+  $('handwritten').disabled=!(owner&&r.checkin==='accepted'&&last?.outcome==='not_printed'&&!lock&&r.fulfillment!=='handwritten');
+  ['accepted','lost','rejected'].forEach(id=>$(id).disabled=!(owner&&r.checkin==='pending'));
+  ['printed','unknown','notPrinted'].forEach(id=>$(id).disabled=!(owner&&last?.outcome==='pending'));
+  $('recovery').hidden=!(owner&&last?.outcome==='unknown');$('adminNote').hidden=r?.checkin!=='unknown';
+}
+function renderQueue(){
+  const records=Object.values(state.records).filter(x=>x.station===state.station);
+  $('queueScope').textContent=`Station ${state.station} only · all events · ${records.filter(Model.unresolved).length} unresolved · ${records.reduce((n,x)=>n+x.attempts.length,0)} print attempts. Selecting work does not change the active scan event.`;
+  $('queue').innerHTML=records.length?records.map(x=>`<li><button data-record="${escapeHTML(x.key)}">${Model.unresolved(x)?'Unresolved':'Known outcome'} · ${escapeHTML(x.name)}<br><small>${escapeHTML(Model.eventName(x.event))} · check-in ${x.checkin} · ${x.attempts.length} print attempt(s)</small></button><details><summary>Attempt text & outcome history</summary>${x.attempts.length?'<ol>'+x.attempts.map(a=>`<li>#${a.number} · ${a.kind} · ${escapeHTML(a.reason)}<br><strong>${escapeHTML(a.name)}</strong><br>${escapeHTML(a.affiliation)||'(blank affiliation)'}<br>Outcome: ${a.outcome.replaceAll('_',' ')}</li>`).join('')+'</ol>':'<p>No print attempt.</p>'}</details></li>`).join(''):'<li>No station work yet. Scan a fixture to start.</li>';
+  $('history').innerHTML=state.history.filter(h=>h.station===state.station).map(h=>`<li>#${h.n} · ${escapeHTML(Model.eventName(h.event))}<br>${escapeHTML(h.text)}</li>`).join('')||'<li>No actions at this station.</li>';
+}
+function render(){
+  const r=Model.selected(state),last=Model.last(r),lock=Model.lock(state),owner=r?.station===state.station;
+  $('activeContext').textContent=`${Model.eventName(state.event)} · Station ${state.station}`;
+  $('identity').textContent=`SIMULATED · provisioned client S${state.station} · operator Demo Operator (normal authenticated role) · Pi ${state.station} + USB B1`;
+  $('event').innerHTML=options(Model.events.map(e=>({...e,disabled:!e.configured})),state.event);$('station').value=state.station;
+  $('list').innerHTML=options(Model.events.find(e=>e.id===state.event).lists.map(x=>({id:x,name:x})),state.list);
+  const prior=$('fixture').value;
+  $('fixture').innerHTML=options(Model.attendees.filter(a=>a.event===state.event&&a.list===state.list).map(a=>({id:a.id,name:a.name})),prior);
+  $('announcement').textContent=state.notice;
+  renderTruth(r,last,owner);
+  $('scan').disabled=!!lock;$('scanGate').textContent=lock?`Scanning held for ${Model.eventName(lock.event)} / ${lock.name}. Resolve the station queue record below.`:'Scanner ready · all station print outcomes known.';
+  renderRecordControls(r,last,lock,owner);
+  $('replace').disabled=!Model.canReplace(state);$('replacementHelp').textContent=Model.canReplace(state)?'Explicit action only. Editing this preview alone never prints. Replacement stores a new text snapshot; it does not edit Hi.Events.':r&&!owner?`Blocked: corrections and replacements belong to Station ${r.station}.`:'Replacement needs an accepted record, a known physical outcome, and no unresolved work at this station.';
+  $('confirmation').hidden=!lookupChoice;$('confirmCheckin').disabled=!!lock;
+  if(lookupChoice)$('confirmText').textContent=`${lookupChoice.name} · ${lookupChoice.email} · ${Model.eventName(lookupChoice.event)} / ${lookupChoice.list}`;
+  renderQueue();
+  renderGuide();drawLabel();
+}
+function drawLabel(){
+  const canvas=$('labelCanvas'),ctx=canvas.getContext('2d');ctx.fillStyle='#ffffff';ctx.fillRect(0,0,1000,600);ctx.fillStyle='#000000';
+  function fit(text,max,min,weight,y){let size=max;ctx.font=`${weight} ${size}px "WTS Demo", "Noto Sans", sans-serif`;while(size>min&&ctx.measureText(text).width>880){size--;ctx.font=`${weight} ${size}px "WTS Demo", "Noto Sans", sans-serif`;}
+    let output=text;const glyphs=Array.from(text);if(ctx.measureText(output).width>880){while(glyphs.length&&ctx.measureText(glyphs.join('')+'…').width>880)glyphs.pop();output=glyphs.join('')+'…';}
+    ctx.fillText(output,60,y);return {size,output,truncated:output!==text};}
+  // Independent fitting ranges keep row 1 strictly larger, even at its floor.
+  const name=fit($('name').value,100,56,700,245),aff=fit($('affiliation').value,48,28,400,355);
+  canvas.setAttribute('aria-label',`Screen-only label: ${name.output}; ${aff.output||'blank affiliation'}`);
+  $('fitInfo').textContent=`Canvas measured independently: name ${name.size}px${name.truncated?' · ellipsis':''}; affiliation ${aff.size}px${aff.truncated?' · ellipsis':''}. These are preview canvas pixels, not printer dots.`;
+}
+function renderGuide(){
+  $('tabs').innerHTML=scenarios.map((s,i)=>`<button id="tab${i}" role="tab" aria-selected="${i===guideIndex}" aria-controls="guidePanel" tabindex="${i===guideIndex?'0':'-1'}" data-guide="${i}">${s.title}</button>`).join('');
+  $('guidePanel').setAttribute('aria-labelledby',`tab${guideIndex}`);const scenario=scenarios[guideIndex];$('guideDescription').textContent=scenario.description;
+  $('steps').innerHTML=scenario.steps.map((s,i)=>`<li><button data-step="${i}" ${guidePaused||i!==guideStep?'disabled':''}>${i<guideStep?'Done · ':''}${escapeHTML(s.label)}</button></li>`).join('');
+  $('guideProgress').textContent=guidePaused?'Free play active. Restart a scenario to run its guided steps.':guideStep===scenario.steps.length?'Scenario complete. Review the state and history above.':`Step ${guideStep+1} of ${scenario.steps.length}. Outcomes advance only when you press a step.`;
+}
+function startGuide(i){guideIndex=i;guideStep=0;guidePaused=false;state=Model.initial();lookupChoice=null;$('query').value='';$('lookupResults').replaceChildren();loadDraft();render();}
+$('event').onchange=e=>dispatch({type:'EVENT',id:e.target.value});$('station').onchange=e=>dispatch({type:'STATION',id:e.target.value});$('list').onchange=e=>dispatch({type:'LIST',list:e.target.value});
+$('scan').onclick=()=>dispatch({type:'SCAN',id:$('fixture').value});
+$('park').onclick=()=>dispatch({type:'PARK'});$('handwritten').onclick=()=>dispatch({type:'HANDWRITTEN'});
+for(const [id,action] of Object.entries({accepted,lost:{type:'UPSTREAM',outcome:'unknown'},rejected:{type:'UPSTREAM',outcome:'rejected'},printed,unknown,notPrinted:{type:'OUTPUT',outcome:'not_printed'},confirmPrinted:{type:'PHYSICAL_CONFIRM',outcome:'printed'},confirmNotPrinted:{type:'PHYSICAL_CONFIRM',outcome:'not_printed'}}))$(id).onclick=()=>dispatch(action);
+$('lookupForm').onsubmit=e=>{e.preventDefault();lookupChoice=null;const q=$('query').value.trim().toLocaleLowerCase();const matches=q?Model.attendees.filter(a=>a.event===state.event&&a.list===state.list&&(a.name+' '+a.email).toLocaleLowerCase().includes(q)):[];$('lookupResults').innerHTML=matches.length?matches.map(a=>`<button data-person="${escapeHTML(a.id)}">${escapeHTML(a.name)}<br>${escapeHTML(a.email)}</button>`).join(''):'<p>No matches. Enter a name or email in this event/list.</p>';$('confirmation').hidden=true;};
+$('lookupResults').onclick=e=>{const b=e.target.closest('[data-person]');if(!b)return;lookupChoice=Model.attendees.find(a=>a.id===b.dataset.person&&a.event===state.event&&a.list===state.list);render();$('confirmCheckin').focus();};
+$('cancelLookup').onclick=()=>{lookupChoice=null;render();$('query').focus();};$('confirmCheckin').onclick=()=>{if(!lookupChoice)return;const id=lookupChoice.id;lookupChoice=null;$('query').value='';$('lookupResults').replaceChildren();dispatch({type:'MANUAL_CONFIRM',id});};
+$('queue').onclick=e=>{const b=e.target.closest('[data-record]');if(b)dispatch({type:'SELECT',key:b.dataset.record});};
+$('labelForm').onsubmit=e=>{e.preventDefault();dispatch({type:'REPLACE',name:$('name').value,affiliation:$('affiliation').value,reason:$('reason').value});};
+$('name').oninput=drawLabel;$('affiliation').oninput=drawLabel;$('cyrillic').onclick=()=>{$('name').value='Александра Марија Петровска Димитриевска';$('affiliation').value='Факултет за информатички науки и компјутерско инженерство — демонстрација';drawLabel();};
+$('tabs').onclick=e=>{const b=e.target.closest('[data-guide]');if(b){startGuide(Number(b.dataset.guide));$(`tab${guideIndex}`).focus();}};
+$('tabs').onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const i=e.key==='Home'?0:e.key==='End'?scenarios.length-1:(guideIndex+(e.key==='ArrowRight'?1:-1)+scenarios.length)%scenarios.length;startGuide(i);$(`tab${i}`).focus();};
+$('steps').onclick=e=>{const b=e.target.closest('[data-step]');if(!b||guidePaused||Number(b.dataset.step)!==guideStep)return;const action=scenarios[guideIndex].steps[guideStep++].action;dispatch(action,true);const next=$('steps').querySelector('button:not(:disabled)');(next||$('restart')).focus();};
+$('restart').onclick=()=>startGuide(guideIndex);$('reset').onclick=()=>{guideStep=0;dispatch({type:'RESET'});};
+render();document.fonts.ready.then(drawLabel);
+</script>
+</body>
+</html>

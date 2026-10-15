@@ -27,7 +27,7 @@ Use this when changing routing, module placement, or high-level app behavior.
 - `src/lib/pocketbase.ts`: browser-facing PocketBase singleton.
 - `src/lib/pocketbase-types.ts`: manual PocketBase collection types.
 - `src/lib/hievents.ts`: HiEvents integration logic.
-- `content`: Markdown and MDX content managed by Velite.
+- `content`: legal Markdown, the protected speaker guide, and conference facts.
 - `pocketbase`: local PocketBase executable, hooks, migrations, and scripts.
 - `public`: static assets.
 - `src/styles/app.css`: global Tailwind and DaisyUI stylesheet.

@@ -35,6 +35,6 @@ All browser commands use same-origin JSON POST and bounded bodies, private/no-st
 
 ## Verification
 
-The default `pnpm test` explicitly registers the renderer, profile-PocketBase and HTTP suites. `pnpm test:checkin-browser` discovers the actual admin UI scenarios through its existing disposable production server runner; no production credentials or normal PocketBase data are needed. Font/raster tests decode real output and verify row fitting, glyphs, bounds, rotation, deterministic identity and fail-closed errors. Browser tests inspect canvas pixels and retain mobile/raster screenshots for visual review.
+The default `pnpm test` discovers the renderer, profile-PocketBase, and HTTP suites. `pnpm test:checkin-browser` exercises the admin UI through its disposable production server runner. Neither command needs production credentials or normal PocketBase data. Font/raster tests decode real output and verify row fitting, glyphs, bounds, rotation, deterministic identity, and rejection of unsafe input. Browser tests inspect canvas pixels and retain mobile/raster screenshots for visual review.
 
 Run the manifest's `test`, `check`, `typecheck`, `build` and `test:checkin-browser` gates. See [checkin-verification.md](checkin-verification.md) for isolation and execution evidence. Physical legibility, feed/calibration, Pi/native runtime and owner event-use approval remain separate rollout work.

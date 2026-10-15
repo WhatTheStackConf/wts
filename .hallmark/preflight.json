@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-05",
+  "scope": "auth and CFP apps",
+  "designSystem": "DESIGN.md",
+  "variant": "Existing WTS 2027 supporting-page identity. The homepage and root operational theme remain unchanged.",
+  "mode": "Operate",
+  "fonts": {
+    "brand": "Starzoom Shavian",
+    "headingsAndBody": "Space Grotesk",
+    "source": "Existing public/fonts assets, served locally by each independent app"
+  },
+  "palette": {
+    "source": "auth/public/account.css and cfp/src/styles/app.css",
+    "anchor": "Existing navy header, warm ivory surfaces, cyan actions, dark ink, and amber focus"
+  },
+  "motion": {
+    "decision": "Retain restrained control states and reduced-motion support. Add no decorative animation."
+  },
+  "framework": {
+    "auth": "Server-rendered HTML with existing account.js form handlers",
+    "cfp": "SolidStart with existing DaisyUI controls"
+  },
+  "approvedDirection": "Compact task-first auth forms, separate account sections, live CFP status, clear applicant navigation, and denser staff workspaces",
+  "preserve": [
+    "homepage files and appearance",
+    "original WTS logo and self-hosted fonts",
+    "routes and app ownership",
+    "OAuth, password, recovery, and consent behavior",
+    "applicant workflow and staff permissions",
+    "existing uncertain-operation retries",
+    "unrelated working changes"
+  ],
+  "introduce": [
+    "compact auth form hierarchy",
+    "role-aware responsive CFP menu",
+    "grouped speaker profile fields",
+    "compact staff filters and contained table scrolling"
+  ],
+  "unknown2027Facts": ["date", "location", "venue", "programme", "speakers", "partners", "ticket price"]
+}

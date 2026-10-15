@@ -1,19 +1,20 @@
-# WhatTheStack 2026
+# WhatTheStack 2027
 
-WhatTheStack is a community-driven software conference in Skopje, North Macedonia, taking place on 2026-09-19 and 2026-09-20.
+WhatTheStack is a community for people who build software. The initial 2027 public site shares evergreen information, confirmed announcements as they become available, legal information, and ways to receive occasional community updates. Conference date, location, time zone, venue, programme, speakers, partners, and ticket prices have not been announced.
 
-## Conference information
+## Public information
 
-- [Home](https://wts.sh/): Conference overview, venue, speakers, and sponsors.
-- [Agenda](https://wts.sh/agenda): Published conference schedule.
-- [Speakers](https://wts.sh/speakers): Published speaker lineup.
-- [Sessions](https://wts.sh/sessions): Published talks and workshops.
-- [Sponsors and partners](https://wts.sh/sponsors): Conference sponsors and community partners.
-- [FAQ](https://wts.sh/faq): Practical attendee information.
-- [Code of Conduct](https://wts.sh/code-of-conduct): Community participation rules.
-- [MCP conference guide](https://wts.sh/mcp): Machine-readable conference data and tools.
+- [Home](https://wts.sh/): WhatTheStack 2027 public landing page and community introduction.
+- [Terms](https://wts.sh/terms): Terms of service.
+- [Privacy](https://wts.sh/privacy): Privacy information.
+- [Code of Conduct](https://wts.sh/code-of-conduct): Community conduct expectations.
+
+## Past editions
+
+- [2026 edition](https://2026.wts.sh): Historical edition site.
+- [2025 edition](https://2025.wts.sh): Historical edition site.
+- [2024 edition](https://2024.wts.sh): Historical edition site.
 
 ## Contact
 
-- [About WhatTheStack](https://wts.sh/about)
-- [Partnerships](https://wts.sh/partnerships)
+- what@wts.sh

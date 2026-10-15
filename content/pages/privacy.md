@@ -42,9 +42,9 @@ You have the right to access, request correction, or request deletion of your pe
 We retain your data only for as long as necessary to facilitate your attendance, complete post-conference communications, and comply with legal obligations.
 
 ### Requesting Data Deletion
-You can request deletion by emailing what@wts.rocks with "Data Deletion Request" in the subject line.
+You can request deletion by emailing what@wts.sh with "Data Deletion Request" in the subject line.
 
 ### Contact Us
-Email: what@wts.rocks
+Email: what@wts.sh
 Phone: +389 78 397 359
 Address: 75 East 3rd Street Sheridan, WY 82801 United States

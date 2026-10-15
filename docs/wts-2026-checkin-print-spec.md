@@ -1,5 +1,7 @@
 # WTS 2026 Attendee Check-in and Name Label Printing
 
+Post-test requirements: [2026-09-12 volunteer findings](checkin-volunteer-findings-2026-09-12.md) supersede conflicting repeat-scan and pre-conf printing policies below. Those revisions are requirements, not claims of deployed behavior.
+
 Status: approved for implementation, including owner sign-off on the scanner/recovery and Name Label prototypes. Not an event-use approval.
 Updated: 2026-09-08.
 Map: [Specify WTS 2026 Attendee Check-in and Name Label Printing](https://github.com/WhatTheStackConf/wts/issues/19).

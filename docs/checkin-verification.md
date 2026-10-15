@@ -42,7 +42,7 @@ pnpm test:checkin-browser --repeat-each=2
 
 `.github/workflows/verification.yml` runs `pnpm test`, `pnpm check`, `pnpm typecheck` and `pnpm build` as independent, non-fail-fast matrix jobs. Browser verification is a separate required job, not a replacement for any existing gate. Unrelated failures stay visible.
 
-`pnpm test` explicitly includes `checkin-http.test.ts`, `checkin-pocketbase.integration.test.ts`, `checkin-hievents.test.ts`, `checkin-event-http.test.ts`, `checkin-events.integration.test.ts`, `checkin-event-safety.integration.test.ts` and `pocketbase-public-url.test.ts`. Browser tests live under `tests/checkin*.spec.ts`; both the normal typecheck and the browser command include their config and tests. No CI job changes are required: the existing workflow invokes these manifest commands.
+`pnpm test` discovers application tests under `src/` and runtime tests under `runtime/`. This includes the check-in HTTP, persistence, upstream, event-safety, and public-URL suites. Browser tests remain under `tests/checkin*.spec.ts` and use the separate disposable browser runner. The existing CI workflow invokes these commands.
 
 The shell intentionally remains unready even after station/system restore. Successful browser checks establish neither real camera behavior nor printer calibration, admission safety, upstream availability, retention compliance, or owner event-use approval.
 

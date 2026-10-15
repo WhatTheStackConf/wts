@@ -15,13 +15,7 @@
       "Grouped speaker fields, compact staff filters, and contained table scrolling"
     ],
     "verification": {
-      "viewports": [
-        320,
-        375,
-        414,
-        768,
-        1440
-      ],
+      "viewports": [320, 375, 414, 768, 1440],
       "authLayouts": "55 final synthetic render checks across 11 page states. No page overflow, wrapped controls, missing images, or undersized checked controls.",
       "cfpLayouts": "85 render checks across 17 states. No page overflow, missing images, undersized checked controls, or multiline control labels.",
       "reviewerLayouts": "Real browser proof captured reviewer and admin workspaces at 390 and 1440 pixels.",
@@ -34,39 +28,415 @@
       "detector": "One detector pass per app. Only warnings for the required Space Grotesk font.",
       "finishReview": "Separate read-only auth and CFP reviewers returned ship with no material fixes.",
       "evidence": ".impeccable/review/verification.json",
-      "screenshots": [
-        ".impeccable/review/auth",
-        ".impeccable/review/cfp"
-      ]
+      "screenshots": [".impeccable/review/auth", ".impeccable/review/cfp"]
     },
-    "critique": {
-      "philosophy": 4,
-      "hierarchy": 4,
-      "execution": 4,
-      "specificity": 4,
-      "restraint": 4,
-      "variety": 4
-    },
+    "critique": { "philosophy": 4, "hierarchy": 4, "execution": 4, "specificity": 4, "restraint": 4, "variety": 4 },
     "gateScope": "Locked-system redesign, not a universal gate or accessibility certification. Existing palette, component conventions, and pinned fonts remain. Reviewers used the available reviewer role. Documentation stayed in the main session. No production changes or deployment."
+  },
+  {
+    "date": "2026-09-27",
+    "scope": "public homepage link and button interactions",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "brief": "Give homepage actions more character and replace the awkward darkening button hover",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "systemChanged": "Shared drawn-arrow compartments, directional feedback and underline reveals across navigation, newsletter actions, archive rows and footer links. Cyan CTAs brighten on fine-pointer hover; cream CTAs retain their light fill and highlight the arrow. Added restrained pressed feedback, retained amber focus outlines, and made footer targets at least 44×44px. Existing destinations, labels and button semantics are unchanged.",
+    "verification": {
+      "viewports": [320, 375, 414, 768, 1440, 1920],
+      "hover": "Verified in headed Chromium with hover/fine-pointer media active. Cyan fill luminance increased from about 0.494 to 0.552; cream remained about 0.910. Arrow movement is 2px; underline and archive-arrow feedback appear without changing row dimensions.",
+      "keyboard": "All seven action families retain visible 3px amber outlines with 4px offset. Text-link/title underlines appear on focus. Pressing the primary action produces an inset keyline and 1px response. Reduced motion removes arrow movement and transition duration while preserving static focus feedback.",
+      "touch": "At 375px with coarse-pointer native touch emulation, all three newsletter triggers opened the dialog; Escape closed it and restored trigger focus. The gathering anchor lands below the 116px header. No provider submission or security-check bypass.",
+      "layout": "All three nav controls remain hit-testable with 44px minimum height across initial, intermediate and compact states at six widths; no overlap or horizontal overflow. All nine footer links are at least 44×44px at 320, 375 and 1440px. Cold-load traces retain centered navigation exactly 24px beneath the year before and after hydration.",
+      "validation": "Typecheck, scoped lint, final production build and server bundle syntax check passed. Full suite: 117 files passed, 1 skipped; existing checkin-agent-protocol.integration.test.ts authorization_expired failure.",
+      "limits": "Chromium responsive and touch emulation; newsletter verification limited to opening, closing and focus restoration."
+    }
+  },
+  {
+    "date": "2026-09-27",
+    "scope": "public homepage continuous starfield",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "brief": "Make the repeated header and hero star rows look natural",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "systemChanged": "Header sky, scene star layer and fallback navigation now use one full-cover starfield height. Offset the scene star layer by the compact header height so its world origin matches the header instead of restarting the same pattern below it. No new assets, randomization, JavaScript or animation changes.",
+    "verification": "Inspected desktop 1246px and mobile 375px screenshots; computed full-cover scale and world origin match at 1246, 1440 and 375px. Six twinkles remain; reduced-motion disables them and retains aligned backgrounds. Navigation remains hit-testable with no overflow, and initialized canvas dimensions stay constant during collapse.",
+    "validation": "Production build and server bundle syntax check passed. No full-suite rerun for this CSS-only change."
+  },
+  {
+    "date": "2026-09-27",
+    "scope": "public homepage header sky seam removal",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "brief": "Remove the visible topmost header line",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "systemChanged": "Extended the header sky pseudo-element by 1px beneath the hero to close the exposed paper seam without changing layout or the lower planetary fade.",
+    "verification": "Desktop 1440px and mobile 375px screenshots show continuous sky. Brand/navigation geometry and 90px/116px compact headers remain unchanged; controls remain hit-testable, with no horizontal overflow.",
+    "limits": "Chromium visual and scroll checks; no full suite rerun for this one-property paint-only change."
+  },
+  {
+    "date": "2026-09-27",
+    "scope": "public homepage navigation first-paint stability",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "brief": "Prevent header links from appearing at the top right before jumping beneath the hero identity on hard reload",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "systemChanged": "Native-scroll/no-preference CSS now renders navigation at its centered hero origin before hydration. Shared responsive CSS geometry supplies the origin for both initial layout and measured scroll travel; no loading visibility gate. Reduced-motion and unsupported CSS retain the compact fixed fallback.",
+    "verification": {
+      "viewports": [320, 375, 414, 768, 1440, 1920],
+      "firstPaint": "Cache-disabled reload traces captured 10–12 pre-hydration frames per width. Every sampled frame kept navigation visible, exactly centered and 24px beneath the year. Script-free server markup and hydrated layout had zero differences in nav x/y/width and brand x/y.",
+      "scroll": "Forward and reverse scroll checked at 320, 375, 768 and 1440px: all controls hit-testable, no brand/nav overlap or horizontal overflow, stable canvas buffers, keyboard focus retained, year and centered origin restored. Desktop/mobile compact dimensions remain 90px/116px.",
+      "fallback": "Reduced-motion mobile navigation remains fixed, all three controls visible with 44px targets; archive anchor clears the 116px header.",
+      "validation": "Typecheck and scoped lint passed. Integrated production build and server bundle syntax check passed. Full suite: 117 files passed, 1 skipped; existing checkin-agent-protocol.integration.test.ts authorization_expired failure.",
+      "limits": "Chromium responsive emulation. Script-free geometry was measured with the development server route already compiled; normal cache-disabled loads supplied the pre-hydration paint traces."
+    }
+  },
+  {
+    "date": "2026-09-26",
+    "scope": "public homepage mirrored traveling navigation",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "brief": "Place the three header actions beneath the hero identity, move them right into the compact header on scroll, and remove duplicate hero actions",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "systemChanged": "One persistent navigation group starts centered about 24px below 2027 and travels right/up opposite the brand. Desktop retains a 90px single-row header; mobile uses a 116px two-row header with all three actions visible. Removed duplicate hero newsletter/archive actions and their observer, focus and animation hooks.",
+    "verification": {
+      "viewports": [320, 375, 414, 768, 1440, 1920],
+      "geometry": "Eight scroll states per viewport: all three controls hit-testable, no brand/nav intersections or horizontal overflow, stable canvas buffers below 600000 pixels. Initial nav-to-copy spacing is 48px desktop and about 32px mobile; controls retain 44px minimum targets.",
+      "appearance": "Inspected initial, traveling and compact desktop/mobile screenshots. Tightened oversized copy spacing and moved compact mobile navigation to y=64px so its full keyboard focus ring fits inside the cover.",
+      "interaction": "Same nav/CTA nodes retain keyboard focus during travel. About/archive anchors clear the 90px/116px header; newsletter opens and Escape restores focus. Home returns to scroll zero and restores centered navigation/year. Live deep-scroll viewport changes settle correctly after animation frames. Fresh mobile archive deep link lands at 116px with all controls hit-testable and zero GPU contexts.",
+      "preservation": "LaunchScene, artwork, renderer, scene stylesheet, logo and nebula hashes unchanged. Offscreen/hidden draw counts and twinkle times stop; return resumes rendering; route departure releases the context.",
+      "fallbacks": "Reduced motion starts without scroll animation, twinkles or GPU contexts; live preference change enables motion. Forced unsupported timeline detection and JavaScript-disabled pages retain all three visible controls and working archive anchors.",
+      "validation": "Typecheck, scoped lint, production build and server bundle syntax check passed. Full sequential suite: 116 files passed, 1 skipped, 2 checkin failures: protocol authorization_expired and CLI recovery expected reported but received possibly_printing.",
+      "limits": "Chromium responsive emulation; unsupported timeline tested via feature-detection override. Newsletter opening/closing only; external provider blocked, no submission or security-check bypass."
+    }
+  },
+  {
+    "date": "2026-09-26",
+    "scope": "public homepage hero brand traveling into the header",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "brief": "Replace the hero slogan with the logo and WhatTheStack wordmark, put 2027 below, and move the same brand into the header while the year fades",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "systemChanged": "One persistent home link carries the centered hero identity. Its measured full lockup scales and moves horizontally by 60% of the native scroll range, then rises into the compact header; the year fades by 60%. Full mobile wordmark size is constrained by the actual navigation gap. Supporting-copy spacing follows the shorter identity block.",
+    "verification": {
+      "viewports": [320, 375, 414, 768, 1440, 1920],
+      "motion": "Eight progress samples per viewport show one brand, exact initial horizontal centering, year opacity from 1 to 0, and no brand/navigation intersection. Mobile compact gaps are approximately 12px. Reverse scroll restores the large centered identity and year.",
+      "appearance": "Inspected initial, traveling and compact desktop/mobile screenshots. Corrected mobile intrinsic-width measurement and reduced oversized blank space between the year and supporting copy to about 56px desktop and 32px mobile.",
+      "preservation": "LaunchScene, planetary artwork, renderer, scene stylesheet, logo and nebula hashes are unchanged. Canvas buffers remain constant through scrolling and at or below 599760 pixels; collapsed background draws stop and resume on return.",
+      "interaction": "The same brand DOM node retains visible keyboard focus through travel. Home link clears the archive hash and returns to scroll zero. Navigation anchors, deep archive reload and newsletter open/Escape focus restoration work; route departure releases the GPU context. No provider submission.",
+      "fallbacks": "Reduced motion starts with zero GPU contexts/draws; live preference change enables native motion. Forced unsupported timeline detection and JavaScript-disabled pages keep the large centered identity/year in normal flow and navigation fixed.",
+      "validation": "Typecheck, scoped lint, production build and server bundle syntax check passed. Full sequential suite: 117 files passed, 1 skipped; existing checkin-agent-protocol.integration.test.ts authorization_expired failure.",
+      "limits": "Chromium responsive emulation; unsupported timeline exercised by feature-detection override, not a separate browser engine"
+    }
+  },
+  {
+    "date": "2026-09-26",
+    "scope": "public homepage unified cover-to-fixed-header scroll transition",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "brief": "Integrate branding and navigation into the planetary hero and contract the same cover into a persistent header on scroll",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "reference": "https://scroll-driven-animations.style/demos/cover-to-fixed-header/css/",
+    "systemChanged": "One cover owns the existing brand/navigation and hero. Native root scroll timelines contract its visible bounds over expanded height minus compact header height, with a stable in-flow reservation and stable scene/canvas dimensions. Roomy desktop branding contracts subtly; narrow branding remains unscaled. Static fallback retains fixed navigation.",
+    "verification": {
+      "viewports": [320, 375, 414, 768, 1440, 1920],
+      "appearance": "Inspected desktop/mobile initial, intermediate and compact states. Corrected discrete clip interpolation and preserved cream under the lower planet mask. Initial artwork, renderer, scene stylesheet, logo asset and nebula asset hashes are unchanged.",
+      "geometry": "No horizontal overflow; reservation and backing buffers stay constant through scrolling at each width. Desktop visible cover contracts from 920px through about 505px to 90px; compact mobile header is 74px. Sampled buffers stay at or below 599760 pixels.",
+      "interaction": "Clipped hero controls become individually inert; focused clipped controls hand off to navigation without moving scroll. About/archive anchors land below the header; newsletter dialog opens and Escape restores nav focus. No provider submission or security-check bypass.",
+      "lifecycle": "Collapsed and hidden states stop GPU draws and star-twinkle timelines; reverse scrolling resumes both and restores hero controls. Deep archive reload creates no GPU context. Navigating to terms releases the context with no subsequent draws.",
+      "fallbacks": "Initial reduced motion produces zero GPU contexts/draws with no twinkles or scroll morph. Forced unsupported timeline detection and JavaScript-disabled navigation retain the visible static scene and fixed header.",
+      "validation": "Typecheck, scoped lint, production build and server bundle syntax check passed. Full sequential suite: 117 files passed, 1 skipped; existing checkin-agent-protocol.integration.test.ts authorization_expired failure.",
+      "limits": "Chromium responsive emulation; unsupported timeline tested via feature-detection override rather than a separate browser engine"
+    }
+  },
+  {
+    "date": "2026-09-26",
+    "scope": "public homepage floating hologram logo removal",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "brief": "Remove the superfluous floating hero logo without changing the surrounding scene or layout",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "systemChanged": "Removed floating artwork, stage/backdrop/mask, drift/fade/glitch styles, logo-only easing token, and renderer glitch scheduling/callback/state. Header and footer branding remain.",
+    "verification": {
+      "viewports": [375, 1440],
+      "appearance": "Desktop and mobile screenshots confirm the floating mark is absent, header logo remains, and planet, dark outer sky, nebula, stars and cream finish remain intact",
+      "preservation": "PlanetHorizonArtwork text and shared logo/nebula asset hashes match the pre-removal state; crest remains 74%, nebula opacity 0.43, six star elements, no horizontal overflow",
+      "runtime": "Mobile sampled 24 draws/second; offscreen and hidden samples show no frame or star-timeline progression. Context loss hides canvas, stops draws and retains the static planet. Initial reduced motion creates zero GPU contexts/draws and disables all six star animations.",
+      "validation": "Typecheck, scoped lint, production build and server bundle syntax check passed. Full sequential suite: 117 files passed, 1 skipped; existing checkin-agent-protocol.integration.test.ts authorization_expired failure.",
+      "limits": "Chromium responsive emulation; no live provider submissions"
+    }
+  },
+  {
+    "date": "2026-09-26",
+    "scope": "public homepage cream bleed outside curved horizon",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "brief": "Keep the improved lower cream transition without brightening the sky outside the planet",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "systemChanged": "Removed the page-wide hero color wash. Header and actual scene own separate matching navy backgrounds; static starfield is reused above both. Lower host fade begins at 92%, after the desktop limb reaches both viewport edges.",
+    "verification": {
+      "viewports": [320, 375, 1440, 1920],
+      "appearance": "Boundary-scrolled screenshots confirm dark outer sky, isolated planetary atmosphere and preserved smooth cream finish",
+      "pixels": "At 1% width and approximately 88% hero height, desktop exterior changed from RGB(147,195,187) to RGB(17,46,62); planet center remains RGB(169,194,178). Three rows crossing the lower boundary all sample exact cream RGB(251,244,232). Wide screenshot confirms the same separation.",
+      "geometry": "Crest remains 74%, no horizontal overflow, sampled backing buffers 463200–598740 pixels, nebula opacity remains 0.43",
+      "static": "Initial reduced motion retains the static field and dark sky with zero GPU contexts/draws and all six star animations disabled. Header and scene computed navy colors match; header sky band matches its 90px desktop height.",
+      "validation": "Typecheck, production build and server bundle syntax check passed. Full sequential suite: 117 files passed, 1 skipped; existing checkin-agent-protocol.integration.test.ts authorization_expired failure.",
+      "limits": "Chromium responsive emulation; sampled pixels establish local boundary separation, not universal perceptual correctness"
+    }
+  },
+  {
+    "date": "2026-09-25",
+    "scope": "public homepage gradual planet-to-cream transition",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "brief": "Remove the sudden lower planetary cutoff into the creamy content section and make the transition gradual and natural",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "enrichment": "Coordinated pale-cyan mist and ivory gradient stops, softened lower clouds, and an eased mask over the entire lower decorative composite",
+    "systemChanged": "Lower atmospheric gradients and fade only; upper scene, copy/layout, horizon geometry and motion controller preserved",
+    "verification": {
+      "viewports": [320, 375, 1440],
+      "appearance": "Inspected boundary-scrolled desktop/mobile screenshots including the introductory text; one correction removed residual tinted clipping and the compressed warm band",
+      "continuity": "Final desktop center samples across the hero edge: RGB(251,244,231) to RGB(251,244,232), replacing an observed 14-channel-level step. Mobile and 320px samples: RGB(250,243,231) to RGB(251,244,232). Samples below remained exact page cream.",
+      "geometry": "No horizontal overflow; crest remained 74%; sampled backing buffers 463200–598740 pixels; desktop hero height remained 830px and mobile content layout unchanged",
+      "fallback": "Reduced-motion load retained the eased decorative mask with zero GPU contexts/draws; all six stars had animation none, nebula opacity stayed 0.43, and introductory content opacity stayed 1",
+      "preservation": "LaunchScene.tsx, launch-renderer.ts and the nebula asset hashes matched this refinement's starting state",
+      "validation": "Typecheck, scoped LaunchArtwork lint, production build and server bundle syntax check passed. Full sequential suite: 117 files passed, 1 skipped; existing checkin-agent-protocol.integration.test.ts authorization_expired failure.",
+      "limits": "Visual proof in Chromium responsive emulation; color samples are local seam evidence, not a full-image perceptual metric"
+    }
+  },
+  {
+    "date": "2026-09-25",
+    "scope": "public homepage nebula transparency and vivid star depth",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "brief": "Make the upper nebula less distracting and the stars more vivid, with near/far depth and subtle independent blinking",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "enrichment": "Nebula isolated at 0.43 opacity; distant starfield supplemented with 20 medium and five brighter nearby points; six individual stars use different slow twinkle periods and delays",
+    "systemChanged": "Upper-space CSS layers and six decorative spans only; approved lower artwork, nebula asset and renderer unchanged",
+    "verification": {
+      "viewports": [320, 375, 1440],
+      "appearance": "Batched screenshots confirmed quieter blue dust, visible size/brightness variation in the stars, preserved foreground legibility and lower atmosphere",
+      "geometry": "No horizontal overflow; full-width host; crest 74%; backing buffers 463200–598740 pixels",
+      "motion": "Six independently phased periods of 6.2/8.4/7.1/9.2/5.6/8.8 seconds observed. All six opacity ranges changed over 9.602 seconds; mobile renderer drew 231 frames.",
+      "lifecycle": "Offscreen and injected hidden state froze all six star timelines and GPU drawing. Pausing retains animation timelines rather than recreating them.",
+      "reducedMotion": "Initial reduced motion produced zero renderer imports, contexts or draws; all six stars remained visible with animation none, nebula opacity 0.43 and lower-cloud opacity 0.56",
+      "preservation": "Hashes of LaunchArtwork.tsx, launch-renderer.ts and launch-nebula.webp matched this refinement's starting state",
+      "validation": "Typecheck, scoped LaunchScene lint, production build and server bundle syntax check passed. Sequential full suite: 117 files passed, 1 skipped; existing checkin-agent-protocol.integration.test.ts authorization_expired failure.",
+      "limits": "Chromium responsive emulation; no physical-device performance or blanket accessibility conformance claim"
+    }
+  },
+  {
+    "date": "2026-09-25",
+    "scope": "public homepage deep-space nebula and distant starfield",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "brief": "Replace upper atmospheric ribbons with textured blue space nebulae and make stars subtle, distant and layered, using the supplied Kiro screenshot as direction; preserve the approved lower clouds",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "enrichment": "Original static multi-scale blue-dust texture with dark voids, 100 tiny varied CSS-pixel stars and five additional restrained points sharing a slow twinkle",
+    "systemChanged": "Upper-space artwork only; lower clouds, planetary halo, logo, content and renderer/controller preserved",
+    "asset": "Self-authored 1200x720 WebP, 259662 bytes; independent cover-sized background crops rather than stretches. No copied reference pixels or new dependency.",
+    "verification": {
+      "viewports": [375, 1440, 1920],
+      "appearance": "Batched desktop/mobile/wide inspection followed by one consolidated correction and final confirmation: irregular blue dust replaces ribbons, stars recede, lower atmosphere stays intact, foreground remains legible",
+      "geometry": "Zero horizontal overflow, edge-to-edge host, horizon crest 74%; sampled backing buffers 527904–598740 pixels",
+      "motion": "Twinkle layer opacity sampled from 0.62 to 0.819999 over 7.515 seconds; 226 desktop draws. Computed starfield contains 100 radial gradients with CSS-pixel radii.",
+      "lifecycle": "Offscreen and injected document.hidden states froze drawing and star/logo animation timelines. Initial reduced motion produced zero renderer imports, GPU contexts or draws; nebula asset loaded, lower clouds remained and twinkle animation was none.",
+      "controls": "Newsletter CTA opened dialog with email focus; Escape dismissed it; archive link reached #archive. No submission or provider approval.",
+      "validation": "Typecheck, scoped LaunchArtwork lint, production build and server bundle check passed. Sequential full suite: 117 files passed, 1 skipped, existing checkin-agent-protocol.integration.test.ts authorization_expired failure.",
+      "limits": "Chromium responsive emulation, not physical-device performance certification."
+    }
+  },
+  {
+    "date": "2026-09-25",
+    "scope": "public homepage atmospheric halo, nebulae, stars and lower clouds",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "enrichment": "Broader cyan/ivory halo, softened full-host nebula wisps, denser varied starfield with five slow staggered twinkles, and subtle planet-clipped cloud bands",
+    "brief": "Make the halo more dramatic, add clouds in space and the lower atmosphere, add livelier stars, and blend the planetary transition more seamlessly",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "tokenSource": "tokens.css",
+    "systemChanged": "Decorative hero layers and gradient composition only; original logo, copy, controls, renderer lifecycle and operational theme preserved",
+    "verification": {
+      "viewports": [320, 375, 414, 768, 1440, 1920],
+      "appearance": "Desktop/mobile/wide and 1440x700 screenshots inspected together. Corrected the opaque hero seam and moved atmosphere outside the logo mask. Restored hero isolation after a compositing regression; fresh 1440px and 375px screenshots confirmed ivory headline and link text.",
+      "geometry": "Full-width horizon at x=0, crest at 74%, no horizontal overflow; all sampled backing buffers below 600000 pixels",
+      "motion": "All five twinkles traversed opacity 0.48–0.92 during a 6.21-second sample. Mobile renderer drew 149 frames during that interval. Two actual GPU captures showed changing rim light with zero non-premultiplied pixels.",
+      "lifecycle": "Offscreen and injected document.hidden states stopped GPU drawing and froze all five twinkle timelines plus logo motion",
+      "fallbacks": "Initial reduced motion retained nebula, clouds and 375px-wide horizon with zero renderer imports, contexts or draws and no twinkle animations. Context loss retained the static layers and stopped drawing.",
+      "controls": "Newsletter CTA opened the dialog and focused email; Escape dismissed it; archive link reached #archive. External analytics and provider resources intentionally blocked; no submission.",
+      "validation": "Typecheck, scoped lint and final production build passed. Sequential full suite after build: 117 files passed, 1 skipped, existing checkin-agent-protocol.integration.test.ts authorization_expired failure. An earlier overlapping build/test run also lost generated CLI artifacts; those additional failures cleared in the sequential run.",
+      "limits": "Chromium responsive emulation, not a physical-phone benchmark. No external media or dependencies added; no blanket accessibility conformance claim."
+    }
+  },
+  {
+    "date": "2026-09-25",
+    "scope": "public homepage full-bleed planetary horizon and rim motion",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "theme_axes": "navy star sky / cyan-blue hemisphere rim / warm daylight into ivory",
+    "enrichment": "Replaced the complete globe and elliptical orbit with a massive static upper hemisphere and a smooth traveling cyan rim highlight; logo remains on its independent stage",
+    "brief": "Show only the upper half of a full-width planet from hero start to end, with a fixed desktop horizon, a shallower mobile crest, restrained traveling rim energy, and warm daylight blending into the existing page palette",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "tokenSource": "tokens.css",
+    "systemChanged": "Full-host planetary artwork and shader mapping; separate existing logo stage, page palette, copy, navigation, actions, and renderer lifecycle preserved",
+    "verification": {
+      "status": "verified in Chromium",
+      "viewports": [320, 375, 414, 768, 1440, 1920],
+      "appearance": "Full-width upper limb verified at 320/375/414/768/1440/1920px and a 1440x700 short viewport; no horizontal overflow; independent logo scale preserved",
+      "geometry": "Live SVG bounds and GPU u_geometry agree at desktop/mobile sizes and after resizing the same context; crest remains 74% of hero height",
+      "motion": "Read actual rendered GPU pixels: the brightest rim region moved from 41.9% to 53.0% width over 2.52 seconds. Premultiplied color checks passed. Logo opacity spanned 0.680001–0.92 with visible glitches and zero drift/fade timeline restarts",
+      "performance": "330 desktop draws over 11.01 seconds; 49 mobile draws over two seconds. Every exercised backing buffer stayed below 600000 pixels",
+      "fallbacks": "Offscreen and injected document.hidden states stopped drawing and paused the logo. Initial reduced motion retained the 375px-wide static horizon at 74% crest with zero imports, contexts or draws; context loss also retained the static horizon",
+      "reload": "Horizon x, width and crest plus logo-stage x showed zero variation between the first captured frame and WebGL startup",
+      "controls": "Newsletter CTA opened and focused email; Escape closed it; archive link reached #archive. Same-document /terms navigation removed the scene and released the WebGL context. No page errors",
+      "validation": "Final pnpm typecheck, scoped vp lint and production build passed. Full pnpm test: 117 files passed, 1 skipped, existing checkin-agent-protocol.integration.test.ts authorization_expired failure",
+      "limits": "No external newsletter submission or provider approval; reference video and assets were not copied"
+    }
+  },
+  {
+    "date": "2026-09-25",
+    "scope": "public homepage hero planet, orbit, and logo motion",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "theme_axes": "deep navy planetary body / cyan elliptical orbit / warm ivory page",
+    "enrichment": "Original floating WTS mark over a curved shaded planet, wrapped by one orbit that passes behind and in front; subtle independent logo drift, breathing opacity, and directional slice glitches",
+    "brief": "Replace the metallic launch platform with a planetary globe and orbit; retain the logo and existing restrained motion architecture",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "tokenSource": "tokens.css",
+    "systemChanged": "Decorative hero artwork and logo motion only; shared palette, hero layout, copy, navigation, actions, renderer scheduling and lifecycle unchanged",
+    "verification": {
+      "viewports": [320, 375, 414, 768, 1440],
+      "appearance": "Complete shaded globe and one tilted orbit verified on desktop and mobile; no horizontal overflow; previous metal plate removed",
+      "motion": "Observed opacity spanning 0.680001–0.92 over 11 seconds, a 133ms right/left glitch with actual logo displacement and visible slice echo, and zero drift/fade animation restarts",
+      "visibility": "Offscreen and injected document.hidden states produced zero draws and zero fade-timeline advancement; glitch cleared to none",
+      "preferences": "Reduced motion during a live glitch cleared it, stopped draws and CSS animations, restored opacity 1 and hid the echo. Initial reduced motion made zero renderer requests and contexts",
+      "fallback": "Forced WebGL context loss retained the planet and logo, cleared glitch, paused the fade and stopped drawing",
+      "performance": "Desktop: 60 draws over two seconds, 816x734 buffer. Mobile: 263 draws over 11.006 seconds, 441000-pixel buffer. Desktop startup position and width both varied by 0px",
+      "controls": "Hero newsletter CTA opened and focused email; Escape dismissed it; archive link reached #archive. No external submission or provider approval",
+      "validation": "pnpm typecheck, scoped vp lint and production build passed. Full pnpm test: 117 files passed, 1 skipped, 1 existing checkin-agent-protocol.integration.test.ts failure with authorization_expired"
+    }
+  },
+  {
+    "date": "2026-09-25",
+    "scope": "public homepage header and hero atmosphere",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "theme_axes": "warm ivory paper / deep navy sky / cyan daylight horizon",
+    "enrichment": "A continuous, sparse-star CSS sky-to-daylight gradient behind navigation and hero, independent of scene rendering and motion",
+    "brief": "Warm the public landing surfaces and connect the navigation and hero with a navy star field transitioning through blue atmosphere to daylight Earth",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "tokenSource": "tokens.css",
+    "systemChanged": "Public landing palette and shared header/hero atmosphere only; dark admin theme, logo artwork, launch platform, copy and functional routes preserved",
+    "verification": {
+      "viewports": [320, 375, 414, 768, 1440],
+      "appearance": "Warm ivory surfaces; continuous navy-to-cyan-to-daylight gradient behind navigation and hero; no horizontal overflow at exercised widths",
+      "contrast": "Rendered desktop background sampling after the final scene mask measured pending-copy contrast at least 4.8:1. Other sampled broad text backgrounds exceeded their text thresholds; isolated star pixels are not a blanket contrast-conformance claim",
+      "preferences": "Initial reduced motion retained 15 root CSS stars, static artwork and zero renderer requests; logo CSS animation was none",
+      "reload": "Desktop first-frame-to-WebGL stage position and width both varied by 0px after refreshing the development server",
+      "controls": "Hero newsletter CTA opened the warm-ivory dialog and focused email; Escape closed it; archive action reached #archive. No external submission or provider approval",
+      "validation": "pnpm typecheck and final pnpm build passed, including server-bundle syntax verification and check-in runtime compilation",
+      "scope": "No runtime, dependency, markup, copy or operational-theme changes"
+    }
+  },
+  {
+    "date": "2026-09-25",
+    "scope": "public homepage hero background",
+    "macrostructure": "Orbit Studio",
+    "theme": "custom",
+    "theme_axes": "light cyan paper / upright geometric display / orbital cyan and alloy",
+    "enrichment": "Full-width orbital background with irregular drift, seeded shader variation and rare metallic-pad glitches",
+    "brief": "Move the scene behind the hero, make motion livelier and random, and remove the pause button in favor of reduced-motion preferences",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "tokenSource": "tokens.css",
+    "systemChanged": "Hero composition and decorative motion only; original logo, fonts, copy, newsletter and operational routes preserved",
+    "verification": {
+      "viewports": [320, 375, 414, 768, 1440],
+      "layout": "Hero and background span the viewport; no horizontal overflow; foreground copy and actions centered; two headline lines on desktop and four on mobile",
+      "glitches": "Observed left/right/none transitions and actual platform displacement with a clipped echo stripe. Two sampled events lasted about 133ms, separated by 4.83 seconds",
+      "performance": "Observed 29.95 desktop draws/sec with no long tasks in the sampled active window; fixed-size stage resized into a narrow viewport produced 48 draws in two seconds",
+      "resolution": "Observed 816x734 desktop backing buffer and 700x630 responsive mobile buffer, within the retained 600000-pixel limit",
+      "preferences": "Initial reduced-motion and injected saveData produced zero renderer imports, contexts and draws. Reduced motion enabled during a live left glitch cleared it to none and stopped shader and CSS animation",
+      "visibility": "Offscreen and injected hidden-document states stopped both drawing and glitch transitions; restoring visibility resumed motion",
+      "fallback": "Injected unavailable WebGL and explicit context loss retained static artwork with glitch=none",
+      "cleanup": "Same-document navigation to /terms released the context with zero subsequent draws or glitch changes; returning mounted a working renderer",
+      "controls": "Scene is aria-hidden with no focusable descendants or pause button. Foreground newsletter CTA opened and focused the form; Escape dismissed it; archive link navigated correctly",
+      "validation": "Final typecheck, scoped lint and production build passed. Full suite: 117 files passed, 1 skipped, 1 existing check-in integration failure with authorization_expired",
+      "qualityDetector": "Designer ran one scoped detector pass with no findings before combined browser verification"
+    },
+    "critique": { "philosophy": 5, "hierarchy": 4, "execution": 4, "specificity": 5, "restraint": 4, "variety": 4 },
+    "gateScope": "User explicitly requested preference-only decorative motion with no pause button; accessibility tradeoff documented in DESIGN.md. Browser measurements are not physical-phone benchmarks. No live newsletter submission or provider approval."
+  },
+  {
+    "date": "2026-09-25",
+    "scope": "public homepage hero",
+    "macrostructure": "Split Studio",
+    "theme": "custom",
+    "theme_axes": "approved light cyan paper / upright geometric display / orbital cyan and alloy",
+    "vibe": "futuristic space exploration",
+    "enrichment": "Original layered SVG launchpad and floating WTS mark with a deferred single-pass WebGL orbital-light overlay",
+    "brief": "Evolve the approved light landing using Kiro's horizon/depth direction; keep animation restrained and performance bounded",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "tokenSource": "tokens.css",
+    "systemChanged": "Homepage hero only; existing logo, typography, copy, newsletter and operational routes preserved",
+    "verification": {
+      "viewports": [320, 375, 414, 768, 1440],
+      "layout": "No horizontal overflow at the exercised widths; animation control has a 44px minimum hit area",
+      "deferredLoad": "Observed development navigation: load completed at 194ms, renderer request started at 271ms",
+      "payload": "Separate production renderer chunk: 2233 bytes with gzip; no added runtime dependency",
+      "cadence": "Two-second Chromium samples on an RTX 4070 Laptop GPU: 60 desktop draws and 48 mobile-size draws; no long tasks during those sampled steady-state windows",
+      "resolution": "Observed backing sizes: 816x734 desktop and 428x385 mobile; 600000-pixel and DPR 1.25 limits",
+      "pause": "Mouse and keyboard pause/resume, offscreen stop/resume, and pause intent across reduced-motion toggles exercised",
+      "preferences": "Initial reduced-motion emulation and injected saveData each produced zero renderer imports, contexts and draws",
+      "visibility": "Injected hidden-document state plus visibilitychange stopped drawing; restoring visibility resumed it",
+      "fallback": "Injected unavailable WebGL and WEBGL_lose_context retained static artwork without drawing; JavaScript-disabled DOM retained the SSR composition",
+      "cleanup": "Same-document navigation to /terms removed the scene, released its context and stopped drawing; returning remained static offscreen, then created a fresh context when visible",
+      "newsletter": "Opening, email focus and Escape dismissal exercised; external provider resources blocked and no subscription submitted",
+      "build": "Final pnpm typecheck, scoped vp lint and pnpm build passed",
+      "tests": "117 files passed, 1 skipped, 1 unchanged check-in protocol integration file failed with authorization_expired",
+      "qualityDetector": "Designer ran the scoped detector with no findings before integration"
+    },
+    "critique": { "philosophy": 5, "hierarchy": 4, "execution": 4, "specificity": 5, "restraint": 4, "variety": 4 },
+    "gateScope": "Scoped hero refinement, not a universal performance or accessibility claim. Desktop GPU measurements do not establish physical-phone performance. Kiro media and third-party shader implementations were not copied."
+  },
+  {
+    "date": "2026-09-25",
+    "scope": "public homepage",
+    "macrostructure": "Split Studio",
+    "theme": "custom",
+    "theme_axes": "light cyan paper / upright geometric display / logo-derived cyan",
+    "vibe": "hopeful space exploration with restrained cyberpunk",
+    "enrichment": "Original WTS logo with static orbital geometry",
+    "brief": "Build the WTS 2027 prelaunch landing, preserving the existing logo, fonts and dark operational routes",
+    "designSystem": "DESIGN.md — Public Landing Variant",
+    "tokenSource": "tokens.css",
+    "systemChanged": "Homepage-only light variant; shared operational theme unchanged",
+    "verification": {
+      "viewports": [320, 375, 414, 768, 1280, 1440],
+      "additionalBreakpointSweep": "23 widths from 320 through 1920; no horizontally clipped controls",
+      "newsletter": "Native validation, focus, dismissal/reopening, pending duplicate prevention, failure preservation, retry and durable success exercised with a local fake response; no live subscription",
+      "legacyRoute": "Client navigation to /terms restores the original dark background and foreground",
+      "motion": "Reduced-motion preference disables landing transitions",
+      "qualityDetector": "No findings in the scoped authored targets",
+      "build": "pnpm typecheck and pnpm build passed on the final implementation",
+      "scopedLint": "vp lint passed for the three authored TypeScript files",
+      "repositoryCheck": "pnpm check failed: 137 errors under .hermes/worktrees; no edits to those worktrees",
+      "contrast": "Rendered text pairs at least 6.16:1; error text 5.73:1; focus ring at least 3.13:1 against light and dark surfaces",
+      "preview": "Normal local configuration restored after synthetic state checks; no page errors on final fresh load",
+      "tests": "117 files passed, 1 skipped, 1 unchanged check-in protocol integration file failed with authorization_expired"
+    },
+    "critique": { "philosophy": 5, "hierarchy": 4, "execution": 4, "specificity": 5, "restraint": 4, "variety": 4 },
+    "gateScope": "Scoped landing review, not a universal 58/58 claim. Original logo gradients and legacy dark newsletter tokens retained intentionally. Live provider approval/delivery not tested."
   },
   {
     "date": "2026-09-14",
     "scope": "app",
     "macrostructure": "Existing WTS task-first workspaces",
-    "theme": "Existing WTS \u2014 DESIGN.md preserved",
+    "theme": "Existing WTS — DESIGN.md preserved",
     "enrichment": "none added",
     "brief": "Simplify signed-in Q&A, account/achievements, admin, reviewer/CFP and check-in interfaces without changing the design system",
     "designSystem": "DESIGN.md",
     "systemChanged": false,
     "verification": "docs/signed-in-usability.md",
-    "critique": {
-      "philosophy": 5,
-      "hierarchy": 4,
-      "execution": 4,
-      "specificity": 5,
-      "restraint": 4,
-      "variety": 4
-    },
+    "critique": { "philosophy": 5, "hierarchy": 4, "execution": 4, "specificity": 5, "restraint": 4, "variety": 4 },
     "gateScope": "In-place usability cleanup. Existing system, shared public chrome, and catalog/export/rotation gates excluded by explicit user scope; no universal 58/58 claim."
   }
 ]

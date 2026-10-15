@@ -1,7 +1,7 @@
 # Agent Guidelines
 
 WTS is a pnpm workspace for the conference site, shared auth, and blog.
-The SolidStart site stays at the root, including CFP, reviewer, admin, PocketBase, and Velite workflows.
+The SolidStart site stays at the root, including CFP, reviewer, admin, PocketBase, and Markdown workflows.
 The `auth/` and `blog/` directories contain independent apps.
 Open Event Platform stays in its separate repository.
 
@@ -9,7 +9,7 @@ Open Event Platform stays in its separate repository.
 - Runtime: Node `>=24.15.0`.
 - Install dependencies at the root with `pnpm install --frozen-lockfile`.
 - Keep one root lockfile and workspace configuration.
-- Use `pnpm dev` for local development. It starts PocketBase, Velite, and Vite.
+- Use `pnpm dev` for local development. It starts PocketBase and Vite.
 - Use `pnpm build` for production builds, the server bundle check, and the check-in runtime.
 - Use `pnpm test` for the configured Vitest suite.
 - Use `pnpm check` for lint and `pnpm typecheck` for TypeScript checks.

@@ -34,7 +34,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - if: matrix.gate == 'test'
         run: pnpm pocketbase:download-test
-      - run: pnpm generate:icons && pnpm exec velite
+      - run: pnpm generate:icons
       - if: matrix.gate == 'build'
         run: pnpm build:all
       - if: matrix.gate == 'typecheck'
@@ -50,9 +50,7 @@ jobs:
       - if: matrix.gate == 'test'
         run: pnpm test:cfp
       - if: matrix.gate == 'test'
-        run: pnpm test:mcs
-      - if: matrix.gate == 'test'
-        run: pnpm test:usability
+        run: python3 -B scripts/mc-2026.test.py
 
   checkin-browser:
     name: Disposable Check-in browser

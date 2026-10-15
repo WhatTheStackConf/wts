@@ -57,7 +57,8 @@ It retains the public landing, legal pages, newsletter, anonymous JSON API, publ
 It owns its local sessions, edition permissions, migrations, persistent data, and backups.
 It does not include the legacy operational workflows or import historical records automatically.
 Read [site/README.md](site/README.md) for explicit initialization, reviewed imports, account setup, and container replacement.
-No production deployment, client registration, or historical content cutover accompanies this implementation.
+The preview at `https://2027.wts.sh` uses a dedicated central auth client.
+The apex `https://wts.sh` still serves 2026. No historical content cutover has occurred.
 
 ## Independent CFP app
 
@@ -322,25 +323,25 @@ It checks online backup, restore, container replacement, and runtime dependency 
 
 
 
-# WTS — WhatTheStack Conference 2026
+## Conference site
 
-Web app for the WhatTheStack 2026 conference. Public-facing site, CFP system, reviewer workflow, admin tools, ticketing, and content (blog/agenda/speakers).
+The conference app includes the public site, CFP system, reviewer workflow, admin tools, ticketing integrations, and legal content.
 
-Live: [wts.sh](https://wts.sh)
+Live site: [wts.sh](https://wts.sh).
 
 ## Stack
 
 - [SolidStart](https://start.solidjs.com/) (Solid.js meta-framework) on Nitro
 - [PocketBase](https://pocketbase.io/) backend (auth, data, hooks, migrations)
 - [Tailwind CSS 4](https://tailwindcss.com/) + [DaisyUI](https://daisyui.com/)
-- [Velite](https://velite.js.org/) for MDX content (blog, pages)
+- [MDX](https://mdxjs.com/) for legal pages and the protected speaker guide
 - TypeScript
 - Node.js `>=24.15.0` and pnpm `11.24.0`
 
 ## Features
 
 - Marketing pages (home, about, agenda, speakers, sessions, FAQ, sponsors, partnerships)
-- Blog (MDX via Velite)
+- Blog at [blog.wts.sh](https://blog.wts.sh), linked from the public footer
 - CFP submission flow with reviewer/admin dashboards
 - Weighted committee scoring with per-reviewer weight votes
 - Admin: user management, proposal leaderboard, weight averages
@@ -375,14 +376,34 @@ First launch auto-creates the superuser from `POCKETBASE_SUPERUSER_EMAIL` / `POC
 
 | Script | What it does |
 |---|---|
-| `pnpm dev` | Full dev: PocketBase + Velite watch + Vite |
-| `pnpm start:dev` | App only (Velite watch + Vite), no PocketBase |
-| `pnpm build` | Production build (Velite + Vite) |
+| `pnpm dev` | Full dev: PocketBase + Vite |
+| `pnpm start:dev` | App only (Vite), no PocketBase |
+| `pnpm build` | Production build, server bundle check, and check-in runtime |
 | `pnpm start` | Run built app |
 | `pnpm pocketbase:download` | Fetch PocketBase binary into `pocketbase/` |
 | `pnpm pocketbase:start` | Start local PocketBase only |
 | `pnpm pocketbase:createsuperuser` | Manually create superuser |
 | `pnpm docker:up` / `docker:down` | Docker Compose stack |
+
+## Tests
+
+`pnpm test` builds the check-in runtime, runs feedback operations tests, and discovers application tests under `src/` and `runtime/`.
+The discovery patterns exclude generated output, nested worktrees, Node test files, and Playwright scenarios.
+Feedback operations tests create private disposable directories without a required `TMPDIR` setting.
+
+| Command | Coverage |
+|---|---|
+| `pnpm test` | Application behavior, HTTP contracts, authorization, disposable PocketBase integration, runtime safety, and feedback operations |
+| `pnpm test:checkin-host` | Compiled print-host behavior, device identity, ownership, and packaging |
+| `pnpm test:workspace-browser` | Isolated built-app account, admin, reviewer, private MC, and retired-route scenarios |
+| `pnpm test:auth-browser` | Login, registration, and OAuth against disposable services |
+| `pnpm test:feedback-browser` | Private feedback submission against disposable services |
+
+Keep tests for active behavior, privacy, data integrity, and operational safety.
+Do not retain tests that only pin UI wording, CSS classes, source text, or removed public pages.
+Historical publication scripts retain their safety tests because those scripts can still write data.
+Historical verification reports record prior runs, not the current test inventory.
+CI runs application tests once, then runs the separate MC publication-script tests without repeating focused Vitest groups.
 
 ## Environment
 
@@ -542,9 +563,16 @@ Key files:
 
 See [POCKETBASE_SETUP.md](./POCKETBASE_SETUP.md) for PocketBase setup details and [PB_TYPES_GUIDE.md](./PB_TYPES_GUIDE.md) for regenerating types after schema changes.
 
-## Content (Blog)
+## Content
 
-MDX posts live under content folders picked up by Velite. Velite emits JSON consumed by routes. Run `pnpm dev` (which runs `velite --watch`) while authoring — output lands in `.velite/`.
+The blog lives at [blog.wts.sh](https://blog.wts.sh). This app links to it from the public footer and does not serve blog posts.
+
+Legal pages remain in `content/pages/`. The protected speaker guide remains in `content/speaker-guide.mdx`.
+Vite compiles direct `?content` imports with the MDX compiler and preserves GitHub-flavored Markdown links.
+The compiler reads each file's title and slug from YAML frontmatter. Legal pages require a slug.
+
+Conference facts come from `content/conference-guide.json`. The shared conference guide schema validates those facts.
+Development and production builds do not require a separate content generator.
 
 ## Preview / Build
 

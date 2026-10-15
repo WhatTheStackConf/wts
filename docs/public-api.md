@@ -37,7 +37,7 @@ Every successful conference-data GET (and the discovery catalogue) returns an or
 ```json
 {
   "data": [],
-  "meta": { "apiVersion": "1", "timeZone": "Europe/Skopje" }
+  "meta": { "apiVersion": "1" }
 }
 ```
 
@@ -57,7 +57,7 @@ Slots have `kind`, `startAt`, `endAt`, optional `track`/`locationLabel`, and eit
 
 A Session detail's `schedule` has `dayDate`, `dayTitle`, `event`, `startAt`, optional `endAt`, `trackName`, and `locationLabel`. `announcement` instead describes an assigned event without a confirmed individual session time: `dayDate`, `event`, optional `eventStartTime` and `locationLabel`. An event start is **not** necessarily the session start.
 
-Dates use `YYYY-MM-DD`; local announcement times use `HH:mm` in `Europe/Skopje`. Timed instants can come from PocketBase (`2026-09-19 08:00:00.000Z`) or explicit announcements (`2026-09-15T18:00:00+02:00`). Treat these as timestamp strings, normalize the space separator to `T` if your date parser requires it, and accept both fractional and non-fractional seconds. Do not assume every session has a time, an end time, or a track. Empty `slots` with an `untimed` lineup is intentional, not an error.
+Dates use `YYYY-MM-DD`; local announcement times use `HH:mm`. `meta.timeZone` is the IANA time zone for conference-local dates and times when the conference time zone has been announced; it is omitted until then. Timed instants are offset-bearing timestamps. Existing v1 accepts PocketBase's space separator and ISO `T`, with optional fractional seconds; normalize the space to `T` if your parser requires it. Do not assume every session has a time, an end time, or a track. Empty `slots` with an `untimed` lineup is intentional, not an error.
 
 ## Errors, caching, and limits
 

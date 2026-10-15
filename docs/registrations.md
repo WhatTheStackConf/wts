@@ -26,7 +26,7 @@ This includes WTS-issued DevFest tickets, not registrations made independently o
 
 ## Verification
 
-- `pnpm exec vp test run src/lib/registrations.test.ts src/lib/conference-week.test.ts src/lib/ticket-groups.test.ts`
+- `pnpm exec vp test run src/lib/registrations.test.ts`
 - `pnpm test:checkin-browser tests/checkin-registrations.spec.ts` builds the app with real disposable PocketBase authentication and a synthetic Hi.Events upstream, then exercises free/paid selection, search, refresh, cancellation, mobile layout and access-loss redaction.
 - The optional `registrations-live.test.ts` requires an explicitly supplied private `WTS_REGISTRATION_LIVE_CONFIG`; ordinary CI does not access production attendees.
 

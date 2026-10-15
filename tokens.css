@@ -1,0 +1,170 @@
+/* WTS 2027 public palette — uniquely named tokens shared by landing and newsletter. */
+:root {
+  --color-orbit-paper: oklch(97% 0.018 82);
+  --color-orbit-surface: oklch(93% 0.025 78);
+  --color-orbit-ink: oklch(24% 0.03 245);
+  --color-orbit-muted: oklch(46% 0.025 245);
+  --color-orbit-rule: oklch(86% 0.025 78);
+  --color-orbit-accent: oklch(43% 0.09 225);
+  --color-orbit-accent-ink: oklch(97% 0.018 82);
+  --color-orbit-focus: oklch(54% 0.15 65);
+  --color-orbit-error: oklch(52% 0.18 25);
+  --color-orbit-success: oklch(43% 0.12 150);
+  --color-orbit-amber: oklch(65% 0.16 72);
+  --color-orbit-magenta: oklch(56% 0.18 335);
+  --color-orbit-on-dark-muted: oklch(89% 0.025 82);
+  --color-orbit-line-on-dark: oklch(97% 0.018 82 / 22%);
+  --font-orbit-display: "StarzoomShavian", sans-serif;
+  --font-orbit-body: "Space Grotesk", sans-serif;
+  --space-orbit-1: 0.25rem;
+  --space-orbit-2: 0.5rem;
+  --space-orbit-3: 0.75rem;
+  --space-orbit-4: 1rem;
+  --space-orbit-6: 1.5rem;
+  --space-orbit-8: 2rem;
+  --space-orbit-12: 3rem;
+  --space-orbit-16: 4rem;
+  --space-orbit-24: 6rem;
+  --text-orbit-small: 0.8125rem;
+  --text-orbit-body: 1rem;
+  --text-orbit-lede: clamp(1.125rem, 1.6vw, 1.375rem);
+  --text-orbit-section: clamp(2.25rem, 5vw, 4.25rem);
+  --text-orbit-display: clamp(3.5rem, 6.4vw, 6.75rem);
+  --ease-orbit-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-orbit-fast: 160ms;
+
+  --launch-cyan: oklch(78% 0.11 205);
+  --launch-white: var(--color-orbit-paper);
+  --launch-star: oklch(91% 0.025 220);
+  --launch-amber: var(--color-orbit-amber);
+  --launch-line-light: var(--color-orbit-line-on-dark);
+  --launch-night-deep: oklch(18% 0.035 245);
+  --launch-night-floor: oklch(12% 0.025 245);
+  --launch-sky-night: oklch(19% 0.045 250);
+  --launch-sky-upper: oklch(27% 0.07 242);
+  --launch-sky-horizon: oklch(53% 0.105 220);
+  --launch-sky-daylight: oklch(84% 0.055 80);
+  --launch-mask-show: oklch(100% 0 0);
+  /* Shared cover-wide starfield art token; palette stays with its visual definition. */
+  --launch-starfield:
+    radial-gradient(circle at 11.83% 27.96%, rgb(137 164 199 / 22%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 37.59% 12.12%, rgb(137 164 199 / 22%) 0 0.44px, transparent .82px),
+    radial-gradient(circle at 51.62% 39.14%, rgb(137 164 199 / 20%) 0 0.36px, transparent .82px),
+    radial-gradient(circle at 85.06% 22.63%, rgb(137 164 199 / 15%) 0 0.38px, transparent .82px),
+    radial-gradient(circle at 63.61% 55.13%, rgb(137 164 199 / 24%) 0 0.44px, transparent .82px),
+    radial-gradient(circle at 87.20% 48.50%, rgb(137 164 199 / 15%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 21.16% 29.57%, rgb(137 164 199 / 20%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 25.88% 24.79%, rgb(137 164 199 / 24%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 66.03% 31.91%, rgb(137 164 199 / 22%) 0 0.38px, transparent .82px),
+    radial-gradient(circle at 80.69% 13.95%, rgb(137 164 199 / 26%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 45.73% 48.33%, rgb(137 164 199 / 20%) 0 0.44px, transparent .82px),
+    radial-gradient(circle at 86.86% 36.32%, rgb(137 164 199 / 17%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 19.64% 20.68%, rgb(137 164 199 / 20%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 29.93% 15.44%, rgb(137 164 199 / 18%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 66.98% 30.04%, rgb(137 164 199 / 22%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 79.15% 10.31%, rgb(137 164 199 / 20%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 38.93% 57.81%, rgb(137 164 199 / 26%) 0 0.44px, transparent .82px),
+    radial-gradient(circle at 74.15% 64.43%, rgb(137 164 199 / 22%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 28.43% 14.87%, rgb(137 164 199 / 26%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 29.57% 17.89%, rgb(137 164 199 / 18%) 0 0.44px, transparent .82px),
+    radial-gradient(circle at 49.58% 24.27%, rgb(137 164 199 / 17%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 96.32% 20.83%, rgb(137 164 199 / 26%) 0 0.36px, transparent .82px),
+    radial-gradient(circle at 46.92% 52.73%, rgb(137 164 199 / 18%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 69.91% 30.45%, rgb(137 164 199 / 26%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 22.76% 30.11%, rgb(137 164 199 / 26%) 0 0.38px, transparent .82px),
+    radial-gradient(circle at 33.87% 27.01%, rgb(137 164 199 / 20%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 56.68% 26.65%, rgb(137 164 199 / 20%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 73.80% 11.52%, rgb(137 164 199 / 26%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 37.27% 43.84%, rgb(137 164 199 / 26%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 97.98% 27.02%, rgb(137 164 199 / 15%) 0 0.36px, transparent .82px),
+    radial-gradient(circle at 5.96% 22.05%, rgb(137 164 199 / 18%) 0 0.38px, transparent .82px),
+    radial-gradient(circle at 37.09% 15.04%, rgb(137 164 199 / 15%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 64.16% 30.74%, rgb(137 164 199 / 15%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 94.11% 8.98%, rgb(137 164 199 / 24%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 38.71% 47.37%, rgb(137 164 199 / 20%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 91.38% 54.97%, rgb(137 164 199 / 15%) 0 0.44px, transparent .82px),
+    radial-gradient(circle at 27.13% 24.59%, rgb(137 164 199 / 15%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 44.03% 25.39%, rgb(137 164 199 / 15%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 69.88% 31.85%, rgb(137 164 199 / 26%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 88.41% 17.96%, rgb(137 164 199 / 18%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 35.96% 54.63%, rgb(137 164 199 / 26%) 0 0.38px, transparent .82px),
+    radial-gradient(circle at 86.90% 57.03%, rgb(137 164 199 / 26%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 19.25% 25.19%, rgb(137 164 199 / 18%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 28.61% 15.82%, rgb(137 164 199 / 18%) 0 0.38px, transparent .82px),
+    radial-gradient(circle at 64.22% 29.56%, rgb(137 164 199 / 26%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 77.97% 31.25%, rgb(137 164 199 / 22%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 37.12% 38.50%, rgb(137 164 199 / 17%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 93.13% 45.04%, rgb(137 164 199 / 20%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 2.00% 18.80%, rgb(137 164 199 / 26%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 37.29% 29.45%, rgb(137 164 199 / 24%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 54.88% 31.90%, rgb(137 164 199 / 20%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 87.79% 21.49%, rgb(137 164 199 / 26%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 31.19% 37.31%, rgb(137 164 199 / 20%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 84.22% 55.58%, rgb(137 164 199 / 24%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 8.58% 24.51%, rgb(137 164 199 / 22%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 31.46% 20.91%, rgb(137 164 199 / 15%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 56.73% 20.08%, rgb(137 164 199 / 20%) 0 0.36px, transparent .82px),
+    radial-gradient(circle at 91.17% 25.31%, rgb(137 164 199 / 20%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 55.38% 41.71%, rgb(137 164 199 / 17%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 93.54% 44.38%, rgb(137 164 199 / 26%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 9.49% 22.34%, rgb(137 164 199 / 26%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 31.02% 9.66%, rgb(137 164 199 / 24%) 0 0.36px, transparent .82px),
+    radial-gradient(circle at 48.39% 28.37%, rgb(137 164 199 / 17%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 79.43% 24.86%, rgb(137 164 199 / 15%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 54.39% 49.35%, rgb(137 164 199 / 15%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 86.58% 43.94%, rgb(137 164 199 / 20%) 0 0.38px, transparent .82px),
+    radial-gradient(circle at 2.30% 13.48%, rgb(137 164 199 / 20%) 0 0.44px, transparent .82px),
+    radial-gradient(circle at 38.10% 4.94%, rgb(137 164 199 / 18%) 0 0.44px, transparent .82px),
+    radial-gradient(circle at 66.64% 35.48%, rgb(137 164 199 / 24%) 0 0.44px, transparent .82px),
+    radial-gradient(circle at 85.86% 23.87%, rgb(137 164 199 / 15%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 42.52% 50.81%, rgb(137 164 199 / 20%) 0 0.36px, transparent .82px),
+    radial-gradient(circle at 88.87% 46.09%, rgb(137 164 199 / 24%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 9.35% 38.38%, rgb(137 164 199 / 20%) 0 0.38px, transparent .82px),
+    radial-gradient(circle at 33.88% 25.63%, rgb(137 164 199 / 15%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 61.05% 23.85%, rgb(137 164 199 / 17%) 0 0.38px, transparent .82px),
+    radial-gradient(circle at 83.19% 37.37%, rgb(137 164 199 / 22%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 61.88% 48.93%, rgb(137 164 199 / 24%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 98.00% 49.77%, rgb(137 164 199 / 22%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 19.79% 18.18%, rgb(137 164 199 / 22%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 44.72% 32.24%, rgb(137 164 199 / 24%) 0 0.36px, transparent .82px),
+    radial-gradient(circle at 69.91% 29.61%, rgb(137 164 199 / 22%) 0 0.48px, transparent .82px),
+    radial-gradient(circle at 69.79% 12.38%, rgb(137 164 199 / 15%) 0 0.44px, transparent .82px),
+    radial-gradient(circle at 47.74% 53.40%, rgb(137 164 199 / 22%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 78.00% 51.63%, rgb(137 164 199 / 15%) 0 0.38px, transparent .82px),
+    radial-gradient(circle at 12.46% 14.02%, rgb(137 164 199 / 17%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 23.97% 10.20%, rgb(137 164 199 / 17%) 0 0.44px, transparent .82px),
+    radial-gradient(circle at 52.64% 20.07%, rgb(137 164 199 / 24%) 0 0.38px, transparent .82px),
+    radial-gradient(circle at 77.91% 34.10%, rgb(137 164 199 / 22%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 42.21% 37.16%, rgb(137 164 199 / 17%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 94.64% 44.51%, rgb(137 164 199 / 22%) 0 0.34px, transparent .82px),
+    radial-gradient(circle at 27.20% 25.86%, rgb(137 164 199 / 24%) 0 0.42px, transparent .82px),
+    radial-gradient(circle at 35.53% 32.13%, rgb(137 164 199 / 22%) 0 0.44px, transparent .82px),
+    radial-gradient(circle at 64.61% 28.03%, rgb(137 164 199 / 22%) 0 0.4px, transparent .82px),
+    radial-gradient(circle at 98.00% 22.14%, rgb(137 164 199 / 18%) 0 0.36px, transparent .82px),
+    radial-gradient(circle at 52.97% 48.27%, rgb(137 164 199 / 18%) 0 0.38px, transparent .82px),
+    radial-gradient(circle at 10.42% 40.39%, rgb(207 225 248 / 84%) 0 1.1px, rgb(170 210 255 / 25%) 1.5px, transparent 2.6px),
+    radial-gradient(circle at 54.56% 8.54%, rgb(207 225 248 / 80%) 0 1px, rgb(170 210 255 / 22%) 1.4px, transparent 2.4px),
+    radial-gradient(circle at 30.17% 40.89%, rgb(207 225 248 / 88%) 0 1.2px, rgb(170 210 255 / 25%) 1.6px, transparent 2.7px),
+    radial-gradient(circle at 66.95% 17.35%, rgb(207 225 248 / 78%) 0 1px, rgb(170 210 255 / 22%) 1.4px, transparent 2.4px),
+    radial-gradient(circle at 14.09% 43.95%, rgb(207 225 248 / 86%) 0 1.2px, rgb(170 210 255 / 25%) 1.6px, transparent 2.7px),
+    radial-gradient(circle at 25.88% 24.79%, rgb(189 215 248 / 62%) 0 .86px, transparent 1.35px),
+    radial-gradient(circle at 80.69% 13.95%, rgb(189 215 248 / 58%) 0 .82px, transparent 1.3px),
+    radial-gradient(circle at 38.93% 57.81%, rgb(189 215 248 / 64%) 0 .9px, transparent 1.4px),
+    radial-gradient(circle at 69.91% 30.45%, rgb(189 215 248 / 56%) 0 .78px, transparent 1.3px),
+    radial-gradient(circle at 73.80% 11.52%, rgb(189 215 248 / 61%) 0 .88px, transparent 1.4px),
+    radial-gradient(circle at 37.27% 43.84%, rgb(189 215 248 / 55%) 0 .78px, transparent 1.25px),
+    radial-gradient(circle at 35.96% 54.63%, rgb(189 215 248 / 63%) 0 .9px, transparent 1.4px),
+    radial-gradient(circle at 64.22% 29.56%, rgb(189 215 248 / 59%) 0 .84px, transparent 1.35px),
+    radial-gradient(circle at 93.54% 44.38%, rgb(189 215 248 / 65%) 0 .9px, transparent 1.4px),
+    radial-gradient(circle at 31.02% 9.66%, rgb(189 215 248 / 54%) 0 .76px, transparent 1.25px),
+    radial-gradient(circle at 86.58% 43.94%, rgb(189 215 248 / 60%) 0 .86px, transparent 1.35px),
+    radial-gradient(circle at 61.88% 48.93%, rgb(189 215 248 / 57%) 0 .8px, transparent 1.3px),
+    radial-gradient(circle at 44.72% 32.24%, rgb(189 215 248 / 62%) 0 .88px, transparent 1.4px),
+    radial-gradient(circle at 35.53% 32.13%, rgb(189 215 248 / 56%) 0 .78px, transparent 1.3px);
+  --color-orbit-star-sparkle: oklch(86.29% 0.0469 255.4);
+  --color-orbit-twinkle: oklch(93.22% 0.0328 256.8);
+  --color-orbit-star-shadow: oklch(84.59% 0.0781 253.4 / 28%);
+  --color-orbit-star-mask-dim: oklch(0% 0 0 / 16%);
+  --color-orbit-star-mask-mid: oklch(0% 0 0 / 50%);
+  --color-orbit-star-mask-bright: oklch(0% 0 0 / 84%);
+}

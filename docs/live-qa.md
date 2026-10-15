@@ -35,6 +35,6 @@ No automatic retention/deletion policy is added. Questions persist with the conf
 ## Verification
 
 - `pnpm test:live-qa` — disposable PocketBase 0.30.4 plus real relevant migrations, role guards, and publication validation hooks; tests API privacy, canonical timing, manual overrides, answers, role revocation, pagination, input validation, direct collection denial, and UUID replay.
-- `pnpm test:live-qa-browser` — builds an isolated copy of the current app, runs a disposable PocketBase, and exercises real login, mobile attendee submission, MC reading after session end, overrides, catalogue search, lost-response replay, and authority/read-failure recovery. No `.env`, live data, or live credentials are read/copied; external browser requests are blocked. Screenshots/traces land under `test-results/live-qa`.
+- `pnpm test:live-qa-browser` builds an isolated app with disposable PocketBase data. It checks retired public routes, private MC access, polling stability, answer updates, authority loss, pagination, and mobile layout. The runner excludes `.env` files, live data, and live credentials. It blocks external browser requests. Screenshots and traces use `test-results/live-qa`.
 - New API tests are included in `pnpm test`. Browser verification is included in the verification workflow alongside the existing disposable browser gates.
 - Run `pnpm typecheck`, `pnpm check`, and `pnpm test` before release. Browser verification includes the production `pnpm build` and emitted-server runtime, not just a development server.

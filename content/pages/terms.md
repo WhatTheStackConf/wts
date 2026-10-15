@@ -29,7 +29,7 @@ All payments are processed securely through our HiEvents instance and Stripe. By
 #### 3.3 Confirmation
 Upon successful payment, you will receive a confirmation email with your ticket. Please ensure that your email address is accurate during the registration process.
 #### 3.4 Re-assigning tickets
-Tickets can be re-assigned to another person by contacting the organizers at what@wts.rocks. Alternatively, you can re-assign your ticket to another person by changing the email address and contact details on via our HiEvents instance, using the ticket link.
+Tickets can be re-assigned to another person by contacting the organizers at what@wts.sh. Alternatively, you can re-assign your ticket to another person by changing the email address and contact details on via our HiEvents instance, using the ticket link.
 
 ### 4. Cancellations and Refunds
 #### 4.1 Organizer Cancellation
@@ -64,6 +64,6 @@ The terms and conditions specifically related to the conference are governed by 
 ### 11. Contact Information
 For any questions regarding these terms and conditions, please contact us at:
 **CodePub LLC**
-Email: what@wts.rocks
+Email: what@wts.sh
 Phone: +389 78 397 359
 Address: 75 East 3rd Street Sheridan, WY 82801 United States
