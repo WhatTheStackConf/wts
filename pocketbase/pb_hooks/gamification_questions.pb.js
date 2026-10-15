@@ -1,13 +1,13 @@
 /// <reference path="../pb_data/types.d.ts" />
 onRecordValidate((e) => {
-  const identifier = /^[a-z][a-z0-9_-]{0,39}$/;
+  const isIdentifier = (value) => typeof value === "string" && /^[a-z][a-z0-9_-]{0,39}$/.test(value);
   const unknownKeys = (value, keys) => Object.keys(value).some(k => !keys.includes(k));
   const isDraftCompletionActivity = (activity) => activity.getString("status") === "draft" && activity.getString("kind") === "qr" && activity.getString("evidence_mode") === "single_code" && activity.getString("outcome_key") === "completion";
   const invalidDefinition = (d) => !d || !["all_answered", "all_correct", "correct_or_half"].includes(d.policy) || !Array.isArray(d.questions) || d.questions.length < 1 || d.questions.length > 10 || unknownKeys(d, ["policy", "questions"]);
-  const invalidQuestion = (q, ids) => !q || !identifier.test(q.id) || ids[q.id] || !["text", "single_choice"].includes(q.kind) || typeof q.prompt !== "string" || !q.prompt.trim() || q.prompt.length > 500 || unknownKeys(q, ["id", "kind", "prompt", "choices", "acceptedAnswers"]);
+  const invalidQuestion = (q, ids) => !q || !isIdentifier(q.id) || ids[q.id] || !["text", "single_choice"].includes(q.kind) || typeof q.prompt !== "string" || !q.prompt.trim() || q.prompt.length > 500 || unknownKeys(q, ["id", "kind", "prompt", "choices", "acceptedAnswers"]);
   const invalidAnswerText = (a) => typeof a !== "string" || !a.trim() || a.length > 1000;
   const invalidAcceptedAnswers = (q, policy) => !Array.isArray(q.acceptedAnswers) || q.acceptedAnswers.length > 8 || q.acceptedAnswers.some(invalidAnswerText) || (policy !== "all_answered" && !q.acceptedAnswers.length);
-  const invalidChoice = (c, choices) => !c || !identifier.test(c.id) || choices[c.id] || typeof c.label !== "string" || !c.label.trim() || c.label.length > 200 || unknownKeys(c, ["id", "label"]);
+  const invalidChoice = (c, choices) => !c || !isIdentifier(c.id) || choices[c.id] || typeof c.label !== "string" || !c.label.trim() || c.label.length > 200 || unknownKeys(c, ["id", "label"]);
   const assertChoices = (q) => {
     if (!Array.isArray(q.choices) || q.choices.length < 2 || q.choices.length > 8) throw new BadRequestError("Invalid choices.");
     const choices = {};

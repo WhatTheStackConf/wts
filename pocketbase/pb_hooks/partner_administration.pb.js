@@ -40,26 +40,27 @@ routerAdd("POST", "/api/wts/partners", (e) => {
     for (const key in e.requestInfo().body) {
       if (!key.startsWith("admin_action_")) result.body[key] = e.requestInfo().body[key];
     }
+    let file = null;
     try {
-      const file = e.request.formFile("logo");
-      if (file && file[1]) {
-        const header = file[1];
-        if (header.size > 5242880) throw new BadRequestError("Partner logo is too large.");
-        const reader = header.open();
-        let bytes;
-        try {
-          bytes = toBytes(reader, 5242881);
-        } finally {
-          reader.close();
-        }
-        result.upload = {
-          mediaType: String(header.header.get("Content-Type") || "").split(";")[0].trim().toLowerCase(),
-          fingerprint: $security.sha256(base64(bytes)),
-        };
-        result.body.logo = $filesystem.fileFromMultipart(header);
-      }
+      file = e.request.formFile("logo");
     } catch {
       // No logo was uploaded.
+    }
+    if (file && file[1]) {
+      const header = file[1];
+      if (header.size > 5242880) throw new BadRequestError("Partner logo is too large.");
+      const reader = header.open();
+      let bytes;
+      try {
+        bytes = toBytes(reader, 5242881);
+      } finally {
+        reader.close();
+      }
+      result.upload = {
+        mediaType: String(header.header.get("Content-Type") || "").split(";")[0].trim().toLowerCase(),
+        fingerprint: $security.sha256(base64(bytes)),
+      };
+      result.body.logo = $filesystem.fileFromMultipart(header);
     }
     return result;
   }
@@ -424,26 +425,27 @@ routerAdd("PATCH", "/api/wts/partners/{id}", (e) => {
     for (const key in e.requestInfo().body) {
       if (key !== "expected_version" && !key.startsWith("admin_action_")) result.body[key] = e.requestInfo().body[key];
     }
+    let file = null;
     try {
-      const file = e.request.formFile("logo");
-      if (file && file[1]) {
-        const header = file[1];
-        if (header.size > 5242880) throw new BadRequestError("Partner logo is too large.");
-        const reader = header.open();
-        let bytes;
-        try {
-          bytes = toBytes(reader, 5242881);
-        } finally {
-          reader.close();
-        }
-        result.upload = {
-          mediaType: String(header.header.get("Content-Type") || "").split(";")[0].trim().toLowerCase(),
-          fingerprint: $security.sha256(base64(bytes)),
-        };
-        result.body.logo = $filesystem.fileFromMultipart(header);
-      }
+      file = e.request.formFile("logo");
     } catch {
       // No replacement logo was uploaded.
+    }
+    if (file && file[1]) {
+      const header = file[1];
+      if (header.size > 5242880) throw new BadRequestError("Partner logo is too large.");
+      const reader = header.open();
+      let bytes;
+      try {
+        bytes = toBytes(reader, 5242881);
+      } finally {
+        reader.close();
+      }
+      result.upload = {
+        mediaType: String(header.header.get("Content-Type") || "").split(";")[0].trim().toLowerCase(),
+        fingerprint: $security.sha256(base64(bytes)),
+      };
+      result.body.logo = $filesystem.fileFromMultipart(header);
     }
     return result;
   }

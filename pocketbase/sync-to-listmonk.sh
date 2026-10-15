@@ -56,7 +56,7 @@ count_status() {
 }
 
 sync_items() {
-    while IFS=$'\t' read -r email name; do
+    while IFS=$'\x1f' read -r email name; do
         [ -z "$email" ] && continue
 
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$LISTMONK_URL/api/subscribers" \
@@ -93,7 +93,7 @@ while true; do
 import sys, json
 items = json.load(sys.stdin).get('items', [])
 for item in items:
-    print(item.get('email','') + '\t' + item.get('name',''))
+    print(item.get('email','') + '\x1f' + item.get('name',''))
 ")
 
     if [ -z "$ITEMS" ]; then
