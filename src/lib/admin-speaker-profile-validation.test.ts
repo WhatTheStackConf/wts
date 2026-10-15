@@ -4,7 +4,8 @@ import { isDuplicateFieldError, normalizeSpeakerProfileUpdateInput } from "~/lib
 describe("isDuplicateFieldError", () => {
   it.each<[string, unknown, boolean]>([
     ["a field-level unique message that names the field", { response: { data: { slug: { message: "The slug must be unique." } } } }, true],
-    ["a field-level unique message that omits the field name", { response: { data: { slug: { message: "Value must be unique." } } } }, false],
+    ["a field-level unique message that omits the field name", { response: { data: { slug: { message: "Value must be unique." } } } }, true],
+    ["a field-keyed PocketBase unique code", { response: { data: { slug: { code: "validation_not_unique", message: "" } } } }, true],
     ["an error naming the field as already used", new Error("slug is already taken"), true],
     ["a constraint failure string", "UNIQUE constraint failed: speakers.slug", true],
     ["a uniqueness message for another field", { response: { data: { email: { message: "must be unique" } } } }, false],

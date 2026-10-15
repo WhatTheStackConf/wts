@@ -198,20 +198,31 @@ export function normalizeSpeakerProfileUpdateInput(
 
 const DUPLICATE_ERROR_MARKERS = ["unique", "already", "constraint"];
 
+type PocketBaseFieldError = { code?: string; message?: string };
+
+function pocketBaseFieldError(error: unknown, field: string): PocketBaseFieldError | undefined {
+  return (error as { response?: { data?: Record<string, PocketBaseFieldError> } })?.response
+    ?.data?.[field];
+}
+
+function hasDuplicateMarker(text: string): boolean {
+  const lower = text.toLowerCase();
+  return DUPLICATE_ERROR_MARKERS.some((marker) => lower.includes(marker));
+}
+
 function fieldErrorText(error: unknown, field: string): string {
-  const response = (error as { response?: { data?: Record<string, { message?: string }> } })
-    ?.response;
-  const fieldMessage = response?.data?.[field]?.message;
+  const fieldMessage = pocketBaseFieldError(error, field)?.message;
   const message = error instanceof Error ? error.message : String(error || "");
   return `${fieldMessage || ""} ${message}`.toLowerCase();
 }
 
 export function isDuplicateFieldError(error: unknown, field: string): boolean {
+  const fieldError = pocketBaseFieldError(error, field);
+  if (fieldError?.code === "validation_not_unique" || hasDuplicateMarker(fieldError?.message || "")) {
+    return true;
+  }
   const combined = fieldErrorText(error, field);
-  return (
-    combined.includes(field.toLowerCase()) &&
-    DUPLICATE_ERROR_MARKERS.some((marker) => combined.includes(marker))
-  );
+  return combined.includes(field.toLowerCase()) && hasDuplicateMarker(combined);
 }
 
 export function speakerSnapshot(record: SpeakerRecord) {
