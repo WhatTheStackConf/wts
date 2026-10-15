@@ -1,10 +1,31 @@
 import { createHash, randomBytes } from "node:crypto";
 import { AgentJournal } from "./journal.js";
 import type { NiimbotPrinter } from "./printer.js";
-import { AgentError, journalFailureState, object, safeUrl, validIdentity, validWork, validCancellation, type AgentIdentity, type AgentReadinessDTO, type Authorization, type JournalState, type Operation, type Outcome, type Work } from "./protocol.js";
+import { AgentError, journalFailureState, object, safeUrl, validIdentity, validWork, validCancellation, type AgentIdentity, type AgentReadinessDTO, type Authorization, type Cancellation, type JournalAttempt, type JournalState, type Operation, type Outcome, type PrintPayload, type Work } from "./protocol.js";
 
-export interface AgentTransport { request(operation: Operation, payload: Record<string, unknown>): Promise<unknown> }
+export interface AgentTransport {
+  request(operation: Operation, payload: Record<string, unknown>): Promise<unknown>;
+  /** Upper bound from this exact response's authenticated HTTP Date header. */
+  serverClockUpperBound?(reply: unknown): number | undefined;
+}
 interface TransportOptions { fetch?: typeof fetch; sleep?: (ms: number) => Promise<void>; random?: () => number; timeoutMs?: number }
+interface Deadline { wall: number; mono: number; requested: number }
+const IN_FLIGHT: JournalAttempt["state"][] = ["possibly_starting", "started", "possibly_printing"];
+
+function retryAfterMs(retry: string | null): number {
+  const ms = retry ? (/^\d+$/.test(retry) ? Number(retry) * 1000 : Math.max(0, Date.parse(retry) - Date.now())) : 0;
+  return Number.isFinite(ms) ? ms : 0;
+}
+function httpFailure(status: number, retry: string | null): AgentError {
+  return new AgentError(status === 429 ? "backpressure" : status >= 500 ? "coordinator_unavailable" : "request_rejected", status === 429 || status >= 500, retryAfterMs(retry));
+}
+async function boundedBody(response: Response): Promise<Buffer> {
+  const reader = response.body?.getReader(); if (!reader) throw new AgentError("invalid_response");
+  const chunks: Uint8Array[] = []; let size = 0;
+  try { while (true) { const part = await reader.read(); if (part.done) break; size += part.value.length; if (size > 65536) { await reader.cancel(); throw new AgentError("invalid_response"); } chunks.push(part.value); } }
+  finally { reader.releaseLock(); }
+  return Buffer.concat(chunks);
+}
 /** Only read-like requests retry automatically. Mutations are explicitly retried by their owner. */
 export class HttpAgentTransport implements AgentTransport {
   private url: URL;
@@ -12,6 +33,10 @@ export class HttpAgentTransport implements AgentTransport {
   private sleep: (ms: number) => Promise<void>;
   private random: () => number;
   private timeout: number;
+  private serverTimes = new WeakMap<object, number>();
+  serverClockUpperBound(reply: unknown): number | undefined {
+    return reply !== null && typeof reply === "object" ? this.serverTimes.get(reply) : undefined;
+  }
   constructor(url: string, private credential: string, options: TransportOptions = {}) {
     this.url = new URL("/v1/agent", safeUrl(url));
     if (!/^wts_agent_[a-f0-9]{64}$/.test(credential)) throw new AgentError("invalid_config");
@@ -40,20 +65,25 @@ export class HttpAgentTransport implements AgentTransport {
     try {
       const response = await this.fetcher(this.url, { method: "POST", redirect: "error", credentials: "omit", signal: controller.signal, headers: { Authorization: `Bearer ${this.credential}`, "Content-Type": "application/json", Accept: "application/json" }, body });
       if (!response.ok) {
-        const retry = response.headers.get("retry-after");
-        const retryMs = retry ? (/^\d+$/.test(retry) ? Number(retry) * 1000 : Math.max(0, Date.parse(retry) - Date.now())) : 0;
+        const failure = httpFailure(response.status, response.headers.get("retry-after"));
         await response.body?.cancel();
-        throw new AgentError(response.status === 429 ? "backpressure" : response.status >= 500 ? "coordinator_unavailable" : "request_rejected", response.status === 429 || response.status >= 500, Number.isFinite(retryMs) ? retryMs : 0);
+        throw failure;
       }
       if (!/^application\/json(?:;|$)/i.test(response.headers.get("content-type") ?? "")) { await response.body?.cancel(); throw new AgentError("invalid_response"); }
-      const reader = response.body?.getReader(); if (!reader) throw new AgentError("invalid_response");
-      const chunks: Uint8Array[] = []; let size = 0;
-      try { while (true) { const part = await reader.read(); if (part.done) break; size += part.value.length; if (size > 65536) { await reader.cancel(); throw new AgentError("invalid_response"); } chunks.push(part.value); } }
-      finally { reader.releaseLock(); }
-      try { return object(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)))); }
-      catch { throw new AgentError("invalid_response"); }
+      return this.reply(await boundedBody(response), response.headers.get("date"));
     } catch (error) { throw error instanceof AgentError ? error : new AgentError("network_unavailable", true); }
     finally { clearTimeout(timer); }
+  }
+  private reply(bytes: Buffer, date: string | null): Record<string, unknown> {
+    try {
+      const reply = object(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
+      const serverTime = date?.endsWith("GMT") ? Date.parse(date) : NaN;
+      // RFC HTTP dates have one-second precision; round UP, never grant an
+      // extra second. The coordinator/PB host is the authority clock domain.
+      if (Number.isFinite(serverTime)) this.serverTimes.set(reply, serverTime + 1000);
+      return reply;
+    }
+    catch { throw new AgentError("invalid_response"); }
   }
 }
 
@@ -61,10 +91,22 @@ export async function reportJournalFailure(identity: AgentIdentity, transport: A
   await transport.request("heartbeat", { ...identity, protocolGeneration: 1, schemaGeneration: 1, journalState: state, journalSequence: 1, journalDigest: createHash("sha256").update(`unavailable:${state}`).digest("hex") });
 }
 
+function invalidStation(station: Record<string, unknown>, stationId: string): boolean {
+  return station.stationId !== stationId || typeof station.readyForAuthorization !== "boolean" || station.operationsEnabled !== false || !["connected", "stale", "never_seen"].includes(String(station.connection)) || !["healthy", "quarantined", "unknown"].includes(String(station.journal)) || !Number.isInteger(station.authorizationTtlMs) || Number(station.authorizationTtlMs) < 100 || Number(station.authorizationTtlMs) > 10000 || typeof station.agentId !== "string";
+}
+/** The report deadline from an exact start reply. */
+function startReportUntil(result: Record<string, unknown>, attemptId: string): string {
+  if (Object.keys(result).length !== 3 || result.attemptId !== attemptId || result.started !== true || typeof result.reportUntil !== "string" || (result.reportUntil !== "" && !Number.isFinite(Date.parse(result.reportUntil)))) throw new AgentError("invalid_response");
+  return result.reportUntil;
+}
+function assertReportable(record: JournalAttempt | undefined, outcome: Outcome): asserts record is JournalAttempt {
+  if (!["output_uncertain", "protocol_complete"].includes(outcome) || !record || !["possibly_starting", "started", "possibly_printing", "reported"].includes(record.state) || !record.authorizationHash || (record.outcome && record.outcome !== outcome) || (["possibly_starting", "started"].includes(record.state) && outcome !== "output_uncertain")) throw new AgentError("outcome_blocked");
+}
+
 export class AgentRuntime {
   private now: () => number;
   private mono: () => number;
-  private deadlines = new Map<string, { wall: number; mono: number; requested: number }>();
+  private deadlines = new Map<string, Deadline>();
   private agentId: string | null = null;
   private ttl = 10000;
   private printQueue: Promise<void> = Promise.resolve();
@@ -73,9 +115,9 @@ export class AgentRuntime {
   }
   private async readiness(operation: "heartbeat" | "status", payload: Record<string, unknown>) {
     const result = object(await this.transport.request(operation, payload)); const station = object(result.station);
-    if (station.stationId !== this.identity.stationId || typeof station.readyForAuthorization !== "boolean" || station.operationsEnabled !== false || !["connected", "stale", "never_seen"].includes(String(station.connection)) || !["healthy", "quarantined", "unknown"].includes(String(station.journal)) || !Number.isInteger(station.authorizationTtlMs) || Number(station.authorizationTtlMs) < 100 || Number(station.authorizationTtlMs) > 10000 || typeof station.agentId !== "string") throw new AgentError("invalid_response");
+    if (invalidStation(station, this.identity.stationId)) throw new AgentError("invalid_response");
     if (this.agentId && station.agentId !== this.agentId) throw new AgentError("identity_mismatch");
-    this.agentId = station.agentId; this.ttl = Number(station.authorizationTtlMs);
+    this.agentId = station.agentId as string; this.ttl = Number(station.authorizationTtlMs);
     return { station: station as unknown as AgentReadinessDTO };
   }
   async heartbeat() {
@@ -105,41 +147,60 @@ export class AgentRuntime {
     const run = async () => {
       const result = { reported: 0, acknowledged: 0, pending: 0 };
       const pending = new Set<string>();
-      for (const record of this.journal.pending().filter(a => ["possibly_starting", "started", "possibly_printing"].includes(a.state)).slice(0, 10)) {
-        try { await this.report(record.attemptId, record.outcome ?? "output_uncertain"); result.reported++; }
-        catch { pending.add(record.attemptId); }
-      }
-      const reply = object(await this.transport.request("cancellations", { stationId: this.identity.stationId }));
-      if (Object.keys(reply).length !== 1 || !Array.isArray(reply.cancellations) || reply.cancellations.length > 10) throw new AgentError("invalid_response");
-      const intents = reply.cancellations.map(validCancellation);
-      for (const intent of intents) {
-        const record = this.receive(intent.work);
-        // A lost/rejected start reply is not itself proof. Only a durable server
-        // cancellation with an explicit unstarted authorization permits this.
-        const rejectedStart = record.state === "possibly_starting" && intent.startState === "not_started";
-        if (!rejectedStart && !["received", "authorized", "cancelled", "reported"].includes(record.state)) { pending.add(record.attemptId); continue; }
-        if (record.cancellation && record.cancellation.cancellationId !== intent.cancellationId) throw new AgentError("attempt_conflict");
-        if (!record.cancellation) {
-          const disposition = record.state === "reported" ? "settled" : "neutralized";
-          if (disposition === "neutralized") record.state = "cancelled";
-          record.cancellation = { cancellationId: intent.cancellationId, disposition, acknowledged: false, ...(rejectedStart ? { startState: "not_started" as const } : {}) };
-          this.journal.put(record); this.deadlines.delete(record.attemptId);
-        }
-      }
-      // Replay durable unacknowledged intents even when the server lost its ack response.
-      for (const record of this.journal.pending().filter(a => a.cancellation && !a.cancellation.acknowledged).slice(0, 10)) {
-        const cancellation = record.cancellation!;
-        const ack = object(await this.transport.request("neutralized", { stationId: this.identity.stationId, attemptId: record.attemptId, payloadHash: record.payloadHash, cancellationId: cancellation.cancellationId, disposition: cancellation.disposition }));
-        if (Object.keys(ack).length !== 2 || ack.cancellationId !== cancellation.cancellationId || ack.acknowledged !== true) throw new AgentError("invalid_response");
-        cancellation.acknowledged = true; this.journal.put(record); result.acknowledged++;
-        pending.delete(record.attemptId);
-      }
+      result.reported = await this.reportInFlight(pending);
+      await this.applyCancellations(pending);
+      result.acknowledged = await this.replayCancellationAcks(pending);
       result.pending = pending.size;
       return result;
     };
     const next = this.printQueue.then(run, run);
     this.printQueue = next.then(() => undefined, () => undefined);
     return next;
+  }
+  private async reportInFlight(pending: Set<string>): Promise<number> {
+    let reported = 0;
+    for (const record of this.journal.pending().filter(a => IN_FLIGHT.includes(a.state)).slice(0, 10)) {
+      try { await this.report(record.attemptId, record.outcome ?? "output_uncertain"); reported++; }
+      catch { pending.add(record.attemptId); }
+    }
+    return reported;
+  }
+  private async applyCancellations(pending: Set<string>): Promise<void> {
+    const reply = object(await this.transport.request("cancellations", { stationId: this.identity.stationId }));
+    if (Object.keys(reply).length !== 1 || !Array.isArray(reply.cancellations) || reply.cancellations.length > 10) throw new AgentError("invalid_response");
+    const intents = reply.cancellations.map(validCancellation);
+    for (const intent of intents) {
+      const record = this.receive(intent.work);
+      if (!this.neutralize(record, intent)) pending.add(record.attemptId);
+    }
+  }
+  /** Journal a durable server cancellation; false while the attempt may still print. */
+  private neutralize(record: JournalAttempt, intent: Cancellation): boolean {
+    // A lost/rejected start reply is not itself proof. Only a durable server
+    // cancellation with an explicit unstarted authorization permits this.
+    const rejectedStart = record.state === "possibly_starting" && intent.startState === "not_started";
+    if (!rejectedStart && !["received", "authorized", "cancelled", "reported"].includes(record.state)) return false;
+    if (record.cancellation) {
+      if (record.cancellation.cancellationId !== intent.cancellationId) throw new AgentError("attempt_conflict");
+      return true;
+    }
+    const disposition = record.state === "reported" ? "settled" : "neutralized";
+    if (disposition === "neutralized") record.state = "cancelled";
+    record.cancellation = { cancellationId: intent.cancellationId, disposition, acknowledged: false, ...(rejectedStart ? { startState: "not_started" as const } : {}) };
+    this.journal.put(record); this.deadlines.delete(record.attemptId);
+    return true;
+  }
+  /** Replay durable unacknowledged intents even when the server lost its ack response. */
+  private async replayCancellationAcks(pending: Set<string>): Promise<number> {
+    let acknowledged = 0;
+    for (const record of this.journal.pending().filter(a => a.cancellation && !a.cancellation.acknowledged).slice(0, 10)) {
+      const cancellation = record.cancellation!;
+      const ack = object(await this.transport.request("neutralized", { stationId: this.identity.stationId, attemptId: record.attemptId, payloadHash: record.payloadHash, cancellationId: cancellation.cancellationId, disposition: cancellation.disposition }));
+      if (Object.keys(ack).length !== 2 || ack.cancellationId !== cancellation.cancellationId || ack.acknowledged !== true) throw new AgentError("invalid_response");
+      cancellation.acknowledged = true; this.journal.put(record); acknowledged++;
+      pending.delete(record.attemptId);
+    }
+    return acknowledged;
   }
   private receive(input: Work): import("./protocol.js").JournalAttempt {
     const work = validWork(input);
@@ -153,33 +214,41 @@ export class AgentRuntime {
   }
   /** Process one delivered print in a single serialized task, never in parallel with another USB task. */
   async process(work: Work, printer: NiimbotPrinter): Promise<Outcome> {
-    const run = async () => {
-      const record = this.receive(work);
-      if (!record.payload) throw new AgentError("invalid_response");
-      const profile = object(record.payload.profile);
-      const config = object(profile.config ?? profile);
-      if (printer.printerIdentity !== this.identity.printerIdentity || config.printerRef !== this.identity.printerIdentity) throw new AgentError("printer_identity_mismatch");
-      if (record.state === "cancelled") throw new AgentError("attempt_cancelled");
-      if (record.state === "reported") return record.outcome!;
-      if (record.state === "possibly_starting" || record.state === "started" || record.state === "possibly_printing") return this.report(record.attemptId, record.outcome ?? "output_uncertain").then((value) => value.outcome);
-      await printer.prepare?.(record.attemptId, record.payload);
-      // A persisted authorization does not retain a process-local monotonic
-      // deadline. Re-read the SAME authorization; never extend its expiry.
-      if (record.state === "received" || record.state === "authorized" && !this.deadlines.has(record.attemptId)) await this.authorize(work);
-      if (this.journal.get(record.attemptId)?.state === "authorized") await this.start(record.attemptId);
-      const beforePrint = this.journal.get(record.attemptId);
-      if (!beforePrint || beforePrint.state !== "started") throw new AgentError("start_blocked");
-      beforePrint.state = "possibly_printing"; this.journal.put(beforePrint);
-      try {
-        await printer.print(record.attemptId, record.payload);
-      } catch {
-        return (await this.report(record.attemptId, "output_uncertain")).outcome;
-      }
-      return (await this.report(record.attemptId, "protocol_complete")).outcome;
-    };
+    const run = () => this.deliver(work, printer);
     const next = this.printQueue.then(run, run);
     this.printQueue = next.then(() => undefined, () => undefined);
     return next;
+  }
+  private async deliver(work: Work, printer: NiimbotPrinter): Promise<Outcome> {
+    const record = this.receive(work);
+    if (!record.payload) throw new AgentError("invalid_response");
+    this.checkPrinter(record.payload, printer);
+    if (record.state === "cancelled") throw new AgentError("attempt_cancelled");
+    if (record.state === "reported") return record.outcome!;
+    if (IN_FLIGHT.includes(record.state)) return this.report(record.attemptId, record.outcome ?? "output_uncertain").then((value) => value.outcome);
+    await printer.prepare?.(record.attemptId, record.payload);
+    await this.beginPrint(work, record);
+    try {
+      await printer.print(record.attemptId, record.payload);
+    } catch {
+      return (await this.report(record.attemptId, "output_uncertain")).outcome;
+    }
+    return (await this.report(record.attemptId, "protocol_complete")).outcome;
+  }
+  private checkPrinter(payload: PrintPayload, printer: NiimbotPrinter): void {
+    const profile = object(payload.profile);
+    const config = object(profile.config ?? profile);
+    if (printer.printerIdentity !== this.identity.printerIdentity || config.printerRef !== this.identity.printerIdentity) throw new AgentError("printer_identity_mismatch");
+  }
+  /** Authorize and start a prestart attempt, then journal it as possibly printing. */
+  private async beginPrint(work: Work, record: JournalAttempt): Promise<void> {
+    // A persisted authorization does not retain a process-local monotonic
+    // deadline. Re-read the SAME authorization; never extend its expiry.
+    if (record.state === "received" || record.state === "authorized" && !this.deadlines.has(record.attemptId)) await this.authorize(work);
+    if (this.journal.get(record.attemptId)?.state === "authorized") await this.start(record.attemptId);
+    const beforePrint = this.journal.get(record.attemptId);
+    if (!beforePrint || beforePrint.state !== "started") throw new AgentError("start_blocked");
+    beforePrint.state = "possibly_printing"; this.journal.put(beforePrint);
   }
   async authorize(work: Work): Promise<Authorization> {
     const record = this.receive(work);
@@ -188,30 +257,43 @@ export class AgentRuntime {
     const requested = this.now(); const monotonic = this.mono();
     const value = object(await this.transport.request("authorize", { stationId: this.identity.stationId, attemptId: record.attemptId, payloadHash: record.payloadHash, authorizationHash: record.authorizationHash }));
     const expires = typeof value.expiresAt === "string" ? Date.parse(value.expiresAt) : NaN;
-    if (Object.keys(value).length !== 8 || value.attemptId !== record.attemptId || value.stationId !== this.identity.stationId || value.payloadHash !== record.payloadHash || typeof value.agentId !== "string" || !/^[A-Za-z0-9._-]{1,80}$/.test(value.agentId) || (this.agentId && value.agentId !== this.agentId) || ![value.stationGeneration, value.systemGeneration, value.coordinatorGeneration].every(v => Number.isSafeInteger(v) && Number(v) >= 1)) throw new AgentError("invalid_response");
-    if (!Number.isFinite(expires) || this.now() < requested || this.now() >= expires || expires > this.now() + this.ttl || this.mono() - monotonic >= this.ttl) throw new AgentError("authorization_expired");
+    this.checkAuthorization(value, record);
+    const serverUpperBound = this.transport.serverClockUpperBound?.(value);
+    // Anchor the local monotonic budget before the request. Subtract the entire
+    // round trip and HTTP date uncertainty; client wall-clock skew cannot make
+    // the server's permit longer. Legacy/in-process transports retain old checks.
+    const remaining = serverUpperBound === undefined ? Math.min(this.ttl, expires - requested) : expires - serverUpperBound;
+    if (this.permitExpired(expires, remaining, requested, monotonic, serverUpperBound === undefined)) throw new AgentError("authorization_expired");
     const auth = value as unknown as Authorization;
     if (record.authorization && JSON.stringify(record.authorization) !== JSON.stringify(auth)) throw new AgentError("authorization_conflict");
     record.authorization = auth; record.state = "authorized"; this.journal.put(record);
     this.agentId = auth.agentId;
-    this.deadlines.set(record.attemptId, { wall: Math.min(expires, requested + this.ttl), mono: monotonic + Math.min(this.ttl, expires - requested), requested });
+    this.deadlines.set(record.attemptId, { wall: requested + remaining, mono: monotonic + remaining, requested });
     return auth;
+  }
+  private checkAuthorization(value: Record<string, unknown>, record: JournalAttempt): void {
+    if (Object.keys(value).length !== 8 || value.attemptId !== record.attemptId || value.stationId !== this.identity.stationId || value.payloadHash !== record.payloadHash || typeof value.agentId !== "string" || !/^[A-Za-z0-9._-]{1,80}$/.test(value.agentId) || (this.agentId && value.agentId !== this.agentId) || ![value.stationGeneration, value.systemGeneration, value.coordinatorGeneration].every(v => Number.isSafeInteger(v) && Number(v) >= 1)) throw new AgentError("invalid_response");
+  }
+  private permitExpired(expires: number, remaining: number, requested: number, monotonic: number, legacyClock: boolean): boolean {
+    return !Number.isFinite(expires) || !Number.isFinite(remaining) || remaining <= 0 || remaining > this.ttl || this.now() < requested || this.now() >= requested + remaining || this.mono() - monotonic >= remaining || (legacyClock && (this.now() >= expires || expires > this.now() + this.ttl));
+  }
+  private deadlinePassed(deadline: Deadline): boolean {
+    return this.now() < deadline.requested || this.now() >= deadline.wall || this.mono() >= deadline.mono;
   }
   async start(attemptId: string): Promise<{ attemptId: string; started: true; reportUntil: string }> {
     const record = this.journal.get(attemptId); const deadline = this.deadlines.get(attemptId);
     if (!record || record.state !== "authorized" || !record.authorization || !deadline) throw new AgentError("start_blocked");
-    if (this.now() < deadline.requested || this.now() >= deadline.wall || this.mono() >= deadline.mono) throw new AgentError("authorization_expired");
+    if (this.deadlinePassed(deadline)) throw new AgentError("authorization_expired");
     // Future physical-start seam only: no USB/printer command exists in this slice.
     record.state = "possibly_starting"; this.journal.put(record); this.deadlines.delete(attemptId);
-    const result = object(await this.transport.request("start", { stationId: this.identity.stationId, attemptId, payloadHash: record.payloadHash, authorizationHash: record.authorizationHash }));
-    if (Object.keys(result).length !== 3 || result.attemptId !== attemptId || result.started !== true || typeof result.reportUntil !== "string" || (result.reportUntil !== "" && !Number.isFinite(Date.parse(result.reportUntil)))) throw new AgentError("invalid_response");
-    if (this.now() < deadline.requested || this.now() >= deadline.wall || this.mono() >= deadline.mono) throw new AgentError("authorization_expired");
-    record.state = "started"; record.reportUntil = result.reportUntil; this.journal.put(record);
-    return { attemptId, started: true, reportUntil: result.reportUntil };
+    const reportUntil = startReportUntil(object(await this.transport.request("start", { stationId: this.identity.stationId, attemptId, payloadHash: record.payloadHash, authorizationHash: record.authorizationHash })), attemptId);
+    if (this.deadlinePassed(deadline)) throw new AgentError("authorization_expired");
+    record.state = "started"; record.reportUntil = reportUntil; this.journal.put(record);
+    return { attemptId, started: true, reportUntil };
   }
   async report(attemptId: string, outcome: Outcome): Promise<{ attemptId: string; outcome: Outcome }> {
     const record = this.journal.get(attemptId);
-    if (!["output_uncertain", "protocol_complete"].includes(outcome) || !record || !["possibly_starting", "started", "possibly_printing", "reported"].includes(record.state) || !record.authorizationHash || (record.outcome && record.outcome !== outcome) || (["possibly_starting", "started"].includes(record.state) && outcome !== "output_uncertain")) throw new AgentError("outcome_blocked");
+    assertReportable(record, outcome);
     record.outcome = outcome; this.journal.put(record);
     const result = object(await this.transport.request("outcome", { stationId: this.identity.stationId, attemptId, authorizationHash: record.authorizationHash, outcome }));
     if (Object.keys(result).length !== 2 || result.attemptId !== attemptId || result.outcome !== outcome) throw new AgentError("invalid_response");

@@ -61,21 +61,24 @@ function spoolFiles(root: string): string[] {
     const child = join(path, name); regular(child); return child;
   });
 }
+function verifyRetiredPolicy(db: DatabaseSync, policy: CheckinPurgePolicy) {
+  const row = db.prepare("SELECT policy FROM lifecycle_retired WHERE edition='WTS2026'").get();
+  if (!row || typeof row.policy !== "string" || !samePolicy(validPolicy(JSON.parse(row.policy)), policy)) throw new Error("Retired identity mismatch");
+}
+function verifyJournalIdentity(db: DatabaseSync, policy: CheckinPurgePolicy) {
+  const row = db.prepare("SELECT data,digest FROM journal WHERE id=1").get();
+  if (!row || typeof row.data !== "string" || createHash("sha256").update(row.data).digest("hex") !== row.digest) throw new Error("Journal identity unverifiable");
+  const identity = JSON.parse(row.data).identity;
+  if (identity?.stationId !== policy.stationId || identity?.journalIdentity !== policy.journalIdentity) throw new Error("Journal identity mismatch");
+}
 function verifyJournal(path: string, policy: CheckinPurgePolicy) {
   regular(path);
   for (const suffix of ["-wal", "-shm", "-journal"]) if (stat(path + suffix)) regular(path + suffix);
   const db = new DatabaseSync(path, { readOnly: true });
   try {
     const retired = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='lifecycle_retired'").get();
-    if (retired) {
-      const row = db.prepare("SELECT policy FROM lifecycle_retired WHERE edition='WTS2026'").get();
-      if (!row || typeof row.policy !== "string" || !samePolicy(validPolicy(JSON.parse(row.policy)), policy)) throw new Error("Retired identity mismatch");
-    } else {
-      const row = db.prepare("SELECT data,digest FROM journal WHERE id=1").get();
-      if (!row || typeof row.data !== "string" || createHash("sha256").update(row.data).digest("hex") !== row.digest) throw new Error("Journal identity unverifiable");
-      const identity = JSON.parse(row.data).identity;
-      if (identity?.stationId !== policy.stationId || identity?.journalIdentity !== policy.journalIdentity) throw new Error("Journal identity mismatch");
-    }
+    if (retired) verifyRetiredPolicy(db, policy);
+    else verifyJournalIdentity(db, policy);
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
     if (tables.some(t => t.name !== "journal" && t.name !== "lifecycle_retired")) throw new Error("Unknown journal tables");
   } finally { db.close(); }

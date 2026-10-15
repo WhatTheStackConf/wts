@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { CheckinReadError } from "../../src/lib/checkin-upstream-read.js";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import type PocketBase from "pocketbase";
-import { validResetJob, type ResetJob, type ResetOutcome, type ResetTransport, type Cancellation } from "./protocol.js";
+import { AgentError, validResetJob, type ResetJob, type ResetOutcome, type ResetTransport, type Cancellation } from "./protocol.js";
 import type { AgentReadinessDTO, Work as Attempt, Authorization, AdmissionJob, AdmissionOutcome, AdmissionProcessor } from "./protocol.js";
 
 interface Options { now?: () => number; heartbeatIntervalMs?: number; heartbeatTimeoutMs?: number; authorizationTtlMs?: number }
@@ -23,6 +23,15 @@ type Operation = keyof Replies;
 class Rejected extends Error {
   constructor(readonly status: number) { super("Agent request rejected."); }
 }
+class CoordinatorTransportError extends AgentError {
+  readonly status = 503;
+  constructor() { super("coordinator_transport_unavailable", true); }
+}
+function rpcFailure(error: unknown): Error {
+  const status = (error as { status?: number }).status;
+  if (status !== undefined && [0, 502, 503, 504].includes(status)) return new CoordinatorTransportError();
+  return new Rejected(status && [400, 403, 409].includes(status) ? status : 503);
+}
 const fields: Record<Operation, string[]> = {
   policy: ["stationId", "journalIdentity"],
   purge_complete: ["stationId", "journalIdentity", "purgeToken", "method"],
@@ -38,22 +47,54 @@ function shape(value: unknown, keys: string[]): value is Record<string, unknown>
   return !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 }
 function matches(value: unknown, regex: RegExp) { return typeof value === "string" && regex.test(value); }
+const sha256 = (value: unknown) => matches(value, /^[a-f0-9]{64}$/);
+const identifier = (value: unknown) => matches(value, /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/);
+const recordId = (value: unknown) => matches(value, /^[a-z0-9]{15}$/);
+const generation = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 1;
+const fieldRules = new Map<string, (value: unknown) => boolean>([
+  ["payloadHash", sha256], ["authorizationHash", sha256], ["journalDigest", sha256],
+  ["agentIdentity", identifier], ["printerIdentity", identifier], ["journalIdentity", identifier],
+  ["attemptId", recordId], ["cancellationId", recordId],
+  ["profileId", (value) => matches(value, /^(?:[a-z0-9]{15})?$/)],
+  ["protocolGeneration", generation], ["schemaGeneration", generation], ["journalSequence", generation],
+]);
+const choices: Partial<Record<Operation, [field: string, values: string[]]>> = {
+  work: ["purpose", ["initial", "label"]],
+  neutralized: ["disposition", ["neutralized", "settled"]],
+  heartbeat: ["journalState", ["healthy", "lost", "corrupt", "restored"]],
+  outcome: ["outcome", ["protocol_complete", "output_uncertain"]],
+};
+function expectedKeys(operation: string, payload: unknown): string[] | null {
+  if (!Object.hasOwn(fields, operation)) return null;
+  return operation === "work" && payload && typeof payload === "object" && Object.hasOwn(payload, "purpose") ? ["stationId", "purpose"] : fields[operation as Operation];
+}
+function invalidChoice(operation: Operation, payload: Record<string, unknown>): boolean {
+  const choice = choices[operation];
+  return !!choice && Object.hasOwn(payload, choice[0]) && !choice[1].includes(String(payload[choice[0]]));
+}
 function validate(operation: string, payload: unknown): asserts operation is Operation {
-  const baseKeys = Object.hasOwn(fields, operation) ? fields[operation as Operation] : [];
-  const keys = operation === "work" && payload && typeof payload === "object" && Object.hasOwn(payload, "purpose") ? ["stationId", "purpose"] : baseKeys;
-  if (!Object.hasOwn(fields, operation) || !shape(payload, keys)) throw new Rejected(400);
-  if (operation === "work" && Object.hasOwn(payload, "purpose") && !["initial", "label"].includes(String(payload.purpose))) throw new Rejected(400);
+  const keys = expectedKeys(operation, payload);
+  if (!keys || !shape(payload, keys)) throw new Rejected(400);
+  if (invalidChoice(operation as Operation, payload)) throw new Rejected(400);
   if (!matches(payload.stationId, /^wts2026station[123]$/)) throw new Rejected(400);
-  for (const [key, value] of Object.entries(payload)) {
-    if (["payloadHash", "authorizationHash", "journalDigest"].includes(key) && !matches(value, /^[a-f0-9]{64}$/)) throw new Rejected(400);
-    if (["agentIdentity", "printerIdentity", "journalIdentity"].includes(key) && !matches(value, /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/)) throw new Rejected(400);
-    if (["attemptId", "cancellationId"].includes(key) && !matches(value, /^[a-z0-9]{15}$/)) throw new Rejected(400);
-    if (key === "profileId" && !matches(value, /^(?:[a-z0-9]{15})?$/)) throw new Rejected(400);
-    if (["protocolGeneration", "schemaGeneration", "journalSequence"].includes(key) && (!Number.isSafeInteger(value) || (value as number) < 1)) throw new Rejected(400);
-  }
-  if (operation === "neutralized" && !["neutralized", "settled"].includes(String(payload.disposition))) throw new Rejected(400);
-  if (operation === "heartbeat" && !["healthy", "lost", "corrupt", "restored"].includes(String(payload.journalState))) throw new Rejected(400);
-  if (operation === "outcome" && !["protocol_complete", "output_uncertain"].includes(String(payload.outcome))) throw new Rejected(400);
+  for (const [key, value] of Object.entries(payload)) if (fieldRules.get(key)?.(value) === false) throw new Rejected(400);
+}
+function invalidLimit(limit: number): boolean {
+  return !Number.isSafeInteger(limit) || limit < 1 || limit > 100;
+}
+function checkAgentRequestHeaders(req: IncomingMessage): void {
+  if (req.method !== "POST" || req.url !== "/v1/agent") throw new Rejected(404);
+  if (req.headers.cookie !== undefined || req.headers.origin !== undefined || req.headers["sec-fetch-site"] !== undefined || !matches(req.headers.authorization, /^Bearer wts_agent_[a-f0-9]{64}$/)) throw new Rejected(403);
+  if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers["content-type"] || "")) throw new Rejected(415);
+  if (Number(req.headers["content-length"]) > 8192) throw new Rejected(413);
+}
+async function readAgentRequest(req: IncomingMessage): Promise<{ operation: string; payload: unknown }> {
+  checkAgentRequestHeaders(req);
+  const chunks: Buffer[] = []; let size = 0;
+  for await (const chunk of req) { size += chunk.length; if (size > 8192) throw new Rejected(413); chunks.push(Buffer.from(chunk)); }
+  let body: unknown; try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new Rejected(400); }
+  if (!shape(body, ["operation", "payload"]) || typeof body.operation !== "string") throw new Rejected(400);
+  return { operation: body.operation, payload: body.payload };
 }
 
 /** Independently supervised, outbound-agent-only boundary. Never sends device I/O. */
@@ -76,16 +117,14 @@ export class Coordinator {
     try {
       return await this.pb.send<T>("/api/wts/checkin-agents", { method: "POST", body: { ...data, operation, owner: this.owner, ...this.clockOverride() }, requestKey: null, signal: AbortSignal.timeout(5000) });
     } catch (error) {
-      const status = (error as { status?: number }).status;
-      throw new Rejected(status && [400, 403, 409].includes(status) ? status : 503);
+      throw rpcFailure(error);
     }
   }
   private async admissionCommand<T>(operation: string, data: object = {}): Promise<T> {
     try {
       return await this.pb.send<T>("/api/wts/checkin-arrivals", { method: "POST", body: { ...data, operation, owner: this.owner, ...this.clockOverride() }, requestKey: null, signal: AbortSignal.timeout(5000) });
     } catch (error) {
-      const status = (error as { status?: number }).status;
-      throw new Rejected(status && [400, 403, 409].includes(status) ? status : 503);
+      throw rpcFailure(error);
     }
   }
   async listen(host = "127.0.0.1", port = 0): Promise<string> {
@@ -140,8 +179,7 @@ export class Coordinator {
     try {
       return await this.pb.send<T>("/api/wts/checkin-recovery", { method: "POST", body: { ...data, operation, owner: this.owner, ...this.clockOverride() }, requestKey: null, signal: AbortSignal.timeout(5000) });
     } catch (error) {
-      const status = (error as { status?: number }).status;
-      throw new Rejected(status && [400, 403, 409].includes(status) ? status : 503);
+      throw rpcFailure(error);
     }
   }
   /** Privileged producer only: the committed claim is the durable possibly-sent fence. */
@@ -170,27 +208,30 @@ export class Coordinator {
   async processResets(transport: ResetTransport, limit = 10): Promise<number> {
     // Reject the legacy one-argument contract rather than silently allowing unfenced DELETE.
     if (typeof transport?.reset !== "function" || transport.reset.length < 2) throw new Rejected(400);
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Rejected(400);
+    if (invalidLimit(limit)) throw new Rejected(400);
     let processed = 0;
     while (processed < limit) {
       const job = await this.claimReset();
       if (!job) break;
-      let outcome: ResetOutcome = "uncertain";
-      let attempted = false, granted = false, finished = false;
-      try {
-        const value = await transport.reset(structuredClone(job), async () => {
-          if (attempted || finished) throw new Rejected(409);
-          attempted = true; // Even a lost grant response consumes this callback.
-          await this.fenceResetDelete(job);
-          granted = true;
-        });
-        if (value === "uncertain" || value === "identity_changed" && !attempted || value === "deleted" && granted) outcome = value;
-      } catch { /* A timeout/crash/lost fence or DELETE response never permits a retry. */ }
-      finally { finished = true; }
-      await this.recordResetResult(job.resetId, outcome);
+      await this.recordResetResult(job.resetId, await this.resetOutcome(transport, job));
       processed++;
     }
     return processed;
+  }
+  /** Run one claimed reset with a single-use delete grant; anything unproven is uncertain. */
+  private async resetOutcome(transport: ResetTransport, job: ResetJob): Promise<ResetOutcome> {
+    let attempted = false, granted = false, finished = false;
+    try {
+      const value = await transport.reset(structuredClone(job), async () => {
+        if (attempted || finished) throw new Rejected(409);
+        attempted = true; // Even a lost grant response consumes this callback.
+        await this.fenceResetDelete(job);
+        granted = true;
+      });
+      if (value === "uncertain" || value === "identity_changed" && !attempted || value === "deleted" && granted) return value;
+    } catch { /* A timeout/crash/lost fence or DELETE response never permits a retry. */ }
+    finally { finished = true; }
+    return "uncertain";
   }
   /** Claim one reserved arrival and persist its possibly-sent boundary. */
   async claimAdmission(): Promise<AdmissionJob | null> {
@@ -211,7 +252,7 @@ export class Coordinator {
   }
   /** Stage queued initial labels as agent-owned work; the agent performs USB I/O. */
   async claimPrints(limit = 10): Promise<number> {
-    if (!this.active || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Rejected(400);
+    if (!this.active || invalidLimit(limit)) throw new Rejected(400);
     const result = await this.command<{ claimed: number }>("machine_print_claim", { limit });
     if (!Number.isSafeInteger(result.claimed) || result.claimed < 0 || result.claimed > limit) throw new Rejected(503);
     return result.claimed;
@@ -221,42 +262,50 @@ export class Coordinator {
   }
   /** Process bounded work in the coordinator process; never exposed by its HTTP server. */
   async processAdmissions(processor: AdmissionProcessor, limit = 10): Promise<number> {
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Rejected(400);
+    if (invalidLimit(limit)) throw new Rejected(400);
     await this.reconcileAdmissions();
     let processed = 0;
     while (processed < limit) {
       const job = await this.claimAdmission();
       if (!job) break;
-      let outcome: AdmissionOutcome | null = null;
-      let sendFenced = false;
-      try {
-        const attendee = await processor.attendee(job);
-        if (!attendee) {
-          await this.releaseAdmission(job);
-        } else if (attendee.eligibility && attendee.eligibility !== "eligible") {
-          outcome = { state: "rejected", reason: attendee.eligibility };
-        } else {
-          await this.fenceAdmissionSend(job);
-          sendFenced = true;
-          outcome = attendee.alreadyCheckedIn
-            ? { state: "existing_unattributed", fingerprint: createHash("sha256").update(`wts2026:existing:${job.upstreamEventId}:${job.upstreamAttendeeId}:${job.upstreamListId}`).digest("hex") }
-            : await processor.admit(job, attendee);
-        }
-      } catch (error) {
-        if (sendFenced) outcome = { state: "uncertain" };
-        else try { await this.releaseAdmission(job, error); } catch { /* A failed release is recovered by the next coordinator generation. */ }
-      }
-      if (outcome) {
-        try { await this.recordAdmissionResult(job.attemptId, outcome); }
-        catch (error) {
-          if (!sendFenced) throw error;
-          await this.reconcileAdmissions();
-        }
-      }
+      const outcome = await this.processAdmission(processor, job);
       processed++;
       if (!outcome) break;
     }
     return processed;
+  }
+  /** Classify and record one claimed admission; null when it was released instead. */
+  private async processAdmission(processor: AdmissionProcessor, job: AdmissionJob): Promise<AdmissionOutcome | null> {
+    const { outcome, sendFenced } = await this.attemptAdmission(processor, job);
+    if (outcome) {
+      try { await this.recordAdmissionResult(job.attemptId, outcome); }
+      catch (error) {
+        if (!sendFenced) throw error;
+        await this.reconcileAdmissions();
+      }
+    }
+    return outcome;
+  }
+  private async attemptAdmission(processor: AdmissionProcessor, job: AdmissionJob): Promise<{ outcome: AdmissionOutcome | null; sendFenced: boolean }> {
+    let sendFenced = false;
+    try {
+      const attendee = await processor.attendee(job);
+      if (!attendee) {
+        await this.releaseAdmission(job);
+        return { outcome: null, sendFenced };
+      }
+      if (attendee.eligibility && attendee.eligibility !== "eligible") return { outcome: { state: "rejected", reason: attendee.eligibility }, sendFenced };
+      await this.fenceAdmissionSend(job);
+      sendFenced = true;
+      const outcome: AdmissionOutcome = attendee.alreadyCheckedIn
+        ? { state: "existing_unattributed", fingerprint: createHash("sha256").update(`wts2026:existing:${job.upstreamEventId}:${job.upstreamAttendeeId}:${job.upstreamListId}`).digest("hex") }
+        : await processor.admit(job, attendee);
+      return { outcome, sendFenced };
+    } catch (error) {
+      if (sendFenced) return { outcome: { state: "uncertain" }, sendFenced };
+      try { await this.releaseAdmission(job, error); } catch { /* A failed release is recovered by the next coordinator generation. */ }
+      return { outcome: null, sendFenced };
+    }
   }
   async machine<K extends Operation>(credential: string, operation: K, payload: unknown): Promise<Replies[K]> {
     if (!matches(credential, /^wts_agent_[a-f0-9]{64}$/)) throw new Rejected(403);
@@ -280,14 +329,7 @@ export class Coordinator {
       res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" }); res.end(body);
     };
     try {
-      if (req.method !== "POST" || req.url !== "/v1/agent") throw new Rejected(404);
-      if (req.headers.cookie !== undefined || req.headers.origin !== undefined || req.headers["sec-fetch-site"] !== undefined || !matches(req.headers.authorization, /^Bearer wts_agent_[a-f0-9]{64}$/)) throw new Rejected(403);
-      if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers["content-type"] || "")) throw new Rejected(415);
-      if (Number(req.headers["content-length"]) > 8192) throw new Rejected(413);
-      const chunks: Buffer[] = []; let size = 0;
-      for await (const chunk of req) { size += chunk.length; if (size > 8192) throw new Rejected(413); chunks.push(Buffer.from(chunk)); }
-      let body: unknown; try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new Rejected(400); }
-      if (!shape(body, ["operation", "payload"]) || typeof body.operation !== "string") throw new Rejected(400);
+      const body = await readAgentRequest(req);
       validate(body.operation, body.payload);
       reply(200, await this.machine(req.headers.authorization!.slice(7), body.operation, body.payload));
     } catch (error) { reply(error instanceof Rejected ? error.status : 503, { error: "Agent request rejected." }); }

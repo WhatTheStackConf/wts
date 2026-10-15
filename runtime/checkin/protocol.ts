@@ -96,10 +96,13 @@ export function validIdentity(value: unknown): AgentIdentity {
   if (Object.keys(v).length !== 5 || !["stationId", "agentIdentity", "printerIdentity", "journalIdentity", "profileId"].every(k => (k === "profileId" && v[k] === "" || typeof v[k] === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(v[k] as string)))) throw new AgentError("invalid_identity");
   return v as unknown as AgentIdentity;
 }
+function matches(value: unknown, pattern: RegExp): value is string {
+  return typeof value === "string" && pattern.test(value);
+}
 export function validWork(value: unknown): Work {
   const v = object(value);
   const keys = Object.keys(v);
-  if (!keys.every((key) => ["attemptId", "profileId", "payloadHash", "payload"].includes(key)) || (keys.length !== 3 && keys.length !== 4) || typeof v.attemptId !== "string" || !/^[A-Za-z0-9._-]{1,80}$/.test(v.attemptId) || typeof v.profileId !== "string" || !/^[A-Za-z0-9._-]{1,80}$/.test(v.profileId) || typeof v.payloadHash !== "string" || !/^[a-f0-9]{64}$/.test(v.payloadHash)) throw new AgentError("invalid_response");
+  if (!keys.every((key) => ["attemptId", "profileId", "payloadHash", "payload"].includes(key)) || (keys.length !== 3 && keys.length !== 4) || !matches(v.attemptId, /^[A-Za-z0-9._-]{1,80}$/) || !matches(v.profileId, /^[A-Za-z0-9._-]{1,80}$/) || !matches(v.payloadHash, /^[a-f0-9]{64}$/)) throw new AgentError("invalid_response");
   if (v.payload !== undefined) {
     const payload = validPrintPayload(v.payload);
     if (printPayloadHash(v.profileId as string, payload) !== v.payloadHash) throw new AgentError("payload_hash_mismatch");
@@ -114,9 +117,18 @@ function canonical(value: unknown): string {
 export function printPayloadHash(profileId: string, payload: PrintPayload): string {
   return createHash("sha256").update(canonical({ profileId, payload })).digest("hex");
 }
+function unknownPayloadKeys(v: Record<string, unknown>): boolean {
+  return !Object.keys(v).every((key) => ["purpose", "text", "profile", "rendererVersion", "fontVersion", "pngBase64"].includes(key)) || (Object.keys(v).length !== 5 && Object.keys(v).length !== 6);
+}
+function invalidLabelText(text: Record<string, unknown>): boolean {
+  return Object.keys(text).length !== 2 || typeof text.name !== "string" || !text.name.trim() || text.name.length > 200 || typeof text.affiliation !== "string" || text.affiliation.length > 200;
+}
+function invalidPng(value: unknown): boolean {
+  return value !== undefined && (typeof value !== "string" || !/^iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value) || value.length > 12_000_000);
+}
 export function validPrintPayload(value: unknown): PrintPayload {
   const v = object(value); const text = object(v.text); const profile = object(v.profile);
-  if (!Object.keys(v).every((key) => ["purpose", "text", "profile", "rendererVersion", "fontVersion", "pngBase64"].includes(key)) || (Object.keys(v).length !== 5 && Object.keys(v).length !== 6) || !["initial", "replacement"].includes(String(v.purpose)) || Object.keys(text).length !== 2 || typeof text.name !== "string" || !text.name.trim() || text.name.length > 200 || typeof text.affiliation !== "string" || text.affiliation.length > 200 || Object.keys(profile).length > 32 || typeof v.rendererVersion !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(v.rendererVersion) || typeof v.fontVersion !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(v.fontVersion) || (v.pngBase64 !== undefined && (typeof v.pngBase64 !== "string" || !/^iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(v.pngBase64) || v.pngBase64.length > 12_000_000)) || JSON.stringify(profile).length > 8192) throw new AgentError("invalid_response");
+  if (unknownPayloadKeys(v) || !["initial", "replacement"].includes(String(v.purpose)) || invalidLabelText(text) || Object.keys(profile).length > 32 || !matches(v.rendererVersion, /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/) || !matches(v.fontVersion, /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/) || invalidPng(v.pngBase64) || JSON.stringify(profile).length > 8192) throw new AgentError("invalid_response");
   return v as unknown as PrintPayload;
 }
 export function safeUrl(input: string): URL {

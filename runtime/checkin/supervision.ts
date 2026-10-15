@@ -34,7 +34,13 @@ export async function runCoordinatorSupervisor(options: CoordinatorSupervision):
   async function work(run: () => Promise<unknown>) {
     while (!production.signal.aborted) {
       try { await run(); }
-      catch { failure ??= new AgentError("coordinator_work_failed"); production.abort(); }
+      catch (error) {
+        // A new fenced polling/reconciliation cycle, not a replay of the failed
+        // mutation. Claims/send boundaries are durable in PocketBase. The
+        // independent heartbeat still stops a lost owner immediately.
+        if (error instanceof AgentError && error.category === "coordinator_transport_unavailable" && error.retryable) console.error("coordinator_work_retrying");
+        else { failure ??= new AgentError("coordinator_work_failed"); production.abort(); }
+      }
       if (!production.signal.aborted) await delay(options.pollIntervalMs, production.signal);
     }
   }
