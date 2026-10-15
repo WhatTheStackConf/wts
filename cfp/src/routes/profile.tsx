@@ -3,6 +3,9 @@ import { getWorkspace, saveApplicant } from "~/lib/cfp-actions";
 import type { FieldIssue, Workspace } from "~/lib/cfp-model";
 import { ErrorNotice } from "~/components/ApplicantUI";
 
+type PageError = { code: string; message: string; issues: FieldIssue[] };
+const blocksPage = (error: PageError | undefined) => error?.code === "unauthenticated" || error?.code === "unavailable";
+
 export default function Profile() {
   const [workspace, setWorkspace] = createSignal<Workspace>();
   const [name, setName] = createSignal("");
@@ -10,7 +13,7 @@ export default function Profile() {
   const [bio, setBio] = createSignal("");
   const [socialHandles, setSocialHandles] = createSignal("");
   const [previousTalks, setPreviousTalks] = createSignal("");
-  const [error, setError] = createSignal<{ code: string; message: string; issues: FieldIssue[] }>();
+  const [error, setError] = createSignal<PageError>();
   const [saved, setSaved] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   const [loading, setLoading] = createSignal(true);
@@ -60,8 +63,8 @@ export default function Profile() {
   return <>
     <header class="page-heading"><h1>Speaker profile</h1><p>These details are shared across your applications. Profile changes do not alter a submitted presentation.</p></header>
     <Show when={loading()}><div class="cfp-loading" role="status">Loading your profile…</div></Show>
-    <Show when={error()}><ErrorNotice message={error()?.message} issues={error()?.issues} onRetry={error()?.code !== "unauthenticated" ? reload : undefined} retryLabel="Reload saved profile" /><Show when={error()?.code === "unauthenticated"}><a href={`/auth/login?returnTo=${encodeURIComponent("/profile")}`} rel="external">Sign in to edit your profile</a></Show></Show>
-    <Show when={workspace() && error()?.code !== "unauthenticated" && error()?.code !== "unavailable"}>
+    <Show when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={current().code !== "unauthenticated" ? reload : undefined} retryLabel="Reload saved profile" /><Show when={current().code === "unauthenticated"}><a href={`/auth/login?returnTo=${encodeURIComponent("/profile")}`} rel="external">Sign in to edit your profile</a></Show></>}</Show>
+    <Show when={workspace() && !blocksPage(error())}>
       <form class="surface form" onSubmit={save}>
         <div class="field"><label for="profile-email">Account email</label><input id="profile-email" class="control" type="email" value={workspace()!.email} disabled autocomplete="email" /><span class="hint">Email comes from your verified WTS account.</span></div>
         <fieldset class="form-section">

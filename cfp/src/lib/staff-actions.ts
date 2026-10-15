@@ -1,7 +1,7 @@
 import { getRequestEvent } from "@solidjs/web";
-import { ZodError } from "zod";
 import { assertMutationRequest, readAccount, requireAccount } from "../server/cfp-sessions.ts";
 import * as staff from "../server/staff.ts";
+import { actionResult } from "./action-result.ts";
 import type { ActionResult, VerifiedCfpAccount } from "./account-model.ts";
 import { StaffError, type AdminProposal, type AdminQuery, type AdminWorkspace, type ReviewerProposal, type ReviewerWorkspace, type StaffAccess, type StaffCommand, type StaffDirectory, type StaffMutationReceipt } from "./staff-model.ts";
 
@@ -11,17 +11,8 @@ function privateRequest(): Request {
   event.response.headers.set("Cache-Control", "private, no-store");
   return event.request;
 }
-async function result<T>(run: () => Promise<T>): Promise<ActionResult<T>> {
-  try { return { ok: true, value: await run() }; }
-  catch (error) {
-    if (error instanceof StaffError) return { ok: false, error: { code: error.code, message: error.message, issues: error.issues ?? [] } };
-    if (error instanceof ZodError) return { ok: false, error: { code: "invalid_fields", message: "Check the supplied fields.", issues: error.issues.map((issue) => ({ field: issue.path.join("."), message: "This field is invalid." })) } };
-    if (error instanceof Response) {
-      const denied = error.status === 403 || error.status === 405;
-      return { ok: false, error: { code: error.status === 401 ? "unauthenticated" : denied ? "forbidden" : "unavailable", message: error.status === 401 ? "Sign in to access CFP staff data." : denied ? "The request is not permitted." : "The identity service could not verify this account.", issues: [] } };
-    }
-    return { ok: false, error: { code: "unavailable", message: "The application could not complete this request. Try again later.", issues: [] } };
-  }
+function result<T>(run: () => Promise<T>): Promise<ActionResult<T>> {
+  return actionResult(run, StaffError, "Sign in to access CFP staff data.");
 }
 export async function getNavigation(): Promise<{ account: VerifiedCfpAccount; access: StaffAccess } | null> {
   "use server";

@@ -1,5 +1,5 @@
 import { createSignal, For, onSettled, Show, Switch, Match } from "solid-js";
-import { AdminError, AdminLoading, AdminSection, AdminStatus, useAdminRequest } from "~/components/admin/AdminUI";
+import { AdminError, AdminLoading, AdminSection, AdminStatus, useAdminRequest, type AdminFailureState } from "~/components/admin/AdminUI";
 import { getAdminWorkspace, executeStaffCommand } from "~/lib/staff-actions";
 import { CRITERIA, CRITERION_LABELS } from "~/lib/staff-model";
 import type { AdminQuery, AdminWorkspace, AdminProposalSummary, DecideProposalsCommand } from "~/lib/staff-model";
@@ -7,6 +7,74 @@ import type { AdminQuery, AdminWorkspace, AdminProposalSummary, DecideProposalsC
 const PAGE_SIZE = 50;
 
 type SelectedTarget = Pick<AdminProposalSummary, "applicationId" | "applicationRevision" | "presentationRevision" | "assessmentRevision" | "status" | "title">;
+
+const FAILURE_STATES = new Map<string, AdminFailureState>([["last_admin", "last-admin"], ["not_found", "not-found"], ["conflict", "stale"]]);
+
+interface EditionStateProps {
+  workspace: AdminWorkspace;
+}
+
+function EditionState(props: EditionStateProps) {
+  return <section class="surface cfp-stack" aria-labelledby="edition-state-heading">
+    <div class="surface-title"><div><h2 id="edition-state-heading">{props.workspace.editionId} operating state</h2><p>Application intake and review access are independent edition controls.</p></div></div>
+    <div class="row">
+      <AdminStatus state={props.workspace.cfpGate.open ? "active" : "closed"} label={`CFP ${props.workspace.cfpGate.open ? "open" : "closed"}`} />
+      <AdminStatus state={props.workspace.reviewPolicy.reviewOpen ? "active" : "closed"} label={`Reviews ${props.workspace.reviewPolicy.reviewOpen ? "open" : "closed"}`} />
+      <span>Current weight votes: {props.workspace.weighting.voteCount}</span>
+      <span>Daily report: {props.workspace.reviewPolicy.dailyReport.enabled ? `enabled at ${props.workspace.reviewPolicy.dailyReport.localSendTime} UTC` : "disabled"}</span>
+    </div>
+    <div class="cfp-stack">
+      <h3>Mail queue counts</h3>
+      <dl class="read-only-summary">
+        <div><dt>Mode</dt><dd>{props.workspace.mail.mode}{props.workspace.mail.configured ? " · configured" : " · not configured"}</dd></div>
+        <div><dt>Queued</dt><dd>{props.workspace.mail.queued}</dd></div>
+        <div><dt>Retrying</dt><dd>{props.workspace.mail.retrying}</dd></div>
+        <div><dt>Sent</dt><dd>{props.workspace.mail.sent}</dd></div>
+        <div><dt>Failed</dt><dd>{props.workspace.mail.failed}</dd></div>
+        <div><dt>Suspended</dt><dd>{props.workspace.mail.suspended}</dd></div>
+        <div><dt>Delivery unknown</dt><dd>{props.workspace.mail.deliveryUnknown}</dd></div>
+        <div><dt>Eligible daily recipients</dt><dd>{props.workspace.mail.eligibleDailyRecipientCount}</dd></div>
+      </dl>
+    </div>
+  </section>;
+}
+
+interface ProposalFiltersProps {
+  query: AdminQuery;
+  onChange: (patch: Partial<AdminQuery>) => void;
+  onSubmit: (event: SubmitEvent) => void;
+}
+
+function ProposalFilters(props: ProposalFiltersProps) {
+  return <form class="cfp-stack admin-filters" onSubmit={props.onSubmit} aria-label="Filter proposals">
+    <div class="admin-filter-grid">
+      <label>Status
+        <select class="control" name="status" value={props.query.status ?? "pending"} onChange={(event) => props.onChange({ status: event.currentTarget.value as AdminQuery["status"] })}>
+          <option value="pending">Pending</option><option value="accepted">Accepted</option><option value="rejected">Rejected</option><option value="all">All statuses</option>
+        </select>
+      </label>
+      <label>Search title or applicant
+        <input class="control" name="search" type="search" maxlength={500} value={props.query.search ?? ""} onInput={(event) => props.onChange({ search: event.currentTarget.value || undefined })} />
+      </label>
+      <label>Expense coverage
+        <select class="control" name="expenseCoverage" value={props.query.expenseCoverage ?? "all"} onChange={(event) => props.onChange({ expenseCoverage: event.currentTarget.value === "all" ? undefined : event.currentTarget.value as AdminQuery["expenseCoverage"] })}>
+          <option value="all">Any</option><option value="Yes">Yes</option><option value="No">No</option><option value="Other">Other</option>
+        </select>
+      </label>
+      <label>Review state
+        <select class="control" name="reviewState" value={props.query.reviewState ?? "all"} onChange={(event) => props.onChange({ reviewState: event.currentTarget.value as AdminQuery["reviewState"] })}>
+          <option value="all">All</option><option value="unreviewed">Unreviewed</option><option value="current">Current review</option><option value="stale">Stale review</option>
+        </select>
+      </label>
+      <label>Sort by
+        <select class="control" name="sort" value={props.query.sort ?? "score"} onChange={(event) => props.onChange({ sort: event.currentTarget.value as AdminQuery["sort"] })}>
+          <option value="score">Normalized score</option><option value="submitted">Submission time</option><option value="title">Title</option><option value="review-count">Review count</option>
+        </select>
+      </label>
+      <button class="button button-secondary" type="submit">Apply filters</button>
+    </div>
+  </form>;
+}
 
 export default function AdminWorkspacePage() {
   const [query, setQuery] = createSignal<AdminQuery>({ status: "pending", sort: "score", page: 1, pageSize: PAGE_SIZE });
@@ -110,36 +178,16 @@ export default function AdminWorkspacePage() {
     </nav>
     <Switch>
       <Match when={loading()}><AdminLoading label="Loading CFP administration…" /></Match>
-      <Match when={request.error()?.code === "unauthenticated"}><AdminError state="unauthenticated" message={request.error()?.message} /></Match>
-      <Match when={request.error()?.code === "forbidden"}><AdminError state="denied" message="Your edition administrator access is not active. Protected CFP data is hidden." /></Match>
-      <Match when={request.error() && request.error()?.code !== "forbidden" && request.error()?.code !== "unauthenticated"}>
-        <AdminError state={request.error()?.code === "last_admin" ? "last-admin" : request.error()?.code === "not_found" ? "not-found" : request.error()?.code === "conflict" ? "stale" : "unavailable"} message={request.error()?.message} onRetry={() => void load()} />
-        <Show when={pendingDecision() && request.error()?.code === "unavailable"}><button class="button" type="button" disabled={busy()} onClick={() => void submitDecision(pendingDecision()!)}>Retry the exact decision request</button></Show>
-      </Match>
+      <Match when={request.error()}>{(failure) => <Switch fallback={<>
+        <AdminError state={FAILURE_STATES.get(failure().code) ?? "unavailable"} message={failure().message} onRetry={() => void load()} />
+        <Show when={pendingDecision() && failure().code === "unavailable"}><button class="button" type="button" disabled={busy()} onClick={() => void submitDecision(pendingDecision()!)}>Retry the exact decision request</button></Show>
+      </>}>
+        <Match when={failure().code === "unauthenticated"}><AdminError state="unauthenticated" message={failure().message} /></Match>
+        <Match when={failure().code === "forbidden"}><AdminError state="denied" message="Your edition administrator access is not active. Protected CFP data is hidden." /></Match>
+      </Switch>}</Match>
       <Match when={workspace()}>
         <div class="cfp-stack">
-          <section class="surface cfp-stack" aria-labelledby="edition-state-heading">
-            <div class="surface-title"><div><h2 id="edition-state-heading">{workspace()!.editionId} operating state</h2><p>Application intake and review access are independent edition controls.</p></div></div>
-            <div class="row">
-              <AdminStatus state={workspace()!.cfpGate.open ? "active" : "closed"} label={`CFP ${workspace()!.cfpGate.open ? "open" : "closed"}`} />
-              <AdminStatus state={workspace()!.reviewPolicy.reviewOpen ? "active" : "closed"} label={`Reviews ${workspace()!.reviewPolicy.reviewOpen ? "open" : "closed"}`} />
-              <span>Current weight votes: {workspace()!.weighting.voteCount}</span>
-              <span>Daily report: {workspace()!.reviewPolicy.dailyReport.enabled ? `enabled at ${workspace()!.reviewPolicy.dailyReport.localSendTime} UTC` : "disabled"}</span>
-            </div>
-            <div class="cfp-stack">
-              <h3>Mail queue counts</h3>
-              <dl class="read-only-summary">
-                <div><dt>Mode</dt><dd>{workspace()!.mail.mode}{workspace()!.mail.configured ? " · configured" : " · not configured"}</dd></div>
-                <div><dt>Queued</dt><dd>{workspace()!.mail.queued}</dd></div>
-                <div><dt>Retrying</dt><dd>{workspace()!.mail.retrying}</dd></div>
-                <div><dt>Sent</dt><dd>{workspace()!.mail.sent}</dd></div>
-                <div><dt>Failed</dt><dd>{workspace()!.mail.failed}</dd></div>
-                <div><dt>Suspended</dt><dd>{workspace()!.mail.suspended}</dd></div>
-                <div><dt>Delivery unknown</dt><dd>{workspace()!.mail.deliveryUnknown}</dd></div>
-                <div><dt>Eligible daily recipients</dt><dd>{workspace()!.mail.eligibleDailyRecipientCount}</dd></div>
-              </dl>
-            </div>
-          </section>
+          <EditionState workspace={workspace()!} />
 
           <AdminSection title="Proposal ranking" description="Normalized scores use current-presentation reviews only. Stale and total review counts remain visible.">
             <dl class="read-only-summary">
@@ -148,34 +196,7 @@ export default function AdminWorkspacePage() {
               <div><dt>Rejected</dt><dd>{workspace()!.counts.rejected}</dd></div>
               <For each={CRITERIA}>{(criterion) => <div><dt>{CRITERION_LABELS[criterion]}</dt><dd>{workspace()!.weighting.averages[criterion]}</dd></div>}</For>
             </dl>
-            <form class="cfp-stack admin-filters" onSubmit={submitFilters} aria-label="Filter proposals">
-              <div class="admin-filter-grid">
-                <label>Status
-                  <select class="control" name="status" value={query().status ?? "pending"} onChange={(event) => changeQuery({ status: event.currentTarget.value as AdminQuery["status"] })}>
-                    <option value="pending">Pending</option><option value="accepted">Accepted</option><option value="rejected">Rejected</option><option value="all">All statuses</option>
-                  </select>
-                </label>
-                <label>Search title or applicant
-                  <input class="control" name="search" type="search" maxlength={500} value={query().search ?? ""} onInput={(event) => changeQuery({ search: event.currentTarget.value || undefined })} />
-                </label>
-                <label>Expense coverage
-                  <select class="control" name="expenseCoverage" value={query().expenseCoverage ?? "all"} onChange={(event) => changeQuery({ expenseCoverage: event.currentTarget.value === "all" ? undefined : event.currentTarget.value as AdminQuery["expenseCoverage"] })}>
-                    <option value="all">Any</option><option value="Yes">Yes</option><option value="No">No</option><option value="Other">Other</option>
-                  </select>
-                </label>
-                <label>Review state
-                  <select class="control" name="reviewState" value={query().reviewState ?? "all"} onChange={(event) => changeQuery({ reviewState: event.currentTarget.value as AdminQuery["reviewState"] })}>
-                    <option value="all">All</option><option value="unreviewed">Unreviewed</option><option value="current">Current review</option><option value="stale">Stale review</option>
-                  </select>
-                </label>
-                <label>Sort by
-                  <select class="control" name="sort" value={query().sort ?? "score"} onChange={(event) => changeQuery({ sort: event.currentTarget.value as AdminQuery["sort"] })}>
-                    <option value="score">Normalized score</option><option value="submitted">Submission time</option><option value="title">Title</option><option value="review-count">Review count</option>
-                  </select>
-                </label>
-                <button class="button button-secondary" type="submit">Apply filters</button>
-              </div>
-            </form>
+            <ProposalFilters query={query()} onChange={changeQuery} onSubmit={submitFilters} />
             <Show when={request.savedMessage()}><p class="alert" role="status">{request.savedMessage()}</p></Show>
 
             <Show when={pendingDecision() && !busy()}><p class="alert" role="status">A decision response was uncertain. Retry the same saved request before you start another bulk decision. Request ID: {pendingDecision()?.requestId} <button class="button button-secondary button-small" type="button" disabled={busy()} onClick={() => void submitDecision(pendingDecision()!)}>Retry exact decision</button></p></Show>

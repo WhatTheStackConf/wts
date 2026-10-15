@@ -29,23 +29,31 @@ async function fixture(t: TestContext) {
     socket.on("close", () => sockets.delete(socket)); socket.on("error", () => {});
     socket.write("220 smtp.example.test ESMTP\r\n");
     let buffer = ""; let data = false; let message = "";
+    const finishMessage = () => {
+      data = false;
+      sink.onDelivery?.();
+      if (sink.mode === "transient") socket.write("451 Temporary refusal\r\n");
+      else if (sink.mode === "permanent") socket.write("550 Permanent refusal\r\n");
+      else { messages.push(message); if (sink.mode === "lost-ack") socket.destroy(); else socket.write("250 Accepted\r\n"); }
+      message = "";
+    };
+    const receiveData = (line: string) => {
+      if (line !== ".") { message += `${line.replace(/^\.\./, ".")}\r\n`; return; }
+      finishMessage();
+    };
+    const receiveCommand = (line: string) => {
+      if (/^(EHLO|HELO)/i.test(line)) socket.write("250 smtp.example.test\r\n");
+      else if (/^(MAIL FROM|RCPT TO)/i.test(line)) socket.write("250 OK\r\n");
+      else if (line === "DATA") { data = true; socket.write("354 End with a dot\r\n"); }
+      else if (line === "QUIT") socket.end("221 Goodbye\r\n");
+      else socket.write("250 OK\r\n");
+    };
     socket.on("data", (chunk) => {
       buffer += chunk.toString();
       while (buffer.includes("\r\n")) {
         const index = buffer.indexOf("\r\n"); const line = buffer.slice(0, index); buffer = buffer.slice(index + 2);
-        if (data) {
-          if (line !== ".") { message += `${line.replace(/^\.\./, ".")}\r\n`; continue; }
-          data = false;
-          sink.onDelivery?.();
-          if (sink.mode === "transient") socket.write("451 Temporary refusal\r\n");
-          else if (sink.mode === "permanent") socket.write("550 Permanent refusal\r\n");
-          else { messages.push(message); if (sink.mode === "lost-ack") socket.destroy(); else socket.write("250 Accepted\r\n"); }
-          message = "";
-        } else if (/^(EHLO|HELO)/i.test(line)) socket.write("250 smtp.example.test\r\n");
-        else if (/^(MAIL FROM|RCPT TO)/i.test(line)) socket.write("250 OK\r\n");
-        else if (line === "DATA") { data = true; socket.write("354 End with a dot\r\n"); }
-        else if (line === "QUIT") socket.end("221 Goodbye\r\n");
-        else socket.write("250 OK\r\n");
+        if (data) receiveData(line);
+        else receiveCommand(line);
       }
     });
   });

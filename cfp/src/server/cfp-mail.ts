@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { connect, type Socket } from "node:net";
-import type { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync, SQLOutputValue } from "node:sqlite";
 import nodemailer from "nodemailer";
 import type SMTPTransport from "nodemailer/lib/smtp-transport/index.js";
 import { z } from "zod";
@@ -21,29 +21,41 @@ interface MailConfiguration {
   recipients: Recipient[];
   smtp?: { host: string; port: number; secure: boolean; from: string; user: string; password: string; loopbackTest: boolean };
 }
+const testAddress = /\.(test|invalid|localhost)$/;
+function dailyRecipients(): Recipient[] | null {
+  const recipients = z.array(mailRecipientSchema).max(100).parse(JSON.parse(process.env.CFP_DAILY_REPORT_RECIPIENTS ?? "[]"));
+  const ids = new Set<string>(); const emails = new Set<string>();
+  for (const recipient of recipients) {
+    if (ids.has(recipient.wtsUserId) || emails.has(recipient.email.toLowerCase())) return null;
+    ids.add(recipient.wtsUserId); emails.add(recipient.email.toLowerCase());
+  }
+  return recipients;
+}
+function deliverable(smtp: NonNullable<MailConfiguration["smtp"]>, recipients: Recipient[]): boolean {
+  if (smtp.loopbackTest) return testAddress.test(smtp.from) && recipients.every((recipient) => testAddress.test(recipient.email));
+  return !!smtp.user && !!smtp.password && !/[\x00-\x1f\x7f]/.test(smtp.user);
+}
+function smtpSettings(): NonNullable<MailConfiguration["smtp"]> {
+  const host = z.string().min(1).max(253).regex(/^[a-zA-Z0-9.:-]+$/).parse(process.env.CFP_SMTP_HOST);
+  const portText = z.string().regex(/^\d{1,5}$/).parse(process.env.CFP_SMTP_PORT);
+  const port = z.number().int().min(1).max(65535).parse(Number(portText));
+  const secure = z.enum(["true", "false"]).parse(process.env.CFP_SMTP_SECURE) === "true";
+  const from = mailAddressSchema.parse(process.env.CFP_SMTP_FROM);
+  const user = process.env.CFP_SMTP_USER ?? ""; const password = process.env.CFP_SMTP_PASSWORD ?? "";
+  const loopbackTest = process.env.NODE_ENV === "test" && ["127.0.0.1", "::1", "localhost"].includes(host);
+  return { host, port, secure, from, user, password, loopbackTest };
+}
 function configuration(): MailConfiguration {
   const mode = process.env.CFP_MAIL_MODE === "smtp" ? "smtp" : "disabled";
   const result: MailConfiguration = { mode, configured: false, recipients: [] };
   try {
-    const recipients = z.array(mailRecipientSchema).max(100).parse(JSON.parse(process.env.CFP_DAILY_REPORT_RECIPIENTS ?? "[]"));
-    const ids = new Set<string>(); const emails = new Set<string>();
-    for (const recipient of recipients) {
-      if (ids.has(recipient.wtsUserId) || emails.has(recipient.email.toLowerCase())) return result;
-      ids.add(recipient.wtsUserId); emails.add(recipient.email.toLowerCase());
-    }
+    const recipients = dailyRecipients();
+    if (!recipients) return result;
     result.recipients = recipients;
     if (mode !== "smtp") return result;
-    const host = z.string().min(1).max(253).regex(/^[a-zA-Z0-9.:-]+$/).parse(process.env.CFP_SMTP_HOST);
-    const portText = z.string().regex(/^\d{1,5}$/).parse(process.env.CFP_SMTP_PORT);
-    const port = z.number().int().min(1).max(65535).parse(Number(portText));
-    const secure = z.enum(["true", "false"]).parse(process.env.CFP_SMTP_SECURE) === "true";
-    const from = mailAddressSchema.parse(process.env.CFP_SMTP_FROM);
-    const user = process.env.CFP_SMTP_USER ?? ""; const password = process.env.CFP_SMTP_PASSWORD ?? "";
-    const loopbackTest = process.env.NODE_ENV === "test" && ["127.0.0.1", "::1", "localhost"].includes(host);
-    if (loopbackTest) {
-      if (!/\.(test|invalid|localhost)$/.test(from) || recipients.some((recipient) => !/\.(test|invalid|localhost)$/.test(recipient.email))) return result;
-    } else if (!user || !password || /[\x00-\x1f\x7f]/.test(user)) return result;
-    result.smtp = { host, port, secure, from, user, password, loopbackTest };
+    const smtp = smtpSettings();
+    if (!deliverable(smtp, recipients)) return result;
+    result.smtp = smtp;
     result.configured = true;
   } catch { /* Invalid configuration must not prevent HTTP reads. */ }
   return result;
@@ -88,45 +100,66 @@ export function getMailStatus(db: DatabaseSync, editionId: string): MailStatus {
   status.deliveryUnknown = z.number().int().nonnegative().parse(db.prepare("SELECT count(*) AS count FROM cfp_mail_jobs WHERE edition_id=? AND delivery_unknown=1").get(editionId)?.count);
   return status;
 }
+const submissionCounts = new Map<SQLOutputValue, keyof DailySnapshot["counts"]>([["created", "submissions"], ["updated", "updates"]]);
+const decisionCounts = new Map<SQLOutputValue, keyof DailySnapshot["counts"]>([["accepted", "accepted"], ["rejected", "rejected"], ["pending", "reopened"]]);
+const inventoryStatuses = new Set<SQLOutputValue>(["pending", "accepted", "rejected"]);
+function reportCounts(db: DatabaseSync, editionId: string, periodStart: number, periodEnd: number): DailySnapshot["counts"] {
+  const counts = { submissions: 0, updates: 0, reviews: 0, accepted: 0, rejected: 0, reopened: 0 };
+  for (const row of db.prepare("SELECT json_extract(receipt_json,'$.operation') AS operation,count(*) AS count FROM submission_receipts WHERE edition_id=? AND json_extract(receipt_json,'$.committedAt')>=? AND json_extract(receipt_json,'$.committedAt')<? GROUP BY operation").all(editionId, periodStart, periodEnd)) {
+    const key = submissionCounts.get(row.operation);
+    if (key) counts[key] = Number(row.count);
+  }
+  counts.reviews = Number(db.prepare("SELECT count(*) AS count FROM staff_command_receipts WHERE edition_id=? AND kind='save-review' AND committed_at>=? AND committed_at<?").get(editionId, periodStart, periodEnd)?.count);
+  for (const row of db.prepare("SELECT json_extract(decision_json,'$.status') AS status,count(*) AS count FROM proposal_decisions WHERE edition_id=? AND decided_at>=? AND decided_at<? GROUP BY status").all(editionId, periodStart, periodEnd)) {
+    const key = decisionCounts.get(row.status);
+    if (key) counts[key] = Number(row.count);
+  }
+  return counts;
+}
+function reportInventory(db: DatabaseSync, editionId: string): DailySnapshot["inventory"] {
+  const inventory = { pending: 0, accepted: 0, rejected: 0 };
+  for (const row of db.prepare("SELECT status,count(*) AS count FROM applications WHERE edition_id=? GROUP BY status").all(editionId)) {
+    if (inventoryStatuses.has(row.status)) inventory[row.status as keyof typeof inventory] = Number(row.count);
+  }
+  return inventory;
+}
+function reportText({ editionId, reportDate, periodStart, periodEnd, generatedAt, counts, inventory }: DailySnapshot): string {
+  return `WTS ${editionId} CFP daily report: ${reportDate} UTC\nPeriod: ${new Date(periodStart).toISOString()} to ${new Date(periodEnd).toISOString()} (exclusive)\nSubmissions: ${counts.submissions}\nSubmission updates: ${counts.updates}\nReview saves: ${counts.reviews}\nAccepted decisions: ${counts.accepted}\nRejected decisions: ${counts.rejected}\nReopened decisions: ${counts.reopened}\n\nInventory at ${new Date(generatedAt).toISOString()}:\nPending: ${inventory.pending}\nAccepted: ${inventory.accepted}\nRejected: ${inventory.rejected}\n`;
+}
+function createReport(db: DatabaseSync, editionId: string, periodStart: number, now: number, config: MailConfiguration): void {
+  const reportDate = new Date(periodStart).toISOString().slice(0, 10);
+  const periodEnd = periodStart + DAY;
+  const counts = reportCounts(db, editionId, periodStart, periodEnd);
+  const inventory = reportInventory(db, editionId);
+  const snapshot: DailySnapshot = dailySnapshotSchema.parse({ editionId, reportDate, periodStart, periodEnd, generatedAt: now, counts, inventory });
+  db.prepare("INSERT INTO daily_cfp_reports VALUES (?,?,?,?)").run(editionId, reportDate, now, JSON.stringify(snapshot));
+  const text = reportText(snapshot);
+  for (const recipient of config.recipients) {
+    if (!eligible(db, editionId, recipient.wtsUserId)) continue;
+    insertJob(db, `daily:${editionId}:${reportDate}:${recipient.wtsUserId}`, editionId, recipient.wtsUserId, { kind: "daily", snapshot, to: recipient.email, subject: `WTS ${editionId} CFP daily report ${reportDate} UTC`, text }, now, null, reportDate);
+  }
+}
+function createEditionReports(db: DatabaseSync, policy: Record<string, SQLOutputValue>, now: number, config: MailConfiguration): number {
+  let reportsCreated = 0;
+  const editionId = editionIdSchema.parse(policy.edition_id);
+  const startDate = reportDateSchema.parse(policy.report_start_date);
+  const sendTime = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).parse(policy.report_local_send_time);
+  const last = db.prepare("SELECT max(report_date) AS date FROM daily_cfp_reports WHERE edition_id=?").get(editionId)?.date;
+  let periodStart = last ? Date.parse(`${reportDateSchema.parse(last)}T00:00:00Z`) + DAY : Date.parse(`${startDate}T00:00:00Z`);
+  periodStart = Math.max(periodStart, Date.parse(`${startDate}T00:00:00Z`));
+  const [hour, minute] = sendTime.split(":").map(Number);
+  for (let index = 0; index < REPORTS_PER_EDITION && periodStart + DAY + hour! * 3_600_000 + minute! * 60_000 <= now; index++, periodStart += DAY) {
+    createReport(db, editionId, periodStart, now, config);
+    reportsCreated++;
+  }
+  return reportsCreated;
+}
 function createReports(db: DatabaseSync, now: number, config: MailConfiguration): number {
   let reportsCreated = 0;
   db.exec("BEGIN IMMEDIATE");
   try {
     for (const policy of db.prepare("SELECT edition_id, report_local_send_time, report_start_date FROM edition_review_policy WHERE daily_report_enabled=1").all()) {
-      const editionId = editionIdSchema.parse(policy.edition_id);
-      const startDate = reportDateSchema.parse(policy.report_start_date);
-      const sendTime = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).parse(policy.report_local_send_time);
-      const last = db.prepare("SELECT max(report_date) AS date FROM daily_cfp_reports WHERE edition_id=?").get(editionId)?.date;
-      let periodStart = last ? Date.parse(`${reportDateSchema.parse(last)}T00:00:00Z`) + DAY : Date.parse(`${startDate}T00:00:00Z`);
-      periodStart = Math.max(periodStart, Date.parse(`${startDate}T00:00:00Z`));
-      const [hour, minute] = sendTime.split(":").map(Number);
-      for (let index = 0; index < REPORTS_PER_EDITION && periodStart + DAY + hour! * 3_600_000 + minute! * 60_000 <= now; index++, periodStart += DAY) {
-        const reportDate = new Date(periodStart).toISOString().slice(0, 10);
-        const periodEnd = periodStart + DAY;
-        const counts = { submissions: 0, updates: 0, reviews: 0, accepted: 0, rejected: 0, reopened: 0 };
-        for (const row of db.prepare("SELECT json_extract(receipt_json,'$.operation') AS operation,count(*) AS count FROM submission_receipts WHERE edition_id=? AND json_extract(receipt_json,'$.committedAt')>=? AND json_extract(receipt_json,'$.committedAt')<? GROUP BY operation").all(editionId, periodStart, periodEnd)) {
-          if (row.operation === "created") counts.submissions = Number(row.count);
-          else if (row.operation === "updated") counts.updates = Number(row.count);
-        }
-        counts.reviews = Number(db.prepare("SELECT count(*) AS count FROM staff_command_receipts WHERE edition_id=? AND kind='save-review' AND committed_at>=? AND committed_at<?").get(editionId, periodStart, periodEnd)?.count);
-        for (const row of db.prepare("SELECT json_extract(decision_json,'$.status') AS status,count(*) AS count FROM proposal_decisions WHERE edition_id=? AND decided_at>=? AND decided_at<? GROUP BY status").all(editionId, periodStart, periodEnd)) {
-          if (row.status === "accepted") counts.accepted = Number(row.count);
-          else if (row.status === "rejected") counts.rejected = Number(row.count);
-          else if (row.status === "pending") counts.reopened = Number(row.count);
-        }
-        const inventory = { pending: 0, accepted: 0, rejected: 0 };
-        for (const row of db.prepare("SELECT status,count(*) AS count FROM applications WHERE edition_id=? GROUP BY status").all(editionId)) {
-          if (row.status === "pending" || row.status === "accepted" || row.status === "rejected") inventory[row.status] = Number(row.count);
-        }
-        const snapshot: DailySnapshot = dailySnapshotSchema.parse({ editionId, reportDate, periodStart, periodEnd, generatedAt: now, counts, inventory });
-        db.prepare("INSERT INTO daily_cfp_reports VALUES (?,?,?,?)").run(editionId, reportDate, now, JSON.stringify(snapshot));
-        reportsCreated++;
-        const text = `WTS ${editionId} CFP daily report: ${reportDate} UTC\nPeriod: ${new Date(periodStart).toISOString()} to ${new Date(periodEnd).toISOString()} (exclusive)\nSubmissions: ${counts.submissions}\nSubmission updates: ${counts.updates}\nReview saves: ${counts.reviews}\nAccepted decisions: ${counts.accepted}\nRejected decisions: ${counts.rejected}\nReopened decisions: ${counts.reopened}\n\nInventory at ${new Date(now).toISOString()}:\nPending: ${inventory.pending}\nAccepted: ${inventory.accepted}\nRejected: ${inventory.rejected}\n`;
-        for (const recipient of config.recipients) {
-          if (!eligible(db, editionId, recipient.wtsUserId)) continue;
-          insertJob(db, `daily:${editionId}:${reportDate}:${recipient.wtsUserId}`, editionId, recipient.wtsUserId, { kind: "daily", snapshot, to: recipient.email, subject: `WTS ${editionId} CFP daily report ${reportDate} UTC`, text }, now, null, reportDate);
-        }
-      }
+      reportsCreated += createEditionReports(db, policy, now, config);
     }
     db.exec("COMMIT");
     return reportsCreated;
@@ -147,9 +180,59 @@ function claim(db: DatabaseSync, now: number): ClaimedJob | null {
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
 function canDispatch(db: DatabaseSync, job: ClaimedJob, config: MailConfiguration): boolean {
-  if (config.smtp?.loopbackTest && !/\.(test|invalid|localhost)$/.test(job.payload.to)) return false;
+  if (config.smtp?.loopbackTest && !testAddress.test(job.payload.to)) return false;
   if (job.payload.kind === "submission") return true;
   return config.recipients.some((recipient) => recipient.wtsUserId === job.recipientId && recipient.email === job.payload.to) && eligible(db, job.editionId, job.recipientId);
+}
+type SmtpSettings = NonNullable<MailConfiguration["smtp"]>;
+function smtpTransport(smtp: SmtpSettings) {
+  const connection: { socket?: Socket } = {};
+  const transportOptions: SMTPTransport.Options = {
+    host: smtp.host, port: smtp.port, secure: smtp.secure, requireTLS: !smtp.loopbackTest,
+    auth: smtp.user && smtp.password ? { user: smtp.user, pass: smtp.password } : undefined,
+    connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 30_000,
+    disableFileAccess: true, disableUrlAccess: true,
+    tls: { rejectUnauthorized: true },
+    getSocket(_options, callback) {
+      const socket = connect({ host: smtp.host, port: smtp.port });
+      connection.socket = socket;
+      const failed = (error: Error) => { socket.destroy(); callback(error, false); };
+      socket.once("error", failed);
+      socket.setTimeout(10_000, () => socket.destroy(new Error("The SMTP connection timed out.")));
+      socket.once("connect", () => {
+        socket.removeListener("error", failed);
+        socket.setTimeout(0);
+        callback(null, { connection: socket });
+      });
+    },
+  };
+  return { connection, transport: nodemailer.createTransport(transportOptions) };
+}
+function smtpResponseCode(error: unknown): number {
+  return typeof error === "object" && error !== null && "responseCode" in error ? Number(error.responseCode) : 0;
+}
+function recordDeliveryFailure(db: DatabaseSync, job: ClaimedJob, attemptNow: number, error: unknown): number {
+  const responseCode = smtpResponseCode(error);
+  const permanent = responseCode >= 500 && responseCode < 600;
+  const exhausted = job.attempts >= MAX_ATTEMPTS;
+  const state = permanent || exhausted ? "failed" : "retrying";
+  const reason = permanent ? "smtp_permanent" : exhausted ? "attempts_exhausted" : "smtp_transient";
+  const unknown = !responseCode;
+  const delay = RETRY_DELAYS[Math.min(job.attempts - 1, RETRY_DELAYS.length - 1)]!;
+  return Number(db.prepare("UPDATE cfp_mail_jobs SET state=?,next_attempt_at=?,updated_at=?,lease_token=NULL,lease_until=NULL,last_error=?,delivery_unknown=CASE WHEN ? THEN 1 ELSE delivery_unknown END WHERE job_id=? AND state='leased' AND lease_token=?").run(state, attemptNow + delay, attemptNow, reason, Number(unknown), job.jobId, job.token).changes);
+}
+async function deliver(db: DatabaseSync, job: ClaimedJob, smtp: SmtpSettings, attemptNow: number): Promise<{ sent: number; failed: number }> {
+  const { connection, transport } = smtpTransport(smtp);
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      transport.sendMail({ from: smtp.from, to: job.payload.to, subject: job.payload.subject, text: job.payload.text, messageId: job.messageId, date: new Date(attemptNow), disableFileAccess: true, disableUrlAccess: true }),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => { connection.socket?.destroy(); transport.close(); reject(new Error("The SMTP deadline expired.")); }, 45_000); }),
+    ]);
+    return { sent: Number(db.prepare("UPDATE cfp_mail_jobs SET state='sent', sent_at=?, updated_at=?, lease_token=NULL,lease_until=NULL,last_error=NULL,delivery_unknown=0 WHERE job_id=? AND state='leased' AND lease_token=?").run(attemptNow, attemptNow, job.jobId, job.token).changes), failed: 0 };
+  } catch (error) {
+    return { sent: 0, failed: recordDeliveryFailure(db, job, attemptNow, error) };
+  } finally { clearTimeout(timer); connection.socket?.destroy(); transport.close(); }
 }
 export async function runMailTick(now = Date.now(), dataDir?: string): Promise<MailTickResult> {
   z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).parse(now);
@@ -169,44 +252,9 @@ export async function runMailTick(now = Date.now(), dataDir?: string): Promise<M
         result.suspended += Number(db.prepare("UPDATE cfp_mail_jobs SET state='suspended', lease_token=NULL, lease_until=NULL, last_error='recipient_ineligible',updated_at=? WHERE job_id=? AND state='leased' AND lease_token=?").run(attemptNow, job.jobId, job.token).changes);
         continue;
       }
-      let deliverySocket: Socket | undefined;
-      const transportOptions: SMTPTransport.Options = {
-        host: smtp.host, port: smtp.port, secure: smtp.secure, requireTLS: !smtp.loopbackTest,
-        auth: smtp.user && smtp.password ? { user: smtp.user, pass: smtp.password } : undefined,
-        connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 30_000,
-        disableFileAccess: true, disableUrlAccess: true,
-        tls: { rejectUnauthorized: true },
-        getSocket(_options, callback) {
-          const socket = connect({ host: smtp.host, port: smtp.port });
-          deliverySocket = socket;
-          const failed = (error: Error) => { socket.destroy(); callback(error, false); };
-          socket.once("error", failed);
-          socket.setTimeout(10_000, () => socket.destroy(new Error("The SMTP connection timed out.")));
-          socket.once("connect", () => {
-            socket.removeListener("error", failed);
-            socket.setTimeout(0);
-            callback(null, { connection: socket });
-          });
-        },
-      };
-      const transport = nodemailer.createTransport(transportOptions);
-      let timer: NodeJS.Timeout | undefined;
-      try {
-        await Promise.race([
-          transport.sendMail({ from: smtp.from, to: job.payload.to, subject: job.payload.subject, text: job.payload.text, messageId: job.messageId, date: new Date(attemptNow), disableFileAccess: true, disableUrlAccess: true }),
-          new Promise<never>((_, reject) => { timer = setTimeout(() => { deliverySocket?.destroy(); transport.close(); reject(new Error("The SMTP deadline expired.")); }, 45_000); }),
-        ]);
-        result.sent += Number(db.prepare("UPDATE cfp_mail_jobs SET state='sent', sent_at=?, updated_at=?, lease_token=NULL,lease_until=NULL,last_error=NULL,delivery_unknown=0 WHERE job_id=? AND state='leased' AND lease_token=?").run(attemptNow, attemptNow, job.jobId, job.token).changes);
-      } catch (error) {
-        const responseCode = typeof error === "object" && error !== null && "responseCode" in error ? Number(error.responseCode) : 0;
-        const permanent = responseCode >= 500 && responseCode < 600;
-        const exhausted = job.attempts >= MAX_ATTEMPTS;
-        const state = permanent || exhausted ? "failed" : "retrying";
-        const reason = permanent ? "smtp_permanent" : exhausted ? "attempts_exhausted" : "smtp_transient";
-        const unknown = !responseCode;
-        const delay = RETRY_DELAYS[Math.min(job.attempts - 1, RETRY_DELAYS.length - 1)]!;
-        result.failed += Number(db.prepare("UPDATE cfp_mail_jobs SET state=?,next_attempt_at=?,updated_at=?,lease_token=NULL,lease_until=NULL,last_error=?,delivery_unknown=CASE WHEN ? THEN 1 ELSE delivery_unknown END WHERE job_id=? AND state='leased' AND lease_token=?").run(state, attemptNow + delay, attemptNow, reason, Number(unknown), job.jobId, job.token).changes);
-      } finally { clearTimeout(timer); deliverySocket?.destroy(); transport.close(); }
+      const delivery = await deliver(db, job, smtp, attemptNow);
+      result.sent += delivery.sent;
+      result.failed += delivery.failed;
     }
     return result;
   } finally { db.close(); }

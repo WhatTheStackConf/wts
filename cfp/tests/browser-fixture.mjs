@@ -194,129 +194,128 @@ async function fixture() {
       }
     };
     report({ ready: true, origin, issuer, runId: scope.runId });
+    const setGate = async (input) => {
+      await cfpCli([input.command, '2027']);
+      report({ cfpOpen: input.command === 'open' });
+    };
+    const handlers = new Map([
+      ['restart', async () => {
+        await cfpService.stop();
+        cfpService = await startCfp(origin, cfpPort);
+        report({ restarted: true });
+      }],
+      ['open', setGate],
+      ['close', setGate],
+      ['bootstrap-admin', async (input) => {
+        assert.match(input.wtsUserId, /^syntheticuser0[1-6]$/);
+        const result = await cfpCli(['bootstrap-admin', '2027', input.wtsUserId]);
+        report({ bootstrapped: JSON.parse(result.stdout.toString('utf8')) });
+      }],
+      ['historical-reviewer', async () => {
+        await cfpCli(['init', '2026']);
+        await cfpCli(['bootstrap-admin', '2026', 'syntheticuser04']);
+        const previous = { data: process.env.CFP_DATA_DIR, edition: process.env.CFP_EDITION_ID };
+        try {
+          process.env.CFP_DATA_DIR = dataDir;
+          process.env.CFP_EDITION_ID = '2026';
+          const staff = await import('../src/server/staff.ts');
+          const actor = {
+            wtsUserId: 'syntheticuser04', email: 'legacy@acceptance.localhost', emailVerified: true, accountUrl: `${issuer}/account`,
+            profile: { version: 1, wtsUserId: 'syntheticuser04', name: 'Synthetic syntheticuser04',
+              avatarUrl: null, preferredLanguage: 'en', username: 'syntheticuser04', emailVisibility: false, revision: 1 },
+          };
+          const member = staff.getStaffDirectory(actor).members.find((value) => value.wtsUserId === 'syntheticuser06');
+          assert.ok(member);
+          staff.executeStaffCommand(actor, {
+            kind: 'set-grant', requestId: randomUUID(), wtsUserId: 'syntheticuser06', role: 'reviewer',
+            expectedRevision: member.reviewerGrant?.revision ?? 0, active: true,
+          });
+          report({ historicalReviewer: true });
+        } finally {
+          for (const [key, value] of [['CFP_DATA_DIR', previous.data], ['CFP_EDITION_ID', previous.edition]]) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+          }
+        }
+      }],
+      ['mail-tick', async () => {
+        const result = await cfpCli(['mail-tick']);
+        report({ mailTick: JSON.parse(result.stdout.toString('utf8')), capturedMessages: mail.count() });
+      }],
+      ['staff-inspect', async () => {
+        report(database((db) => ({
+          staff: true,
+          grants: db.prepare('SELECT edition_id, wts_user_id, role, revision, state FROM edition_staff_grants ORDER BY wts_user_id, role').all(),
+          assignments: db.prepare('SELECT edition_id, application_id, reviewer_id, revision, state FROM proposal_assignments ORDER BY application_id, reviewer_id').all(),
+          reviews: db.prepare('SELECT edition_id, application_id, reviewer_id, revision, presentation_revision FROM proposal_reviews ORDER BY application_id, reviewer_id').all(),
+          policy: db.prepare('SELECT * FROM edition_review_policy ORDER BY edition_id').all(),
+          mailJobs: db.prepare('SELECT kind, state, attempts FROM cfp_mail_jobs ORDER BY job_id').all(),
+        })));
+      }],
+      ['seed-bulk', async () => {
+        await withCfpData(async () => {
+          const domain = await import('../src/server/applicants.ts');
+          const account = fixtureAccount('syntheticuser01', importedEmail);
+          const ids = [];
+          for (let index = 1; index <= 51; index++) {
+            const started = domain.startDraft(account, { requestId: randomUUID(), intent: { kind: 'new' } });
+            const saved = domain.saveDraft(account, { draftId: started.draft.id, expectedDraftRevision: started.draft.revision,
+              presentation: { title: `Synthetic pagination proposal ${String(index).padStart(2, '0')}`,
+                abstract: 'Synthetic batch selection abstract.', keyTakeaways: 'Preserve revision-bound targets across pages.' } });
+            ids.push(domain.submitDraft(account, { draftId: saved.draft.id,
+              expected: { draft: saved.draft.revision, speaker: saved.speaker.revision, settings: saved.settings.revision } }).applicationId);
+          }
+          report({ seededBulk: true, ids });
+        });
+      }],
+      ['finalize', async (input) => {
+        assert.match(input.applicationId, /^[0-9a-f-]{36}$/);
+        await withCfpData(async () => {
+          const staff = await import('../src/server/staff.ts');
+          const actor = fixtureAccount('syntheticuser04', 'legacy@acceptance.localhost');
+          const proposal = staff.getAdminProposal(actor, input.applicationId);
+          staff.executeStaffCommand(actor, { kind: 'decide-proposals', requestId: randomUUID(),
+            expectedWeightingRevision: proposal.weighting.revision, status: 'accepted',
+            targets: [{ applicationId: proposal.application.id, expectedApplicationRevision: proposal.application.revision,
+              expectedPresentationRevision: proposal.presentationRevision, expectedAssessmentRevision: proposal.assessmentRevision }] });
+          report({ finalized: input.applicationId });
+        });
+      }],
+      ['inspect', async () => {
+        report(database((db) => ({
+          applications: db.prepare('SELECT application_id, wts_user_id, status, revision, presentation_json FROM applications ORDER BY submitted_at').all(),
+          profiles: db.prepare('SELECT wts_user_id, revision, value_json FROM speaker_profiles').all(),
+          sessions: db.prepare('SELECT COUNT(*) AS count FROM cfp_sessions').get().count,
+        })));
+      }],
+      ['backup', async () => {
+        backupPath = join(scope.privateDir, `backup-${randomUUID()}`);
+        await cfpCli(['backup', backupPath]);
+        report({ backupPath });
+      }],
+      ['restore', async () => {
+        assert.ok(backupPath);
+        await cfpService.stop();
+        const destination = join(scope.privateDir, `restore-${randomUUID()}`);
+        await cfpCli(['restore', backupPath, destination]);
+        dataDir = destination;
+        cfpService = await startCfp(origin, cfpPort);
+        report({ restored: true, cfpOpen: false });
+      }],
+      ['stop-provider', async () => {
+        await central.stop();
+        report({ providerStopped: true });
+      }],
+    ]);
     commands = createInterface({ input: process.stdin, crlfDelay: Infinity });
     for await (const line of commands) {
       if (!line.trim()) continue;
       const input = JSON.parse(line);
       currentAction = input.command;
       if (input.command === 'cleanup') break;
-      switch (input.command) {
-        case 'restart':
-          await cfpService.stop();
-          cfpService = await startCfp(origin, cfpPort);
-          report({ restarted: true });
-          break;
-        case 'open':
-        case 'close':
-          await cfpCli([input.command, '2027']);
-          report({ cfpOpen: input.command === 'open' });
-          break;
-        case 'bootstrap-admin': {
-          assert.match(input.wtsUserId, /^syntheticuser0[1-6]$/);
-          const result = await cfpCli(['bootstrap-admin', '2027', input.wtsUserId]);
-          report({ bootstrapped: JSON.parse(result.stdout.toString('utf8')) });
-          break;
-        }
-        case 'historical-reviewer': {
-          await cfpCli(['init', '2026']);
-          await cfpCli(['bootstrap-admin', '2026', 'syntheticuser04']);
-          const previous = { data: process.env.CFP_DATA_DIR, edition: process.env.CFP_EDITION_ID };
-          try {
-            process.env.CFP_DATA_DIR = dataDir;
-            process.env.CFP_EDITION_ID = '2026';
-            const staff = await import('../src/server/staff.ts');
-            const actor = {
-              wtsUserId: 'syntheticuser04', email: 'legacy@acceptance.localhost', emailVerified: true, accountUrl: `${issuer}/account`,
-              profile: { version: 1, wtsUserId: 'syntheticuser04', name: 'Synthetic syntheticuser04',
-                avatarUrl: null, preferredLanguage: 'en', username: 'syntheticuser04', emailVisibility: false, revision: 1 },
-            };
-            const member = staff.getStaffDirectory(actor).members.find((value) => value.wtsUserId === 'syntheticuser06');
-            assert.ok(member);
-            staff.executeStaffCommand(actor, {
-              kind: 'set-grant', requestId: randomUUID(), wtsUserId: 'syntheticuser06', role: 'reviewer',
-              expectedRevision: member.reviewerGrant?.revision ?? 0, active: true,
-            });
-            report({ historicalReviewer: true });
-          } finally {
-            for (const [key, value] of [['CFP_DATA_DIR', previous.data], ['CFP_EDITION_ID', previous.edition]]) {
-              if (value === undefined) delete process.env[key];
-              else process.env[key] = value;
-            }
-          }
-          break;
-        }
-        case 'mail-tick': {
-          const result = await cfpCli(['mail-tick']);
-          report({ mailTick: JSON.parse(result.stdout.toString('utf8')), capturedMessages: mail.count() });
-          break;
-        }
-        case 'staff-inspect':
-          report(database((db) => ({
-            staff: true,
-            grants: db.prepare('SELECT edition_id, wts_user_id, role, revision, state FROM edition_staff_grants ORDER BY wts_user_id, role').all(),
-            assignments: db.prepare('SELECT edition_id, application_id, reviewer_id, revision, state FROM proposal_assignments ORDER BY application_id, reviewer_id').all(),
-            reviews: db.prepare('SELECT edition_id, application_id, reviewer_id, revision, presentation_revision FROM proposal_reviews ORDER BY application_id, reviewer_id').all(),
-            policy: db.prepare('SELECT * FROM edition_review_policy ORDER BY edition_id').all(),
-            mailJobs: db.prepare('SELECT kind, state, attempts FROM cfp_mail_jobs ORDER BY job_id').all(),
-          })));
-          break;
-        case 'seed-bulk':
-          await withCfpData(async () => {
-            const domain = await import('../src/server/applicants.ts');
-            const account = fixtureAccount('syntheticuser01', importedEmail);
-            const ids = [];
-            for (let index = 1; index <= 51; index++) {
-              const started = domain.startDraft(account, { requestId: randomUUID(), intent: { kind: 'new' } });
-              const saved = domain.saveDraft(account, { draftId: started.draft.id, expectedDraftRevision: started.draft.revision,
-                presentation: { title: `Synthetic pagination proposal ${String(index).padStart(2, '0')}`,
-                  abstract: 'Synthetic batch selection abstract.', keyTakeaways: 'Preserve revision-bound targets across pages.' } });
-              ids.push(domain.submitDraft(account, { draftId: saved.draft.id,
-                expected: { draft: saved.draft.revision, speaker: saved.speaker.revision, settings: saved.settings.revision } }).applicationId);
-            }
-            report({ seededBulk: true, ids });
-          });
-          break;
-        case 'finalize':
-          assert.match(input.applicationId, /^[0-9a-f-]{36}$/);
-          await withCfpData(async () => {
-            const staff = await import('../src/server/staff.ts');
-            const actor = fixtureAccount('syntheticuser04', 'legacy@acceptance.localhost');
-            const proposal = staff.getAdminProposal(actor, input.applicationId);
-            staff.executeStaffCommand(actor, { kind: 'decide-proposals', requestId: randomUUID(),
-              expectedWeightingRevision: proposal.weighting.revision, status: 'accepted',
-              targets: [{ applicationId: proposal.application.id, expectedApplicationRevision: proposal.application.revision,
-                expectedPresentationRevision: proposal.presentationRevision, expectedAssessmentRevision: proposal.assessmentRevision }] });
-            report({ finalized: input.applicationId });
-          });
-          break;
-        case 'inspect':
-          report(database((db) => ({
-            applications: db.prepare('SELECT application_id, wts_user_id, status, revision, presentation_json FROM applications ORDER BY submitted_at').all(),
-            profiles: db.prepare('SELECT wts_user_id, revision, value_json FROM speaker_profiles').all(),
-            sessions: db.prepare('SELECT COUNT(*) AS count FROM cfp_sessions').get().count,
-          })));
-          break;
-        case 'backup':
-          backupPath = join(scope.privateDir, `backup-${randomUUID()}`);
-          await cfpCli(['backup', backupPath]);
-          report({ backupPath });
-          break;
-        case 'restore':
-          assert.ok(backupPath);
-          await cfpService.stop();
-          const destination = join(scope.privateDir, `restore-${randomUUID()}`);
-          await cfpCli(['restore', backupPath, destination]);
-          dataDir = destination;
-          cfpService = await startCfp(origin, cfpPort);
-          report({ restored: true, cfpOpen: false });
-          break;
-        case 'stop-provider':
-          await central.stop();
-          report({ providerStopped: true });
-          break;
-        default:
-          throw new Error('Use a supported browser-fixture command.');
-      }
+      const handler = handlers.get(input.command);
+      if (!handler) throw new Error('Use a supported browser-fixture command.');
+      await handler(input);
     }
   } catch (error) {
     report({ failedAction: currentAction, error: error instanceof Error ? error.message : 'The local browser fixture failed.' });

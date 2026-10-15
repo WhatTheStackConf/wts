@@ -1,4 +1,4 @@
-import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
+import { DatabaseSync, backup as sqliteBackup, type SQLOutputValue } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -34,17 +34,18 @@ function connect(path: string, readOnly = false): DatabaseSync {
 const migrationRowsSchema = z.array(z.strictObject({ version: z.number().int(), name: z.string(), checksum: z.string() }));
 const schemaObjectsSql = "SELECT type, name, tbl_name, sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' AND name<>'schema_migrations' ORDER BY name";
 const supportedSchemas: Record<number, string> = {};
-function verifyMigrations(db: DatabaseSync, allowPending = false, expectedVersion = migrations.length): number {
+function verifyMigrationMetadata(db: DatabaseSync): void {
   const metadataSql = z.string().parse(db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='schema_migrations'").get()?.sql);
   if (metadataSql.replace(/IF\s+NOT\s+EXISTS\s+/i, "").replace(/\s+/g, "").toLowerCase() !== "createtableschema_migrations(versionintegerprimarykey,nametextnotnull,checksumtextnotnull,installed_atintegernotnull)strict") throw new Error("The migration metadata has an unsupported schema.");
-  const rows = migrationRowsSchema.parse(db.prepare("SELECT version, name, checksum FROM schema_migrations ORDER BY version").all());
+}
+function verifyInstalledMigrations(rows: z.infer<typeof migrationRowsSchema>, allowPending: boolean, expectedVersion: number): void {
   if (rows.length > migrations.length || (!allowPending && rows.length !== expectedVersion)) throw new Error("Run the supported CFP migration before startup.");
   for (const [index, row] of rows.entries()) {
     const expected = migrations[index];
     if (!expected || row.version !== expected.version || row.name !== expected.name || row.checksum !== expected.checksum) throw new Error("The installed migration checksum does not match.");
   }
-  const version = rows.at(-1)?.version ?? 0;
-  if (db.prepare("PRAGMA user_version").get()?.user_version !== version) throw new Error("The database schema version does not match its migrations.");
+}
+function supportedSchema(version: number): string {
   if (supportedSchemas[version] === undefined) {
     const reference = new DatabaseSync(":memory:");
     try {
@@ -52,7 +53,16 @@ function verifyMigrations(db: DatabaseSync, allowPending = false, expectedVersio
       supportedSchemas[version] = JSON.stringify(reference.prepare(schemaObjectsSql).all());
     } finally { reference.close(); }
   }
-  if (JSON.stringify(db.prepare(schemaObjectsSql).all()) !== supportedSchemas[version]) throw new Error("The database has an unsupported schema.");
+  return supportedSchemas[version];
+}
+function verifyMigrations(db: DatabaseSync, allowPending = false, expectedVersion = migrations.length): number {
+  verifyMigrationMetadata(db);
+  const rows = migrationRowsSchema.parse(db.prepare("SELECT version, name, checksum FROM schema_migrations ORDER BY version").all());
+  verifyInstalledMigrations(rows, allowPending, expectedVersion);
+  const version = rows.at(-1)?.version ?? 0;
+  if (db.prepare("PRAGMA user_version").get()?.user_version !== version) throw new Error("The database schema version does not match its migrations.");
+  const expectedSchema = supportedSchema(version);
+  if (JSON.stringify(db.prepare(schemaObjectsSql).all()) !== expectedSchema) throw new Error("The database has an unsupported schema.");
   return version;
 }
 export function openCfpDatabase(dataDir?: string): DatabaseSync {
@@ -123,44 +133,56 @@ function parseJson(value: unknown): unknown {
   if (typeof value !== "string") throw new Error("The stored JSON value is invalid.");
   return JSON.parse(value);
 }
-function validateDatabase(db: DatabaseSync, version = migrations.length): void {
-  verifyMigrations(db, false, version);
-  const integrity = db.prepare("PRAGMA integrity_check").all();
-  if (integrity.length !== 1 || integrity[0]?.integrity_check !== "ok") throw new Error("The database integrity check failed.");
-  if (db.prepare("PRAGMA foreign_key_check").all().length) throw new Error("The database foreign key check failed.");
+type Row = Record<string, SQLOutputValue>;
+const integer = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+function receiptMatchesPurpose(receipt: z.infer<typeof submissionReceiptSchema>, purpose: z.infer<typeof draftPurposeSchema>): boolean {
+  if (purpose.kind === "edit") return receipt.operation === "updated" && receipt.applicationId === purpose.targetId && receipt.applicationRevision === purpose.targetRevision + 1;
+  return receipt.operation === "created" && receipt.applicationRevision === 1;
+}
+function validateSubmissionReceipt(row: Row): void {
+  const witness = commitWitnessSchema.parse(parseJson(row.witness_json));
+  const receipt = submissionReceiptSchema.parse(parseJson(row.receipt_json));
+  if (receipt.applicationId !== row.application_id || witness.draft + 1 !== row.draft_revision) throw new Error("The submission receipt does not match its draft.");
+  const purpose = draftPurposeSchema.parse(parseJson(row.purpose_json));
+  if (!receiptMatchesPurpose(receipt, purpose)) throw new Error("The submission receipt does not match its purpose.");
+}
+function validateApplicantRecords(db: DatabaseSync): void {
   for (const row of db.prepare("SELECT value_json FROM speaker_profiles").all()) speakerProfileSchema.parse(parseJson(row.value_json));
   for (const row of db.prepare("SELECT value_json FROM applicant_settings").all()) applicantSettingsSchema.parse(parseJson(row.value_json));
   for (const row of db.prepare("SELECT presentation_json FROM applications").all()) presentationSchema.parse(parseJson(row.presentation_json));
   for (const row of db.prepare("SELECT purpose_json, presentation_json FROM drafts").all()) {
     draftPurposeSchema.parse(parseJson(row.purpose_json)); presentationSchema.parse(parseJson(row.presentation_json));
   }
-  for (const row of db.prepare("SELECT r.*, d.revision AS draft_revision, d.purpose_json FROM submission_receipts r JOIN drafts d ON d.draft_id=r.draft_id").all()) {
-    const witness = commitWitnessSchema.parse(parseJson(row.witness_json));
-    const receipt = submissionReceiptSchema.parse(parseJson(row.receipt_json));
-    if (receipt.applicationId !== row.application_id || witness.draft + 1 !== row.draft_revision) throw new Error("The submission receipt does not match its draft.");
-    const purpose = draftPurposeSchema.parse(parseJson(row.purpose_json));
-    if (purpose.kind === "edit" ? receipt.operation !== "updated" || receipt.applicationId !== purpose.targetId || receipt.applicationRevision !== purpose.targetRevision + 1 : receipt.operation !== "created" || receipt.applicationRevision !== 1) throw new Error("The submission receipt does not match its purpose.");
-  }
+  for (const row of db.prepare("SELECT r.*, d.revision AS draft_revision, d.purpose_json FROM submission_receipts r JOIN drafts d ON d.draft_id=r.draft_id").all()) validateSubmissionReceipt(row);
+}
+function validateDatabase(db: DatabaseSync, version = migrations.length): void {
+  verifyMigrations(db, false, version);
+  const integrity = db.prepare("PRAGMA integrity_check").all();
+  if (integrity.length !== 1 || integrity[0]?.integrity_check !== "ok") throw new Error("The database integrity check failed.");
+  if (db.prepare("PRAGMA foreign_key_check").all().length) throw new Error("The database foreign key check failed.");
+  validateApplicantRecords(db);
   if (db.prepare("SELECT d.draft_id FROM drafts d LEFT JOIN submission_receipts r ON r.draft_id=d.draft_id WHERE (d.state='committed' AND r.draft_id IS NULL) OR (d.state='active' AND r.draft_id IS NOT NULL)").all().length) throw new Error("The draft commit state is invalid.");
   if (version >= 2) validateStaffDatabase(db);
   if (version >= 3) validateMailDatabase(db);
 }
-function validateStaffDatabase(db: DatabaseSync): void {
-  const integer = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+function validateReviewPolicy(row: Row): void {
+  editionIdSchema.parse(row.edition_id);
+  integer.positive().parse(row.revision); integer.positive().parse(row.cfp_gate_revision); integer.parse(row.weighting_revision);
+  dailyReportPolicySchema.parse({ enabled: row.daily_report_enabled === 1, timeZone: row.report_time_zone, localSendTime: row.report_local_send_time });
+  changeActorSchema.parse(parseJson(row.changed_by_json)); integer.parse(row.changed_at);
+  if (row.report_start_date !== null) {
+    const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(row.report_start_date);
+    if (new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date) throw new Error("The report start date is invalid.");
+  }
+  if (row.daily_report_enabled === 1 && row.report_start_date === null) throw new Error("The report start date is missing.");
+}
+function validateEditionPolicies(db: DatabaseSync): void {
   for (const row of db.prepare("SELECT edition_id FROM editions").all()) editionIdSchema.parse(row.edition_id);
   for (const row of db.prepare("SELECT wts_user_id FROM cfp_accounts").all()) wtsUserIdSchema.parse(row.wts_user_id);
   if (db.prepare("SELECT edition_id FROM editions EXCEPT SELECT edition_id FROM edition_review_policy").all().length) throw new Error("An edition has no review policy.");
-  for (const row of db.prepare("SELECT * FROM edition_review_policy").all()) {
-    editionIdSchema.parse(row.edition_id);
-    integer.positive().parse(row.revision); integer.positive().parse(row.cfp_gate_revision); integer.parse(row.weighting_revision);
-    dailyReportPolicySchema.parse({ enabled: row.daily_report_enabled === 1, timeZone: row.report_time_zone, localSendTime: row.report_local_send_time });
-    changeActorSchema.parse(parseJson(row.changed_by_json)); integer.parse(row.changed_at);
-    if (row.report_start_date !== null) {
-      const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(row.report_start_date);
-      if (new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date) throw new Error("The report start date is invalid.");
-    }
-    if (row.daily_report_enabled === 1 && row.report_start_date === null) throw new Error("The report start date is missing.");
-  }
+  for (const row of db.prepare("SELECT * FROM edition_review_policy").all()) validateReviewPolicy(row);
+}
+function validateGrantHistory(db: DatabaseSync): void {
   for (const table of ["edition_staff_grants", "staff_grant_changes"]) {
     for (const row of db.prepare(`SELECT * FROM ${table}`).all()) {
       editionStaffGrantSchema.parse({ editionId: row.edition_id, wtsUserId: row.wts_user_id, role: row.role, revision: row.revision, state: row.state, changedBy: parseJson(row.changed_by_json), changedAt: row.changed_at });
@@ -168,47 +190,67 @@ function validateStaffDatabase(db: DatabaseSync): void {
     }
   }
   if (db.prepare("SELECT g.wts_user_id FROM edition_staff_grants g LEFT JOIN staff_grant_changes c ON c.edition_id=g.edition_id AND c.wts_user_id=g.wts_user_id AND c.role=g.role AND c.revision=g.revision WHERE c.change_id IS NULL OR c.state<>g.state OR c.changed_by_json<>g.changed_by_json OR c.changed_at<>g.changed_at").all().length) throw new Error("The current grant has no matching grant change.");
-  for (const row of db.prepare("SELECT v.*,r.receipt_json,d.presentation_json AS draft_presentation,d.state AS draft_state FROM application_presentation_versions v JOIN submission_receipts r ON r.draft_id=v.source_draft_id JOIN drafts d ON d.draft_id=v.source_draft_id").all()) {
-    editionIdSchema.parse(row.edition_id); idSchema.parse(row.application_id); idSchema.parse(row.source_draft_id);
-    const receipt = submissionReceiptSchema.parse(parseJson(row.receipt_json));
-    const committed = presentationSchema.parse(parseJson(row.presentation_json)); const draft = presentationSchema.parse(parseJson(row.draft_presentation));
-    if (receipt.applicationId !== row.application_id || receipt.applicationRevision !== row.presentation_revision || receipt.committedAt !== row.submitted_at || row.draft_state !== "committed" || JSON.stringify(committed) !== JSON.stringify(draft)) throw new Error("The committed presentation does not match its receipt.");
-    if (row.submission_email !== null) z.email().max(320).parse(row.submission_email);
-  }
+}
+function validatePresentationVersion(row: Row): void {
+  editionIdSchema.parse(row.edition_id); idSchema.parse(row.application_id); idSchema.parse(row.source_draft_id);
+  const receipt = submissionReceiptSchema.parse(parseJson(row.receipt_json));
+  const committed = presentationSchema.parse(parseJson(row.presentation_json)); const draft = presentationSchema.parse(parseJson(row.draft_presentation));
+  if (receipt.applicationId !== row.application_id || receipt.applicationRevision !== row.presentation_revision || receipt.committedAt !== row.submitted_at || row.draft_state !== "committed" || JSON.stringify(committed) !== JSON.stringify(draft)) throw new Error("The committed presentation does not match its receipt.");
+  if (row.submission_email !== null) z.email().max(320).parse(row.submission_email);
+}
+function validateCurrentPresentation(row: Row): void {
+  idSchema.parse(row.application_id); integer.parse(row.assessment_revision);
+  const revision = integer.positive().parse(row.current_presentation_revision);
+  if (revision !== row.latest_version || revision > integer.positive().parse(row.revision) || JSON.stringify(presentationSchema.parse(parseJson(row.presentation_json))) !== JSON.stringify(presentationSchema.parse(parseJson(row.version_presentation)))) throw new Error("The current presentation pointer is inconsistent.");
+}
+function validatePresentationHistory(db: DatabaseSync): void {
+  for (const row of db.prepare("SELECT v.*,r.receipt_json,d.presentation_json AS draft_presentation,d.state AS draft_state FROM application_presentation_versions v JOIN submission_receipts r ON r.draft_id=v.source_draft_id JOIN drafts d ON d.draft_id=v.source_draft_id").all()) validatePresentationVersion(row);
   if (db.prepare("SELECT r.draft_id FROM submission_receipts r LEFT JOIN application_presentation_versions v ON v.source_draft_id=r.draft_id WHERE v.source_draft_id IS NULL OR v.edition_id<>r.edition_id OR v.application_id<>r.application_id").all().length) throw new Error("A submission has no matching presentation version.");
-  for (const row of db.prepare("SELECT a.*,st.current_presentation_revision,st.assessment_revision,v.presentation_json AS version_presentation,(SELECT max(v2.presentation_revision) FROM application_presentation_versions v2 WHERE v2.edition_id=a.edition_id AND v2.application_id=a.application_id) AS latest_version FROM applications a LEFT JOIN proposal_staff_state st ON st.edition_id=a.edition_id AND st.application_id=a.application_id LEFT JOIN application_presentation_versions v ON v.edition_id=st.edition_id AND v.application_id=st.application_id AND v.presentation_revision=st.current_presentation_revision").all()) {
-    idSchema.parse(row.application_id); integer.parse(row.assessment_revision);
-    const revision = integer.positive().parse(row.current_presentation_revision);
-    if (revision !== row.latest_version || revision > integer.positive().parse(row.revision) || JSON.stringify(presentationSchema.parse(parseJson(row.presentation_json))) !== JSON.stringify(presentationSchema.parse(parseJson(row.version_presentation)))) throw new Error("The current presentation pointer is inconsistent.");
-  }
-  for (const row of db.prepare("SELECT p.*,a.wts_user_id AS applicant_id FROM proposal_assignments p JOIN applications a ON a.edition_id=p.edition_id AND a.application_id=p.application_id").all()) {
-    proposalAssignmentSchema.parse({ editionId: row.edition_id, applicationId: row.application_id, reviewerId: row.reviewer_id, revision: row.revision, state: row.state, changedBy: parseJson(row.changed_by_json), changedAt: row.changed_at });
-    if (row.reviewer_id === row.applicant_id) throw new Error("A reviewer cannot review their own proposal.");
-    if (row.state === "active" && !db.prepare("SELECT 1 AS present FROM edition_staff_grants WHERE edition_id=? AND wts_user_id=? AND role='reviewer' AND state='active'").get(row.edition_id, row.reviewer_id)) throw new Error("An active assignment requires an active reviewer grant.");
-  }
-  for (const row of db.prepare("SELECT * FROM proposal_reviews").all()) {
-    editionIdSchema.parse(row.edition_id); idSchema.parse(row.application_id); wtsUserIdSchema.parse(row.reviewer_id);
-    integer.positive().parse(row.revision); integer.positive().parse(row.presentation_revision); integer.parse(row.created_at); integer.parse(row.updated_at);
-    reviewScoresSchema.parse({ relevance: row.relevance, originality: row.originality, depth: row.depth, clarity: row.clarity, takeaways: row.takeaways, engagement: row.engagement });
-    z.string().max(10000).parse(row.notes);
-    if (z.number().parse(row.updated_at) < z.number().parse(row.created_at)) throw new Error("The review timestamps are inconsistent.");
-  }
+  for (const row of db.prepare("SELECT a.*,st.current_presentation_revision,st.assessment_revision,v.presentation_json AS version_presentation,(SELECT max(v2.presentation_revision) FROM application_presentation_versions v2 WHERE v2.edition_id=a.edition_id AND v2.application_id=a.application_id) AS latest_version FROM applications a LEFT JOIN proposal_staff_state st ON st.edition_id=a.edition_id AND st.application_id=a.application_id LEFT JOIN application_presentation_versions v ON v.edition_id=st.edition_id AND v.application_id=st.application_id AND v.presentation_revision=st.current_presentation_revision").all()) validateCurrentPresentation(row);
+}
+function validateAssignment(db: DatabaseSync, row: Row): void {
+  proposalAssignmentSchema.parse({ editionId: row.edition_id, applicationId: row.application_id, reviewerId: row.reviewer_id, revision: row.revision, state: row.state, changedBy: parseJson(row.changed_by_json), changedAt: row.changed_at });
+  if (row.reviewer_id === row.applicant_id) throw new Error("A reviewer cannot review their own proposal.");
+  if (row.state === "active" && !db.prepare("SELECT 1 AS present FROM edition_staff_grants WHERE edition_id=? AND wts_user_id=? AND role='reviewer' AND state='active'").get(row.edition_id, row.reviewer_id)) throw new Error("An active assignment requires an active reviewer grant.");
+}
+function validateReview(row: Row): void {
+  editionIdSchema.parse(row.edition_id); idSchema.parse(row.application_id); wtsUserIdSchema.parse(row.reviewer_id);
+  integer.positive().parse(row.revision); integer.positive().parse(row.presentation_revision); integer.parse(row.created_at); integer.parse(row.updated_at);
+  reviewScoresSchema.parse({ relevance: row.relevance, originality: row.originality, depth: row.depth, clarity: row.clarity, takeaways: row.takeaways, engagement: row.engagement });
+  z.string().max(10000).parse(row.notes);
+  if (z.number().parse(row.updated_at) < z.number().parse(row.created_at)) throw new Error("The review timestamps are inconsistent.");
+}
+function validateAssessments(db: DatabaseSync): void {
+  for (const row of db.prepare("SELECT p.*,a.wts_user_id AS applicant_id FROM proposal_assignments p JOIN applications a ON a.edition_id=p.edition_id AND a.application_id=p.application_id").all()) validateAssignment(db, row);
+  for (const row of db.prepare("SELECT * FROM proposal_reviews").all()) validateReview(row);
   for (const row of db.prepare("SELECT * FROM criterion_weight_votes").all()) {
     editionIdSchema.parse(row.edition_id); wtsUserIdSchema.parse(row.reviewer_id); integer.positive().parse(row.revision); integer.parse(row.updated_at);
     criterionWeightsSchema.parse({ relevance: row.relevance, originality: row.originality, depth: row.depth, clarity: row.clarity, takeaways: row.takeaways, engagement: row.engagement });
   }
-  for (const row of db.prepare("SELECT * FROM proposal_decisions").all()) {
-    const decision = proposalDecisionSchema.parse(parseJson(row.decision_json));
-    if (decision.decisionId !== row.decision_id || decision.editionId !== row.edition_id || decision.applicationId !== row.application_id || decision.requestId !== row.request_id || decision.presentationRevision !== row.presentation_revision || decision.decidedAt !== row.decided_at || decision.applicationRevisionAfter !== decision.applicationRevisionBefore + 1 || decision.previousStatus === decision.status) throw new Error("The decision snapshot is inconsistent.");
-    if (!db.prepare("SELECT 1 AS present FROM application_presentation_versions WHERE edition_id=? AND application_id=? AND presentation_revision=?").get(decision.editionId, decision.applicationId, decision.presentationRevision)) throw new Error("The decision presentation is missing.");
-    if (!db.prepare("SELECT 1 AS present FROM cfp_accounts WHERE wts_user_id=?").get(decision.decidedBy)) throw new Error("The decision actor is missing.");
-  }
-  for (const row of db.prepare("SELECT * FROM staff_command_receipts").all()) {
-    editionIdSchema.parse(row.edition_id); wtsUserIdSchema.parse(row.actor_user_id); integer.parse(row.committed_at);
-    const command = staffCommandSchema.parse(parseJson(row.intent_json));
-    if (command.requestId !== row.request_id || command.kind !== row.kind || sha256(z.string().parse(row.intent_json)) !== row.fingerprint) throw new Error("The staff command receipt is inconsistent.");
-    staffCommandResultSchemas[command.kind].parse(parseJson(row.result_json));
-  }
+}
+function decisionSnapshot(row: Row): z.infer<typeof proposalDecisionSchema> {
+  const decision = proposalDecisionSchema.parse(parseJson(row.decision_json));
+  if (decision.decisionId !== row.decision_id || decision.editionId !== row.edition_id || decision.applicationId !== row.application_id || decision.requestId !== row.request_id || decision.presentationRevision !== row.presentation_revision || decision.decidedAt !== row.decided_at || decision.applicationRevisionAfter !== decision.applicationRevisionBefore + 1 || decision.previousStatus === decision.status) throw new Error("The decision snapshot is inconsistent.");
+  return decision;
+}
+function validateDecision(db: DatabaseSync, row: Row): void {
+  const decision = decisionSnapshot(row);
+  if (!db.prepare("SELECT 1 AS present FROM application_presentation_versions WHERE edition_id=? AND application_id=? AND presentation_revision=?").get(decision.editionId, decision.applicationId, decision.presentationRevision)) throw new Error("The decision presentation is missing.");
+  if (!db.prepare("SELECT 1 AS present FROM cfp_accounts WHERE wts_user_id=?").get(decision.decidedBy)) throw new Error("The decision actor is missing.");
+}
+function validateCommandReceipt(row: Row): void {
+  editionIdSchema.parse(row.edition_id); wtsUserIdSchema.parse(row.actor_user_id); integer.parse(row.committed_at);
+  const command = staffCommandSchema.parse(parseJson(row.intent_json));
+  if (command.requestId !== row.request_id || command.kind !== row.kind || sha256(z.string().parse(row.intent_json)) !== row.fingerprint) throw new Error("The staff command receipt is inconsistent.");
+  staffCommandResultSchemas[command.kind].parse(parseJson(row.result_json));
+}
+function validateStaffDatabase(db: DatabaseSync): void {
+  validateEditionPolicies(db);
+  validateGrantHistory(db);
+  validatePresentationHistory(db);
+  validateAssessments(db);
+  for (const row of db.prepare("SELECT * FROM proposal_decisions").all()) validateDecision(db, row);
+  for (const row of db.prepare("SELECT * FROM staff_command_receipts").all()) validateCommandReceipt(row);
 }
 function durableWrite(path: string, bytes: Uint8Array): void {
   const fd = openSync(path, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);

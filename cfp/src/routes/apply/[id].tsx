@@ -8,6 +8,29 @@ import { RichEditor } from "~/components/RichEditor";
 
 const steps = ["Intro", "Personal", "Proposal", "Experience", "Expenses", "Confirm"] as const;
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
+type DraftError = { code: string; message: string; issues: { field: string; message: string }[] };
+type ApplicantChanges = { speaker?: { expectedRevision: number; changes: { fullName: string; affiliation: string; bio: string; socialHandles: string[]; previousTalks: string } }; settings?: { expectedRevision: number; changes: { preferredContactMethod: string; companyCoverExpenses?: "Yes" | "No" | "Other" | null } } };
+type DraftChanges = { applicant?: ApplicantChanges; fields?: Partial<Presentation> };
+
+const blocksPage = (error: DraftError | undefined) => error?.code === "unauthenticated" || error?.code === "unavailable";
+const RELOADABLE_ERRORS = new Set(["conflict", "unavailable"]);
+
+function draftSaveInput(current: DraftView, { applicant, fields }: DraftChanges) {
+  return { draftId: current.draft.id, expectedDraftRevision: current.draft.revision, ...(fields ? { presentation: fields } : {}), ...(applicant ? { applicant } : {}) };
+}
+
+interface DraftFormActionsProps {
+  busy: boolean;
+  locked: boolean;
+  next: string;
+  nextWhileSaving?: string;
+  onBack: () => void;
+  onSave: () => void;
+}
+
+function DraftFormActions(props: DraftFormActionsProps) {
+  return <div class="form-actions"><button type="button" class="button button-secondary" onClick={props.onBack}>Back</button><button type="button" class="button button-secondary" disabled={props.locked} onClick={props.onSave}>{props.busy ? "Saving…" : "Save draft"}</button><button type="submit" class="button" disabled={props.locked}>{props.busy ? props.nextWhileSaving ?? props.next : props.next}</button></div>;
+}
 
 export default function Apply() {
   const params = useParams();
@@ -22,7 +45,7 @@ export default function Apply() {
   const [contact, setContact] = createSignal("");
   const [expense, setExpense] = createSignal<"Yes" | "No" | "Other" | "">("");
   const [step, setStep] = createSignal<Step>(1);
-  const [error, setError] = createSignal<{ code: string; message: string; issues: { field: string; message: string }[] }>();
+  const [error, setError] = createSignal<DraftError>();
   const [loading, setLoading] = createSignal(true);
   const [busy, setBusy] = createSignal(false);
   const [dirty, setDirty] = createSignal(false);
@@ -38,6 +61,16 @@ export default function Apply() {
     return purpose?.kind === "edit" ? purpose.targetId : undefined;
   };
 
+  const fillApplicantForm = (next: DraftView) => {
+    setName(next.speaker.value.fullName);
+    setAffiliation(next.speaker.value.affiliation);
+    setBio(next.speaker.value.bio);
+    setSocialHandles(next.speaker.value.socialHandles.join("\n"));
+    setPreviousTalks(next.speaker.value.previousTalks);
+    setContact(next.settings.value.preferredContactMethod);
+    setExpense(next.settings.value.companyCoverExpenses ?? "");
+  };
+
   const load = async () => {
     setLoading(true);
     try {
@@ -50,13 +83,7 @@ export default function Apply() {
       const next = result.value;
       setView(next);
       setError(undefined);
-      setName(next.speaker.value.fullName);
-      setAffiliation(next.speaker.value.affiliation);
-      setBio(next.speaker.value.bio);
-      setSocialHandles(next.speaker.value.socialHandles.join("\n"));
-      setPreviousTalks(next.speaker.value.previousTalks);
-      setContact(next.settings.value.preferredContactMethod);
-      setExpense(next.settings.value.companyCoverExpenses ?? "");
+      fillApplicantForm(next);
       if (next.draft.state.kind === "active") setPresentation(next.draft.state.presentation);
       const profileComplete = Boolean(next.speaker.value.fullName.trim() && next.speaker.value.bio.trim());
       setSkipPersonal(profileComplete);
@@ -72,6 +99,7 @@ export default function Apply() {
 
   onSettled(() => { void load().catch(() => { setError({ code: "unavailable", message: "The saved draft could not load. Try again later.", issues: [] }); setLoading(false); }); });
 
+  const draftLocked = () => busy() || !view()!.cfpOpen;
   const needsProfile = () => !view()?.speaker.value.fullName.trim() || !view()?.speaker.value.bio.trim();
   const markDirty = () => {
     setDirty(true);
@@ -79,6 +107,48 @@ export default function Apply() {
     if (error()?.code === "invalid_fields") setError(undefined);
   };
   const updatePresentation = (key: keyof Presentation, value: string) => { setPresentation({ ...presentation(), [key]: value }); markDirty(); };
+
+  const stepChanges = (current: DraftView): DraftChanges => {
+    switch (step()) {
+      case 2: return { applicant: {
+        speaker: { expectedRevision: current.speaker.revision, changes: { fullName: name().trim(), affiliation: affiliation().trim(), bio: bio().trim(), socialHandles: socialHandles().split("\n").map((value) => value.trim()).filter(Boolean), previousTalks: previousTalks().trim() } },
+        settings: { expectedRevision: current.settings.revision, changes: { preferredContactMethod: contact().trim() } },
+      } };
+      case 3: return { fields: { title: presentation().title, abstract: presentation().abstract, keyTakeaways: presentation().keyTakeaways, technicalRequirements: presentation().technicalRequirements } };
+      case 4: return { fields: { previousPresentation: presentation().previousPresentation } };
+      case 5: return {
+        fields: { organizerNotes: presentation().organizerNotes, additionalInfo: presentation().additionalInfo },
+        applicant: current.settings.value.companyCoverExpenses === null ? { settings: { expectedRevision: current.settings.revision, changes: { preferredContactMethod: contact().trim(), companyCoverExpenses: expense() || null } } } : undefined,
+      };
+      default: return {};
+    }
+  };
+
+  const saveChanges = async (current: DraftView, changes: DraftChanges) => {
+    let result: ActionResult<DraftView>;
+    try {
+      result = await saveDraft(draftSaveInput(current, changes));
+    } catch {
+      setError({ code: "unavailable", message: "The save request failed. Your changes remain on this page. Try again.", issues: [] });
+      setBusy(false);
+      return undefined;
+    }
+    if (!result.ok) {
+      setError({ code: result.error.code, message: result.error.message, issues: result.error.issues });
+      setBusy(false);
+      return undefined;
+    }
+    return result.value;
+  };
+
+  const showSavedDraft = (savedView: DraftView, target?: Step) => {
+    setError(undefined);
+    setView(savedView);
+    if (savedView.draft.state.kind === "active") setPresentation(savedView.draft.state.presentation);
+    fillApplicantForm(savedView);
+    setDirty(false);
+    setSaved(!target);
+  };
 
   const persist = async (target?: Step) => {
     const current = view();
@@ -89,52 +159,12 @@ export default function Apply() {
     }
     setBusy(true);
     setError(undefined);
-    let applicant: { speaker?: { expectedRevision: number; changes: { fullName: string; affiliation: string; bio: string; socialHandles: string[]; previousTalks: string } }; settings?: { expectedRevision: number; changes: { preferredContactMethod: string; companyCoverExpenses?: "Yes" | "No" | "Other" | null } } } | undefined;
-    let fields: Partial<Presentation> | undefined;
-    if (step() === 2) {
-      applicant = {
-        speaker: { expectedRevision: current.speaker.revision, changes: { fullName: name().trim(), affiliation: affiliation().trim(), bio: bio().trim(), socialHandles: socialHandles().split("\n").map((value) => value.trim()).filter(Boolean), previousTalks: previousTalks().trim() } },
-        settings: { expectedRevision: current.settings.revision, changes: { preferredContactMethod: contact().trim() } },
-      };
+    const changes = stepChanges(current);
+    if (changes.applicant || changes.fields) {
+      const savedView = await saveChanges(current, changes);
+      if (!savedView) return false;
+      showSavedDraft(savedView, target);
     }
-    if (step() === 3) fields = { title: presentation().title, abstract: presentation().abstract, keyTakeaways: presentation().keyTakeaways, technicalRequirements: presentation().technicalRequirements };
-    if (step() === 4) fields = { previousPresentation: presentation().previousPresentation };
-    if (step() === 5) {
-      fields = { organizerNotes: presentation().organizerNotes, additionalInfo: presentation().additionalInfo };
-      if (current.settings.value.companyCoverExpenses === null) {
-        applicant = { settings: { expectedRevision: current.settings.revision, changes: { preferredContactMethod: contact().trim(), companyCoverExpenses: expense() || null } } };
-      }
-    }
-    if (!applicant && !fields) {
-      if (target) setStep(target);
-      setBusy(false);
-      return true;
-    }
-    let result: ActionResult<DraftView>;
-    try {
-      result = await saveDraft({ draftId: current.draft.id, expectedDraftRevision: current.draft.revision, ...(fields ? { presentation: fields } : {}), ...(applicant ? { applicant } : {}) });
-    } catch {
-      setError({ code: "unavailable", message: "The save request failed. Your changes remain on this page. Try again.", issues: [] });
-      setBusy(false);
-      return false;
-    }
-    if (!result.ok) {
-      setError({ code: result.error.code, message: result.error.message, issues: result.error.issues });
-      setBusy(false);
-      return false;
-    }
-    setError(undefined);
-    setView(result.value);
-    if (result.value.draft.state.kind === "active") setPresentation(result.value.draft.state.presentation);
-    setExpense(result.value.settings.value.companyCoverExpenses ?? "");
-    setContact(result.value.settings.value.preferredContactMethod);
-    setName(result.value.speaker.value.fullName);
-    setAffiliation(result.value.speaker.value.affiliation);
-    setBio(result.value.speaker.value.bio);
-    setSocialHandles(result.value.speaker.value.socialHandles.join("\n"));
-    setPreviousTalks(result.value.speaker.value.previousTalks);
-    setDirty(false);
-    setSaved(!target);
     if (target) setStep(target);
     setBusy(false);
     return true;
@@ -229,12 +259,12 @@ export default function Apply() {
   return <>
     <a class="inline-link" href="/applications">Back to applications</a>
     <Show when={loading()}><div class="cfp-loading" role="status">Loading saved draft…</div></Show>
-    <Show when={error()}>
-      <ErrorNotice message={error()?.message} issues={error()?.issues} onRetry={error()?.code === "conflict" || error()?.code === "unavailable" ? reload : undefined} retryLabel="Reload saved draft" />
-      <Show when={error()?.code === "unauthenticated"}><a class="inline-link" href={`/auth/login?returnTo=${encodeURIComponent(`/apply/${params.id ?? ""}`)}`} rel="external">Sign in to continue</a></Show>
-      <Show when={error()?.code === "finalized" && editTargetId()}><a class="inline-link" href={`/applications/${editTargetId()}`}>Open the application to create a Reuse draft.</a></Show>
-    </Show>
-    <Show when={view() && error()?.code !== "unauthenticated" && error()?.code !== "unavailable"}>
+    <Show when={error()}>{(current) => <>
+      <ErrorNotice message={current().message} issues={current().issues} onRetry={RELOADABLE_ERRORS.has(current().code) ? reload : undefined} retryLabel="Reload saved draft" />
+      <Show when={current().code === "unauthenticated"}><a class="inline-link" href={`/auth/login?returnTo=${encodeURIComponent(`/apply/${params.id ?? ""}`)}`} rel="external">Sign in to continue</a></Show>
+      <Show when={current().code === "finalized" && editTargetId()}><a class="inline-link" href={`/applications/${editTargetId()}`}>Open the application to create a Reuse draft.</a></Show>
+    </>}</Show>
+    <Show when={view() && !blocksPage(error())}>
       <Show when={receipt()}>
         <header class="page-heading"><h1>Submission received</h1><p>Your submission receipt is saved with this draft.</p></header>
         <section class="surface cfp-stack" aria-labelledby="receipt-title">
@@ -277,7 +307,7 @@ export default function Apply() {
               <div class="field"><label for="app-social">Social links</label><p class="hint" id="app-social-help">Enter one link per line.</p><textarea id="app-social" class="control" name="socialHandles" maxlength="15000" aria-describedby="app-social-help" value={socialHandles()} onInput={(event) => setField(setSocialHandles, event.currentTarget.value)} /></div>
               <div class="field"><label for="app-talks">Previous talks</label><p class="hint" id="app-talks-help">Add links to past talks or speaker profiles. This information is saved to your reusable profile.</p><textarea id="app-talks" class="control" name="previousTalks" maxlength="50000" aria-describedby="app-talks-help" value={previousTalks()} onInput={(event) => setField(setPreviousTalks, event.currentTarget.value)} /></div>
               <div class="field"><label for="app-contact">Preferred contact method</label><input id="app-contact" class="control" name="preferredContactMethod" maxlength="500" value={contact()} onInput={(event) => setField(setContact, event.currentTarget.value)} /><a class="inline-link" href="/settings" onClick={(event) => void saveAndOpen(event, "/settings")}>Edit general settings</a></div>
-              <div class="form-actions"><button type="button" class="button button-secondary" onClick={goBack}>Back</button><button type="button" class="button button-secondary" disabled={busy() || !view()!.cfpOpen} onClick={() => void persist()}>{busy() ? "Saving…" : "Save draft"}</button><button type="submit" class="button" disabled={busy() || !view()!.cfpOpen}>{busy() ? "Saving…" : "Next: Proposal"}</button></div>
+              <DraftFormActions busy={busy()} locked={draftLocked()} next="Next: Proposal" nextWhileSaving="Saving…" onBack={goBack} onSave={() => void persist()} />
             </form>
           </Match>
           <Match when={step() === 3}>
@@ -287,7 +317,7 @@ export default function Apply() {
               <div class="field"><label>Abstract <span class="required">Required</span></label><p class="hint" id="abstract-help">Use the formatting controls to make your abstract easy to scan.</p><RichEditor label="Abstract" name="abstract" value={presentation().abstract} required descriptionId="abstract-help" onInput={(html) => updatePresentation("abstract", html)} /></div>
               <div class="field"><label>Key takeaways <span class="required">Required</span></label><p class="hint" id="takeaways-help">List the main points attendees will learn.</p><RichEditor label="Key takeaways" name="keyTakeaways" value={presentation().keyTakeaways} required descriptionId="takeaways-help" onInput={(html) => updatePresentation("keyTakeaways", html)} /></div>
               <div class="field"><label for="proposal-tech">Technical requirements</label><p class="hint" id="proposal-tech-help">Describe special equipment or setup needs.</p><textarea id="proposal-tech" class="control" name="technicalRequirements" maxlength="50000" aria-describedby="proposal-tech-help" value={presentation().technicalRequirements} onInput={(event) => updatePresentation("technicalRequirements", event.currentTarget.value)} /></div>
-              <div class="form-actions"><button type="button" class="button button-secondary" onClick={goBack}>Back</button><button type="button" class="button button-secondary" disabled={busy() || !view()!.cfpOpen} onClick={() => void persist()}>{busy() ? "Saving…" : "Save draft"}</button><button type="submit" class="button" disabled={busy() || !view()!.cfpOpen}>{busy() ? "Saving…" : "Next: Experience"}</button></div>
+              <DraftFormActions busy={busy()} locked={draftLocked()} next="Next: Experience" nextWhileSaving="Saving…" onBack={goBack} onSave={() => void persist()} />
             </form>
           </Match>
           <Match when={step() === 4}>
@@ -295,7 +325,7 @@ export default function Apply() {
               <div><h2>Experience</h2><p class="muted">First-time speakers are welcome. Previous speaking experience is optional.</p></div>
               <div class="field"><label for="previous-presentation">Have you presented this topic before?</label><textarea id="previous-presentation" class="control" name="previousPresentation" maxlength="50000" value={presentation().previousPresentation} onInput={(event) => updatePresentation("previousPresentation", event.currentTarget.value)} /></div>
               <section class="confirm-section"><h3>Previous talks in your speaker profile</h3><p>{previousTalks().trim() || <span class="muted">Not provided</span>}</p><a class="inline-link" href="/profile" onClick={(event) => void saveAndOpen(event, "/profile")}>Edit speaker profile</a></section>
-              <div class="form-actions"><button type="button" class="button button-secondary" onClick={goBack}>Back</button><button type="button" class="button button-secondary" disabled={busy() || !view()!.cfpOpen} onClick={() => void persist()}>{busy() ? "Saving…" : "Save draft"}</button><button type="submit" class="button" disabled={busy() || !view()!.cfpOpen}>{busy() ? "Saving…" : "Next: Expenses"}</button></div>
+              <DraftFormActions busy={busy()} locked={draftLocked()} next="Next: Expenses" nextWhileSaving="Saving…" onBack={goBack} onSave={() => void persist()} />
             </form>
           </Match>
           <Match when={step() === 5}>
@@ -306,7 +336,7 @@ export default function Apply() {
               </Show>
               <div class="field"><label for="organizer-notes">Notes for organizers</label><p class="hint" id="organizer-notes-help">Private to the organizers. Add a visa invitation request or availability constraints if relevant.</p><textarea id="organizer-notes" class="control" name="organizerNotes" maxlength="50000" aria-describedby="organizer-notes-help" value={presentation().organizerNotes} onInput={(event) => updatePresentation("organizerNotes", event.currentTarget.value)} /></div>
               <div class="field"><label for="additional-info">Additional information</label><textarea id="additional-info" class="control" name="additionalInfo" maxlength="50000" value={presentation().additionalInfo} onInput={(event) => updatePresentation("additionalInfo", event.currentTarget.value)} /></div>
-              <div class="form-actions"><button type="button" class="button button-secondary" onClick={goBack}>Back</button><button type="button" class="button button-secondary" disabled={busy() || !view()!.cfpOpen} onClick={() => void persist()}>{busy() ? "Saving…" : "Save draft"}</button><button type="submit" class="button" disabled={busy() || !view()!.cfpOpen}>Review application</button></div>
+              <DraftFormActions busy={busy()} locked={draftLocked()} next="Review application" onBack={goBack} onSave={() => void persist()} />
             </form>
           </Match>
           <Match when={step() === 6}>
@@ -315,7 +345,7 @@ export default function Apply() {
               <section class="confirm-section"><div class="surface-title"><h3>Speaker profile</h3><a class="inline-link" href="/profile">Edit profile</a></div><SpeakerSummary speaker={view()!.speaker.value} email={view()!.email} /></section>
               <section class="confirm-section"><div class="surface-title"><h3>Applicant settings</h3><a class="inline-link" href="/settings">Edit settings</a></div><SettingsSummary settings={view()!.settings.value} /></section>
               <section class="confirm-section"><div class="surface-title"><h3>Presentation</h3><button class="button button-quiet button-small" type="button" onClick={() => setStep(3)}>Edit presentation</button></div><PresentationSummary presentation={presentation()} /></section>
-              <div class="form-actions"><button type="button" class="button button-secondary" onClick={goBack}>Back</button><button type="button" class="button" disabled={busy() || !view()!.cfpOpen} onClick={() => void submit()}>{busy() ? "Submitting…" : view()!.draft.purpose.kind === "edit" ? "Save changes" : "Submit application"}</button></div>
+              <div class="form-actions"><button type="button" class="button button-secondary" onClick={goBack}>Back</button><button type="button" class="button" disabled={draftLocked()} onClick={() => void submit()}>{busy() ? "Submitting…" : view()!.draft.purpose.kind === "edit" ? "Save changes" : "Submit application"}</button></div>
             </section>
           </Match>
         </Switch>

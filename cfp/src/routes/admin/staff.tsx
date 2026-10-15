@@ -3,6 +3,24 @@ import { executeStaffCommand, getAdminWorkspace, getStaffDirectory } from "~/lib
 import type { AdminWorkspace, DailyReportPolicy, StaffDirectory, StaffDirectoryEntry, StaffRole } from "~/lib/staff-model";
 import { AdminError, AdminLoading, AdminSection, AdminStatus, useAdminRequest } from "~/components/admin/AdminUI";
 
+type StaffGrant = StaffDirectoryEntry["adminGrant"] | StaffDirectoryEntry["reviewerGrant"];
+
+const PROTECTED_FAILURES = ["forbidden", "unauthenticated", "unavailable"];
+const PROTECTED_LOAD_FAILURES = [...PROTECTED_FAILURES, "not_found"];
+const failureState = (code: string) => code === "last_admin" ? "last-admin" : code === "conflict" ? "stale" : "unavailable";
+const active = (grant: StaffGrant) => grant?.state === "active";
+
+interface GrantControlProps {
+  grant: StaffGrant;
+  role: string;
+  disabled: boolean;
+  onToggle: (active: boolean) => void;
+}
+
+function GrantControl(props: GrantControlProps) {
+  return <div class="cfp-stack"><AdminStatus state={props.grant?.state ?? "revoked"} label={props.grant?.state ?? "not granted"} /><button class="button button-secondary button-small" type="button" disabled={props.disabled} onClick={() => props.onToggle(!active(props.grant))}>{active(props.grant) ? `Revoke ${props.role}` : `Grant ${props.role}`}</button></div>;
+}
+
 export default function AdminStaffPage() {
   const [workspace, setWorkspace] = createSignal<AdminWorkspace>();
   const [directory, setDirectory] = createSignal<StaffDirectory>();
@@ -13,7 +31,7 @@ export default function AdminStaffPage() {
   const [dailyReport, setDailyReport] = createSignal<DailyReportPolicy>({ enabled: false, timeZone: "UTC", localSendTime: "08:00" });
   const request = useAdminRequest();
   const hideAfterRequestFailure = (code?: string) => {
-    if (code === undefined || code === "forbidden" || code === "unauthenticated" || code === "unavailable") {
+    if (code === undefined || PROTECTED_FAILURES.includes(code)) {
       setWorkspace(undefined);
       setDirectory(undefined);
     }
@@ -36,7 +54,7 @@ export default function AdminStaffPage() {
         const failure = !workspaceResult.ok ? workspaceResult.error : !directoryResult.ok ? directoryResult.error : undefined;
         if (failure) {
           request.setError({ code: failure.code, message: failure.message });
-          if (failure.code === "forbidden" || failure.code === "unauthenticated" || failure.code === "unavailable" || failure.code === "not_found") {
+          if (PROTECTED_LOAD_FAILURES.includes(failure.code)) {
             setWorkspace(undefined);
             setDirectory(undefined);
           }
@@ -100,7 +118,10 @@ export default function AdminStaffPage() {
     setBusy(false);
   };
 
-  const active = (grant: StaffDirectoryEntry["adminGrant"] | StaffDirectoryEntry["reviewerGrant"]) => grant?.state === "active";
+  const reviewPolicyUnchanged = () => {
+    const saved = workspace()!.reviewPolicy;
+    return reviewOpen() === saved.reviewOpen && dailyReport().enabled === saved.dailyReport.enabled && dailyReport().localSendTime === saved.dailyReport.localSendTime;
+  };
 
   return <>
     <header class="page-heading">
@@ -111,9 +132,10 @@ export default function AdminStaffPage() {
     <nav class="row" aria-label="CFP administration"><a class="button button-secondary button-small" href="/admin">Proposals</a><a class="button button-secondary button-small" href="/admin/staff" aria-current="page">Staff and gates</a></nav>
     <Switch>
       <Match when={loading()}><AdminLoading label="Loading edition staff and controls…" /></Match>
-      <Match when={request.error()?.code === "unauthenticated"}><AdminError state="unauthenticated" message={request.error()?.message} /></Match>
-      <Match when={request.error()?.code === "forbidden"}><AdminError state="denied" message="Your edition administrator access is not active. Protected staff data is hidden." /></Match>
-      <Match when={request.error() && request.error()?.code !== "forbidden" && request.error()?.code !== "unauthenticated"}><AdminError state={request.error()?.code === "last_admin" ? "last-admin" : request.error()?.code === "conflict" ? "stale" : "unavailable"} message={request.error()?.message} onRetry={() => void load()} /></Match>
+      <Match when={request.error()}>{(failure) => <Switch fallback={<AdminError state={failureState(failure().code)} message={failure().message} onRetry={() => void load()} />}>
+        <Match when={failure().code === "unauthenticated"}><AdminError state="unauthenticated" message={failure().message} /></Match>
+        <Match when={failure().code === "forbidden"}><AdminError state="denied" message="Your edition administrator access is not active. Protected staff data is hidden." /></Match>
+      </Switch>}</Match>
       <Match when={workspace() && directory()}>
         <div class="cfp-stack">
           <Show when={request.savedMessage()}><p class="alert" role="status">{request.savedMessage()}</p></Show>
@@ -132,7 +154,7 @@ export default function AdminStaffPage() {
                   <input class="control" type="time" name="localSendTime" required value={dailyReport().localSendTime} onChange={(event) => setDailyReport((value) => ({ ...value, localSendTime: event.currentTarget.value }))} />
                 </label>
                 <p>Daily reports are disabled until an admin explicitly enables them. The report includes CFP activity only.</p>
-                <button class="button" type="submit" disabled={busy() || (reviewOpen() === workspace()!.reviewPolicy.reviewOpen && dailyReport().enabled === workspace()!.reviewPolicy.dailyReport.enabled && dailyReport().localSendTime === workspace()!.reviewPolicy.dailyReport.localSendTime)}>Save review and report policy</button>
+                <button class="button" type="submit" disabled={busy() || reviewPolicyUnchanged()}>Save review and report policy</button>
               </fieldset>
             </form>
             <div><h3>Mail delivery state</h3><p>Mode: {workspace()!.mail.mode} · {workspace()!.mail.configured ? "configured" : "not configured"}</p>
@@ -151,8 +173,8 @@ export default function AdminStaffPage() {
                   <thead><tr><th>WTS identity</th><th>Admin access</th><th>Reviewer access</th><th>Assignments</th><th>Saved reviews</th></tr></thead>
                   <tbody><For each={directory()!.members}>{(member) => <tr>
                     <th>{member.speakerName || "Known WTS account"}<br /><span class="mono">{member.wtsUserId}</span></th>
-                    <td><div class="cfp-stack"><AdminStatus state={member.adminGrant?.state ?? "revoked"} label={member.adminGrant?.state ?? "not granted"} /><button class="button button-secondary button-small" type="button" disabled={busy() || (active(member.adminGrant) && directory()!.activeAdminCount <= 1)} onClick={() => void saveGrant(member, "admin", !active(member.adminGrant))}>{active(member.adminGrant) ? "Revoke admin" : "Grant admin"}</button></div></td>
-                    <td><div class="cfp-stack"><AdminStatus state={member.reviewerGrant?.state ?? "revoked"} label={member.reviewerGrant?.state ?? "not granted"} /><button class="button button-secondary button-small" type="button" disabled={busy()} onClick={() => void saveGrant(member, "reviewer", !active(member.reviewerGrant))}>{active(member.reviewerGrant) ? "Revoke reviewer" : "Grant reviewer"}</button></div></td>
+                    <td><GrantControl grant={member.adminGrant} role="admin" disabled={busy() || (active(member.adminGrant) && directory()!.activeAdminCount <= 1)} onToggle={(next) => void saveGrant(member, "admin", next)} /></td>
+                    <td><GrantControl grant={member.reviewerGrant} role="reviewer" disabled={busy()} onToggle={(next) => void saveGrant(member, "reviewer", next)} /></td>
                     <td>{member.activeAssignmentCount}</td><td>{member.reviewCount}</td>
                   </tr>}</For></tbody>
                 </table>

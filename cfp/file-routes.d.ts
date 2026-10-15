@@ -64,6 +64,24 @@ declare module "virtual:file-routes" {
       $$route?: undefined;
     },
     {
+      path: "/admin/:id";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/admin/[id]")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/admin/";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/admin/index")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/admin/staff";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/admin/staff")>;
+      $$route?: undefined;
+    },
+    {
       path: "/applications/:id";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/applications/[id]")>;
@@ -102,6 +120,18 @@ declare module "virtual:file-routes" {
       $POST: FileRouteLazyRef<typeof import("./src/routes/auth/logout")>;
       $HEAD: FileRouteLazyRef<typeof import("./src/routes/auth/logout")>;
       $$route?: undefined;
+    },
+    {
+      path: "/reviewer/:id";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/reviewer/[id]")>;
+      $$route?: undefined;
+    },
+    {
+      path: "/reviewer/";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/reviewer/index")>;
+      $$route?: undefined;
     }
   ];
   export default routes;
@@ -125,6 +155,14 @@ declare module "virtual:file-routes" {
       children?: undefined;
     },
     {
+      path: "/admin/";
+      id: "/admin/";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/admin/index")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
       path: "/profile";
       id: "/profile";
       page: true;
@@ -141,10 +179,42 @@ declare module "virtual:file-routes" {
       children?: undefined;
     },
     {
+      path: "/admin/:id";
+      id: "/admin/:id";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/admin/[id]")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
       path: "/apply/:id";
       id: "/apply/:id";
       page: true;
       $component: FileRouteLazyRef<typeof import("./src/routes/apply/[id]")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/reviewer/";
+      id: "/reviewer/";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/reviewer/index")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/admin/staff";
+      id: "/admin/staff";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/admin/staff")>;
+      $$route?: undefined;
+      children?: undefined;
+    },
+    {
+      path: "/reviewer/:id";
+      id: "/reviewer/:id";
+      page: true;
+      $component: FileRouteLazyRef<typeof import("./src/routes/reviewer/[id]")>;
       $$route?: undefined;
       children?: undefined;
     },

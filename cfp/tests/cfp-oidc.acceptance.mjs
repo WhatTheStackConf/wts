@@ -47,6 +47,47 @@ function withDatabase(run) {
   try { return run(db); } finally { db.close(); }
 }
 
+function proofRequest(incoming) {
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(incoming.headers)) {
+    if (Array.isArray(value)) for (const item of value) headers.append(key, item);
+    else if (value !== undefined) headers.set(key, value);
+  }
+  return new Request(new URL(incoming.url, origin), { method: incoming.method, headers });
+}
+
+const accountRoute = async (request) => Response.json(await requireAccount(request));
+const proofRoutes = new Map([
+  ['/', () => Response.json({ public: true })],
+  ['/auth/login', (request) => login({ request })],
+  ['/auth/callback', (request) => callback({ request })],
+  ['/auth/logout', (request) => (request.method === 'GET' ? logoutGet : logout)({ request })],
+  ['/applications', accountRoute],
+  ['/profile', accountRoute],
+]);
+
+async function routeProofRequest(request) {
+  const route = proofRoutes.get(new URL(request.url).pathname);
+  return route ? route(request) : new Response('The local proof route does not exist.', { status: 404 });
+}
+
+async function sendProofResponse(outgoing, result) {
+  const cookies = result.headers.getSetCookie();
+  if (cookies.length) outgoing.setHeader('Set-Cookie', cookies);
+  outgoing.writeHead(result.status, Object.fromEntries([...result.headers].filter(([key]) => key !== 'set-cookie')));
+  outgoing.end(Buffer.from(await result.arrayBuffer()));
+}
+
+async function sendProofFailure(outgoing, error) {
+  if (error instanceof Response) {
+    outgoing.writeHead(error.status, Object.fromEntries(error.headers));
+    outgoing.end(await error.text());
+  } else {
+    outgoing.writeHead(500, { 'Content-Type': 'text/plain' });
+    outgoing.end('The local consumer could not complete the request.');
+  }
+}
+
 async function captureAuthorization(context, { modify, entry = '/auth/login?returnTo=/profile' } = {}) {
   const start = await context.request.get(`${origin}${entry}`, { maxRedirects: 0 });
   assert.equal(start.status(), 303);
@@ -174,32 +215,9 @@ try {
   await cfpCli(['init', '2027']);
   const server = createServer(async (incoming, outgoing) => {
     try {
-      const headers = new Headers();
-      for (const [key, value] of Object.entries(incoming.headers)) {
-        if (Array.isArray(value)) for (const item of value) headers.append(key, item);
-        else if (value !== undefined) headers.set(key, value);
-      }
-      const request = new Request(new URL(incoming.url, origin), { method: incoming.method, headers });
-      const pathname = new URL(request.url).pathname;
-      let result;
-      if (pathname === '/') result = Response.json({ public: true });
-      else if (pathname === '/auth/login') result = await login({ request });
-      else if (pathname === '/auth/callback') result = await callback({ request });
-      else if (pathname === '/auth/logout') result = await (request.method === 'GET' ? logoutGet : logout)({ request });
-      else if (pathname === '/applications' || pathname === '/profile') result = Response.json(await requireAccount(request));
-      else result = new Response('The local proof route does not exist.', { status: 404 });
-      const cookies = result.headers.getSetCookie();
-      if (cookies.length) outgoing.setHeader('Set-Cookie', cookies);
-      outgoing.writeHead(result.status, Object.fromEntries([...result.headers].filter(([key]) => key !== 'set-cookie')));
-      outgoing.end(Buffer.from(await result.arrayBuffer()));
+      await sendProofResponse(outgoing, await routeProofRequest(proofRequest(incoming)));
     } catch (error) {
-      if (error instanceof Response) {
-        outgoing.writeHead(error.status, Object.fromEntries(error.headers));
-        outgoing.end(await error.text());
-      } else {
-        outgoing.writeHead(500, { 'Content-Type': 'text/plain' });
-        outgoing.end('The local consumer could not complete the request.');
-      }
+      await sendProofFailure(outgoing, error);
     }
   });
   await new Promise((resolve, reject) => {

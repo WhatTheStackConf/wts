@@ -40,17 +40,25 @@ function loopback(host: string): boolean {
   return host === "localhost" || host === "[::1]" || /^127(?:\.(?:\d{1,3})){3}$/.test(host);
 }
 
+function hasExtraParts(url: URL, value: string, originOnly: boolean): boolean {
+  return Boolean(url.username || url.password || url.search || url.hash || (originOnly && value !== url.origin));
+}
+
+function localDevelopmentUrl(url: URL): boolean {
+  return url.protocol === "http:" && ["development", "test"].includes(process.env.NODE_ENV || "") && loopback(url.hostname);
+}
+
 function configuredUrl(name: string, originOnly: boolean): URL {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required.`);
   const url = new URL(value);
-  if (url.username || url.password || url.search || url.hash || (originOnly && value !== url.origin)) {
+  if (hasExtraParts(url, value, originOnly)) {
     throw new Error(`${name} must be an exact URL without credentials, a query, or a fragment.`);
   }
   if (value !== (originOnly ? url.origin : url.href.replace(/\/$/, ""))) {
     throw new Error(`${name} must use its canonical URL without a trailing slash.`);
   }
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && ["development", "test"].includes(process.env.NODE_ENV || "") && loopback(url.hostname))) {
+  if (url.protocol !== "https:" && !localDevelopmentUrl(url)) {
     throw new Error(`${name} requires HTTPS except for local development on loopback.`);
   }
   return url;
@@ -87,6 +95,22 @@ function settings(): Settings {
   };
 }
 
+function unsafeEndpoint(url: URL, issuer: string): boolean {
+  return Boolean(url.username || url.password || url.hash || (url.protocol !== "https:" && !(issuer.startsWith("http:") && url.protocol === "http:" && url.origin === new URL(issuer).origin)));
+}
+
+function verifiedProvider(client: oidc.Configuration, issuer: string): oidc.Configuration {
+  const metadata = client.serverMetadata();
+  if (metadata.issuer !== issuer) throw new Error("The identity service returned a different issuer.");
+  for (const key of ["authorization_endpoint", "token_endpoint", "userinfo_endpoint", "jwks_uri"] as const) {
+    const endpoint = metadata[key];
+    if (!endpoint) throw new Error("The identity service did not supply a required endpoint.");
+    if (unsafeEndpoint(new URL(endpoint), issuer)) throw new Error("The identity service returned an unsafe endpoint.");
+  }
+  if (!metadata.code_challenge_methods_supported?.includes("S256")) throw new Error("The identity service must support S256 PKCE.");
+  return client;
+}
+
 let discovered: { identity: string; promise: Promise<oidc.Configuration> } | undefined;
 function provider(config: Settings): Promise<oidc.Configuration> {
   const identity = JSON.stringify([config.issuer, config.clientId, config.clientSecret]);
@@ -95,20 +119,7 @@ function provider(config: Settings): Promise<oidc.Configuration> {
     { token_endpoint_auth_method: "client_secret_basic", [oidc.clockTolerance]: 0 },
     oidc.ClientSecretBasic(config.clientSecret),
     { timeout: 10, execute: [oidc.enableNonRepudiationChecks, ...(config.issuer.startsWith("http:") ? [oidc.allowInsecureRequests] : [])] },
-  ).then((client) => {
-    const metadata = client.serverMetadata();
-    if (metadata.issuer !== config.issuer) throw new Error("The identity service returned a different issuer.");
-    for (const key of ["authorization_endpoint", "token_endpoint", "userinfo_endpoint", "jwks_uri"] as const) {
-      const endpoint = metadata[key];
-      if (!endpoint) throw new Error("The identity service did not supply a required endpoint.");
-      const url = new URL(endpoint);
-      if (url.username || url.password || url.hash || (url.protocol !== "https:" && !(config.issuer.startsWith("http:") && url.protocol === "http:" && url.origin === new URL(config.issuer).origin))) {
-        throw new Error("The identity service returned an unsafe endpoint.");
-      }
-    }
-    if (!metadata.code_challenge_methods_supported?.includes("S256")) throw new Error("The identity service must support S256 PKCE.");
-    return client;
-  }).catch((error: unknown) => {
+  ).then((client) => verifiedProvider(client, config.issuer)).catch((error: unknown) => {
     if (discovered?.promise === promise) discovered = undefined;
     throw error;
   });
@@ -173,12 +184,17 @@ function assertOrigin(request: Request, config: Pick<Settings, "origin" | "secur
   return url;
 }
 
+const returnPages = ["/", "/applications", "/profile", "/settings", "/reviewer", "/admin", "/admin/staff"];
+const returnRecordPath = /^\/(?:apply|applications|reviewer|admin)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function returnablePath(pathname: string): boolean {
+  return returnPages.includes(pathname) || returnRecordPath.test(pathname);
+}
+
 function returnPath(value: string | null, origin: string): string {
   if (!value || !value.startsWith("/") || value.startsWith("//") || /[\\\x00-\x20\x7f]/.test(value)) return "/applications";
   const url = new URL(value, origin);
-  const idPath = /^\/(?:apply|applications|reviewer|admin)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (url.origin !== origin || url.search || url.hash || url.pathname !== value ||
-      !(["/", "/applications", "/profile", "/settings", "/reviewer", "/admin", "/admin/staff"].includes(url.pathname) || idPath.test(url.pathname))) return "/applications";
+  if (url.origin !== origin || url.search || url.hash || url.pathname !== value || !returnablePath(url.pathname)) return "/applications";
   return url.pathname;
 }
 
@@ -224,6 +240,63 @@ export async function startLogin(request: Request): Promise<Response> {
   return redirect(authorization.href, [cookie(config, config.flowCookie, browserToken, expiresAt)]);
 }
 
+function consumeFlow(stateHash: string, browserHash: string): z.infer<typeof flowRowSchema> | null | undefined {
+  const db = openCfpDatabase();
+  try {
+    return flowRowSchema.nullish().parse(db.prepare("DELETE FROM oidc_flows WHERE state_hash = ? AND browser_binding_hash = ? AND expires_at > ? RETURNING encrypted_flow,return_path,expires_at")
+      .get(stateHash, browserHash, Date.now()));
+  } finally { db.close(); }
+}
+
+function assertUsableProof(claims: oidc.IDToken | undefined, tokens: Pick<oidc.TokenEndpointResponse, "expires_in" | "token_type">, issuer: string): asserts claims is oidc.IDToken {
+  if (!claims || claims.iss !== issuer || !claims.sub || !Number.isSafeInteger(claims.exp) || !Number.isFinite(tokens.expires_in) || !tokens.expires_in || tokens.expires_in <= 0 || tokens.token_type.toLowerCase() !== "bearer") {
+    throw new Error("The identity service returned an unusable proof.");
+  }
+}
+
+interface NewSession { hash: string; subject: string; encryptedToken: string; createdAt: number; expiresAt: number }
+
+function storeSession(request: Request, config: Settings, account: VerifiedCfpAccount, session: NewSession): void {
+  const sessionDb = openCfpDatabase();
+  try {
+    sessionDb.exec("BEGIN IMMEDIATE");
+    const binding = z.object({ wts_user_id: z.string() }).nullish().parse(sessionDb.prepare("SELECT wts_user_id FROM oidc_bindings WHERE issuer = ? AND subject = ?").get(config.issuer, session.subject));
+    if (binding && binding.wts_user_id !== account.wtsUserId) throw new Error("The immutable identity binding changed.");
+    sessionDb.prepare("INSERT INTO cfp_accounts(wts_user_id,created_at) VALUES (?,?) ON CONFLICT(wts_user_id) DO NOTHING").run(account.wtsUserId, session.createdAt);
+    sessionDb.prepare("INSERT INTO oidc_bindings(issuer,subject,wts_user_id,created_at) VALUES (?,?,?,?) ON CONFLICT(issuer,subject) DO NOTHING").run(config.issuer, session.subject, account.wtsUserId, session.createdAt);
+    const previous = cookieToken(request, config.sessionCookie);
+    if (previous) sessionDb.prepare("DELETE FROM cfp_sessions WHERE session_hash = ?").run(hash(previous));
+    sessionDb.prepare("DELETE FROM cfp_sessions WHERE expires_at <= ?").run(session.createdAt);
+    sessionDb.prepare("INSERT INTO cfp_sessions(session_hash,issuer,subject,encrypted_access_token,created_at,expires_at) VALUES (?,?,?,?,?,?)")
+      .run(session.hash, config.issuer, session.subject, session.encryptedToken, session.createdAt, session.expiresAt);
+    sessionDb.exec("COMMIT");
+  } catch (error) {
+    sessionDb.exec("ROLLBACK");
+    throw error;
+  } finally { sessionDb.close(); }
+}
+
+async function completeLogin(request: Request, config: Settings, url: URL, state: string, flow: z.infer<typeof flowRowSchema>, flowContext: string, clearFlow: string): Promise<Response> {
+  const secrets = flowSchema.parse(JSON.parse(decrypt(flow.encrypted_flow, config.key, flowContext)));
+  if (secrets.issuer !== config.issuer || secrets.clientId !== config.clientId || secrets.callback !== config.callback) throw new Error("The authorization configuration changed.");
+  const client = await provider(config);
+  const exchangeStartedAt = Date.now();
+  const tokens = await oidc.authorizationCodeGrant(client, url, {
+    pkceCodeVerifier: secrets.verifier, expectedState: state, expectedNonce: secrets.nonce, idTokenExpected: true,
+  }, { redirect_uri: config.callback });
+  const claims = tokens.claims();
+  assertUsableProof(claims, tokens, config.issuer);
+  const expiresAt = Math.floor(Math.min(claims.exp * 1000, exchangeStartedAt + tokens.expires_in! * 1000, exchangeStartedAt + proofLifetime));
+  const account = centralAccount(await oidc.fetchUserInfo(client, tokens.access_token, claims.sub), claims.sub, config);
+  const now = Date.now();
+  if (expiresAt <= now) throw new Error("The identity proof has expired.");
+  const token = randomBytes(32).toString("base64url");
+  const sessionHash = hash(token);
+  const encryptedToken = encrypt(tokens.access_token, config.key, `session:${sessionHash}:${config.issuer}:${claims.sub}`);
+  storeSession(request, config, account, { hash: sessionHash, subject: claims.sub, encryptedToken, createdAt: now, expiresAt });
+  return redirect(returnPath(flow.return_path, config.origin), [clearFlow, cookie(config, config.sessionCookie, token, expiresAt)]);
+}
+
 export async function finishLogin(request: Request): Promise<Response> {
   const config = settings();
   const url = assertOrigin(request, config);
@@ -233,84 +306,55 @@ export async function finishLogin(request: Request): Promise<Response> {
   if (!state || url.searchParams.getAll("state").length !== 1 || !browserToken) return response(400, "The authorization state is invalid.");
   const stateHash = hash(state);
   const browserHash = hash(browserToken);
-  const db = openCfpDatabase();
-  let flow;
-  try {
-    flow = flowRowSchema.nullish().parse(db.prepare("DELETE FROM oidc_flows WHERE state_hash = ? AND browser_binding_hash = ? AND expires_at > ? RETURNING encrypted_flow,return_path,expires_at")
-      .get(stateHash, browserHash, Date.now()));
-  } finally { db.close(); }
+  const flow = consumeFlow(stateHash, browserHash);
   const clearFlow = cookie(config, config.flowCookie, "", 0);
   if (!flow) return response(400, "The authorization state has expired or was already used.");
   try {
-    const secrets = flowSchema.parse(JSON.parse(decrypt(flow.encrypted_flow, config.key, `flow:${stateHash}:${browserHash}`)));
-    if (secrets.issuer !== config.issuer || secrets.clientId !== config.clientId || secrets.callback !== config.callback) throw new Error("The authorization configuration changed.");
-    const client = await provider(config);
-    const exchangeStartedAt = Date.now();
-    const tokens = await oidc.authorizationCodeGrant(client, url, {
-      pkceCodeVerifier: secrets.verifier, expectedState: state, expectedNonce: secrets.nonce, idTokenExpected: true,
-    }, { redirect_uri: config.callback });
-    const claims = tokens.claims();
-    if (!claims || claims.iss !== config.issuer || !claims.sub || !Number.isSafeInteger(claims.exp) || !Number.isFinite(tokens.expires_in) || !tokens.expires_in || tokens.expires_in <= 0 || tokens.token_type.toLowerCase() !== "bearer") {
-      throw new Error("The identity service returned an unusable proof.");
-    }
-    const expiresAt = Math.floor(Math.min(claims.exp * 1000, exchangeStartedAt + tokens.expires_in * 1000, exchangeStartedAt + proofLifetime));
-    const account = centralAccount(await oidc.fetchUserInfo(client, tokens.access_token, claims.sub), claims.sub, config);
-    const now = Date.now();
-    if (expiresAt <= now) throw new Error("The identity proof has expired.");
-    const token = randomBytes(32).toString("base64url");
-    const sessionHash = hash(token);
-    const encryptedToken = encrypt(tokens.access_token, config.key, `session:${sessionHash}:${config.issuer}:${claims.sub}`);
-    const sessionDb = openCfpDatabase();
-    try {
-      sessionDb.exec("BEGIN IMMEDIATE");
-      const binding = z.object({ wts_user_id: z.string() }).nullish().parse(sessionDb.prepare("SELECT wts_user_id FROM oidc_bindings WHERE issuer = ? AND subject = ?").get(config.issuer, claims.sub));
-      if (binding && binding.wts_user_id !== account.wtsUserId) throw new Error("The immutable identity binding changed.");
-      sessionDb.prepare("INSERT INTO cfp_accounts(wts_user_id,created_at) VALUES (?,?) ON CONFLICT(wts_user_id) DO NOTHING").run(account.wtsUserId, now);
-      sessionDb.prepare("INSERT INTO oidc_bindings(issuer,subject,wts_user_id,created_at) VALUES (?,?,?,?) ON CONFLICT(issuer,subject) DO NOTHING").run(config.issuer, claims.sub, account.wtsUserId, now);
-      const previous = cookieToken(request, config.sessionCookie);
-      if (previous) sessionDb.prepare("DELETE FROM cfp_sessions WHERE session_hash = ?").run(hash(previous));
-      sessionDb.prepare("DELETE FROM cfp_sessions WHERE expires_at <= ?").run(now);
-      sessionDb.prepare("INSERT INTO cfp_sessions(session_hash,issuer,subject,encrypted_access_token,created_at,expires_at) VALUES (?,?,?,?,?,?)")
-        .run(sessionHash, config.issuer, claims.sub, encryptedToken, now, expiresAt);
-      sessionDb.exec("COMMIT");
-    } catch (error) {
-      sessionDb.exec("ROLLBACK");
-      throw error;
-    } finally { sessionDb.close(); }
-    return redirect(returnPath(flow.return_path, config.origin), [clearFlow, cookie(config, config.sessionCookie, token, expiresAt)]);
+    return await completeLogin(request, config, url, state, flow, `flow:${stateHash}:${browserHash}`, clearFlow);
   } catch {
     return response(400, "The application rejected the identity response. Start a new sign-in attempt.", { "Set-Cookie": clearFlow });
   }
 }
 
-export async function readAccount(request: Request): Promise<VerifiedCfpAccount | null> {
+function sessionCookieName(request: Request): string {
   const origin = process.env.CFP_ORIGIN;
   const secure = origin ? origin.startsWith("https://") : new URL(request.url).protocol === "https:";
-  const token = cookieToken(request, secure ? "__Host-wts-cfp-session" : "wts-cfp-session");
-  if (!token) return null;
-  const config = settings();
-  assertOrigin(request, config);
-  const sessionHash = hash(token);
+  return secure ? "__Host-wts-cfp-session" : "wts-cfp-session";
+}
+
+function activeSession(sessionHash: string): z.infer<typeof sessionRowSchema> | null | undefined {
   const db = openCfpDatabase();
-  let session;
   try {
-    session = sessionRowSchema.nullish().parse(db.prepare("SELECT s.issuer,s.subject,s.encrypted_access_token,s.expires_at,b.wts_user_id FROM cfp_sessions s JOIN oidc_bindings b USING(issuer,subject) WHERE s.session_hash = ?")
+    const session = sessionRowSchema.nullish().parse(db.prepare("SELECT s.issuer,s.subject,s.encrypted_access_token,s.expires_at,b.wts_user_id FROM cfp_sessions s JOIN oidc_bindings b USING(issuer,subject) WHERE s.session_hash = ?")
       .get(sessionHash));
     if (session && session.expires_at <= Date.now()) {
       db.prepare("DELETE FROM cfp_sessions WHERE session_hash = ?").run(sessionHash);
       return null;
     }
+    return session;
   } finally { db.close(); }
-  if (!session || session.issuer !== config.issuer) return null;
-  let account: VerifiedCfpAccount;
+}
+
+async function sessionAccount(config: Settings, session: z.infer<typeof sessionRowSchema>, sessionHash: string): Promise<VerifiedCfpAccount> {
   try {
     const accessToken = decrypt(session.encrypted_access_token, config.key, `session:${sessionHash}:${session.issuer}:${session.subject}`);
-    account = centralAccount(await oidc.fetchUserInfo(await provider(config), accessToken, session.subject), session.subject, config);
+    const account = centralAccount(await oidc.fetchUserInfo(await provider(config), accessToken, session.subject), session.subject, config);
     if (account.wtsUserId !== session.wts_user_id || session.expires_at <= Date.now()) throw new Error("The identity proof is no longer valid.");
+    return account;
   } catch {
     throw response(503, "The identity service could not verify this account. Sign in again or try later.");
   }
-  return account;
+}
+
+export async function readAccount(request: Request): Promise<VerifiedCfpAccount | null> {
+  const token = cookieToken(request, sessionCookieName(request));
+  if (!token) return null;
+  const config = settings();
+  assertOrigin(request, config);
+  const sessionHash = hash(token);
+  const session = activeSession(sessionHash);
+  if (!session || session.issuer !== config.issuer) return null;
+  return sessionAccount(config, session, sessionHash);
 }
 
 export async function requireAccount(request: Request): Promise<VerifiedCfpAccount> {

@@ -382,33 +382,66 @@ async function oldBackup(path, snapshot) {
   return hash;
 }
 
+async function removeResource(resource, name, removeArgs, existsArgs) {
+  try {
+    const result = await command(removeArgs, { cleanup: true, allowFailure: true });
+    const exists = await command(existsArgs, { cleanup: true, allowFailure: true });
+    if (result.code !== 0 || exists.code !== 1) return [{ resource, name, removeExit: result.code, existsExit: exists.code }];
+  } catch (error) { return [{ resource, name, error: error.message }]; }
+  return [];
+}
+
+async function removePrivateRoot() {
+  try {
+    await rm(privateRoot, { recursive: true, force: true });
+    if (existsSync(privateRoot)) return [{ resource: 'temporary-directory', error: 'The private proof directory remains.' }];
+  } catch { return [{ resource: 'temporary-directory', error: 'The private proof directory did not close.' }]; }
+  return [];
+}
+
 async function cleanup() {
   const failures = [];
   if (mailScope) failures.push(...await mailScope.cleanup());
   for (const name of containers.toReversed()) {
-    try {
-      const result = await command(['rm', '--force', '--ignore', '--time', '5', name], { cleanup: true, allowFailure: true });
-      const exists = await command(['container', 'exists', name], { cleanup: true, allowFailure: true });
-      if (result.code !== 0 || exists.code !== 1) failures.push({ resource: 'container', name, removeExit: result.code, existsExit: exists.code });
-    } catch (error) { failures.push({ resource: 'container', name, error: error.message }); }
+    failures.push(...await removeResource('container', name, ['rm', '--force', '--ignore', '--time', '5', name], ['container', 'exists', name]));
   }
   for (const name of volumes.toReversed()) {
-    try {
-      const result = await command(['volume', 'rm', '--force', name], { cleanup: true, allowFailure: true });
-      const exists = await command(['volume', 'exists', name], { cleanup: true, allowFailure: true });
-      if (result.code !== 0 || exists.code !== 1) failures.push({ resource: 'volume', name, removeExit: result.code, existsExit: exists.code });
-    } catch (error) { failures.push({ resource: 'volume', name, error: error.message }); }
+    failures.push(...await removeResource('volume', name, ['volume', 'rm', '--force', name], ['volume', 'exists', name]));
   }
-  if (privateRoot) {
-    try {
-      await rm(privateRoot, { recursive: true, force: true });
-      if (existsSync(privateRoot)) failures.push({ resource: 'temporary-directory', error: 'The private proof directory remains.' });
-    } catch { failures.push({ resource: 'temporary-directory', error: 'The private proof directory did not close.' }); }
-  }
+  if (privateRoot) failures.push(...await removePrivateRoot());
   return failures;
 }
 
-try {
+await main();
+
+async function main() {
+  try {
+    await prove();
+  } catch (error) {
+    failure = { assertion: stage, error: failureMessage(error) };
+  } finally {
+    await finish();
+  }
+}
+
+function failureMessage(error) {
+  if (stage === 'Validate the image argument') return 'Use node --experimental-strip-types cfp/tests/container-proof.mjs IMAGE.';
+  return error instanceof assert.AssertionError ? 'The proof assertion failed.' : error.message;
+}
+
+async function finish() {
+  const cleanupFailures = await cleanup();
+  for (const [key, value] of originalEnvironment) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  }
+  process.off('SIGINT', signal);
+  process.off('SIGTERM', signal);
+  console.log(JSON.stringify({ ok: !failure && cleanupFailures.length === 0, runId, image, assertions,
+    ...(failure ? { failure } : {}), cleanup: { containers: containers.length, volumes: volumes.length, temporaryDirectories: privateRoot ? 1 : 0, failures: cleanupFailures } }));
+  if (failure || cleanupFailures.length) process.exitCode = 1;
+}
+
+async function prove() {
   const args = process.argv.slice(2);
   assert.equal(args.length, 1);
   assert.match(args[0], /^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/);
@@ -684,20 +717,6 @@ try {
   const logs = await command(['logs', uninitialized]);
   check('Uninitialized startup fails because the CFP database is absent', () => assert.match(logs.stdout + logs.stderr, /ENOENT[^\n]*cfp\.sqlite|cfp\.sqlite[^\n]*ENOENT/));
   await evaluate(emptyVolume, `check('Failed startup does not initialize a database implicitly', () => assert.equal(existsSync('/app/data/cfp.sqlite'), false));`, { imports: "import { existsSync } from 'node:fs';" });
-} catch (error) {
-  failure = { assertion: stage, error: stage === 'Validate the image argument'
-    ? 'Use node --experimental-strip-types cfp/tests/container-proof.mjs IMAGE.'
-    : error instanceof assert.AssertionError ? 'The proof assertion failed.' : error.message };
-} finally {
-  const cleanupFailures = await cleanup();
-  for (const [key, value] of originalEnvironment) {
-    if (value === undefined) delete process.env[key]; else process.env[key] = value;
-  }
-  process.off('SIGINT', signal);
-  process.off('SIGTERM', signal);
-  console.log(JSON.stringify({ ok: !failure && cleanupFailures.length === 0, runId, image, assertions,
-    ...(failure ? { failure } : {}), cleanup: { containers: containers.length, volumes: volumes.length, temporaryDirectories: privateRoot ? 1 : 0, failures: cleanupFailures } }));
-  if (failure || cleanupFailures.length) process.exitCode = 1;
 }
 
 async function startUninitialized(volume) {

@@ -4,11 +4,14 @@ import { getApplication, startDraft } from "~/lib/cfp-actions";
 import type { FieldIssue, ApplicationView } from "~/lib/cfp-model";
 import { ErrorNotice, PresentationSummary, Section, SettingsSummary, SpeakerSummary } from "~/components/ApplicantUI";
 
+type PageError = { code: string; message: string; issues: FieldIssue[] };
+const blocksPage = (error: PageError | undefined) => error?.code === "unauthenticated" || error?.code === "unavailable";
+
 export default function ApplicationDetails() {
   const params = useParams();
   const navigate = useNavigate();
   const [view, setView] = createSignal<ApplicationView>();
-  const [error, setError] = createSignal<{ code: string; message: string; issues: FieldIssue[] }>();
+  const [error, setError] = createSignal<PageError>();
   const [loading, setLoading] = createSignal(true);
   const [busy, setBusy] = createSignal(false);
   let previousIntent = "";
@@ -47,10 +50,10 @@ export default function ApplicationDetails() {
   };
 
   return <>
-    <div class="row row-between"><a class="inline-link" href="/applications">Back to applications</a><Show when={view()}><span class="cfp-status" data-state={view()?.application.status}>{view()?.application.status}</span></Show></div>
+    <div class="row row-between"><a class="inline-link" href="/applications">Back to applications</a><Show when={view()}>{(current) => <span class="cfp-status" data-state={current().application.status}>{current().application.status}</span>}</Show></div>
     <Show when={loading()}><div class="cfp-loading" role="status">Loading application…</div></Show>
-    <Show when={error()}><ErrorNotice message={error()?.message} issues={error()?.issues} onRetry={() => void load()} /><Show when={error()?.code === "unauthenticated"}><a class="button" href={`/auth/login?returnTo=${encodeURIComponent(`/applications/${params.id ?? ""}`)}`} rel="external">Sign in to continue</a></Show><Show when={error()?.code === "finalized"}><a class="inline-link" href={`/applications/${params.id ?? ""}`}>Open this application to create a Reuse draft.</a></Show></Show>
-    <Show when={view() && error()?.code !== "unauthenticated" && error()?.code !== "unavailable"}>
+    <Show when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={() => void load()} /><Show when={current().code === "unauthenticated"}><a class="button" href={`/auth/login?returnTo=${encodeURIComponent(`/applications/${params.id ?? ""}`)}`} rel="external">Sign in to continue</a></Show><Show when={current().code === "finalized"}><a class="inline-link" href={`/applications/${params.id ?? ""}`}>Open this application to create a Reuse draft.</a></Show></>}</Show>
+    <Show when={view() && !blocksPage(error())}>
       <header class="page-heading"><h1>{view()!.application.presentation.title || "Untitled talk"}</h1><p>Submitted {new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(view()!.application.submittedAt)} · application revision {view()!.application.revision}</p></header>
       <section class="surface cfp-stack">
         <div class="surface-title"><div><h2>Application actions</h2><p>{view()!.application.status === "pending" ? "Edit creates a private draft. Your submitted application stays unchanged until confirmation." : "This application is finalized. Reuse copies its presentation into a new independent draft."}</p></div></div>

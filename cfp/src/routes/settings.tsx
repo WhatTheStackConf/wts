@@ -5,11 +5,14 @@ import { ErrorNotice } from "~/components/ApplicantUI";
 
 const expenseOptions = ["Yes", "No", "Other"] as const;
 
+type PageError = { code: string; message: string; issues: FieldIssue[] };
+const blocksPage = (error: PageError | undefined) => error?.code === "unauthenticated" || error?.code === "unavailable";
+
 export default function Settings() {
   const [workspace, setWorkspace] = createSignal<Workspace>();
   const [contact, setContact] = createSignal("");
   const [expenses, setExpenses] = createSignal<"Yes" | "No" | "Other" | "">("");
-  const [error, setError] = createSignal<{ code: string; message: string; issues: FieldIssue[] }>();
+  const [error, setError] = createSignal<PageError>();
   const [saved, setSaved] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   const [loading, setLoading] = createSignal(true);
@@ -56,8 +59,8 @@ export default function Settings() {
   return <>
     <header class="page-heading"><h1>Applicant settings</h1><p>These preferences apply to all your applications. You can maintain them when the CFP is closed.</p></header>
     <Show when={loading()}><div class="cfp-loading" role="status">Loading your settings…</div></Show>
-    <Show when={error()}><ErrorNotice message={error()?.message} issues={error()?.issues} onRetry={error()?.code !== "unauthenticated" ? reload : undefined} retryLabel="Reload saved settings" /><Show when={error()?.code === "unauthenticated"}><a href={`/auth/login?returnTo=${encodeURIComponent("/settings")}`} rel="external">Sign in to edit settings</a></Show></Show>
-    <Show when={workspace() && error()?.code !== "unauthenticated" && error()?.code !== "unavailable"}>
+    <Show when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={current().code !== "unauthenticated" ? reload : undefined} retryLabel="Reload saved settings" /><Show when={current().code === "unauthenticated"}><a href={`/auth/login?returnTo=${encodeURIComponent("/settings")}`} rel="external">Sign in to edit settings</a></Show></>}</Show>
+    <Show when={workspace() && !blocksPage(error())}>
       <form class="surface form" onSubmit={save}>
         <div class="field"><label for="contact-method">Preferred contact method</label><p class="hint" id="contact-method-help">Add the contact channel you prefer the organizers to use.</p><input id="contact-method" class="control" name="preferredContactMethod" maxlength="500" aria-describedby="contact-method-help" autocomplete="off" value={contact()} onInput={(event) => setContact(event.currentTarget.value)} /></div>
         <fieldset class="field" style={{ border: "none", padding: 0, margin: 0 }}>

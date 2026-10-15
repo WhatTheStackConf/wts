@@ -179,71 +179,86 @@ function authorizeCommand(db: DatabaseSync, edition: string, user: string, comma
     if (command.kind === "set-assignments") for (const target of command.changes) applicationRow(db, edition, target.applicationId);
   }
 }
+interface MutationContext { db: DatabaseSync; edition: string; user: string; now: number; actor: ChangeActor; actorJson: string }
+type CommandOf<K extends StaffCommand["kind"]> = Extract<StaffCommand, { kind: K }>;
+function saveReview({ db, edition, user, now }: MutationContext, command: CommandOf<"save-review">): StaffCommandResults["save-review"] {
+  const { row, assigned } = reviewerResource(db, edition, user, command.applicationId); const existing = db.prepare("SELECT * FROM proposal_reviews WHERE edition_id=? AND application_id=? AND reviewer_id=?").get(edition, command.applicationId, user);
+  conflict(assigned.revision, command.expectedAssignmentRevision); conflict(n(row.current_presentation_revision), command.expectedPresentationRevision); conflict(existing ? n(existing.revision) : 0, command.expectedReviewRevision);
+  const values = CRITERIA.map((criterion) => command.scores[criterion]);
+  db.prepare("INSERT INTO proposal_reviews VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(edition_id,application_id,reviewer_id) DO UPDATE SET revision=excluded.revision,presentation_revision=excluded.presentation_revision,relevance=excluded.relevance,originality=excluded.originality,depth=excluded.depth,clarity=excluded.clarity,takeaways=excluded.takeaways,engagement=excluded.engagement,notes=excluded.notes,suspected_ai=excluded.suspected_ai,updated_at=excluded.updated_at").run(edition, command.applicationId, user, command.expectedReviewRevision + 1, command.expectedPresentationRevision, ...values, command.notes, Number(command.suspectedAi), existing ? n(existing.created_at) : now, now);
+  db.prepare("UPDATE proposal_staff_state SET assessment_revision=assessment_revision+1 WHERE edition_id=? AND application_id=?").run(edition, command.applicationId);
+  const saved = reviewerProposal(db, edition, user, command.applicationId).review; if (saved.kind === "unreviewed") throw new Error("The saved review is missing."); return saved.value;
+}
+function saveWeightVote({ db, edition, user, now }: MutationContext, command: CommandOf<"save-weight-vote">): StaffCommandResults["save-weight-vote"] {
+  const existing = db.prepare("SELECT revision FROM criterion_weight_votes WHERE edition_id=? AND reviewer_id=?").get(edition, user); conflict(existing ? n(existing.revision) : 0, command.expectedRevision);
+  db.prepare("INSERT INTO criterion_weight_votes VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(edition_id,reviewer_id) DO UPDATE SET revision=excluded.revision,relevance=excluded.relevance,originality=excluded.originality,depth=excluded.depth,clarity=excluded.clarity,takeaways=excluded.takeaways,engagement=excluded.engagement,updated_at=excluded.updated_at").run(edition, user, command.expectedRevision + 1, ...CRITERIA.map((criterion) => command.weights[criterion]), now);
+  db.prepare("UPDATE edition_review_policy SET weighting_revision=weighting_revision+1 WHERE edition_id=?").run(edition);
+  return vote(db.prepare("SELECT * FROM criterion_weight_votes WHERE edition_id=? AND reviewer_id=?").get(edition, user)!);
+}
+function assertRetainsAdmin(db: DatabaseSync, edition: string, command: CommandOf<"set-grant">, existing: Row | undefined): void {
+  if (!command.active && command.role === "admin" && existing?.state === "active" && n(db.prepare("SELECT count(*) AS count FROM edition_staff_grants WHERE edition_id=? AND role='admin' AND state='active'").get(edition)?.count) <= 1) throw new StaffError("last_admin", "The edition must retain one active admin.");
+}
+function setGrant({ db, edition, now, actor, actorJson }: MutationContext, command: CommandOf<"set-grant">): StaffCommandResults["set-grant"] {
+  if (!db.prepare("SELECT wts_user_id FROM cfp_accounts WHERE wts_user_id=?").get(command.wtsUserId)) throw new StaffError("not_found", "The local account was not found.");
+  const existing = db.prepare("SELECT * FROM edition_staff_grants WHERE edition_id=? AND wts_user_id=? AND role=?").get(edition, command.wtsUserId, command.role); conflict(existing ? n(existing.revision) : 0, command.expectedRevision);
+  assertRetainsAdmin(db, edition, command, existing);
+  const value: EditionStaffGrant = { editionId: edition, wtsUserId: command.wtsUserId, role: command.role, revision: command.expectedRevision + 1, state: command.active ? "active" : "revoked", changedBy: actor, changedAt: now }; storeGrant(db, value);
+  const revokedAssignmentCount = !command.active && command.role === "reviewer" ? Number(db.prepare("UPDATE proposal_assignments SET state='revoked',revision=revision+1,changed_by_json=?,changed_at=? WHERE edition_id=? AND reviewer_id=? AND state='active'").run(actorJson, now, edition, command.wtsUserId).changes) : 0;
+  return { grant: value, revokedAssignmentCount };
+}
+function assertAssignable(db: DatabaseSync, edition: string, row: Row, reviewerId: string): void {
+  if (row.status !== "pending") throw new StaffError("finalized", "The proposal is finalized.");
+  if (row.wts_user_id === reviewerId) throw new StaffError("forbidden", "A reviewer cannot review their own proposal.");
+  if (!access(db, edition, reviewerId).roles.includes("reviewer")) throw new StaffError("forbidden", "The account needs an active reviewer grant.");
+}
+function setAssignments({ db, edition, now, actor, actorJson }: MutationContext, command: CommandOf<"set-assignments">): StaffCommandResults["set-assignments"] {
+  const result: ProposalAssignment[] = [];
+  for (const target of command.changes) {
+    const row = applicationRow(db, edition, target.applicationId); const existing = db.prepare("SELECT * FROM proposal_assignments WHERE edition_id=? AND application_id=? AND reviewer_id=?").get(edition, target.applicationId, target.reviewerId); conflict(existing ? n(existing.revision) : 0, target.expectedRevision);
+    if (target.active) assertAssignable(db, edition, row, target.reviewerId);
+    if (!db.prepare("SELECT wts_user_id FROM cfp_accounts WHERE wts_user_id=?").get(target.reviewerId)) throw new StaffError("not_found", "The local account was not found.");
+    const value: ProposalAssignment = { editionId: edition, applicationId: target.applicationId, reviewerId: target.reviewerId, revision: target.expectedRevision + 1, state: target.active ? "active" : "revoked", changedBy: actor, changedAt: now };
+    db.prepare("INSERT INTO proposal_assignments VALUES (?,?,?,?,?,?,?) ON CONFLICT(edition_id,application_id,reviewer_id) DO UPDATE SET revision=excluded.revision,state=excluded.state,changed_by_json=excluded.changed_by_json,changed_at=excluded.changed_at").run(edition, target.applicationId, target.reviewerId, value.revision, value.state, actorJson, now); result.push(value);
+  }
+  return result;
+}
+function setReviewPolicy({ db, edition, now, actorJson }: MutationContext, command: CommandOf<"set-review-policy">): StaffCommandResults["set-review-policy"] {
+  const row = policyRow(db, edition); conflict(n(row.revision), command.expectedRevision);
+  const reportStartDate = command.dailyReport.enabled && row.daily_report_enabled !== 1 ? new Date(now).toISOString().slice(0, 10) : row.report_start_date;
+  db.prepare("UPDATE edition_review_policy SET revision=revision+1,review_open=?,daily_report_enabled=?,report_time_zone=?,report_local_send_time=?,report_start_date=?,changed_by_json=?,changed_at=? WHERE edition_id=?").run(Number(command.reviewOpen), Number(command.dailyReport.enabled), command.dailyReport.timeZone, command.dailyReport.localSendTime, reportStartDate, actorJson, now, edition);
+  return policy(policyRow(db, edition));
+}
+function setCfpGate({ db, edition }: MutationContext, command: CommandOf<"set-cfp-gate">): StaffCommandResults["set-cfp-gate"] {
+  const row = policyRow(db, edition); conflict(n(row.cfp_gate_revision), command.expectedRevision);
+  const existing = db.prepare("SELECT cfp_open FROM editions WHERE edition_id=?").get(edition);
+  if ((existing?.cfp_open === 1) !== command.open) { db.prepare("UPDATE editions SET cfp_open=? WHERE edition_id=?").run(Number(command.open), edition); db.prepare("UPDATE edition_review_policy SET cfp_gate_revision=cfp_gate_revision+1 WHERE edition_id=?").run(edition); }
+  return { editionId: edition, open: command.open, revision: n(policyRow(db, edition).cfp_gate_revision) };
+}
+function decideProposals({ db, edition, user, now }: MutationContext, command: CommandOf<"decide-proposals">): StaffCommandResults["decide-proposals"] {
+  const weights = weighting(db, edition); conflict(weights.revision, command.expectedWeightingRevision);
+  const targets = command.targets.map((target) => { const row = applicationRow(db, edition, target.applicationId); conflict(n(row.revision), target.expectedApplicationRevision); conflict(n(row.current_presentation_revision), target.expectedPresentationRevision); conflict(n(row.assessment_revision), target.expectedAssessmentRevision); return row; });
+  const decisions: ProposalDecision[] = [];
+  for (const row of targets) {
+    if (row.status === command.status) continue;
+    const id = s(row.application_id); const decision = proposalDecisionSchema.parse({ decisionId: randomUUID(), requestId: command.requestId, editionId: edition, applicationId: id, previousStatus: row.status, status: command.status, applicationRevisionBefore: n(row.revision), applicationRevisionAfter: n(row.revision) + 1, presentationRevision: n(row.current_presentation_revision), assessmentRevision: n(row.assessment_revision), weighting: weights, ranking: ranking(db, edition, id, n(row.current_presentation_revision), weights), decidedBy: user, decidedAt: now });
+    db.prepare("UPDATE applications SET status=?,revision=revision+1,updated_at=? WHERE edition_id=? AND application_id=?").run(command.status, now, edition, id);
+    db.prepare("INSERT INTO proposal_decisions VALUES (?,?,?,?,?,?,?)").run(decision.decisionId, edition, id, command.requestId, decision.presentationRevision, JSON.stringify(decision), now); decisions.push(decision);
+  }
+  return decisions;
+}
+const mutations: { [K in StaffCommand["kind"]]: (context: MutationContext, command: CommandOf<K>) => StaffCommandResults[K] } = {
+  "save-review": saveReview,
+  "save-weight-vote": saveWeightVote,
+  "set-grant": setGrant,
+  "set-assignments": setAssignments,
+  "set-review-policy": setReviewPolicy,
+  "set-cfp-gate": setCfpGate,
+  "decide-proposals": decideProposals,
+};
 function mutate(db: DatabaseSync, edition: string, user: string, command: StaffCommand, now: number): StaffCommandResults[StaffCommand["kind"]] {
   const actor: ChangeActor = { kind: "staff", wtsUserId: user }; const actorJson = JSON.stringify(actor);
-  switch (command.kind) {
-    case "save-review": {
-      const { row, assigned } = reviewerResource(db, edition, user, command.applicationId); const existing = db.prepare("SELECT * FROM proposal_reviews WHERE edition_id=? AND application_id=? AND reviewer_id=?").get(edition, command.applicationId, user);
-      conflict(assigned.revision, command.expectedAssignmentRevision); conflict(n(row.current_presentation_revision), command.expectedPresentationRevision); conflict(existing ? n(existing.revision) : 0, command.expectedReviewRevision);
-      const values = CRITERIA.map((criterion) => command.scores[criterion]);
-      db.prepare("INSERT INTO proposal_reviews VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(edition_id,application_id,reviewer_id) DO UPDATE SET revision=excluded.revision,presentation_revision=excluded.presentation_revision,relevance=excluded.relevance,originality=excluded.originality,depth=excluded.depth,clarity=excluded.clarity,takeaways=excluded.takeaways,engagement=excluded.engagement,notes=excluded.notes,suspected_ai=excluded.suspected_ai,updated_at=excluded.updated_at").run(edition, command.applicationId, user, command.expectedReviewRevision + 1, command.expectedPresentationRevision, ...values, command.notes, Number(command.suspectedAi), existing ? n(existing.created_at) : now, now);
-      db.prepare("UPDATE proposal_staff_state SET assessment_revision=assessment_revision+1 WHERE edition_id=? AND application_id=?").run(edition, command.applicationId);
-      const saved = reviewerProposal(db, edition, user, command.applicationId).review; if (saved.kind === "unreviewed") throw new Error("The saved review is missing."); return saved.value;
-    }
-    case "save-weight-vote": {
-      const existing = db.prepare("SELECT revision FROM criterion_weight_votes WHERE edition_id=? AND reviewer_id=?").get(edition, user); conflict(existing ? n(existing.revision) : 0, command.expectedRevision);
-      db.prepare("INSERT INTO criterion_weight_votes VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(edition_id,reviewer_id) DO UPDATE SET revision=excluded.revision,relevance=excluded.relevance,originality=excluded.originality,depth=excluded.depth,clarity=excluded.clarity,takeaways=excluded.takeaways,engagement=excluded.engagement,updated_at=excluded.updated_at").run(edition, user, command.expectedRevision + 1, ...CRITERIA.map((criterion) => command.weights[criterion]), now);
-      db.prepare("UPDATE edition_review_policy SET weighting_revision=weighting_revision+1 WHERE edition_id=?").run(edition);
-      return vote(db.prepare("SELECT * FROM criterion_weight_votes WHERE edition_id=? AND reviewer_id=?").get(edition, user)!);
-    }
-    case "set-grant": {
-      if (!db.prepare("SELECT wts_user_id FROM cfp_accounts WHERE wts_user_id=?").get(command.wtsUserId)) throw new StaffError("not_found", "The local account was not found.");
-      const existing = db.prepare("SELECT * FROM edition_staff_grants WHERE edition_id=? AND wts_user_id=? AND role=?").get(edition, command.wtsUserId, command.role); conflict(existing ? n(existing.revision) : 0, command.expectedRevision);
-      if (!command.active && command.role === "admin" && existing?.state === "active" && n(db.prepare("SELECT count(*) AS count FROM edition_staff_grants WHERE edition_id=? AND role='admin' AND state='active'").get(edition)?.count) <= 1) throw new StaffError("last_admin", "The edition must retain one active admin.");
-      const value: EditionStaffGrant = { editionId: edition, wtsUserId: command.wtsUserId, role: command.role, revision: command.expectedRevision + 1, state: command.active ? "active" : "revoked", changedBy: actor, changedAt: now }; storeGrant(db, value);
-      const revokedAssignmentCount = !command.active && command.role === "reviewer" ? Number(db.prepare("UPDATE proposal_assignments SET state='revoked',revision=revision+1,changed_by_json=?,changed_at=? WHERE edition_id=? AND reviewer_id=? AND state='active'").run(actorJson, now, edition, command.wtsUserId).changes) : 0;
-      return { grant: value, revokedAssignmentCount };
-    }
-    case "set-assignments": {
-      const result: ProposalAssignment[] = [];
-      for (const target of command.changes) {
-        const row = applicationRow(db, edition, target.applicationId); const existing = db.prepare("SELECT * FROM proposal_assignments WHERE edition_id=? AND application_id=? AND reviewer_id=?").get(edition, target.applicationId, target.reviewerId); conflict(existing ? n(existing.revision) : 0, target.expectedRevision);
-        if (target.active) {
-          if (row.status !== "pending") throw new StaffError("finalized", "The proposal is finalized.");
-          if (row.wts_user_id === target.reviewerId) throw new StaffError("forbidden", "A reviewer cannot review their own proposal.");
-          if (!access(db, edition, target.reviewerId).roles.includes("reviewer")) throw new StaffError("forbidden", "The account needs an active reviewer grant.");
-        }
-        if (!db.prepare("SELECT wts_user_id FROM cfp_accounts WHERE wts_user_id=?").get(target.reviewerId)) throw new StaffError("not_found", "The local account was not found.");
-        const value: ProposalAssignment = { editionId: edition, applicationId: target.applicationId, reviewerId: target.reviewerId, revision: target.expectedRevision + 1, state: target.active ? "active" : "revoked", changedBy: actor, changedAt: now };
-        db.prepare("INSERT INTO proposal_assignments VALUES (?,?,?,?,?,?,?) ON CONFLICT(edition_id,application_id,reviewer_id) DO UPDATE SET revision=excluded.revision,state=excluded.state,changed_by_json=excluded.changed_by_json,changed_at=excluded.changed_at").run(edition, target.applicationId, target.reviewerId, value.revision, value.state, actorJson, now); result.push(value);
-      }
-      return result;
-    }
-    case "set-review-policy": {
-      const row = policyRow(db, edition); conflict(n(row.revision), command.expectedRevision);
-      const reportStartDate = command.dailyReport.enabled && row.daily_report_enabled !== 1 ? new Date(now).toISOString().slice(0, 10) : row.report_start_date;
-      db.prepare("UPDATE edition_review_policy SET revision=revision+1,review_open=?,daily_report_enabled=?,report_time_zone=?,report_local_send_time=?,report_start_date=?,changed_by_json=?,changed_at=? WHERE edition_id=?").run(Number(command.reviewOpen), Number(command.dailyReport.enabled), command.dailyReport.timeZone, command.dailyReport.localSendTime, reportStartDate, actorJson, now, edition);
-      return policy(policyRow(db, edition));
-    }
-    case "set-cfp-gate": {
-      const row = policyRow(db, edition); conflict(n(row.cfp_gate_revision), command.expectedRevision);
-      const existing = db.prepare("SELECT cfp_open FROM editions WHERE edition_id=?").get(edition);
-      if ((existing?.cfp_open === 1) !== command.open) { db.prepare("UPDATE editions SET cfp_open=? WHERE edition_id=?").run(Number(command.open), edition); db.prepare("UPDATE edition_review_policy SET cfp_gate_revision=cfp_gate_revision+1 WHERE edition_id=?").run(edition); }
-      return { editionId: edition, open: command.open, revision: n(policyRow(db, edition).cfp_gate_revision) };
-    }
-    case "decide-proposals": {
-      const weights = weighting(db, edition); conflict(weights.revision, command.expectedWeightingRevision);
-      const targets = command.targets.map((target) => { const row = applicationRow(db, edition, target.applicationId); conflict(n(row.revision), target.expectedApplicationRevision); conflict(n(row.current_presentation_revision), target.expectedPresentationRevision); conflict(n(row.assessment_revision), target.expectedAssessmentRevision); return row; });
-      const decisions: ProposalDecision[] = [];
-      for (const row of targets) {
-        if (row.status === command.status) continue;
-        const id = s(row.application_id); const decision = proposalDecisionSchema.parse({ decisionId: randomUUID(), requestId: command.requestId, editionId: edition, applicationId: id, previousStatus: row.status, status: command.status, applicationRevisionBefore: n(row.revision), applicationRevisionAfter: n(row.revision) + 1, presentationRevision: n(row.current_presentation_revision), assessmentRevision: n(row.assessment_revision), weighting: weights, ranking: ranking(db, edition, id, n(row.current_presentation_revision), weights), decidedBy: user, decidedAt: now });
-        db.prepare("UPDATE applications SET status=?,revision=revision+1,updated_at=? WHERE edition_id=? AND application_id=?").run(command.status, now, edition, id);
-        db.prepare("INSERT INTO proposal_decisions VALUES (?,?,?,?,?,?,?)").run(decision.decisionId, edition, id, command.requestId, decision.presentationRevision, JSON.stringify(decision), now); decisions.push(decision);
-      }
-      return decisions;
-    }
-  }
+  const run = mutations[command.kind] as (context: MutationContext, command: StaffCommand) => StaffCommandResults[StaffCommand["kind"]];
+  return run({ db, edition, user, now, actor, actorJson }, command);
 }
 export function executeStaffCommand<C extends StaffCommand>(account: VerifiedCfpAccount, input: C): StaffMutationReceipt<C["kind"]> {
   const command = parse(staffCommandSchema, input);

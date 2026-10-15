@@ -4,6 +4,7 @@ import { executeStaffCommand, getNextReview, getReviewerWorkspace } from "~/lib/
 import { CRITERIA, CRITERION_LABELS } from "~/lib/staff-model";
 import type { CriterionWeights, ReviewerWorkspace as ReviewerWorkspaceModel } from "~/lib/staff-model";
 import { ErrorNotice } from "~/components/ApplicantUI";
+import { REVIEW_STATE_LABELS } from "./review-state";
 
 const ACCESS_DENIAL_CODES: Record<string, true> = { unauthenticated: true, forbidden: true, not_found: true };
 function denied(error: { code: string; message: string }): boolean {
@@ -11,6 +12,23 @@ function denied(error: { code: string; message: string }): boolean {
 }
 function hasAllWeights(weights: Partial<CriterionWeights>): weights is CriterionWeights {
   return CRITERIA.every((criterion) => weights[criterion] !== undefined);
+}
+
+type WeightVote = { requestId: string; expectedRevision: 0 | number; weights: CriterionWeights };
+
+function weightVote(workspace: ReviewerWorkspaceModel, weights: CriterionWeights): WeightVote {
+  return {
+    requestId: crypto.randomUUID(),
+    expectedRevision: workspace.ownWeightVote?.revision ?? 0,
+    weights: {
+      relevance: weights.relevance,
+      originality: weights.originality,
+      depth: weights.depth,
+      clarity: weights.clarity,
+      takeaways: weights.takeaways,
+      engagement: weights.engagement,
+    },
+  };
 }
 
 
@@ -23,7 +41,18 @@ export default function ReviewerWorkspace() {
   const [weightsDirty, setWeightsDirty] = createSignal(false);
   const [weights, setWeights] = createSignal<Partial<CriterionWeights>>({});
   const [savedVote, setSavedVote] = createSignal<number>();
-  let pendingVote: { requestId: string; expectedRevision: 0 | number; weights: CriterionWeights } | undefined;
+  let pendingVote: WeightVote | undefined;
+
+  const clearPrivate = () => {
+    setWorkspace(undefined);
+    setWeights({});
+    setWeightsDirty(false);
+    pendingVote = undefined;
+  };
+  const reject = (failure: { code: string; message: string }) => {
+    setError(failure);
+    if (denied(failure)) clearPrivate();
+  };
 
   const load = async () => {
     setLoading(true);
@@ -34,21 +63,10 @@ export default function ReviewerWorkspace() {
         setError(undefined);
         const vote = result.value.ownWeightVote;
         if (!weightsDirty()) setWeights(vote ? { ...vote.weights } : {});
-      } else {
-        setError(result.error);
-        if (denied(result.error)) {
-          setWorkspace(undefined);
-          setWeights({});
-          setWeightsDirty(false);
-          pendingVote = undefined;
-        }
-      }
+      } else reject(result.error);
     } catch {
       setError({ code: "unavailable", message: "The reviewer workspace is unavailable. Identity could not be verified." });
-      setWorkspace(undefined);
-      setWeights({});
-      setWeightsDirty(false);
-      pendingVote = undefined;
+      clearPrivate();
     }
     setLoading(false);
   };
@@ -63,21 +81,10 @@ export default function ReviewerWorkspace() {
       if (result.ok) {
         if (result.value) navigate(`/reviewer/${encodeURIComponent(result.value.applicationId)}`);
         else setError({ code: "empty", message: "No assigned proposals need a review now." });
-      } else {
-        setError(result.error);
-        if (denied(result.error)) {
-          setWorkspace(undefined);
-          setWeights({});
-          setWeightsDirty(false);
-          pendingVote = undefined;
-        }
-      }
+      } else reject(result.error);
     } catch {
       setError({ code: "unavailable", message: "The next assigned proposal could not load. Identity could not be verified." });
-      setWorkspace(undefined);
-      setWeights({});
-      setWeightsDirty(false);
-      pendingVote = undefined;
+      clearPrivate();
     }
   };
 
@@ -87,20 +94,7 @@ export default function ReviewerWorkspace() {
     if (!current || saving()) return;
     const currentWeights = weights();
     if (!hasAllWeights(currentWeights)) return;
-    if (!pendingVote) {
-      pendingVote = {
-        requestId: crypto.randomUUID(),
-        expectedRevision: current.ownWeightVote?.revision ?? 0,
-        weights: {
-          relevance: currentWeights.relevance,
-          originality: currentWeights.originality,
-          depth: currentWeights.depth,
-          clarity: currentWeights.clarity,
-          takeaways: currentWeights.takeaways,
-          engagement: currentWeights.engagement,
-        },
-      };
-    }
+    pendingVote ??= weightVote(current, currentWeights);
     setSaving(true);
     setError(undefined);
     try {
@@ -111,13 +105,8 @@ export default function ReviewerWorkspace() {
         setWeightsDirty(false);
         await load();
       } else {
-        setError(result.error);
-        if (denied(result.error)) {
-          setWorkspace(undefined);
-          setWeights({});
-          setWeightsDirty(false);
-        }
-        if (result.error.code !== "unavailable" || denied(result.error)) pendingVote = undefined;
+        reject(result.error);
+        if (result.error.code !== "unavailable") pendingVote = undefined;
       }
     } catch {
       setError({ code: "unavailable", message: "The weight vote result is uncertain. Retry without changing these weights." });
@@ -143,14 +132,14 @@ export default function ReviewerWorkspace() {
     </header>
     <Switch>
       <Match when={loading()}><div class="cfp-loading" role="status">Loading your assigned proposals…</div></Match>
-      <Match when={error() && !workspace()}>
-        <Show when={error()?.code !== "unauthenticated"} fallback={<ErrorNotice message={error()?.message} />}>
-          <ErrorNotice message={error()?.message} onRetry={() => void load()} />
+      <Match when={!workspace() && error()}>{(current) => <>
+        <Show when={current().code !== "unauthenticated"} fallback={<ErrorNotice message={current().message} />}>
+          <ErrorNotice message={current().message} onRetry={() => void load()} />
         </Show>
-        <Show when={error()?.code === "unauthenticated"}><a class="button" href={`/auth/login?returnTo=${encodeURIComponent("/reviewer")}`} rel="external">Sign in to continue</a></Show>
-      </Match>
+        <Show when={current().code === "unauthenticated"}><a class="button" href={`/auth/login?returnTo=${encodeURIComponent("/reviewer")}`} rel="external">Sign in to continue</a></Show>
+      </>}</Match>
       <Match when={workspace()}>
-        <Show when={error()}><ErrorNotice message={error()?.message} onRetry={() => error()?.code === "empty" ? void reviewNext() : void load()} retryLabel={error()?.code === "empty" ? "Check again" : "Reload queue"} /></Show>
+        <Show when={error()}>{(current) => <ErrorNotice message={current().message} onRetry={() => error()?.code === "empty" ? void reviewNext() : void load()} retryLabel={current().code === "empty" ? "Check again" : "Reload queue"} />}</Show>
         <section class="surface cfp-stack" aria-labelledby="review-progress-title">
           <div class="surface-title"><div><h2 id="review-progress-title">Review progress</h2><p>Activity counts do not identify reviewers or proposals.</p></div><span class="cfp-status" data-state={workspace()!.reviewOpen ? "active" : "closed"}>{workspace()!.reviewOpen ? "Review gate open" : "Review gate closed"}</span></div>
           <dl class="reviewer-counts">
@@ -167,7 +156,7 @@ export default function ReviewerWorkspace() {
           <div class="surface-title"><div><h2 id="assigned-proposals-title">Assigned proposals</h2><p>Pending proposals assigned to your reviewer account.</p></div></div>
           <Show when={workspace()!.queue.length > 0} fallback={<p class="empty-state">You have no assigned pending proposals.</p>}>
             <ul class="cfp-list"><For each={workspace()!.queue}>{(item) => <li class="list-item">
-              <div><h3>{item.title || "Untitled proposal"}</h3><p><span class="cfp-status" data-state={item.reviewState}>{item.reviewState === "unreviewed" ? "Unreviewed" : item.reviewState === "stale" ? "Stale review" : "Current review"}</span> · Presentation revision {item.presentationRevision}</p></div>
+              <div><h3>{item.title || "Untitled proposal"}</h3><p><span class="cfp-status" data-state={item.reviewState}>{REVIEW_STATE_LABELS[item.reviewState]}</span> · Presentation revision {item.presentationRevision}</p></div>
               <a class="button button-secondary button-small" href={`/reviewer/${encodeURIComponent(item.applicationId)}`} onClick={(event) => { if (weightsDirty() && !window.confirm("Discard your unsaved weight changes and open this proposal?")) event.preventDefault(); }}>Open proposal review</a>
             </li>}</For></ul>
           </Show>

@@ -18,12 +18,33 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/staff": "Staff and gates",
 };
 
+type IdentityState = "checking" | "anonymous" | "verified" | "unavailable";
+
+const pageTitle = (pathname: string) => PAGE_TITLES[pathname] ?? PAGE_TITLES[`/${pathname.split("/")[1]}`] ?? "Page not found";
+const ariaCurrent = (current: boolean) => current ? "page" : undefined;
+
+interface HeaderIdentityProps {
+  account: VerifiedCfpAccount | null | undefined;
+  identityState: IdentityState;
+  pathname: string;
+}
+
+function HeaderIdentity(props: HeaderIdentityProps) {
+  return <Show when={props.account} fallback={
+    <Show when={props.identityState === "anonymous" || props.identityState === "unavailable"} fallback={<span class="cfp-status header-status" role="status">Checking identity…</span>}>
+      <a class="button button-small header-auth" href={`/auth/login?returnTo=${encodeURIComponent(props.pathname === "/" ? "/applications" : props.pathname)}`} rel="external">{props.identityState === "unavailable" ? "Try sign in" : "Sign in"}</a>
+    </Show>
+  }>
+    <div class="account-menu"><span class="account-email">{props.account?.email}</span><form method="post" action="/auth/logout"><button class="button button-quiet button-small" type="submit">Sign out</button></form></div>
+  </Show>;
+}
+
 function ApplicantShell(props: ParentProps) {
   const location = useLocation();
   const [navigationOpen, setNavigationOpen] = createSignal(false);
   const [account, setAccount] = createSignal<VerifiedCfpAccount | null>();
   const [staffAccess, setStaffAccess] = createSignal<StaffAccess | null>(null);
-  const [identityState, setIdentityState] = createSignal<"checking" | "anonymous" | "verified" | "unavailable">("checking");
+  const [identityState, setIdentityState] = createSignal<IdentityState>("checking");
   createEffect(() => location.pathname, (pathname) => {
     let active = true;
     setNavigationOpen(false);
@@ -44,10 +65,10 @@ function ApplicantShell(props: ParentProps) {
     return () => { active = false; };
   });
   return <div class="cfp-app">
-    <Title>{PAGE_TITLES[location.pathname] ?? PAGE_TITLES[`/${location.pathname.split("/")[1]}`] ?? "Page not found"} | WTS CFP</Title>
+    <Title>{pageTitle(location.pathname)} | WTS CFP</Title>
     <a class="skip-link" href="#main">Skip to main content</a>
     <header class="site-header">
-      <a class="brand" href="/" aria-label="WhatTheStack Call for Papers home" aria-current={location.pathname === "/" ? "page" : undefined}>
+      <a class="brand" href="/" aria-label="WhatTheStack Call for Papers home" aria-current={ariaCurrent(location.pathname === "/")}>
         <img src="/logo.svg" alt="" width="42" height="42" />
         <span><strong>WhatTheStack</strong><small>Call for Papers</small></span>
       </a>
@@ -56,18 +77,12 @@ function ApplicantShell(props: ParentProps) {
         <span class="nav-toggle-mark" aria-hidden="true">{navigationOpen() ? "−" : "+"}</span>
       </button>
       <nav id="primary-nav" class="primary-nav" data-open={navigationOpen() ? "true" : undefined} aria-label="Main navigation">
-        <a href="/applications" aria-current={location.pathname.startsWith("/applications") || location.pathname.startsWith("/apply/") ? "page" : undefined}>Applications</a>
-        <Show when={account()}><a href="/profile" aria-current={location.pathname === "/profile" ? "page" : undefined}>Profile</a><a href="/settings" aria-current={location.pathname === "/settings" ? "page" : undefined}>Settings</a></Show>
-        <Show when={staffAccess()?.roles.includes("reviewer")}><a href="/reviewer" aria-current={location.pathname.startsWith("/reviewer") ? "page" : undefined}>Review</a></Show>
-        <Show when={staffAccess()?.roles.includes("admin")}><a href="/admin" aria-current={location.pathname.startsWith("/admin") ? "page" : undefined}>Admin</a></Show>
+        <a href="/applications" aria-current={ariaCurrent(location.pathname.startsWith("/applications") || location.pathname.startsWith("/apply/"))}>Applications</a>
+        <Show when={account()}><a href="/profile" aria-current={ariaCurrent(location.pathname === "/profile")}>Profile</a><a href="/settings" aria-current={ariaCurrent(location.pathname === "/settings")}>Settings</a></Show>
+        <Show when={staffAccess()?.roles.includes("reviewer")}><a href="/reviewer" aria-current={ariaCurrent(location.pathname.startsWith("/reviewer"))}>Review</a></Show>
+        <Show when={staffAccess()?.roles.includes("admin")}><a href="/admin" aria-current={ariaCurrent(location.pathname.startsWith("/admin"))}>Admin</a></Show>
       </nav>
-      <Show when={account()} fallback={
-        <Show when={identityState() === "anonymous" || identityState() === "unavailable"} fallback={<span class="cfp-status header-status" role="status">Checking identity…</span>}>
-          <a class="button button-small header-auth" href={`/auth/login?returnTo=${encodeURIComponent(location.pathname === "/" ? "/applications" : location.pathname)}`} rel="external">{identityState() === "unavailable" ? "Try sign in" : "Sign in"}</a>
-        </Show>
-      }>
-        <div class="account-menu"><span class="account-email">{account()?.email}</span><form method="post" action="/auth/logout"><button class="button button-quiet button-small" type="submit">Sign out</button></form></div>
-      </Show>
+      <HeaderIdentity account={account()} identityState={identityState()} pathname={location.pathname} />
     </header>
     <main id="main" class="page-main">{props.children}</main>
     <footer class="site-footer">
