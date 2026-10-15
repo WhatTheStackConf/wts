@@ -4,30 +4,34 @@ import matter from "gray-matter";
 import remarkGfm from "remark-gfm";
 import { normalizePath, type Plugin } from "vite";
 
+const nonemptyString = (value: unknown) => typeof value === "string" && value.trim().length > 0;
+
+function contentFilePath(id: string) {
+  const queryIndex = id.indexOf("?");
+  if (queryIndex === -1) return null;
+
+  const filePath = id.slice(0, queryIndex);
+  const query = new URLSearchParams(id.slice(queryIndex + 1));
+  return /\.mdx?$/.test(filePath) && query.has("content") ? filePath : null;
+}
+
 export function markdownContent(): Plugin {
   return {
     name: "markdown-content",
     enforce: "pre",
     async load(id) {
-      const queryIndex = id.indexOf("?");
-      if (queryIndex === -1) return null;
-
-      const filePath = id.slice(0, queryIndex);
-      const query = new URLSearchParams(id.slice(queryIndex + 1));
-      if (!/\.mdx?$/.test(filePath) || !query.has("content")) return null;
+      const filePath = contentFilePath(id);
+      if (filePath === null) return null;
 
       this.addWatchFile(filePath);
       const { data, content } = matter(await readFile(filePath, "utf8"));
       const { title, slug } = data;
-      if (typeof title !== "string" || title.trim().length === 0) {
+      if (!nonemptyString(title)) {
         this.error(`${filePath}: Frontmatter title must be a nonempty string.`);
       }
 
       const isLegalPage = normalizePath(filePath).includes("/content/pages/");
-      if (
-        (isLegalPage || slug !== undefined) &&
-        (typeof slug !== "string" || slug.trim().length === 0)
-      ) {
+      if ((isLegalPage || slug !== undefined) && !nonemptyString(slug)) {
         this.error(`${filePath}: Frontmatter slug must be a nonempty string.`);
       }
 

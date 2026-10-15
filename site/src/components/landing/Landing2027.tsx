@@ -44,6 +44,46 @@ const openNewsletter = () => {
 };
 
 
+function orbitTravel(header: HTMLElement, brand: HTMLAnchorElement, mark: HTMLImageElement, nav: HTMLElement): [string, string][] {
+  const brandStyle = window.getComputedStyle(brand);
+  const headerRect = header.getBoundingClientRect();
+  const brandWidth = brand.offsetWidth;
+  const brandHeight = brand.offsetHeight;
+  const brandTop = Number.parseFloat(brandStyle.top);
+  const headerStyle = window.getComputedStyle(header);
+  const headerPaddingLeft = Number.parseFloat(headerStyle.paddingLeft);
+  const headerPaddingRight = Number.parseFloat(headerStyle.paddingRight);
+  const compactLogoHeight = Number.parseFloat(brandStyle.getPropertyValue("--orbit-brand-compact-logo-height"));
+  const expandedLogoHeight = mark.offsetHeight;
+  const navWidth = nav.offsetWidth;
+  const navHeight = nav.offsetHeight;
+  const navStartLeft = window.innerWidth / 2 - navWidth / 2;
+  const startLeft = window.innerWidth / 2 - brandWidth / 2;
+  const startCenterY = headerRect.top + brandTop + brandHeight / 2;
+  const isMobileHeader = window.matchMedia("(max-width: 767px)").matches;
+  const targetLeft = headerRect.left + headerPaddingLeft;
+  const targetCenterY = headerRect.top + (isMobileHeader ? header.offsetHeight / 4 : headerRect.height / 2);
+  const compactNavLeft = isMobileHeader ? navStartLeft : headerRect.right - headerPaddingRight - navWidth;
+  const availableWidth = Math.max(
+    0,
+    (isMobileHeader ? headerRect.width - headerPaddingLeft - headerPaddingRight : compactNavLeft - targetLeft - 12),
+  );
+  const scale = Math.min(compactLogoHeight / expandedLogoHeight, availableWidth / brandWidth);
+  const shrinkOffset = (brandWidth * (1 - scale)) / 2;
+
+  const navStartTop = Number.parseFloat(window.getComputedStyle(nav).top);
+  const navCompactTop = isMobileHeader
+    ? Number.parseFloat(headerStyle.getPropertyValue("--orbit-nav-compact-top"))
+    : (header.offsetHeight - navHeight) / 2;
+  return [
+    ["--orbit-brand-travel-x", `${targetLeft - startLeft - shrinkOffset}px`],
+    ["--orbit-brand-travel-y", `${targetCenterY - startCenterY}px`],
+    ["--orbit-brand-contract-scale", `${scale}`],
+    ["--orbit-nav-travel-x", `${compactNavLeft - navStartLeft}px`],
+    ["--orbit-nav-travel-y", `${navCompactTop - navStartTop}px`],
+  ];
+}
+
 export const Landing2027 = () => {
   let coverReservation: HTMLDivElement | undefined;
   let coverStage: HTMLDivElement | undefined;
@@ -72,41 +112,9 @@ export const Landing2027 = () => {
       coverReservation!.style.setProperty("--orbit-cover-expanded", `${expandedHeight}px`);
       coverStage!.setAttribute("data-scroll-ready", "true");
 
-      const brandStyle = window.getComputedStyle(orbitBrand);
-      const headerRect = header.getBoundingClientRect();
-      const brandWidth = orbitBrand.offsetWidth;
-      const brandHeight = orbitBrand.offsetHeight;
-      const brandTop = Number.parseFloat(brandStyle.top);
-      const headerStyle = window.getComputedStyle(header);
-      const headerPaddingLeft = Number.parseFloat(headerStyle.paddingLeft);
-      const headerPaddingRight = Number.parseFloat(headerStyle.paddingRight);
-      const compactLogoHeight = Number.parseFloat(brandStyle.getPropertyValue("--orbit-brand-compact-logo-height"));
-      const expandedLogoHeight = mark.offsetHeight;
-      const navWidth = orbitNav.offsetWidth;
-      const navHeight = orbitNav.offsetHeight;
-      const navStartLeft = window.innerWidth / 2 - navWidth / 2;
-      const startLeft = window.innerWidth / 2 - brandWidth / 2;
-      const startCenterY = headerRect.top + brandTop + brandHeight / 2;
-      const isMobileHeader = window.matchMedia("(max-width: 767px)").matches;
-      const targetLeft = headerRect.left + headerPaddingLeft;
-      const targetCenterY = headerRect.top + (isMobileHeader ? header.offsetHeight / 4 : headerRect.height / 2);
-      const compactNavLeft = isMobileHeader ? navStartLeft : headerRect.right - headerPaddingRight - navWidth;
-      const availableWidth = Math.max(
-        0,
-        (isMobileHeader ? headerRect.width - headerPaddingLeft - headerPaddingRight : compactNavLeft - targetLeft - 12),
-      );
-      const scale = Math.min(compactLogoHeight / expandedLogoHeight, availableWidth / brandWidth);
-      const shrinkOffset = (brandWidth * (1 - scale)) / 2;
-
-      const navStartTop = Number.parseFloat(window.getComputedStyle(orbitNav).top);
-      const navCompactTop = isMobileHeader
-        ? Number.parseFloat(headerStyle.getPropertyValue("--orbit-nav-compact-top"))
-        : (header.offsetHeight - navHeight) / 2;
-      coverReservation!.style.setProperty("--orbit-brand-travel-x", `${targetLeft - startLeft - shrinkOffset}px`);
-      coverReservation!.style.setProperty("--orbit-brand-travel-y", `${targetCenterY - startCenterY}px`);
-      coverReservation!.style.setProperty("--orbit-brand-contract-scale", `${scale}`);
-      coverReservation!.style.setProperty("--orbit-nav-travel-x", `${compactNavLeft - navStartLeft}px`);
-      coverReservation!.style.setProperty("--orbit-nav-travel-y", `${navCompactTop - navStartTop}px`);
+      for (const [property, value] of orbitTravel(header, orbitBrand, mark, orbitNav)) {
+        coverReservation!.style.setProperty(property, value);
+      }
     };
     resizeCover();
     void document.fonts.ready.then(resizeCover);

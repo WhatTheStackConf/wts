@@ -185,15 +185,18 @@ const NewsletterPopup = (props: NewsletterPopupProps) => {
     },
   );
 
+  const subscribeBlocker = () => {
+    if (!LIST_ID) return "Newsletter sign-up is currently unavailable. Please check back later.";
+    if (SITE_KEY && !turnstileToken()) return "Please complete the security check before subscribing.";
+    return undefined;
+  };
+
   const handleSubscribe = async (event: SubmitEvent) => {
     event.preventDefault();
     if (loading() || success()) return;
-    if (!LIST_ID) {
-      setError("Newsletter sign-up is currently unavailable. Please check back later.");
-      return;
-    }
-    if (SITE_KEY && !turnstileToken()) {
-      setError("Please complete the security check before subscribing.");
+    const blocker = subscribeBlocker();
+    if (blocker) {
+      setError(blocker);
       return;
     }
 

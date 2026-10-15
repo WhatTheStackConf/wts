@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { fileURLToPath } from "node:url";
 import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
@@ -20,6 +21,41 @@ const authRoutes: Record<string, true> = {
 const serverProtocolRoutes: Record<string, true> = {
   "/oauth2/token": true, "/oauth2/userinfo": true, "/oauth2/introspect": true, "/oauth2/revoke": true,
 };
+
+const fixedDestinations = new Map([
+  ["/request-password-reset", { key: "redirectTo", destination: "/reset-password" }],
+  ["/send-verification-email", { key: "callbackURL", destination: "/verify-email?verified=1" }],
+]);
+
+type PageResult = PageState | Response;
+type PageContext = {
+  c: Context;
+  common: Pick<PageState, "registrationOpen" | "enabledProviders" | "oauthQuery" | "notice">;
+  query: URLSearchParams;
+  oauthQuery: string | null;
+  fail: (message: string) => Response;
+};
+type ConsentClient = { name: string; redirectUris: string[]; scopes: string[] };
+
+function isRoutedAuthPath(path: string, method: string, enabledProviders: readonly string[]) {
+  const callback = /^\/callback\/(google|github)$/.exec(path);
+  const resetRedirect = /^\/reset-password\/[^/]+$/.test(path) && method === "GET";
+  return Boolean(authRoutes[path]) || resetRedirect || Boolean(callback && enabledProviders.some((provider) => provider === callback[1]));
+}
+
+async function destinationProblem(request: Request, fixed: { key: string; destination: string }, origin: string) {
+  let body: unknown;
+  try { body = await request.clone().json(); } catch { return "Send a JSON request."; }
+  if (typeof body !== "object" || body === null) return "Send an account request.";
+  if (!(fixed.key in body)) return undefined;
+  const value = Reflect.get(body, fixed.key);
+  if (typeof value !== "string" || !URL.canParse(value, origin) || new URL(value, origin).href !== new URL(fixed.destination, origin).href) return "Use the fixed account destination.";
+  return undefined;
+}
+
+function consentAllowed(client: ConsentClient, redirectUri: string, scopes: string[]) {
+  return client.redirectUris.includes(redirectUri) && !scopes.some((scope) => !client.scopes.includes(scope) || !oauthScopes.includes(scope));
+}
 
 export function createApp(runtime: Runtime) {
   const { config, pool, auth } = runtime;
@@ -61,22 +97,14 @@ export function createApp(runtime: Runtime) {
   app.use("/assets/*", serveStatic({ root: fileURLToPath(new URL("../public/", import.meta.url)), rewriteRequestPath: (path) => path.replace(/^\/assets/, "") }));
   app.all("/api/auth/*", async (c) => {
     const path = c.req.path.slice("/api/auth".length);
-    const callback = /^\/callback\/(google|github)$/.exec(path);
-    const resetRedirect = /^\/reset-password\/[^/]+$/.test(path) && c.req.method === "GET";
-    if (!authRoutes[path] && !resetRedirect && !(callback && enabledProviders.some((provider) => provider === callback[1]))) return c.notFound();
+    if (!isRoutedAuthPath(path, c.req.method, enabledProviders)) return c.notFound();
     if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method) && !serverProtocolRoutes[path] && c.req.header("Origin") !== config.origin) {
       return c.json({ error: { code: "forbidden", message: "Use the account page to change this account." } }, 403);
     }
-    if (["/request-password-reset", "/send-verification-email"].includes(path) && c.req.method === "POST") {
-      let body: unknown;
-      try { body = await c.req.raw.clone().json(); } catch { return c.json({ error: { code: "invalid_request", message: "Send a JSON request." } }, 400); }
-      if (typeof body !== "object" || body === null) return c.json({ error: { code: "invalid_request", message: "Send an account request." } }, 400);
-      const key = path === "/request-password-reset" ? "redirectTo" : "callbackURL";
-      const destination = path === "/request-password-reset" ? "/reset-password" : "/verify-email?verified=1";
-      if (key in body) {
-        const value = Reflect.get(body, key);
-        if (typeof value !== "string" || !URL.canParse(value, config.origin) || new URL(value, config.origin).href !== new URL(destination, config.origin).href) return c.json({ error: { code: "invalid_request", message: "Use the fixed account destination." } }, 400);
-      }
+    const fixed = fixedDestinations.get(path);
+    if (fixed && c.req.method === "POST") {
+      const message = await destinationProblem(c.req.raw, fixed, config.origin);
+      if (message) return c.json({ error: { code: "invalid_request", message } }, 400);
     }
     return auth.handler(c.req.raw);
   });
@@ -102,49 +130,46 @@ export function createApp(runtime: Runtime) {
     return c.json({ profile });
   });
   app.get("/", (c) => c.redirect("/account"));
+  async function accountPage({ c, common }: PageContext): Promise<PageResult> {
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (!session) return c.redirect("/sign-in");
+    if (!session.user.emailVerified) return c.redirect("/verify-email");
+    return { ...common, kind: "account", email: session.user.email, profile: await readProfile(pool, session.user.id, config.origin) };
+  }
+  async function consentPage({ c, common, oauthQuery, fail }: PageContext): Promise<PageResult> {
+    if (!oauthQuery) return fail("Start authorization from the application.");
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (!session) return c.redirect(`/sign-in?oauth_query=${encodeURIComponent(oauthQuery)}`);
+    if (!session.user.emailVerified) return c.redirect("/verify-email");
+    const authorization = new URLSearchParams(oauthQuery);
+    const clientId = authorization.get("client_id");
+    const redirectUri = authorization.get("redirect_uri");
+    const scopes = (authorization.get("scope") ?? "").split(" ").filter(Boolean);
+    const clients = await pool.query<ConsentClient>(`SELECT name, "redirectUris", scopes FROM "oauthClient" WHERE "clientId" = $1 AND NOT disabled AND "subjectType" = 'public'`, [clientId]);
+    const client = clients.rows[0];
+    if (!client || !redirectUri || !consentAllowed(client, redirectUri, scopes)) return fail("This application authorization request is invalid.");
+    return { ...common, kind: "consent", client: { name: client.name, redirectUri }, scopes };
+  }
+  const pages = new Map<string, (context: PageContext) => PageResult | Promise<PageResult>>([
+    ["sign-in", ({ common }) => ({ ...common, kind: "sign-in" })],
+    ["sign-up", ({ common, fail }) => config.registrationOpen ? { ...common, kind: "sign-up" } : fail("Registration is closed. Sign in with your existing account.")],
+    ["recovery", ({ common }) => ({ ...common, kind: "recovery" })],
+    ["reset-password", ({ common, query }) => ({ ...common, kind: "reset-password", token: query.get("token") })],
+    ["verify-email", ({ common, query }) => ({ ...common, kind: "verify-email", email: query.get("email"), verified: query.get("verified") === "1" })],
+    ["consent", consentPage],
+    ["account", accountPage],
+    ["error", ({ common }) => ({ ...common, kind: "error", title: "Account request failed", message: "The account request failed. Start again from the application or account page." })],
+  ]);
   app.get("/:page", async (c) => {
-    const page = c.req.param("page");
-    if (!["sign-in", "sign-up", "recovery", "reset-password", "verify-email", "consent", "account", "error"].includes(page)) return c.notFound();
+    const page = pages.get(c.req.param("page"));
+    if (!page) return c.notFound();
     const query = new URL(c.req.url).searchParams;
     const oauthQuery = query.get("oauth_query") ?? (query.has("sig") ? new URL(c.req.url).search.slice(1) : null);
     const common = { registrationOpen: config.registrationOpen, enabledProviders, oauthQuery, notice: null };
     const fail = (message: string) => c.html(renderPage({ ...common, oauthQuery: null, kind: "error", title: "Account request failed", message }), 400);
     if (oauthQuery && !await verifyOAuthQueryParams(oauthQuery, config.secret)) return fail("This authorization request expired or is invalid. Start again from the application.");
-    let state: PageState;
-    switch (page) {
-      case "sign-in": state = { ...common, kind: "sign-in" }; break;
-      case "sign-up":
-        if (!config.registrationOpen) return fail("Registration is closed. Sign in with your existing account.");
-        state = { ...common, kind: "sign-up" }; break;
-      case "recovery": state = { ...common, kind: "recovery" }; break;
-      case "reset-password": state = { ...common, kind: "reset-password", token: query.get("token") }; break;
-      case "verify-email": state = { ...common, kind: "verify-email", email: query.get("email"), verified: query.get("verified") === "1" }; break;
-      case "error": state = { ...common, kind: "error", title: "Account request failed", message: "The account request failed. Start again from the application or account page." }; break;
-      case "account": {
-        const session = await auth.api.getSession({ headers: c.req.raw.headers });
-        if (!session) return c.redirect("/sign-in");
-        if (!session.user.emailVerified) return c.redirect("/verify-email");
-        state = { ...common, kind: "account", email: session.user.email, profile: await readProfile(pool, session.user.id, config.origin) };
-        break;
-      }
-      case "consent": {
-        if (!oauthQuery) return fail("Start authorization from the application.");
-        const session = await auth.api.getSession({ headers: c.req.raw.headers });
-        if (!session) return c.redirect(`/sign-in?oauth_query=${encodeURIComponent(oauthQuery)}`);
-        if (!session.user.emailVerified) return c.redirect("/verify-email");
-        const authorization = new URLSearchParams(oauthQuery);
-        const clientId = authorization.get("client_id");
-        const redirectUri = authorization.get("redirect_uri");
-        const scopes = (authorization.get("scope") ?? "").split(" ").filter(Boolean);
-        const clients = await pool.query<{ name: string; redirectUris: string[]; scopes: string[] }>(`SELECT name, "redirectUris", scopes FROM "oauthClient" WHERE "clientId" = $1 AND NOT disabled AND "subjectType" = 'public'`, [clientId]);
-        const client = clients.rows[0];
-        if (!client || !redirectUri || !client.redirectUris.includes(redirectUri) || scopes.some((scope) => !client.scopes.includes(scope) || !oauthScopes.includes(scope))) return fail("This application authorization request is invalid.");
-        state = { ...common, kind: "consent", client: { name: client.name, redirectUri }, scopes };
-        break;
-      }
-      default: return c.notFound();
-    }
-    return c.html(renderPage(state));
+    const state = await page({ c, common, query, oauthQuery, fail });
+    return state instanceof Response ? state : c.html(renderPage(state));
   });
   return app;
 }

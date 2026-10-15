@@ -74,6 +74,32 @@ function compileShader(gl: WebGLRenderingContext, type: number, source: string):
 }
 
 
+function createLinkedProgram(gl: WebGLRenderingContext): WebGLProgram | undefined {
+  const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+  const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+  if (!vertexShader || !fragmentShader) {
+    if (vertexShader) gl.deleteShader(vertexShader);
+    if (fragmentShader) gl.deleteShader(fragmentShader);
+    return undefined;
+  }
+  const program = gl.createProgram();
+  if (!program) {
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+    return undefined;
+  }
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+  gl.deleteShader(vertexShader);
+  gl.deleteShader(fragmentShader);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    gl.deleteProgram(program);
+    return undefined;
+  }
+  return program;
+}
+
 function releaseWebGLContext(gl: WebGLRenderingContext) {
   gl.getExtension("WEBGL_lose_context")?.loseContext();
 }
@@ -91,28 +117,8 @@ export function createLaunchRenderer(
   });
   if (!gl) return undefined;
 
-  const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
-  const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
-  if (!vertexShader || !fragmentShader) {
-    if (vertexShader) gl.deleteShader(vertexShader);
-    if (fragmentShader) gl.deleteShader(fragmentShader);
-    releaseWebGLContext(gl);
-    return undefined;
-  }
-  const program = gl.createProgram();
+  const program = createLinkedProgram(gl);
   if (!program) {
-    gl.deleteShader(vertexShader);
-    gl.deleteShader(fragmentShader);
-    releaseWebGLContext(gl);
-    return undefined;
-  }
-  gl.attachShader(program, vertexShader);
-  gl.attachShader(program, fragmentShader);
-  gl.linkProgram(program);
-  gl.deleteShader(vertexShader);
-  gl.deleteShader(fragmentShader);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    gl.deleteProgram(program);
     releaseWebGLContext(gl);
     return undefined;
   }

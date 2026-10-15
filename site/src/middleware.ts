@@ -21,6 +21,13 @@ async function stripAnonymousCredentials(
   return next();
 }
 
+function requestsMissingPage(request: Request, pathname: string): boolean {
+  const matches = Router.match(pathname);
+  return request.method === "GET" &&
+    request.headers.get("accept")?.includes("text/html") === true &&
+    matches.some((match) => match.pattern.includes("*404"));
+}
+
 async function preserveDeclaredStatus(
   request: Request,
   next: (request?: Request) => Promise<Response>,
@@ -28,13 +35,9 @@ async function preserveDeclaredStatus(
   const pathname = new URL(request.url).pathname;
   if (/^\/(?:api|media|auth)(?:\/|$)/.test(pathname) ||
       ["/readyz", "/login", "/register", "/forgot-password"].includes(pathname.replace(/\/$/, ""))) return next();
-  const matches = Router.match(pathname);
-  const isNotFoundPage =
-    request.method === "GET" &&
-    request.headers.get("accept")?.includes("text/html") === true &&
-    matches.some((match) => match.pattern.includes("*404"));
+  const missingPage = requestsMissingPage(request, pathname);
   const event = getRequestEvent();
-  if (isNotFoundPage && event) event.response.status = 404;
+  if (missingPage && event) event.response.status = 404;
   const response = await next();
   const declaredStatus = event?.response.status;
   if (!declaredStatus || declaredStatus === response.status) return response;

@@ -89,40 +89,53 @@ function scopeDescription(scope: string): string {
   }
 }
 
-function content(state: PageState): { title: string; html: string } {
-  switch (state.kind) {
-    case "sign-in":
-      return { title: "Sign in", html: `<h1>Sign in</h1><p class="intro">Use your WTS identity account.</p>
+type PageContent = { title: string; html: string };
+type StateOf<K extends PageState["kind"]> = Extract<PageState, { kind: K }>;
+
+function signInPage(state: StateOf<"sign-in">): PageContent {
+  return { title: "Sign in", html: `<h1>Sign in</h1><p class="intro">Use your WTS identity account.</p>
         ${form("sign-in", "/api/auth/sign-in/email", state, `${emailField()}${passwordField(false)}<button class="button" type="submit">Sign in</button>`)}
         <nav class="form-links" aria-label="Account help"><a href="${escape(pageLink("/recovery", state))}">Forgot password?</a><a href="${escape(pageLink("/verify-email", state))}">Verify email</a></nav>
         ${providers(state)}
         ${state.registrationOpen ? `<p class="form-links signup-link">New to WTS? <a href="${escape(pageLink("/sign-up", state))}">Create an account</a></p>` : closedRegistration()}` };
-    case "sign-up":
-      return { title: "Create account", html: `<h1>Create account</h1>${state.registrationOpen ? `<p class="intro">Create your WTS identity. Verify your email before you sign in to an app.</p>
+}
+
+function signUpPage(state: StateOf<"sign-up">): PageContent {
+  return { title: "Create account", html: `<h1>Create account</h1>${state.registrationOpen ? `<p class="intro">Create your WTS identity. Verify your email before you sign in to an app.</p>
         ${form("sign-up", "/api/auth/sign-up/email", state, `${nameField()}${emailField()}${passwordField(true)}<button class="button" type="submit">Create account</button>`)}${providers(state)}` : closedRegistration()}
         <p class="form-links"><a href="${escape(pageLink("/sign-in", state))}">Return to sign in</a></p>` };
-    case "recovery":
-      return { title: "Recover your account", html: `<h1>Recover your account</h1><p class="intro">Enter the email on your account to request a reset link.</p>
+}
+
+function recoveryPage(state: StateOf<"recovery">): PageContent {
+  return { title: "Recover your account", html: `<h1>Recover your account</h1><p class="intro">Enter the email on your account to request a reset link.</p>
         ${form("recovery", "/api/auth/request-password-reset", state, `${emailField()}<button class="button" type="submit">Send reset link</button>`)}
         <p class="form-links"><a href="${escape(pageLink("/sign-in", state))}">Return to sign in</a></p>` };
-    case "reset-password":
-      return { title: "Reset your password", html: `<h1>Reset your password</h1>${state.token === null ? `<div class="state-copy"><p>This reset link is missing or no longer valid.</p><p>Request a new link to reset your password.</p></div><a class="button" href="${escape(pageLink("/recovery", state))}">Request a new reset link</a>` : `<p class="intro">Choose a new password. This ends central account sessions.</p>
+}
+
+function resetPasswordPage(state: StateOf<"reset-password">): PageContent {
+  return { title: "Reset your password", html: `<h1>Reset your password</h1>${state.token === null ? `<div class="state-copy"><p>This reset link is missing or no longer valid.</p><p>Request a new link to reset your password.</p></div><a class="button" href="${escape(pageLink("/recovery", state))}">Request a new reset link</a>` : `<p class="intro">Choose a new password. This ends central account sessions.</p>
         ${form("reset-password", "/api/auth/reset-password", state, `${hidden("token", state.token)}${passwordField(true, "newPassword")}<button class="button" type="submit">Reset password</button>`)}
         <p class="form-links"><a href="${escape(pageLink("/sign-in", state))}" data-reset-sign-in hidden>Sign in with your new password</a></p>`}` };
-    case "verify-email":
-      return { title: state.verified ? "Email verified" : "Verify your email", html: `<h1>${state.verified ? "Email verified" : "Verify your email"}</h1>
+}
+
+function verifyEmailPage(state: StateOf<"verify-email">): PageContent {
+  return { title: state.verified ? "Email verified" : "Verify your email", html: `<h1>${state.verified ? "Email verified" : "Verify your email"}</h1>
         ${state.verified ? `<p class="intro">Your email is verified. Sign in to continue.</p><a class="button" href="${escape(pageLink("/sign-in", state))}">Continue to sign in</a>` : `<p class="intro">Open the link in your email. Enter your account email to request another link.</p>
         ${form("verify-email", "/api/auth/send-verification-email", state, `${emailField(state.email ?? "")}<button class="button" type="submit">Resend verification email</button>`)}
         <p class="form-links"><a href="${escape(pageLink("/sign-in", state))}">Return to sign in</a></p>`}` };
-    case "consent":
-      return { title: "Allow app access?", html: `<h1>Allow app access?</h1><p class="intro"><strong>${escape(state.client.name)}</strong> requests access to your WTS identity.</p>
+}
+
+function consentPage(state: StateOf<"consent">): PageContent {
+  return { title: "Allow app access?", html: `<h1>Allow app access?</h1><p class="intro"><strong>${escape(state.client.name)}</strong> requests access to your WTS identity.</p>
         <section class="consent-details" aria-labelledby="consent-details-title"><h2 id="consent-details-title">Information shared</h2><ul class="scope-list">${state.scopes.map((scope) => `<li>${escape(scopeDescription(scope))}</li>`).join("")}</ul>
         <p class="field-help">You will return to <span class="destination">${escape(state.client.redirectUri)}</span>.</p>
         <p class="field-help">This shares identity information. It does not grant app permissions.</p></section>
         ${form("consent", "/api/auth/oauth2/consent", state, `<div class="consent-actions"><button class="button" type="submit" name="accept" value="true">Allow access</button><button class="button button-secondary" type="submit" name="accept" value="false">Deny access</button></div>`)}
         <p class="form-links"><a href="/account">Review your account</a></p>` };
-    case "account":
-      return { title: "Your account", html: `<h1>Your account</h1><p class="intro">Manage the profile connected apps can read.</p>
+}
+
+function accountPage(state: StateOf<"account">): PageContent {
+  return { title: "Your account", html: `<h1>Your account</h1><p class="intro">Manage the profile connected apps can read.</p>
         <section class="identity-summary" aria-labelledby="identity-title"><h2 id="identity-title">Account identity</h2><dl class="account-details"><div><dt>Email</dt><dd>${escape(state.email)}</dd></div><div><dt>WTS user ID</dt><dd>${escape(state.profile.wtsUserId)}</dd></div>${state.profile.username ? `<div><dt>Preserved username</dt><dd>${escape(state.profile.username)}</dd></div>` : ""}</dl></section>
         <section class="profile-section" aria-labelledby="profile-title"><h2 id="profile-title">Shared profile</h2><p class="field-help">Connected apps can read these profile details. They do not grant app permissions.</p>
         ${form("profile", "/v1/me", state, `${hidden("expectedRevision", String(state.profile.revision))}${nameField(state.profile.name)}
@@ -132,8 +145,22 @@ function content(state: PageState): { title: string; html: string } {
         </section><section class="session-section" aria-labelledby="session-title"><h2 id="session-title">Security</h2><p>Sign out here to end your central account session. Other apps can retain their local sessions.</p>
           ${form("sign-out", "/api/auth/sign-out", state, '<button class="button button-secondary" type="submit">Sign out of this account</button>')}
           <a href="${escape(pageLink("/recovery", state))}">Reset your password</a></section>` };
-    case "error":
-      return { title: state.title, html: `<h1>${escape(state.title)}</h1><p class="intro">${escape(state.message)}</p><p>Return to sign in to try again.</p><a class="button" href="/sign-in">Return to sign in</a>` };
+}
+
+function errorPage(state: StateOf<"error">): PageContent {
+  return { title: state.title, html: `<h1>${escape(state.title)}</h1><p class="intro">${escape(state.message)}</p><p>Return to sign in to try again.</p><a class="button" href="/sign-in">Return to sign in</a>` };
+}
+
+function content(state: PageState): PageContent {
+  switch (state.kind) {
+    case "sign-in": return signInPage(state);
+    case "sign-up": return signUpPage(state);
+    case "recovery": return recoveryPage(state);
+    case "reset-password": return resetPasswordPage(state);
+    case "verify-email": return verifyEmailPage(state);
+    case "consent": return consentPage(state);
+    case "account": return accountPage(state);
+    case "error": return errorPage(state);
     default: {
       const exhaustive: never = state;
       return exhaustive;

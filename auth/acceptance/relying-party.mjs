@@ -45,52 +45,60 @@ export async function relyingParty({ scope, issuer, host, clientId, secret, cook
     for (const [key, value] of Object.entries(parameters)) if (value === undefined) delete parameters[key];
     return { url: oidc.buildAuthorizationUrl(config, parameters), transaction };
   }
+  function currentSession(header) {
+    const sessionId = header?.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1);
+    const candidate = sessions.get(sessionId);
+    return { sessionId, session: candidate?.expiresAt > Date.now() ? candidate : undefined };
+  }
+  async function completeCallback(url, response) {
+    const transaction = transactions.get(url.searchParams.get('state'));
+    if (!transaction || Date.now() - transaction.createdAt > 300_000) return json(response, 400, { error: 'Invalid authorization state.' });
+    transactions.delete(transaction.state);
+    callbacks.push({ url, transaction });
+    if (transaction.mode === 'capture') return json(response, 200, { captured: true });
+    const checks = {
+      pkceCodeVerifier: transaction.verifier,
+      expectedState: transaction.mode === 'wrong-state' ? oidc.randomState() : transaction.state,
+      expectedNonce: transaction.mode === 'wrong-nonce' ? oidc.randomNonce() : transaction.nonce,
+      idTokenExpected: true,
+    };
+    const tokens = await oidc.authorizationCodeGrant(config, url, checks);
+    const claims = tokens.claims();
+    const userinfo = await oidc.fetchUserInfo(config, tokens.access_token, claims.sub);
+    const id = randomBytes(32).toString('base64url');
+    sessions.set(id, { claims, userinfo, tokens, expiresAt: Date.now() + 900_000 });
+    return redirect(response, '/session', `${cookieName}=${id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=900`);
+  }
+  const routes = new Map([
+    ['/', ({ response }) => json(response, 200, { public: true, application: clientId })],
+    ['/login', async ({ url, response }) => {
+      const { url: authorization } = await begin({}, url.searchParams.get('mode') ?? 'exchange');
+      return redirect(response, authorization.href);
+    }],
+    ['/callback', ({ url, response }) => completeCallback(url, response)],
+    ['/session', ({ response, session }) => {
+      if (!session) return json(response, 401, { error: 'Sign in to this application.' });
+      return json(response, 200, { subject: session.claims.sub, wtsUserId: session.userinfo['https://wts.sh/user_id'], profile: session.userinfo['https://wts.sh/profile'], issuer: session.claims.iss, audience: session.claims.aud, nonceVerified: true, signatureVerified: true, stateVerified: true });
+    }],
+    ['/permission', ({ response, session }) => {
+      if (!session) return json(response, 401, { error: 'Sign in to this application.' });
+      if (!allowed.has(session.userinfo['https://wts.sh/user_id'])) return json(response, 403, { error: 'This application did not grant permission.' });
+      return json(response, 200, { permission: 'allowed' });
+    }],
+    ['/logout', ({ response, sessionId }) => {
+      sessions.delete(sessionId);
+      return redirect(response, '/', `${cookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+    }],
+  ]);
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, origin);
       const names = cookieNames(request.headers.cookie);
       requests.push({ path: url.pathname, host: request.headers.host, cookieNames: names });
-      const sessionId = request.headers.cookie?.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1);
-      const candidate = sessions.get(sessionId);
-      const session = candidate?.expiresAt > Date.now() ? candidate : undefined;
-      if (url.pathname === '/') return json(response, 200, { public: true, application: clientId });
-      if (url.pathname === '/login') {
-        const { url: authorization } = await begin({}, url.searchParams.get('mode') ?? 'exchange');
-        return redirect(response, authorization.href);
-      }
-      if (url.pathname === '/callback') {
-        const transaction = transactions.get(url.searchParams.get('state'));
-        if (!transaction || Date.now() - transaction.createdAt > 300_000) return json(response, 400, { error: 'Invalid authorization state.' });
-        transactions.delete(transaction.state);
-        callbacks.push({ url, transaction });
-        if (transaction.mode === 'capture') return json(response, 200, { captured: true });
-        const checks = {
-          pkceCodeVerifier: transaction.verifier,
-          expectedState: transaction.mode === 'wrong-state' ? oidc.randomState() : transaction.state,
-          expectedNonce: transaction.mode === 'wrong-nonce' ? oidc.randomNonce() : transaction.nonce,
-          idTokenExpected: true,
-        };
-        const tokens = await oidc.authorizationCodeGrant(config, url, checks);
-        const claims = tokens.claims();
-        const userinfo = await oidc.fetchUserInfo(config, tokens.access_token, claims.sub);
-        const id = randomBytes(32).toString('base64url');
-        sessions.set(id, { claims, userinfo, tokens, expiresAt: Date.now() + 900_000 });
-        return redirect(response, '/session', `${cookieName}=${id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=900`);
-      }
-      if (url.pathname === '/session') {
-        if (!session) return json(response, 401, { error: 'Sign in to this application.' });
-        return json(response, 200, { subject: session.claims.sub, wtsUserId: session.userinfo['https://wts.sh/user_id'], profile: session.userinfo['https://wts.sh/profile'], issuer: session.claims.iss, audience: session.claims.aud, nonceVerified: true, signatureVerified: true, stateVerified: true });
-      }
-      if (url.pathname === '/permission') {
-        if (!session) return json(response, 401, { error: 'Sign in to this application.' });
-        if (!allowed.has(session.userinfo['https://wts.sh/user_id'])) return json(response, 403, { error: 'This application did not grant permission.' });
-        return json(response, 200, { permission: 'allowed' });
-      }
-      if (url.pathname === '/logout') {
-        sessions.delete(sessionId);
-        return redirect(response, '/', `${cookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
-      }
-      return json(response, 404, { error: 'The application page does not exist.' });
+      const { sessionId, session } = currentSession(request.headers.cookie);
+      const route = routes.get(url.pathname);
+      if (!route) return json(response, 404, { error: 'The application page does not exist.' });
+      return await route({ url, response, session, sessionId });
     } catch (error) {
       failures.push({ code: typeof error.code === 'string' ? error.code : 'OIDC_REJECTED', name: error.name });
       json(response, 400, { error: 'The application rejected the identity response.' });

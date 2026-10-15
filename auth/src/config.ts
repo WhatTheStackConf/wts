@@ -47,18 +47,23 @@ export function isLoopback(hostname: string): boolean {
   return hostname === "localhost" || hostname === "[::1]" || /^127(?:\.\d{1,3}){3}$/.test(hostname);
 }
 
-export function readConfig(env: NodeJS.ProcessEnv): Config {
-  const result = environment.safeParse(env);
-  if (!result.success) throw new Error("Invalid auth environment configuration.");
-  const values = result.data;
-  const publicUrl = new URL(values.AUTH_PUBLIC_URL);
-  const production = values.NODE_ENV === "production";
+function publicOrigin(value: string, production: boolean): URL {
+  const publicUrl = new URL(value);
   if (publicUrl.pathname !== "/" || publicUrl.search || publicUrl.hash || publicUrl.username || publicUrl.password) {
     throw new Error("AUTH_PUBLIC_URL must contain an origin only.");
   }
   if (publicUrl.protocol !== "https:" && (production || publicUrl.protocol !== "http:" || !isLoopback(publicUrl.hostname))) {
     throw new Error("AUTH_PUBLIC_URL must use HTTPS or a rehearsal loopback origin.");
   }
+  return publicUrl;
+}
+
+export function readConfig(env: NodeJS.ProcessEnv): Config {
+  const result = environment.safeParse(env);
+  if (!result.success) throw new Error("Invalid auth environment configuration.");
+  const values = result.data;
+  const production = values.NODE_ENV === "production";
+  const publicUrl = publicOrigin(values.AUTH_PUBLIC_URL, production);
   const databaseUrl = new URL(values.DATABASE_URL);
   if (!["postgres:", "postgresql:"].includes(databaseUrl.protocol)) throw new Error("DATABASE_URL must use PostgreSQL.");
   function pair(id: string | undefined, secret: string | undefined) {

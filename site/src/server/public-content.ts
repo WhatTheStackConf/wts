@@ -17,6 +17,22 @@ const partnerGroups: Omit<PublicPartnerGroup, "partners">[] = [
   { id: "other-partners", title: "Other Partners", kind: "partner", type: "other" },
 ];
 
+type GraphSlot = PublicationGraph["slots"][number];
+type GraphTrack = PublicationGraph["tracks"][number];
+type SlotCommon = Pick<PublicAgendaSlot, "startAt" | "endAt" | "locationLabel" | "track">;
+
+function trackOrder(tracksById: Map<string, GraphTrack>, trackId: string | undefined): number {
+  return tracksById.get(trackId || "")?.displayOrder ?? 0;
+}
+
+function compareSlots(a: GraphSlot, b: GraphSlot, tracksById: Map<string, GraphTrack>): number {
+  const timeOrder = Date.parse(a.startAt) - Date.parse(b.startAt);
+  if (timeOrder) return timeOrder;
+  if (!a.trackId && b.trackId) return -1;
+  if (a.trackId && !b.trackId) return 1;
+  return trackOrder(tracksById, a.trackId) - trackOrder(tracksById, b.trackId) || a.displayOrder - b.displayOrder;
+}
+
 export function mapPublicConference(graph: PublicationGraph): PublicConferenceSnapshot {
   const speakersById = new Map(graph.speakers.map((row) => [row.id, row]));
   const sessionsById = new Map(graph.sessions.map((row) => [row.id, row]));
@@ -37,35 +53,32 @@ export function mapPublicConference(graph: PublicationGraph): PublicConferenceSn
     return [row.id, { slug: row.slug, displayName: row.displayName || row.slug || "Speaker", photoUrl: row.photoAssetId ? `/media/${row.photoAssetId}` : null, affiliation: row.affiliation || "", isMc: row.isMc, sessionCount: cardsBySpeaker.get(row.id)?.length ?? 0, appearanceEvents }];
   }));
   const schedules = new Map<string, PublicSessionSchedule>();
+  const sessionSlot = (slot: Extract<GraphSlot, { kind: "session" }>, common: SlotCommon, track: GraphTrack | undefined, day: PublicationGraph["days"][number], event: PublicationGraph["appearanceEvents"][number]): PublicAgendaSlot[] => {
+    const session = sessionsById.get(slot.sessionId);
+    if (!session) return [];
+    if (!schedules.has(session.id)) schedules.set(session.id, { dayDate: day.localDate, dayTitle: day.title, event: eventDto(event), startAt: slot.startAt, endAt: slot.endAt, trackName: track?.name || undefined, locationLabel: common.locationLabel });
+    const hosts = agendaSpeakers(session.hostIds);
+    return [{ ...common, kind: "session", session: { slug: session.slug, title: session.title, format: session.format || undefined, ...(hosts.length ? { hosts } : {}), speakers: agendaSpeakers(session.speakerIds) } }];
+  };
+  const sharedSlot = (slot: Exclude<GraphSlot, { kind: "session" }>, common: SlotCommon): PublicAgendaSlot => {
+    const hosts = agendaSpeakers(slot.hostIds);
+    const summary = hosts.reduce((value, host) => {
+      const suffix = ` Hosted by ${host.name}.`;
+      return value.endsWith(suffix) ? value.slice(0, -suffix.length) : value;
+    }, slot.summary || "");
+    return { ...common, kind: slot.kind, title: slot.title || undefined, ...(hosts.length ? { speakers: hosts } : {}), summary: summary || undefined };
+  };
   const days = [...graph.days].sort((a, b) => a.displayOrder - b.displayOrder || a.localDate.localeCompare(b.localDate)).map((day) => ({
     key: day.key, localDate: day.localDate, title: day.title,
     programmes: graph.programmes.filter((programme) => programme.dayId === day.id).sort((a, b) => a.displayOrder - b.displayOrder || a.id.localeCompare(b.id)).flatMap((programme) => {
       const event = eventsById.get(programme.eventId);
       if (!event) return [];
-      const slots: PublicAgendaSlot[] = graph.slots.filter((slot) => slot.programmeId === programme.id).sort((a, b) => {
-        const timeOrder = Date.parse(a.startAt) - Date.parse(b.startAt);
-        if (timeOrder) return timeOrder;
-        if (!a.trackId && b.trackId) return -1;
-        if (a.trackId && !b.trackId) return 1;
-        return (tracksById.get(a.trackId || "")?.displayOrder ?? 0) - (tracksById.get(b.trackId || "")?.displayOrder ?? 0) || a.displayOrder - b.displayOrder;
-      }).flatMap((slot): PublicAgendaSlot[] => {
+      const slots: PublicAgendaSlot[] = graph.slots.filter((slot) => slot.programmeId === programme.id).sort((a, b) => compareSlots(a, b, tracksById)).flatMap((slot): PublicAgendaSlot[] => {
         const track = slot.trackId ? tracksById.get(slot.trackId) : undefined;
         if (track && track.programmeId !== programme.id) return [];
         const locationLabel = slot.locationLabel || track?.locationLabel || undefined;
         const common = { startAt: slot.startAt, endAt: slot.endAt, locationLabel, track: track ? trackDto(track) : undefined };
-        if (slot.kind === "session") {
-          const session = sessionsById.get(slot.sessionId);
-          if (!session) return [];
-          if (!schedules.has(session.id)) schedules.set(session.id, { dayDate: day.localDate, dayTitle: day.title, event: eventDto(event), startAt: slot.startAt, endAt: slot.endAt, trackName: track?.name || undefined, locationLabel });
-          const hosts = agendaSpeakers(session.hostIds);
-          return [{ ...common, kind: "session", session: { slug: session.slug, title: session.title, format: session.format || undefined, ...(hosts.length ? { hosts } : {}), speakers: agendaSpeakers(session.speakerIds) } }];
-        }
-        const hosts = agendaSpeakers(slot.hostIds);
-        const summary = hosts.reduce((value, host) => {
-          const suffix = ` Hosted by ${host.name}.`;
-          return value.endsWith(suffix) ? value.slice(0, -suffix.length) : value;
-        }, slot.summary || "");
-        return [{ ...common, kind: slot.kind, title: slot.title || undefined, ...(hosts.length ? { speakers: hosts } : {}), summary: summary || undefined }];
+        return slot.kind === "session" ? sessionSlot(slot, common, track, day, event) : [sharedSlot(slot, common)];
       });
       return slots.length ? [{ event: eventDto(event), tracks: graph.tracks.filter((track) => track.programmeId === programme.id).sort((a, b) => a.displayOrder - b.displayOrder || a.key.localeCompare(b.key)).map(trackDto), slots }] : [];
     }),

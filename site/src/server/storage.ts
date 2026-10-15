@@ -34,13 +34,16 @@ function connect(path: string, readOnly = false): DatabaseSync {
   } catch (error) { db.close(); throw error; }
 }
 const migrationRowsSchema = z.array(z.strictObject({ version: z.number().int(), name: z.string(), checksum: z.string() }));
-function verifyMigrations(db: DatabaseSync, allowPending = false): void {
-  const rows = migrationRowsSchema.parse(db.prepare("SELECT version, name, checksum FROM schema_migrations ORDER BY version").all());
+function verifyInstalledMigrations(rows: z.infer<typeof migrationRowsSchema>, allowPending: boolean): void {
   if (rows.length > migrations.length || (!allowPending && rows.length !== migrations.length)) throw new Error("Run the supported site migration before startup.");
   for (const [index, row] of rows.entries()) {
     const expected = migrations[index];
     if (!expected || row.version !== expected.version || row.name !== expected.name || row.checksum !== sha256(expected.sql)) throw new Error("The installed migration checksum does not match.");
   }
+}
+function verifyMigrations(db: DatabaseSync, allowPending = false): void {
+  const rows = migrationRowsSchema.parse(db.prepare("SELECT version, name, checksum FROM schema_migrations ORDER BY version").all());
+  verifyInstalledMigrations(rows, allowPending);
   const version = db.prepare("PRAGMA user_version").get()?.user_version;
   if (version !== (rows.at(-1)?.version ?? 0)) throw new Error("The database schema version does not match its migrations.");
 }
@@ -112,6 +115,15 @@ function installAsset(directory: string, asset: PublicAssetInput, bytes: Uint8Ar
 }
 export interface ImportResult { editionId: string; revision: number; checksum: string; status: "published" | "unchanged" }
 const editionRowSchema = z.strictObject({ source_namespace: z.string(), revision: z.number().int().nonnegative() });
+function registerAssets(db: DatabaseSync, assets: PublicContentBatchV1["assets"]): void {
+  for (const asset of assets) {
+    const existing = db.prepare("SELECT * FROM public_assets WHERE asset_id=?").get(asset.id);
+    if (existing) {
+      const row = assetRowSchema.parse(existing);
+      if (row.sha256 !== asset.sha256 || row.media_type !== asset.mediaType || row.byte_length !== asset.byteLength) throw new Error("The registered asset metadata conflicts.");
+    } else db.prepare("INSERT INTO public_assets VALUES (?, ?, ?, ?)").run(asset.id, asset.sha256, asset.mediaType, asset.byteLength);
+  }
+}
 function publish(db: DatabaseSync, batch: PublicContentBatchV1): ImportResult {
   const graphJson = canonicalJson(batch.graph);
   const checksum = publicationChecksum(batch, graphJson);
@@ -126,13 +138,7 @@ function publish(db: DatabaseSync, batch: PublicContentBatchV1): ImportResult {
       return { editionId: batch.editionId, revision: batch.revision, checksum, status: "unchanged" };
     }
     if (edition.revision !== batch.expectedRevision || batch.revision <= edition.revision) throw new Error("The publication revision is stale.");
-    for (const asset of batch.assets) {
-      const existing = db.prepare("SELECT * FROM public_assets WHERE asset_id=?").get(asset.id);
-      if (existing) {
-        const row = assetRowSchema.parse(existing);
-        if (row.sha256 !== asset.sha256 || row.media_type !== asset.mediaType || row.byte_length !== asset.byteLength) throw new Error("The registered asset metadata conflicts.");
-      } else db.prepare("INSERT INTO public_assets VALUES (?, ?, ?, ?)").run(asset.id, asset.sha256, asset.mediaType, asset.byteLength);
-    }
+    registerAssets(db, batch.assets);
     const now = Date.now();
     const inserted = db.prepare("INSERT INTO programme_snapshots (edition_id, revision, checksum, graph_json, created_at) VALUES (?, ?, ?, ?, ?)").run(batch.editionId, batch.revision, checksum, graphJson, now);
     const snapshotId = inserted.lastInsertRowid;
@@ -183,24 +189,17 @@ export function setEditionRole(editionId: string, wtsUserId: string, enabled: bo
   } finally { db.close(); }
 }
 const snapshotRowSchema = z.strictObject({ snapshot_id: z.number().int(), edition_id: editionIdSchema, revision: z.number().int().positive(), checksum: assetIdSchema, graph_json: z.string(), source_namespace: z.string() });
-function validateDatabase(db: DatabaseSync, directory: string): void {
-  verifyMigrations(db);
-  const integrity = db.prepare("PRAGMA integrity_check").all();
-  if (integrity.length !== 1 || integrity[0]?.integrity_check !== "ok") throw new Error("The database integrity check failed.");
-  if (db.prepare("PRAGMA foreign_key_check").all().length) throw new Error("The database foreign key check failed.");
-  if (db.prepare("SELECT e.edition_id FROM editions e LEFT JOIN programme_snapshots s ON s.snapshot_id=e.current_snapshot_id WHERE s.snapshot_id IS NULL OR s.edition_id<>e.edition_id OR s.revision<>(SELECT MAX(latest.revision) FROM programme_snapshots latest WHERE latest.edition_id=e.edition_id)").all().length) throw new Error("An edition publication pointer is invalid.");
-  const snapshots = z.array(snapshotRowSchema).parse(db.prepare("SELECT s.snapshot_id, s.edition_id, s.revision, s.checksum, s.graph_json, e.source_namespace FROM programme_snapshots s JOIN editions e ON e.edition_id=s.edition_id").all());
-  for (const row of snapshots) {
-    const graph = publicationGraphSchema.parse(JSON.parse(row.graph_json));
-    const registered = z.array(assetRowSchema).parse(db.prepare("SELECT a.* FROM public_assets a JOIN snapshot_assets sa ON sa.asset_id=a.asset_id WHERE sa.snapshot_id=? ORDER BY a.asset_id").all(row.snapshot_id));
-    const refs = referencedAssetIds(graph);
-    if (registered.length !== refs.size || registered.some((asset) => !refs.has(asset.asset_id))) throw new Error("The publication asset references do not match.");
-    const assets = registered.map((asset) => ({ id: asset.asset_id, sha256: asset.sha256, mediaType: asset.media_type, byteLength: asset.byte_length, file: asset.asset_id }));
-    if (publicationChecksum({ editionId: row.edition_id, sourceNamespace: row.source_namespace, revision: row.revision, assets }, canonicalJson(graph)) !== row.checksum) throw new Error("The publication checksum does not match.");
-    const receipt = db.prepare("SELECT checksum, source_namespace, snapshot_id FROM publication_receipts WHERE edition_id=? AND revision=?").get(row.edition_id, row.revision);
-    if (!receipt || receipt.checksum !== row.checksum || receipt.source_namespace !== row.source_namespace || receipt.snapshot_id !== row.snapshot_id) throw new Error("The publication receipt does not match.");
-  }
-  if (db.prepare("SELECT r.edition_id FROM publication_receipts r JOIN programme_snapshots s ON s.snapshot_id=r.snapshot_id WHERE r.edition_id<>s.edition_id OR r.revision<>s.revision OR r.checksum<>s.checksum").all().length) throw new Error("The publication receipt graph is invalid.");
+function validateSnapshot(db: DatabaseSync, row: z.infer<typeof snapshotRowSchema>): void {
+  const graph = publicationGraphSchema.parse(JSON.parse(row.graph_json));
+  const registered = z.array(assetRowSchema).parse(db.prepare("SELECT a.* FROM public_assets a JOIN snapshot_assets sa ON sa.asset_id=a.asset_id WHERE sa.snapshot_id=? ORDER BY a.asset_id").all(row.snapshot_id));
+  const refs = referencedAssetIds(graph);
+  if (registered.length !== refs.size || registered.some((asset) => !refs.has(asset.asset_id))) throw new Error("The publication asset references do not match.");
+  const assets = registered.map((asset) => ({ id: asset.asset_id, sha256: asset.sha256, mediaType: asset.media_type, byteLength: asset.byte_length, file: asset.asset_id }));
+  if (publicationChecksum({ editionId: row.edition_id, sourceNamespace: row.source_namespace, revision: row.revision, assets }, canonicalJson(graph)) !== row.checksum) throw new Error("The publication checksum does not match.");
+  const receipt = db.prepare("SELECT checksum, source_namespace, snapshot_id FROM publication_receipts WHERE edition_id=? AND revision=?").get(row.edition_id, row.revision);
+  if (!receipt || receipt.checksum !== row.checksum || receipt.source_namespace !== row.source_namespace || receipt.snapshot_id !== row.snapshot_id) throw new Error("The publication receipt does not match.");
+}
+function validateAssetFiles(db: DatabaseSync, directory: string): void {
   const assetsDirectory = join(directory, "assets");
   if (existsSync(assetsDirectory) && lstatSync(assetsDirectory).isSymbolicLink()) throw new Error("Use an asset directory without a symbolic link.");
   for (const asset of z.array(assetRowSchema).parse(db.prepare("SELECT DISTINCT a.* FROM public_assets a JOIN snapshot_assets sa ON sa.asset_id=a.asset_id").all())) {
@@ -208,6 +207,17 @@ function validateDatabase(db: DatabaseSync, directory: string): void {
     regularFile(path);
     validateAssetBytes(readFileSync(path), { sha256: asset.sha256, byteLength: asset.byte_length });
   }
+}
+function validateDatabase(db: DatabaseSync, directory: string): void {
+  verifyMigrations(db);
+  const integrity = db.prepare("PRAGMA integrity_check").all();
+  if (integrity.length !== 1 || integrity[0]?.integrity_check !== "ok") throw new Error("The database integrity check failed.");
+  if (db.prepare("PRAGMA foreign_key_check").all().length) throw new Error("The database foreign key check failed.");
+  if (db.prepare("SELECT e.edition_id FROM editions e LEFT JOIN programme_snapshots s ON s.snapshot_id=e.current_snapshot_id WHERE s.snapshot_id IS NULL OR s.edition_id<>e.edition_id OR s.revision<>(SELECT MAX(latest.revision) FROM programme_snapshots latest WHERE latest.edition_id=e.edition_id)").all().length) throw new Error("An edition publication pointer is invalid.");
+  const snapshots = z.array(snapshotRowSchema).parse(db.prepare("SELECT s.snapshot_id, s.edition_id, s.revision, s.checksum, s.graph_json, e.source_namespace FROM programme_snapshots s JOIN editions e ON e.edition_id=s.edition_id").all());
+  for (const row of snapshots) validateSnapshot(db, row);
+  if (db.prepare("SELECT r.edition_id FROM publication_receipts r JOIN programme_snapshots s ON s.snapshot_id=r.snapshot_id WHERE r.edition_id<>s.edition_id OR r.revision<>s.revision OR r.checksum<>s.checksum").all().length) throw new Error("The publication receipt graph is invalid.");
+  validateAssetFiles(db, directory);
 }
 const backupManifestSchema = z.strictObject({ schemaVersion: z.literal(1), databaseSha256: assetIdSchema, assets: z.array(z.strictObject({ id: assetIdSchema, sha256: assetIdSchema, byteLength: z.number().int().positive(), mediaType: publicContentBatchSchema.shape.assets.element.shape.mediaType })) });
 export async function backup(destination: string, dataDir?: string): Promise<void> {

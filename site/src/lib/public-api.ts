@@ -86,6 +86,72 @@ function speakerSummary(speaker: PublicSpeakerSummary): PublicSpeakerSummary {
   };
 }
 
+type PublicApiResource = "speakers" | "sessions" | "agenda";
+type PublicApiRoute =
+  | { type: "document"; openApi: boolean }
+  | { type: "resource"; resource: PublicApiResource; slug?: string }
+  | { type: "not_found" }
+  | { type: "invalid_slug" };
+
+function decodePublicSlug(raw: string): string | undefined {
+  let slug: string;
+  try {
+    slug = decodeURIComponent(raw);
+  } catch {
+    return undefined;
+  }
+  return slug.length > 200 || !publicSlugPattern.test(slug) ? undefined : slug;
+}
+
+function parsePublicApiRoute(pathname: string): PublicApiRoute {
+  if (/^\/api\/public\/v1\/?$/.test(pathname)) return { type: "document", openApi: false };
+  if (/^\/api\/public\/v1\/openapi\.json\/?$/.test(pathname)) return { type: "document", openApi: true };
+  const match = /^\/api\/public\/v1\/(speakers|sessions|agenda)(?:\/([^/]+))?\/?$/.exec(pathname);
+  if (!match || (match[1] === "agenda" && match[2])) return { type: "not_found" };
+  const resource = match[1] as PublicApiResource;
+  if (!match[2]) return { type: "resource", resource };
+  const slug = decodePublicSlug(match[2]);
+  return slug === undefined ? { type: "invalid_slug" } : { type: "resource", resource, slug };
+}
+
+function entityTag(body: unknown): string {
+  return `"${createHash("sha256").update(JSON.stringify(body)).digest("hex")}"`;
+}
+
+function conditionalResponse(request: Request, body: unknown, etag: string, headers: Record<string, string>) {
+  const unchanged = request.headers.get("if-none-match")?.split(",")
+    .some((value) => value.trim() === "*" || value.trim().replace(/^W\//, "") === etag);
+  return unchanged ? publicApiResponse(request, null, 304, headers) : publicApiResponse(request, body, 200, headers);
+}
+
+function documentResponse(request: Request, openApi: boolean) {
+  if (request.method === "OPTIONS") return publicApiResponse(request, null, 204, { Allow: METHODS });
+  const body = openApi ? publicApiOpenApi : {
+    data: publicApiDiscovery, meta: publicApiMetadata(),
+  };
+  const etag = entityTag(body);
+  return conditionalResponse(request, body, etag, { ETag: etag, "Cache-Control": "public, max-age=300, must-revalidate" });
+}
+
+const RESOURCE_READERS: Record<PublicApiResource, (programme: PublicConferenceGuideProgramme, slug?: string) => unknown> = {
+  agenda: (programme) => programme.agenda,
+  speakers: (programme, slug) => slug
+    ? programme.speakers.find((speaker) => speaker.slug === slug)
+    : [...programme.speakers]
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, "en", { sensitivity: "base" }) || a.slug.localeCompare(b.slug, "en"))
+      .map(speakerSummary),
+  sessions: (programme, slug) => slug
+    ? programme.sessions.find((session) => session.slug === slug)
+    : [...programme.sessions]
+      .sort((a, b) => a.title.localeCompare(b.title, "en", { sensitivity: "base" }) || a.slug.localeCompare(b.slug, "en"))
+      .map((session) => ({ slug: session.slug, title: session.title, format: session.format })),
+};
+
+interface RateLimitRejection {
+  message: string;
+  retryAfter: string;
+}
+
 /** Anonymous HTTP adapter over the same allowlisted programme used by the site. */
 export function createPublicApi(dependencies: PublicApiDependencies) {
   const now = dependencies.now ?? Date.now;
@@ -129,6 +195,31 @@ export function createPublicApi(dependencies: PublicApiDependencies) {
     return loading;
   }
 
+  function clientKey(request: Request, clientAddress: string | undefined): string | undefined {
+    const forwarded = dependencies.trustProxy
+      ? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+      : undefined;
+    const address = forwarded && isIP(forwarded) ? forwarded : clientAddress;
+    return address ? createHash("sha256").update(salt).update(address).digest("hex") : undefined;
+  }
+
+  function admit(timestamp: number, key: string | undefined): RateLimitRejection | undefined {
+    if (timestamp >= windowEnd) {
+      clients.clear();
+      requests = 0;
+      windowEnd = timestamp + WINDOW_MS;
+    }
+    const clientRequests = key ? clients.get(key) ?? 0 : 0;
+    if (requests >= globalLimit || (key && clientRequests >= perClientLimit)) {
+      return { message: "Too many requests. Retry later.", retryAfter: String(Math.max(1, Math.ceil((windowEnd - timestamp) / 1_000))) };
+    }
+    if (inFlight >= concurrencyLimit) return { message: "Public API is busy. Retry later.", retryAfter: "1" };
+    requests++;
+    if (key) clients.set(key, clientRequests + 1);
+    inFlight++;
+    return undefined;
+  }
+
   return async ({ request, clientAddress }: PublicApiEvent): Promise<Response> => {
     const respond = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
       publicApiResponse(request, body, status, extra);
@@ -137,91 +228,28 @@ export function createPublicApi(dependencies: PublicApiDependencies) {
     if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
       return error("method_not_allowed", "Use GET to read public conference data.", 405, { Allow: METHODS });
     }
-    const url = new URL(request.url);
-    const isDiscovery = /^\/api\/public\/v1\/?$/.test(url.pathname);
-    const isOpenApi = /^\/api\/public\/v1\/openapi\.json\/?$/.test(url.pathname);
-    if (isDiscovery || isOpenApi) {
-      if (request.method === "OPTIONS") return respond(null, 204, { Allow: METHODS });
-      const body = isOpenApi ? publicApiOpenApi : {
-        data: publicApiDiscovery, meta: publicApiMetadata(),
-      };
-      const etag = `"${createHash("sha256").update(JSON.stringify(body)).digest("hex")}"`;
-      const headers = { ETag: etag, "Cache-Control": "public, max-age=300, must-revalidate" };
-      const unchanged = request.headers.get("if-none-match")?.split(",")
-        .some((value) => value.trim() === "*" || value.trim().replace(/^W\//, "") === etag);
-      return unchanged ? respond(null, 304, headers) : respond(body, 200, headers);
-    }
-    const match = /^\/api\/public\/v1\/(speakers|sessions|agenda)(?:\/([^/]+))?\/?$/.exec(url.pathname);
-    if (!match || (match[1] === "agenda" && match[2])) {
-      return error("not_found", "Public resource not found.", 404);
-    }
-    let slug: string | undefined;
-    if (match[2]) {
-      try {
-        slug = decodeURIComponent(match[2]);
-      } catch {
-        return error("invalid_slug", "Use a lowercase public slug.", 400);
-      }
-      if (slug.length > 200 || !publicSlugPattern.test(slug)) {
-        return error("invalid_slug", "Use a lowercase public slug.", 400);
-      }
-    }
+    const route = parsePublicApiRoute(new URL(request.url).pathname);
+    if (route.type === "document") return documentResponse(request, route.openApi);
+    if (route.type === "not_found") return error("not_found", "Public resource not found.", 404);
+    if (route.type === "invalid_slug") return error("invalid_slug", "Use a lowercase public slug.", 400);
     if (request.method === "OPTIONS") return respond(null, 204, { Allow: METHODS });
 
     const timestamp = now();
-    if (timestamp >= windowEnd) {
-      clients.clear();
-      requests = 0;
-      windowEnd = timestamp + WINDOW_MS;
-    }
-    const forwarded = dependencies.trustProxy
-      ? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-      : undefined;
-    const address = forwarded && isIP(forwarded) ? forwarded : clientAddress;
-    const key = address ? createHash("sha256").update(salt).update(address).digest("hex") : undefined;
-    const clientRequests = key ? clients.get(key) ?? 0 : 0;
-    if (requests >= globalLimit || (key && clientRequests >= perClientLimit)) {
-      return error("rate_limited", "Too many requests. Retry later.", 429, {
-        "Retry-After": String(Math.max(1, Math.ceil((windowEnd - timestamp) / 1_000))),
-      });
-    }
-    if (inFlight >= concurrencyLimit) {
-      return error("rate_limited", "Public API is busy. Retry later.", 429, { "Retry-After": "1" });
-    }
-    requests++;
-    if (key) clients.set(key, clientRequests + 1);
-    inFlight++;
+    const rejection = admit(timestamp, clientKey(request, clientAddress));
+    if (rejection) return error("rate_limited", rejection.message, 429, { "Retry-After": rejection.retryAfter });
     try {
       const { programme, expiresAt } = await loadSnapshot();
-      let data: unknown;
-      if (match[1] === "agenda") {
-        data = programme.agenda;
-      } else if (match[1] === "speakers") {
-        data = slug
-          ? programme.speakers.find((speaker) => speaker.slug === slug)
-          : [...programme.speakers]
-            .sort((a, b) => a.displayName.localeCompare(b.displayName, "en", { sensitivity: "base" }) || a.slug.localeCompare(b.slug, "en"))
-            .map(speakerSummary);
-      } else {
-        data = slug
-          ? programme.sessions.find((session) => session.slug === slug)
-          : [...programme.sessions]
-            .sort((a, b) => a.title.localeCompare(b.title, "en", { sensitivity: "base" }) || a.slug.localeCompare(b.slug, "en"))
-            .map((session) => ({ slug: session.slug, title: session.title, format: session.format }));
-      }
+      const data = RESOURCE_READERS[route.resource](programme, route.slug);
       if (!data) return error("not_found", "Public resource not found.", 404);
       const body = {
         data,
         meta: publicApiMetadata(),
       };
-      const etag = `"${createHash("sha256").update(JSON.stringify(body)).digest("hex")}"`;
-      const headers = {
+      const etag = entityTag(body);
+      return conditionalResponse(request, body, etag, {
         "Cache-Control": `public, max-age=${Math.max(0, Math.floor((expiresAt - now()) / 1_000))}, must-revalidate`,
         ETag: etag,
-      };
-      const unchanged = request.headers.get("if-none-match")?.split(",")
-        .some((value) => value.trim() === "*" || value.trim().replace(/^W\//, "") === etag);
-      return unchanged ? respond(null, 304, headers) : respond(body, 200, headers);
+      });
     } catch {
       return error("programme_unavailable", "Public conference data is temporarily unavailable.", 503, { "Retry-After": "5" });
     } finally {

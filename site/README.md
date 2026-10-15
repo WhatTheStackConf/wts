@@ -64,7 +64,7 @@ Keep private environment files outside Git and container build contexts.
 Production account access requires HTTPS.
 The exact OIDC callback is `${SITE_ORIGIN}/auth/callback`.
 Client registration, callback changes, deployment, and historical exports require separate authorization.
-This implementation does not register a production client.
+The preview uses the registered client described under [Preview deployment](#preview-deployment).
 
 If a trusted proxy terminates HTTPS, set `SITE_TRUST_PROXY=true`.
 The proxy must replace forwarded headers and prevent direct access to the application port.
@@ -194,3 +194,40 @@ pnpm check
 Storage and account-boundary tests use disposable SQLite files.
 OIDC acceptance uses a real isolated auth service, PostgreSQL, synthetic users, and local mail capture.
 These checks do not send production mail or change production accounts.
+
+## Preview deployment
+
+The 2027 preview is live at `https://2027.wts.sh` as of 2026-10-05.
+The apex `https://wts.sh` still serves the unchanged 2026 PocketBase application.
+
+| Setting | Preview value |
+| --- | --- |
+| Coolify application | `raiqiz9pmqbgytsvwozqdzke`, named `wts-site-2027-preview` |
+| Project and environment | WTS, production |
+| Server | `fss8sk4` |
+| Source branch | `design/wts-2027-light-cyberpunk` |
+| Deployed commit | `20310d0b86f4bf57aeb449c0adb5931223d4a566` |
+| Dockerfile and build context | `/site/Dockerfile`, repository root |
+| `SITE_ORIGIN` and `PUBLIC_SITE_URL` | `https://2027.wts.sh` |
+| `OIDC_ISSUER` | `https://auth.wts.sh` |
+| `OIDC_CLIENT_ID` | `wts-site-2027-preview` |
+| Exact callback | `https://2027.wts.sh/auth/callback` |
+| `SITE_EDITION_ID` | `2027` |
+| `SITE_TRUST_PROXY` | `true` |
+| Persistent volume | `raiqiz9pmqbgytsvwozqdzke-site-data`, mounted at `/app/data` |
+
+The client secret and session key are independent runtime-only Coolify variables.
+The application runs as `node` without a published host port.
+The trusted HTTPS proxy supplies the forwarded scheme.
+Automatic deployments and the Coolify healthcheck override are disabled.
+The image supplies its native readiness check.
+The preview sends `X-Robots-Tag: noindex, nofollow`.
+
+The database starts with an empty 2027 publication under `wts-2027-preview`.
+No historical content, site accounts, or edition roles were imported.
+The existing CFP client and central user records remain unchanged.
+A later apex cutover requires separate authorization and an exact client registration for its callback.
+
+Release verification covered HTTPS readiness, browser navigation to central sign-in, callback parameters, and rejected invalid callbacks and logout requests.
+The isolated HTTPS rehearsal also covered authenticated profile rendering, local logout, and central SSO reuse.
+The release did not exercise a real user's password or Google sign-in on production.

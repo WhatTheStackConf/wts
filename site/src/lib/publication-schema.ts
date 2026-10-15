@@ -21,6 +21,27 @@ const slot = z.discriminatedUnion("kind", [
   z.strictObject({ ...slotBase, kind: z.literal("session"), sessionId: id }),
   z.strictObject({ ...slotBase, kind: z.enum(["break", "meal", "networking", "opening", "closing", "other"]), title: text.optional(), summary: text.optional(), hostIds: refs }),
 ]);
+type GraphIssue = (message: string) => void;
+interface SlotReferences {
+  speakers: Map<string, unknown>;
+  sessions: Map<string, unknown>;
+  programmes: Map<string, unknown>;
+  tracks: Map<string, z.infer<typeof track>>;
+}
+function checkSessionParticipants(sessions: z.infer<typeof session>[], speakers: Map<string, unknown>, fail: GraphIssue): void {
+  for (const row of sessions) {
+    if (row.speakerIds.some((ref) => !speakers.has(ref))) fail("Reference an approved session speaker.");
+    const participants = new Set(row.speakerIds);
+    if (row.hostIds.some((ref) => !participants.has(ref))) fail("Session hosts must be participants.");
+  }
+}
+function checkSlot(row: z.infer<typeof slot>, refs: SlotReferences, fail: GraphIssue): void {
+  if (!refs.programmes.has(row.programmeId)) fail("Reference an approved slot programme.");
+  if (row.trackId && refs.tracks.get(row.trackId)?.programmeId !== row.programmeId) fail("Use a track from the slot programme.");
+  if (Date.parse(row.endAt) <= Date.parse(row.startAt)) fail("End the slot after its start.");
+  if (row.kind === "session") { if (!refs.sessions.has(row.sessionId)) fail("Reference an approved slot session."); }
+  else if (row.hostIds.some((ref) => !refs.speakers.has(ref))) fail("Reference an approved shared-slot host.");
+}
 const partner = z.strictObject({ id, name: text, logoAssetId: assetIdSchema, logoSurface: z.enum(["dark", "light", "mixed"]), url: z.url().optional(), type: z.enum(["organizer", "sponsor", "supporter", "community_partner", "media", "catering", "other"]), tier: z.enum(["platinum", "gold", "silver", "bronze", "bank"]).optional() });
 export const publicationGraphSchema = z.strictObject({
   speakers: z.array(speaker).max(10_000), sessions: z.array(session).max(10_000), appearanceEvents: z.array(event).max(10_000),
@@ -46,21 +67,12 @@ export const publicationGraphSchema = z.strictObject({
   unique(graph.days.map((row) => row.key), "day keys");
   unique(graph.tracks.map((row) => `${row.programmeId}/${row.key}`), "track keys");
   unique(graph.appearances.map((row) => `${row.speakerId}/${row.eventId}`), "appearances");
-  for (const row of graph.sessions) {
-    if (row.speakerIds.some((ref) => !speakers.has(ref))) fail("Reference an approved session speaker.");
-    const participants = new Set(row.speakerIds);
-    if (row.hostIds.some((ref) => !participants.has(ref))) fail("Session hosts must be participants.");
-  }
+  checkSessionParticipants(graph.sessions, speakers, fail);
   for (const row of graph.appearances) if (!speakers.has(row.speakerId) || !events.has(row.eventId)) fail("Reference an approved appearance.");
   for (const row of graph.programmes) if (!days.has(row.dayId) || !events.has(row.eventId)) fail("Reference an approved programme day and event.");
   for (const row of graph.tracks) if (!programmes.has(row.programmeId)) fail("Reference an approved track programme.");
-  for (const row of graph.slots) {
-    if (!programmes.has(row.programmeId)) fail("Reference an approved slot programme.");
-    if (row.trackId && tracks.get(row.trackId)?.programmeId !== row.programmeId) fail("Use a track from the slot programme.");
-    if (Date.parse(row.endAt) <= Date.parse(row.startAt)) fail("End the slot after its start.");
-    if (row.kind === "session") { if (!sessions.has(row.sessionId)) fail("Reference an approved slot session."); }
-    else if (row.hostIds.some((ref) => !speakers.has(ref))) fail("Reference an approved shared-slot host.");
-  }
+  const slotReferences = { speakers, sessions, programmes, tracks };
+  for (const row of graph.slots) checkSlot(row, slotReferences, fail);
 });
 export const publicAssetInputSchema = z.strictObject({ id: assetIdSchema, sha256: assetIdSchema, mediaType: z.enum(["image/png", "image/jpeg", "image/webp", "image/avif", "image/gif", "image/svg+xml"]), byteLength: z.number().int().positive().safe().max(50_000_000), file: z.string().min(1).max(1000) }).refine((asset) => asset.id === asset.sha256, "Use the asset checksum as its ID.");
 export const publicContentBatchSchema = z.strictObject({

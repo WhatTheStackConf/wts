@@ -218,54 +218,75 @@ function mapAgendaEvent(event: PublicAgendaEvent) {
   };
 }
 
+function firstProgrammeMatch<T>(
+  agenda: PublicAgenda,
+  match: (day: PublicAgenda["days"][number], programme: PublicEventProgramme) => T | undefined,
+): T | undefined {
+  for (const day of agenda.days) {
+    for (const programme of day.programmes) {
+      const result = match(day, programme);
+      if (result) return result;
+    }
+  }
+  return undefined;
+}
+
+function announcedEndTime(endAt: string | undefined, timeZone?: string) {
+  return endAt ? {
+    end_time: localTime(endAt, timeZone),
+    end_local_date: localDate(endAt, timeZone),
+    end_status: "announced" as const,
+  } : { end_status: "not_announced" as const };
+}
+
+function scheduledSessionSchedule(agenda: PublicAgenda, slug: string, origin: string, timeZone?: string) {
+  return firstProgrammeMatch(agenda, (day, programme) => {
+    const slot = programme.slots.find((item) => item.session?.slug === slug);
+    if (!slot) return undefined;
+    return {
+      status: "scheduled" as const,
+      day_key: day.key,
+      local_date: day.localDate,
+      day_title: normalizeGuideText(day.title),
+      appearance_event: mapAgendaEvent(programme.event),
+      start_time: localTime(slot.startAt, timeZone),
+      end_time: localTime(slot.endAt, timeZone),
+      end_local_date: localDate(slot.endAt, timeZone),
+      location: optionalGuideText(slot.locationLabel),
+      track: slot.track
+        ? { key: normalizeGuideText(slot.track.key), name: normalizeGuideText(slot.track.name) }
+        : undefined,
+      agenda_url: `${origin}/agenda`,
+    };
+  });
+}
+
+function announcedSessionSchedule(agenda: PublicAgenda, slug: string, origin: string, timeZone?: string) {
+  return firstProgrammeMatch(agenda, (day, programme) => {
+    const session = programme.untimed?.sessions.find((item) => item.slug === slug);
+    if (!session) return undefined;
+    const schedule = session.schedule;
+    return {
+      status: "announced" as const,
+      day_key: day.key,
+      local_date: day.localDate,
+      day_title: normalizeGuideText(day.title),
+      appearance_event: mapAgendaEvent(programme.event),
+      ...(schedule ? { start_time: localTime(schedule.startAt, timeZone) } : {}),
+      ...announcedEndTime(schedule?.endAt, timeZone),
+      location: optionalGuideText(schedule?.locationLabel || programme.untimed?.locationLabel),
+      // Do not invent a track key from a display name.
+      track: undefined,
+      agenda_url: `${origin}/agenda`,
+    };
+  });
+}
+
 function sessionSchedule(agenda: PublicAgenda, slug: string, origin: string, timeZone?: string) {
-  for (const day of agenda.days) {
-    for (const programme of day.programmes) {
-      const slot = programme.slots.find((item) => item.session?.slug === slug);
-      if (!slot) continue;
-      return {
-        status: "scheduled" as const,
-        day_key: day.key,
-        local_date: day.localDate,
-        day_title: normalizeGuideText(day.title),
-        appearance_event: mapAgendaEvent(programme.event),
-        start_time: localTime(slot.startAt, timeZone),
-        end_time: localTime(slot.endAt, timeZone),
-        end_local_date: localDate(slot.endAt, timeZone),
-        location: optionalGuideText(slot.locationLabel),
-        track: slot.track
-          ? { key: normalizeGuideText(slot.track.key), name: normalizeGuideText(slot.track.name) }
-          : undefined,
-        agenda_url: `${origin}/agenda`,
-      };
-    }
-  }
   // A published timed slot wins even if an earlier day contains a lineup mention.
-  for (const day of agenda.days) {
-    for (const programme of day.programmes) {
-      const session = programme.untimed?.sessions.find((item) => item.slug === slug);
-      if (!session) continue;
-      const schedule = session.schedule;
-      return {
-        status: "announced" as const,
-        day_key: day.key,
-        local_date: day.localDate,
-        day_title: normalizeGuideText(day.title),
-        appearance_event: mapAgendaEvent(programme.event),
-        ...(schedule ? { start_time: localTime(schedule.startAt, timeZone) } : {}),
-        ...(schedule?.endAt ? {
-          end_time: localTime(schedule.endAt, timeZone),
-          end_local_date: localDate(schedule.endAt, timeZone),
-          end_status: "announced" as const,
-        } : { end_status: "not_announced" as const }),
-        location: optionalGuideText(schedule?.locationLabel || programme.untimed?.locationLabel),
-        // Do not invent a track key from a display name.
-        track: undefined,
-        agenda_url: `${origin}/agenda`,
-      };
-    }
-  }
-  return { status: "not_scheduled" as const };
+  return scheduledSessionSchedule(agenda, slug, origin, timeZone) ??
+    announcedSessionSchedule(agenda, slug, origin, timeZone) ??
+    { status: "not_scheduled" as const };
 }
 
 function mapAnnouncedSpeakers(speakers: PublicAgendaSession["speakers"], origin: string) {
@@ -277,15 +298,20 @@ function mapAnnouncedSpeakers(speakers: PublicAgendaSession["speakers"], origin:
   }));
 }
 
+function mapAnnouncedCta(cta: NonNullable<PublicEventProgramme["untimed"]>["cta"], origin: string) {
+  if (!cta) return undefined;
+  const ctaUrl = cta.href.startsWith("/") && !cta.href.startsWith("//")
+    ? `${origin}${cta.href}`
+    : canonicalExternalUrl(cta.href);
+  return ctaUrl ? { label: normalizeGuideText(cta.label), canonical_url: ctaUrl } : undefined;
+}
+
 function mapAnnouncedProgramme(
   announced: NonNullable<PublicEventProgramme["untimed"]>,
   agenda: PublicAgenda,
   origin: string,
   timeZone?: string,
 ) {
-  const ctaUrl = announced.cta?.href.startsWith("/") && !announced.cta.href.startsWith("//")
-    ? `${origin}${announced.cta.href}`
-    : canonicalExternalUrl(announced.cta?.href);
   return {
     title: optionalGuideText(announced.title),
     ...(announced.startTime ? { start_time: announced.startTime } : {}),
@@ -293,9 +319,7 @@ function mapAnnouncedProgramme(
     location: optionalGuideText(announced.locationLabel),
     summary: normalizeGuideText(announced.summary),
     access: optionalGuideText(announced.access),
-    cta: announced.cta && ctaUrl
-      ? { label: normalizeGuideText(announced.cta.label), canonical_url: ctaUrl }
-      : undefined,
+    cta: mapAnnouncedCta(announced.cta, origin),
     highlights: announced.highlights?.map(normalizeGuideText),
     speakers: announced.speakers ? mapAnnouncedSpeakers(announced.speakers, origin) : undefined,
     unassigned_speakers: announced.unassignedSpeakers
@@ -369,69 +393,76 @@ function mapPartnerGroups(groups: PublicPartnerGroup[]) {
   }));
 }
 
-function mapLogistics(content: ConferenceGuide, origin: string) {
-  const ticketPath = content.tickets.canonicalPath;
-  const student = content.tickets.student;
-  const eventDate = content.event.date.status === "announced"
-    ? content.event.date.localDate
-    : undefined;
-  const location = content.event.location.status === "announced"
-    ? content.event.location
-    : undefined;
-  const timeZone = announcedConferenceTimeZone(content);
-  const mainVenue = content.mainVenue.status === "announced"
-    ? content.mainVenue
-    : undefined;
-  const preConferenceVenue = content.preConferenceVenue.status === "announced"
-    ? content.preConferenceVenue
-    : undefined;
-  const ticketsAnnounced = content.tickets.status === "announced";
+function mapEventLogistics(event: ConferenceGuide["event"], timeZone: string | undefined) {
+  const location = event.location.status === "announced" ? event.location : undefined;
   return {
-    event: {
-      name: normalizeGuideText(content.event.name),
-      date: {
-        status: content.event.date.status,
-        local_date: eventDate,
-      },
-      location: {
-        status: content.event.location.status,
-        city: optionalGuideText(location?.city),
-        country: optionalGuideText(location?.country),
-      },
-      time_zone: {
-        status: content.event.timeZone.status,
-        iana: timeZone,
-      },
+    name: normalizeGuideText(event.name),
+    date: {
+      status: event.date.status,
+      local_date: event.date.status === "announced" ? event.date.localDate : undefined,
     },
-    main_venue: {
-      status: content.mainVenue.status,
-      name: optionalGuideText(mainVenue?.name),
-      campuses: (mainVenue?.campuses ?? []).map(normalizeGuideText),
-      spaces: mainVenue?.spaces ? {
-        outdoor_stages: mainVenue.spaces.outdoorStages,
-        indoor_stages: mainVenue.spaces.indoorStages,
-        amenities: (mainVenue.spaces.amenities ?? []).map(normalizeGuideText),
-      } : undefined,
+    location: {
+      status: event.location.status,
+      city: optionalGuideText(location?.city),
+      country: optionalGuideText(location?.country),
     },
-    pre_conference_venue: {
-      status: content.preConferenceVenue.status,
-      name: optionalGuideText(preConferenceVenue?.name),
-      address: optionalGuideText(preConferenceVenue?.address),
-      applies_to_events: [],
+    time_zone: {
+      status: event.timeZone.status,
+      iana: timeZone,
     },
+  };
+}
+
+function mapMainVenue(venue: ConferenceGuide["mainVenue"]) {
+  const mainVenue = venue.status === "announced" ? venue : undefined;
+  return {
+    status: venue.status,
+    name: optionalGuideText(mainVenue?.name),
+    campuses: (mainVenue?.campuses ?? []).map(normalizeGuideText),
+    spaces: mainVenue?.spaces ? {
+      outdoor_stages: mainVenue.spaces.outdoorStages,
+      indoor_stages: mainVenue.spaces.indoorStages,
+      amenities: (mainVenue.spaces.amenities ?? []).map(normalizeGuideText),
+    } : undefined,
+  };
+}
+
+function mapPreConferenceVenue(venue: ConferenceGuide["preConferenceVenue"]) {
+  const preConferenceVenue = venue.status === "announced" ? venue : undefined;
+  return {
+    status: venue.status,
+    name: optionalGuideText(preConferenceVenue?.name),
+    address: optionalGuideText(preConferenceVenue?.address),
+    applies_to_events: [],
+  };
+}
+
+function mapTickets(tickets: ConferenceGuide["tickets"], origin: string) {
+  if (tickets.status !== "announced") {
+    return { status: tickets.status, canonical_url: undefined, regular: undefined, student: undefined, includes: [], workshops: undefined };
+  }
+  const student = tickets.student;
+  return {
+    status: tickets.status,
+    canonical_url: tickets.canonicalPath ? `${origin}${tickets.canonicalPath}` : undefined,
+    regular: tickets.regular,
+    student: student ? {
+      amount: student.amount,
+      currency: student.currency,
+      verification_email: student.verificationEmail,
+    } : undefined,
+    includes: (tickets.includes ?? []).map(normalizeGuideText),
+    workshops: tickets.workshops,
+  };
+}
+
+function mapLogistics(content: ConferenceGuide, origin: string) {
+  return {
+    event: mapEventLogistics(content.event, announcedConferenceTimeZone(content)),
+    main_venue: mapMainVenue(content.mainVenue),
+    pre_conference_venue: mapPreConferenceVenue(content.preConferenceVenue),
     pre_conference_events: [],
-    tickets: {
-      status: content.tickets.status,
-      canonical_url: ticketsAnnounced && ticketPath ? `${origin}${ticketPath}` : undefined,
-      regular: ticketsAnnounced ? content.tickets.regular : undefined,
-      student: ticketsAnnounced && student ? {
-        amount: student.amount,
-        currency: student.currency,
-        verification_email: student.verificationEmail,
-      } : undefined,
-      includes: ticketsAnnounced ? (content.tickets.includes ?? []).map(normalizeGuideText) : [],
-      workshops: ticketsAnnounced ? content.tickets.workshops : undefined,
-    },
+    tickets: mapTickets(content.tickets, origin),
     code_of_conduct: {
       status: content.codeOfConduct.status,
       canonical_url: `${origin}${content.codeOfConduct.canonicalPath}`,
@@ -620,43 +651,41 @@ function stableSlugOrder(left: string, right: string): number {
   return 0;
 }
 
+type SessionSearchFilter = keyof NonNullable<SessionSearchInput["filters"]>;
+
+const SESSION_FILTER_MATCHERS: Record<SessionSearchFilter, (session: GuideSession, value: string) => boolean> = {
+  date: (session, date) =>
+    session.schedule.status !== "not_scheduled" && session.schedule.local_date === date,
+  format: (session, format) =>
+    session.format ? comparableFilterText(session.format) === comparableFilterText(format) : false,
+  track: (session, value) => {
+    if (session.schedule.status !== "scheduled" || !session.schedule.track) return false;
+    const track = comparableFilterText(value);
+    return comparableFilterText(session.schedule.track.key) === track ||
+      comparableFilterText(session.schedule.track.name) === track;
+  },
+  speaker: (session, value) => {
+    const speaker = comparableFilterText(value);
+    return session.speakers.some((candidate) =>
+      comparableFilterText(candidate.slug) === speaker ||
+      comparableFilterText(candidate.display_name) === speaker
+    );
+  },
+  location: (session, location) =>
+    session.schedule.status !== "not_scheduled" && session.schedule.location
+      ? comparableFilterText(session.schedule.location) === comparableFilterText(location)
+      : false,
+};
+
 function matchesSessionFilters(
   session: GuideSession,
   filters: SessionSearchInput["filters"],
 ): boolean {
   if (!filters) return true;
-  if (
-    filters.date &&
-    (session.schedule.status === "not_scheduled" || session.schedule.local_date !== filters.date)
-  ) return false;
-  if (
-    filters.format &&
-    (!session.format || comparableFilterText(session.format) !== comparableFilterText(filters.format))
-  ) return false;
-  if (filters.track) {
-    if (session.schedule.status !== "scheduled" || !session.schedule.track) return false;
-    const track = comparableFilterText(filters.track);
-    if (
-      comparableFilterText(session.schedule.track.key) !== track &&
-      comparableFilterText(session.schedule.track.name) !== track
-    ) return false;
-  }
-  if (filters.speaker) {
-    const speaker = comparableFilterText(filters.speaker);
-    if (!session.speakers.some((candidate) =>
-      comparableFilterText(candidate.slug) === speaker ||
-      comparableFilterText(candidate.display_name) === speaker
-    )) return false;
-  }
-  if (
-    filters.location &&
-    (
-      session.schedule.status === "not_scheduled" ||
-      !session.schedule.location ||
-      comparableFilterText(session.schedule.location) !== comparableFilterText(filters.location)
-    )
-  ) return false;
-  return true;
+  return (Object.keys(SESSION_FILTER_MATCHERS) as SessionSearchFilter[]).every((filter) => {
+    const value = filters[filter];
+    return !value || SESSION_FILTER_MATCHERS[filter](session, value);
+  });
 }
 
 function searchResultSchedule(schedule: GuideSession["schedule"]) {
@@ -739,25 +768,50 @@ function planningSession(candidate: PlanningCandidate) {
   };
 }
 
+interface AgendaSlotEntry {
+  day: GuideAgendaDay;
+  programme: GuideEventProgramme;
+  slot: GuideAgendaSlot;
+}
+
+function agendaSlotEntries(programme: GuideProgramme): AgendaSlotEntry[] {
+  return programme.agenda.days.flatMap((day) =>
+    day.programmes.flatMap((eventProgramme) =>
+      eventProgramme.slots.map((slot) => ({ day, programme: eventProgramme, slot }))),
+  );
+}
+
 function planningScheduleIndex(programme: GuideProgramme) {
   const sessionsBySlug = new Map(programme.sessions.map((session) => [session.slug, session]));
   const scheduledBySlug = new Map<string, Omit<PlanningCandidate, "priority">>();
-  let agendaOrder = 0;
-  for (const day of programme.agenda.days) {
-    for (const eventProgramme of day.programmes) {
-      for (const slot of eventProgramme.slots) {
-        if (slot.kind === "session" && slot.session) {
-          const session = sessionsBySlug.get(slot.session.slug);
-          if (session && !scheduledBySlug.has(session.slug)) {
-            scheduledBySlug.set(session.slug, { session, day, programme: eventProgramme, slot, agendaOrder });
-          }
-        }
-        agendaOrder += 1;
-      }
+  agendaSlotEntries(programme).forEach(({ day, programme: eventProgramme, slot }, agendaOrder) => {
+    const session = slot.kind === "session" && slot.session ? sessionsBySlug.get(slot.session.slug) : undefined;
+    if (session && !scheduledBySlug.has(session.slug)) {
+      scheduledBySlug.set(session.slug, { session, day, programme: eventProgramme, slot, agendaOrder });
     }
-  }
+  });
 
   return { sessionsBySlug, scheduledBySlug };
+}
+
+function prioritizedSlugs(input: ProposedScheduleInput): Array<{ slug: string; priority: PlanningCandidate["priority"] }> {
+  const mustAttendSlugs = input.must_attend_slugs ?? [];
+  const mustAttend = new Set(mustAttendSlugs);
+  return [
+    ...mustAttendSlugs.map((slug) => ({ slug, priority: { kind: "must_attend" as const } })),
+    ...(input.ranked_session_slugs ?? []).flatMap((slug, index) =>
+      mustAttend.has(slug) ? [] : [{ slug, priority: { kind: "ranked" as const, rank: index + 1 } }]),
+  ];
+}
+
+function comparePlanningPriority(left: PlanningCandidate, right: PlanningCandidate): number {
+  if (left.priority.kind !== right.priority.kind) {
+    return left.priority.kind === "must_attend" ? -1 : 1;
+  }
+  if (left.priority.kind === "ranked" && right.priority.kind === "ranked") {
+    return left.priority.rank - right.priority.rank || left.agendaOrder - right.agendaOrder;
+  }
+  return left.agendaOrder - right.agendaOrder;
 }
 
 function planningCandidates(
@@ -765,27 +819,10 @@ function planningCandidates(
   input: ProposedScheduleInput,
   eligibleSlugs: Set<string>,
 ) {
-  const mustAttend = new Set(input.must_attend_slugs ?? []);
-  const candidates: PlanningCandidate[] = [];
-  for (const slug of input.must_attend_slugs ?? []) {
-    if (!eligibleSlugs.has(slug)) continue;
-    const scheduled = scheduledBySlug.get(slug);
-    if (scheduled) candidates.push({ ...scheduled, priority: { kind: "must_attend" } });
-  }
-  for (const [index, slug] of (input.ranked_session_slugs ?? []).entries()) {
-    if (mustAttend.has(slug) || !eligibleSlugs.has(slug)) continue;
-    const scheduled = scheduledBySlug.get(slug);
-    if (scheduled) candidates.push({ ...scheduled, priority: { kind: "ranked", rank: index + 1 } });
-  }
-  return candidates.sort((left, right) => {
-    if (left.priority.kind !== right.priority.kind) {
-      return left.priority.kind === "must_attend" ? -1 : 1;
-    }
-    if (left.priority.kind === "ranked" && right.priority.kind === "ranked") {
-      return left.priority.rank - right.priority.rank || left.agendaOrder - right.agendaOrder;
-    }
-    return left.agendaOrder - right.agendaOrder;
-  });
+  return prioritizedSlugs(input).flatMap(({ slug, priority }): PlanningCandidate[] => {
+    const scheduled = eligibleSlugs.has(slug) ? scheduledBySlug.get(slug) : undefined;
+    return scheduled ? [{ ...scheduled, priority }] : [];
+  }).sort(comparePlanningPriority);
 }
 
 function candidateIsAvailable(
@@ -833,6 +870,150 @@ function fixedContextReference(
     location: slot.location ? boundedPublicLabel(slot.location) : undefined,
     title: slot.title ? boundedPublicLabel(slot.title) : undefined,
     summary: slot.summary ? boundedPublicLabel(slot.summary) : undefined,
+  };
+}
+
+const PLANNING_REQUEST_KINDS = ["must_attend", "ranked", "excluded"] as const;
+type PlanningRequestKind = (typeof PLANNING_REQUEST_KINDS)[number];
+
+interface PlanningRequests extends Record<PlanningRequestKind, Set<string>> {
+  slugs: string[];
+}
+
+interface PlanningIndex {
+  sessionsBySlug: Map<string, GuideSession>;
+  scheduledBySlug: Map<string, Omit<PlanningCandidate, "priority">>;
+}
+
+interface RejectedCandidate {
+  candidate: PlanningCandidate;
+  selectedConflicts: PlanningCandidate[];
+  fixedConflicts: AgendaSlotEntry[];
+}
+
+function planningRequests(input: ProposedScheduleInput): PlanningRequests {
+  const mustAttend = input.must_attend_slugs ?? [];
+  const ranked = input.ranked_session_slugs ?? [];
+  const excluded = input.excluded_session_slugs ?? [];
+  return {
+    must_attend: new Set(mustAttend),
+    ranked: new Set(ranked),
+    excluded: new Set(excluded),
+    slugs: [...new Set([...mustAttend, ...ranked, ...excluded])],
+  };
+}
+
+function initialPlanningOutcome(
+  slug: string,
+  requests: PlanningRequests,
+  { sessionsBySlug, scheduledBySlug }: PlanningIndex,
+  isAvailable: (scheduled: Omit<PlanningCandidate, "priority">) => boolean,
+): PlanningInputOutcome["outcome"] {
+  if (requests.excluded.has(slug)) {
+    return requests.must_attend.has(slug) || requests.ranked.has(slug) ? "conflicting_input" : "excluded";
+  }
+  const session = sessionsBySlug.get(slug);
+  if (!session) return "not_published_or_missing";
+  const scheduled = scheduledBySlug.get(slug);
+  if (!scheduled) {
+    const schedule = session.schedule;
+    return schedule.status === "announced" && schedule.start_time && !schedule.end_time
+      ? "end_time_not_announced"
+      : "unscheduled";
+  }
+  return isAvailable(scheduled) ? "pending" : "unavailable";
+}
+
+function selectPlanningCandidates(
+  candidates: PlanningCandidate[],
+  fixedSlots: AgendaSlotEntry[],
+  outcomesBySlug: Map<string, PlanningInputOutcome>,
+) {
+  const selected: PlanningCandidate[] = [];
+  const rejected: RejectedCandidate[] = [];
+  for (const candidate of candidates) {
+    const selectedConflicts = selected.filter((chosen) => scheduleIntervalsOverlap(candidate, chosen));
+    const fixedConflicts = fixedSlots.filter(({ day, programme, slot }) =>
+      fixedSlotOverlaps(candidate, day, programme, slot)
+    );
+    const accepted = selectedConflicts.length === 0 && fixedConflicts.length === 0;
+    if (accepted) selected.push(candidate);
+    else rejected.push({ candidate, selectedConflicts, fixedConflicts });
+    const outcome = outcomesBySlug.get(candidate.session.slug);
+    if (outcome) outcome.outcome = accepted ? "selected" : "not_selected_conflict";
+  }
+  return { selected, rejected };
+}
+
+function fixedContextReferences(entries: AgendaSlotEntry[]) {
+  return entries.map(({ day, programme, slot }) => fixedContextReference(day, programme, slot));
+}
+
+function unresolvedHardConstraint(outcome: PlanningInputOutcome, conflict: RejectedCandidate | undefined) {
+  const reason = outcome.outcome === "not_selected_conflict"
+    ? conflict?.selectedConflicts.length
+      ? "conflicts_with_selected" as const
+      : "conflicts_with_fixed_context" as const
+    : outcome.outcome;
+  return {
+    slug: outcome.slug,
+    reason,
+    conflicting_session_slugs: conflict?.selectedConflicts.map((entry) => entry.session.slug) ?? [],
+    fixed_context: conflict ? fixedContextReferences(conflict.fixedConflicts) : [],
+  };
+}
+
+function hasSelectionRequest(input: ProposedScheduleInput): boolean {
+  return Boolean(input.must_attend_slugs?.length || input.ranked_session_slugs?.length);
+}
+
+function proposedScheduleOutcome(
+  input: ProposedScheduleInput,
+  currentVersion: string,
+  selectedCount: number,
+  inputOutcomes: PlanningInputOutcome[],
+) {
+  if (hasSelectionRequest(input) && selectedCount === 0) return "no_sessions_selected" as const;
+  const versionChanged = Boolean(input.prior_programme_version && input.prior_programme_version !== currentVersion);
+  const hasInputIssues = inputOutcomes.some((outcome) => outcome.outcome !== "selected");
+  return versionChanged || hasInputIssues ? "planned_with_issues" as const : "planned" as const;
+}
+
+function programmeVersionCheck(priorVersion: string | undefined, currentVersion: string) {
+  return priorVersion
+    ? {
+        status: priorVersion === currentVersion ? "current" as const : "changed" as const,
+        prior_programme_version: priorVersion,
+        current_programme_version: currentVersion,
+      }
+    : { status: "not_provided" as const, current_programme_version: currentVersion };
+}
+
+function planningConflict({ candidate, selectedConflicts, fixedConflicts }: RejectedCandidate) {
+  return {
+    slug: candidate.session.slug,
+    reason: selectedConflicts.length > 0
+      ? "overlaps_selected_session" as const
+      : "overlaps_fixed_context" as const,
+    selected_session_slugs: selectedConflicts.map((conflict) => conflict.session.slug),
+    fixed_context: fixedContextReferences(fixedConflicts),
+  };
+}
+
+function rankedAlternative({ candidate, selectedConflicts }: RejectedCandidate) {
+  return {
+    ...planningSession(candidate),
+    relationship: selectedConflicts.some((conflict) =>
+      conflict.priority.kind === candidate.priority.kind &&
+      conflict.priority.kind === "must_attend"
+    ) ? "equal_priority" as const : "lower_priority" as const,
+    contested_with: selectedConflicts.map((conflict) => conflict.session.slug),
+    contested_window: {
+      local_date: candidate.day.local_date,
+      start_time: candidate.slot.start_time,
+      end_time: candidate.slot.end_time,
+      end_local_date: candidate.slot.end_local_date,
+    },
   };
 }
 
@@ -1020,118 +1201,36 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
 
     async planProposedSchedule(input: ProposedScheduleInput) {
       const snapshot = await loadProgramme();
-      const { sessionsBySlug, scheduledBySlug } = planningScheduleIndex(snapshot.programme);
-      const mustAttendSlugs = new Set(input.must_attend_slugs ?? []);
-      const rankedSlugs = new Set(input.ranked_session_slugs ?? []);
-      const excludedSlugs = new Set(input.excluded_session_slugs ?? []);
-      const requestedSlugs = [...new Set([
-        ...(input.must_attend_slugs ?? []),
-        ...(input.ranked_session_slugs ?? []),
-        ...(input.excluded_session_slugs ?? []),
-      ])];
-      const eligibleSlugs = new Set<string>();
-      const inputOutcomes = requestedSlugs.map((slug): PlanningInputOutcome => {
-        const requestedAs = [
-          ...(mustAttendSlugs.has(slug) ? ["must_attend" as const] : []),
-          ...(rankedSlugs.has(slug) ? ["ranked" as const] : []),
-          ...(excludedSlugs.has(slug) ? ["excluded" as const] : []),
-        ];
-        let outcome: PlanningInputOutcome["outcome"];
-        if ((mustAttendSlugs.has(slug) || rankedSlugs.has(slug)) && excludedSlugs.has(slug)) {
-          outcome = "conflicting_input";
-        } else if (excludedSlugs.has(slug)) {
-          outcome = "excluded";
-        } else if (!sessionsBySlug.has(slug)) {
-          outcome = "not_published_or_missing";
-        } else {
-          const scheduled = scheduledBySlug.get(slug);
-          if (!scheduled) {
-            const schedule = sessionsBySlug.get(slug)?.schedule;
-            outcome = schedule?.status === "announced" && schedule.start_time && !schedule.end_time
-              ? "end_time_not_announced"
-              : "unscheduled";
-          } else if (!timeZone || !candidateIsAvailable(scheduled, input.availability_windows)) {
-            outcome = "unavailable";
-          } else {
-            outcome = "pending";
-            eligibleSlugs.add(slug);
-          }
-        }
-        return { slug, requested_as: requestedAs, outcome };
-      });
+      const index = planningScheduleIndex(snapshot.programme);
+      const requests = planningRequests(input);
+      const isAvailable = (scheduled: Omit<PlanningCandidate, "priority">) =>
+        Boolean(timeZone) && candidateIsAvailable(scheduled, input.availability_windows);
+      const inputOutcomes = requests.slugs.map((slug): PlanningInputOutcome => ({
+        slug,
+        requested_as: PLANNING_REQUEST_KINDS.filter((kind) => requests[kind].has(slug)),
+        outcome: initialPlanningOutcome(slug, requests, index, isAvailable),
+      }));
+      const eligibleSlugs = new Set(inputOutcomes.filter((outcome) => outcome.outcome === "pending").map((outcome) => outcome.slug));
       const inputOutcomeBySlug = new Map(inputOutcomes.map((outcome) => [outcome.slug, outcome]));
-      const fixedSlots = snapshot.programme.agenda.days.flatMap((day) =>
-        day.programmes.flatMap((programme) => programme.slots
-          .filter((slot) => slot.kind !== "session" && !slot.track)
-          .map((slot) => ({ day, programme, slot }))),
+      const fixedSlots = agendaSlotEntries(snapshot.programme)
+        .filter(({ slot }) => slot.kind !== "session" && !slot.track);
+      const { selected, rejected } = selectPlanningCandidates(
+        planningCandidates(index.scheduledBySlug, input, eligibleSlugs),
+        fixedSlots,
+        inputOutcomeBySlug,
       );
-      const selected: PlanningCandidate[] = [];
-      const rejected: Array<{
-        candidate: PlanningCandidate;
-        selectedConflicts: PlanningCandidate[];
-        fixedConflicts: Array<{ day: GuideAgendaDay; programme: GuideEventProgramme; slot: GuideAgendaSlot }>;
-      }> = [];
-
-      for (const candidate of planningCandidates(scheduledBySlug, input, eligibleSlugs)) {
-        const selectedConflicts = selected.filter((chosen) => scheduleIntervalsOverlap(candidate, chosen));
-        const fixedConflicts = fixedSlots.filter(({ day, programme, slot }) =>
-          fixedSlotOverlaps(candidate, day, programme, slot)
-        );
-        if (selectedConflicts.length === 0 && fixedConflicts.length === 0) {
-          selected.push(candidate);
-          const outcome = inputOutcomeBySlug.get(candidate.session.slug);
-          if (outcome) outcome.outcome = "selected";
-        } else {
-          rejected.push({ candidate, selectedConflicts, fixedConflicts });
-          const outcome = inputOutcomeBySlug.get(candidate.session.slug);
-          if (outcome) outcome.outcome = "not_selected_conflict";
-        }
-      }
       const selectedProgrammes = new Set(selected.map((candidate) => candidate.programme));
-      const fixedContext = fixedSlots
-        .filter(({ programme }) => selectedProgrammes.has(programme))
-        .map(({ day, programme, slot }) => fixedContextReference(day, programme, slot));
+      const fixedContext = fixedContextReferences(fixedSlots.filter(({ programme }) => selectedProgrammes.has(programme)));
 
       const rejectedBySlug = new Map(rejected.map((entry) => [entry.candidate.session.slug, entry]));
       const unresolvedHardConstraints = inputOutcomes
-        .filter((outcome) => mustAttendSlugs.has(outcome.slug) && outcome.outcome !== "selected")
-        .map((outcome) => {
-          const conflict = rejectedBySlug.get(outcome.slug);
-          const reason = outcome.outcome === "not_selected_conflict"
-            ? conflict?.selectedConflicts.length
-              ? "conflicts_with_selected" as const
-              : "conflicts_with_fixed_context" as const
-            : outcome.outcome;
-          return {
-            slug: outcome.slug,
-            reason,
-            conflicting_session_slugs: conflict?.selectedConflicts.map((entry) => entry.session.slug) ?? [],
-            fixed_context: conflict?.fixedConflicts.map(({ day, programme, slot }) =>
-              fixedContextReference(day, programme, slot)
-            ) ?? [],
-          };
-        });
-      const versionChanged = Boolean(
-        input.prior_programme_version && input.prior_programme_version !== snapshot.version,
-      );
-      const hasInputIssues = inputOutcomes.some((outcome) => outcome.outcome !== "selected");
-      const selectionRequested = (input.must_attend_slugs?.length ?? 0) > 0 ||
-        (input.ranked_session_slugs?.length ?? 0) > 0;
+        .filter((outcome) => requests.must_attend.has(outcome.slug) && outcome.outcome !== "selected")
+        .map((outcome) => unresolvedHardConstraint(outcome, rejectedBySlug.get(outcome.slug)));
 
       return {
         metadata: metadata("/agenda", snapshot.version, snapshot.generatedAt),
-        outcome: selectionRequested && selected.length === 0
-          ? "no_sessions_selected" as const
-          : versionChanged || hasInputIssues
-            ? "planned_with_issues" as const
-            : "planned" as const,
-        version_check: input.prior_programme_version
-          ? {
-              status: input.prior_programme_version === snapshot.version ? "current" as const : "changed" as const,
-              prior_programme_version: input.prior_programme_version,
-              current_programme_version: snapshot.version,
-            }
-          : { status: "not_provided" as const, current_programme_version: snapshot.version },
+        outcome: proposedScheduleOutcome(input, snapshot.version, selected.length, inputOutcomes),
+        version_check: programmeVersionCheck(input.prior_programme_version, snapshot.version),
         policy: {
           method: "caller_priorities_and_schedule_fit_v1" as const,
           priority_order: ["must_attend", "ranked_position"] as const,
@@ -1157,32 +1256,10 @@ export function createConferenceGuide(dependencies: ConferenceGuideDependencies)
           .map(planningSession),
         fixed_context: fixedContext,
         unresolved_hard_constraints: unresolvedHardConstraints,
-        conflicts: rejected.map(({ candidate, selectedConflicts, fixedConflicts }) => ({
-          slug: candidate.session.slug,
-          reason: selectedConflicts.length > 0
-            ? "overlaps_selected_session" as const
-            : "overlaps_fixed_context" as const,
-          selected_session_slugs: selectedConflicts.map((conflict) => conflict.session.slug),
-          fixed_context: fixedConflicts.map(({ day, programme, slot }) =>
-            fixedContextReference(day, programme, slot)
-          ),
-        })),
+        conflicts: rejected.map(planningConflict),
         ranked_alternatives: rejected
           .filter(({ selectedConflicts }) => selectedConflicts.length > 0)
-          .map(({ candidate, selectedConflicts }) => ({
-            ...planningSession(candidate),
-            relationship: selectedConflicts.some((conflict) =>
-              conflict.priority.kind === candidate.priority.kind &&
-              conflict.priority.kind === "must_attend"
-            ) ? "equal_priority" as const : "lower_priority" as const,
-            contested_with: selectedConflicts.map((conflict) => conflict.session.slug),
-            contested_window: {
-              local_date: candidate.day.local_date,
-              start_time: candidate.slot.start_time,
-              end_time: candidate.slot.end_time,
-              end_local_date: candidate.slot.end_local_date,
-            },
-          })),
+          .map(rankedAlternative),
         input_outcomes: inputOutcomes,
       };
     },

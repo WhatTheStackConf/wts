@@ -31,15 +31,34 @@ function record(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const statusMessages = {
+  409: "Your profile changed in another session. Load the current profile, then apply your changes again.",
+  429: "Too many requests. Wait a minute, then try again.",
+  401: "Your session has ended. Return to sign in.",
+  403: "This action is not allowed. Verify your email or return to sign in.",
+  400: "The account service did not accept these values. Check the fields, then try again."
+};
+
+function errorCode(data) {
+  if (!record(data)) return "REQUEST_FAILED";
+  if (typeof data.code === "string") return data.code;
+  if (record(data.error) && typeof data.error.code === "string") return data.error.code;
+  return typeof data.error === "string" ? data.error : "REQUEST_FAILED";
+}
+
+function requestInit(body, method) {
+  return {
+    method,
+    credentials: "same-origin",
+    headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  };
+}
+
 async function request(endpoint, body, method = "POST") {
   let response;
   try {
-    response = await fetch(endpoint, {
-      method,
-      credentials: "same-origin",
-      headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) })
-    });
+    response = await fetch(endpoint, requestInit(body, method));
   } catch {
     throw new AccountRequestError("The account service could not be reached. Check your connection, then try again.", 0, "NETWORK_ERROR");
   }
@@ -50,20 +69,8 @@ async function request(endpoint, body, method = "POST") {
     throw new AccountRequestError("The account service returned an unreadable response. Try again.", response.status, "INVALID_RESPONSE");
   }
   if (!response.ok) {
-    const code = record(data) && typeof data.code === "string" ? data.code
-      : record(data) && record(data.error) && typeof data.error.code === "string" ? data.error.code
-        : record(data) && typeof data.error === "string" ? data.error : "REQUEST_FAILED";
-    const message = errors[code] ?? (response.status === 409
-      ? "Your profile changed in another session. Load the current profile, then apply your changes again."
-      : response.status === 429
-        ? "Too many requests. Wait a minute, then try again."
-        : response.status === 401
-          ? "Your session has ended. Return to sign in."
-          : response.status === 403
-            ? "This action is not allowed. Verify your email or return to sign in."
-            : response.status === 400
-              ? "The account service did not accept these values. Check the fields, then try again."
-              : "The account service could not complete this action. Try again.");
+    const code = errorCode(data);
+    const message = errors[code] ?? statusMessages[response.status] ?? "The account service could not complete this action. Try again.";
     throw new AccountRequestError(message, response.status, code);
   }
   return data;
@@ -129,69 +136,68 @@ function newPassword(form, name) {
   return password;
 }
 
-async function submit(form, submitter) {
-  switch (form.dataset.accountAction) {
-    case "sign-in": {
-      const data = await request(form.action, { email: field(form, "email"), password: field(form, "password"), callbackURL: callback(form, "/account"), ...continuation(form) });
-      if (!redirectResult(data)) location.assign(callback(form, "/account"));
-      return;
-    }
-    case "social": {
-      const data = await request(form.action, { provider: field(form, "provider"), callbackURL: callback(form, "/account"), errorCallbackURL: callback(form, "/sign-in"), ...continuation(form) });
-      if (!redirectResult(data)) throw new AccountRequestError("The sign-in provider did not return a destination. Use your email and password, or try again.", 200, "INVALID_RESPONSE");
-      return;
-    }
-    case "sign-up": {
-      const email = field(form, "email");
-      const data = await request(form.action, { name: field(form, "name"), email, password: newPassword(form, "password"), callbackURL: new URL("/verify-email?verified=1", location.origin).href, ...continuation(form) });
-      if (!redirectResult(data)) location.assign(callback(form, "/verify-email", { email }));
-      return;
-    }
-    case "recovery":
-      await request(form.action, { email: field(form, "email"), redirectTo: new URL("/reset-password", location.origin).href });
-      message(form, "status", "If this email has an account, you will receive a reset link. Check your inbox and spam folder.");
-      return;
-    case "reset-password": {
-      await request(form.action, { token: field(form, "token"), newPassword: newPassword(form, "newPassword") });
-      const input = form.elements.namedItem("newPassword");
-      if (input instanceof HTMLInputElement) input.value = "";
-      message(form, "status", "Your password has changed. Sign in with your new password. Other apps can retain their local sessions.");
-      const link = document.querySelector("[data-reset-sign-in]");
-      if (link instanceof HTMLElement) link.hidden = false;
-      return;
-    }
-    case "verify-email":
-      await request(form.action, { email: field(form, "email"), callbackURL: new URL("/verify-email?verified=1", location.origin).href });
-      message(form, "status", "If this account needs verification, you will receive a new link. Check your inbox and spam folder.");
-      return;
-    case "consent": {
-      const data = await request(form.action, { accept: submitter instanceof HTMLButtonElement && submitter.value === "true", ...continuation(form) });
-      if (!redirectResult(data)) throw new AccountRequestError("The app request did not return a destination. Return to the app and try again.", 200, "INVALID_RESPONSE");
-      return;
-    }
-    case "profile": {
-      const language = field(form, "preferredLanguage");
-      if (language !== "") {
-        let canonical;
-        try {
-          canonical = new Intl.Locale(language).toString();
-        } catch {
-          throw new AccountRequestError("Enter a valid language tag, such as en, en-US, or mk.", 400, "invalid_profile");
-        }
-        if (canonical !== language) throw new AccountRequestError(`Use the standard language tag ${canonical}.`, 400, "invalid_profile");
-      }
-      const data = await request("/v1/me", { name: field(form, "name"), avatarUrl: field(form, "avatarUrl") || null, preferredLanguage: language || null, expectedRevision: Number(field(form, "expectedRevision")) }, "PATCH");
-      applyProfile(form, profileFromResponse(data));
-      message(form, "status", "Your shared profile is saved.");
-      return;
-    }
-    case "sign-out":
-      await request(form.action, {});
-      location.assign("/sign-in?signed_out=1");
-      return;
-    default:
-      throw new AccountRequestError("This account action is not available. Reload the page.", 0, "INVALID_ACTION");
+function canonicalLanguage(language) {
+  if (language === "") return;
+  let canonical;
+  try {
+    canonical = new Intl.Locale(language).toString();
+  } catch {
+    throw new AccountRequestError("Enter a valid language tag, such as en, en-US, or mk.", 400, "invalid_profile");
   }
+  if (canonical !== language) throw new AccountRequestError(`Use the standard language tag ${canonical}.`, 400, "invalid_profile");
+}
+
+const accountActions = new Map([
+  ["sign-in", async (form) => {
+    const data = await request(form.action, { email: field(form, "email"), password: field(form, "password"), callbackURL: callback(form, "/account"), ...continuation(form) });
+    if (!redirectResult(data)) location.assign(callback(form, "/account"));
+  }],
+  ["social", async (form) => {
+    const data = await request(form.action, { provider: field(form, "provider"), callbackURL: callback(form, "/account"), errorCallbackURL: callback(form, "/sign-in"), ...continuation(form) });
+    if (!redirectResult(data)) throw new AccountRequestError("The sign-in provider did not return a destination. Use your email and password, or try again.", 200, "INVALID_RESPONSE");
+  }],
+  ["sign-up", async (form) => {
+    const email = field(form, "email");
+    const data = await request(form.action, { name: field(form, "name"), email, password: newPassword(form, "password"), callbackURL: new URL("/verify-email?verified=1", location.origin).href, ...continuation(form) });
+    if (!redirectResult(data)) location.assign(callback(form, "/verify-email", { email }));
+  }],
+  ["recovery", async (form) => {
+    await request(form.action, { email: field(form, "email"), redirectTo: new URL("/reset-password", location.origin).href });
+    message(form, "status", "If this email has an account, you will receive a reset link. Check your inbox and spam folder.");
+  }],
+  ["reset-password", async (form) => {
+    await request(form.action, { token: field(form, "token"), newPassword: newPassword(form, "newPassword") });
+    const input = form.elements.namedItem("newPassword");
+    if (input instanceof HTMLInputElement) input.value = "";
+    message(form, "status", "Your password has changed. Sign in with your new password. Other apps can retain their local sessions.");
+    const link = document.querySelector("[data-reset-sign-in]");
+    if (link instanceof HTMLElement) link.hidden = false;
+  }],
+  ["verify-email", async (form) => {
+    await request(form.action, { email: field(form, "email"), callbackURL: new URL("/verify-email?verified=1", location.origin).href });
+    message(form, "status", "If this account needs verification, you will receive a new link. Check your inbox and spam folder.");
+  }],
+  ["consent", async (form, submitter) => {
+    const data = await request(form.action, { accept: submitter instanceof HTMLButtonElement && submitter.value === "true", ...continuation(form) });
+    if (!redirectResult(data)) throw new AccountRequestError("The app request did not return a destination. Return to the app and try again.", 200, "INVALID_RESPONSE");
+  }],
+  ["profile", async (form) => {
+    const language = field(form, "preferredLanguage");
+    canonicalLanguage(language);
+    const data = await request("/v1/me", { name: field(form, "name"), avatarUrl: field(form, "avatarUrl") || null, preferredLanguage: language || null, expectedRevision: Number(field(form, "expectedRevision")) }, "PATCH");
+    applyProfile(form, profileFromResponse(data));
+    message(form, "status", "Your shared profile is saved.");
+  }],
+  ["sign-out", async (form) => {
+    await request(form.action, {});
+    location.assign("/sign-in?signed_out=1");
+  }]
+]);
+
+async function submit(form, submitter) {
+  const action = accountActions.get(form.dataset.accountAction);
+  if (!action) throw new AccountRequestError("This account action is not available. Reload the page.", 0, "INVALID_ACTION");
+  await action(form, submitter);
 }
 
 async function pending(form, action, text) {

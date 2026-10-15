@@ -49,40 +49,49 @@ const remoteSources = sources.filter((source) => source.path.startsWith('public/
   ...source,
   url: `https://wts.sh/${source.path.slice('public/'.length)}`,
 }));
-await mkdir(destination, { recursive: true, mode: 0o700 });
-const staging = await mkdtemp(join(destination, '.source-'));
-try {
-  const exported = join(staging, 'export');
-  const deployment = spawnSync('pnpm', [
+
+function checkedSpawn(result, failure) {
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(failure(result));
+  return result;
+}
+
+async function exportLockfile(exported) {
+  checkedSpawn(spawnSync('pnpm', [
     '--filter', '@wts/auth', 'deploy', '--lockfile-only', '--ignore-scripts', exported,
-  ], { cwd: root, maxBuffer: 16 * 1024 * 1024 });
-  if (deployment.error) throw deployment.error;
-  if (deployment.status !== 0) throw new Error(`Release lockfile export failed: ${deployment.stderr.toString()}`);
-  const peerConfig = spawnSync('pnpm', ['config', 'get', 'autoInstallPeers', '--json'], { cwd: root });
-  if (peerConfig.error) throw peerConfig.error;
-  if (peerConfig.status !== 0) throw new Error('pnpm could not read the workspace peer setting.');
+  ], { cwd: root, maxBuffer: 16 * 1024 * 1024 }), (deployment) => `Release lockfile export failed: ${deployment.stderr.toString()}`);
+  const peerConfig = checkedSpawn(spawnSync('pnpm', ['config', 'get', 'autoInstallPeers', '--json'], { cwd: root }), () => 'pnpm could not read the workspace peer setting.');
   const autoInstallPeers = JSON.parse(peerConfig.stdout.toString());
   if (typeof autoInstallPeers !== 'boolean') throw new Error('pnpm did not return a Boolean peer setting.');
+  return autoInstallPeers;
+}
 
-  const archiveRoot = join(staging, 'source');
-  await mkdir(archiveRoot);
+async function exportedSettings(exported, path) {
+  try {
+    return await readFile(join(exported, path), 'utf8');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    return '';
+  }
+}
+
+async function workspaceContent(exported, path, autoInstallPeers) {
+  if (path !== 'pnpm-workspace.yaml') return readFile(join(exported, path));
+  const settings = await exportedSettings(exported, path);
+  return Buffer.from(`packages:\n  - .\nautoInstallPeers: ${autoInstallPeers}\n${settings}`);
+}
+
+async function writeWorkspaceFiles(exported, archiveRoot, autoInstallPeers) {
   const generatedSources = [];
   for (const path of workspaceFiles) {
-    let content;
-    if (path === 'pnpm-workspace.yaml') {
-      let settings = '';
-      try {
-        settings = await readFile(join(exported, path), 'utf8');
-      } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
-      }
-      content = Buffer.from(`packages:\n  - .\nautoInstallPeers: ${autoInstallPeers}\n${settings}`);
-    } else {
-      content = await readFile(join(exported, path));
-    }
+    const content = await workspaceContent(exported, path, autoInstallPeers);
     await writeFile(join(archiveRoot, path), content);
     generatedSources.push({ path, sha256: createHash('sha256').update(content).digest('hex') });
   }
+  return generatedSources;
+}
+
+async function copyEmbeddedFiles(archiveRoot) {
   const embeddedFiles = files.filter((path) =>
     path !== 'auth/Dockerfile' && path !== 'auth/package.json' &&
     !remoteSources.some((source) => source.path === path));
@@ -90,46 +99,72 @@ try {
     await mkdir(dirname(join(archiveRoot, path)), { recursive: true });
     await copyFile(join(root, path), join(archiveRoot, path));
   }
-  const archiveFiles = [...embeddedFiles, ...workspaceFiles].sort();
-  const archive = spawnSync('tar', [
-    '--sort=name', '--mtime=@0', '--owner=0', '--group=0', '--numeric-owner',
-    '-czf', '-', '--', ...archiveFiles,
-  ], { cwd: archiveRoot, maxBuffer: 16 * 1024 * 1024 });
-  if (archive.error) throw archive.error;
-  if (archive.status !== 0) throw new Error(`Release archive failed: ${archive.stderr.toString()}`);
-  const sourceDockerfile = await readFile(join(root, 'auth/Dockerfile'), 'utf8');
-  const from = sourceDockerfile.split('\n')[0]?.match(/^FROM (\S+) AS build$/);
-  if (!from) throw new Error('The auth Dockerfile must start with a pinned build stage.');
-  const standaloneCommands = new Map([
-    ['RUN pnpm --filter @wts/auth install --frozen-lockfile', 'RUN pnpm install --frozen-lockfile'],
-    ['RUN pnpm --filter @wts/auth build', 'RUN pnpm build'],
-    ['RUN pnpm --filter @wts/auth deploy --prod /prod/auth',
-      'RUN pnpm prune --prod && mkdir -p /prod/auth && cp -a package.json node_modules dist migrations public scripts /prod/auth/'],
-  ]);
-  const withSource = sourceDockerfile.split('\n').flatMap((line) => {
-    if (
-      line === 'COPY auth/package.json ./auth/package.json' ||
-      line === 'COPY blog/package.json ./blog/package.json' ||
-      line === 'COPY site/package.json ./site/package.json' ||
-      line === 'COPY cfp/package.json ./cfp/package.json'
-    ) return [];
-    if (standaloneCommands.has(line)) return [standaloneCommands.get(line)];
-    if (!line.startsWith('COPY ') || line.startsWith('COPY --')) return [line];
-    const operands = line.slice(5).split(/\s+/);
-    const target = operands.pop()?.replace(/^\.\/auth\//, './');
-    const availableFiles = [...archiveFiles, ...remoteSources.map((source) => source.path)];
-    if (!target || operands.some((path) => !availableFiles.includes(path) && !availableFiles.some((file) => file.startsWith(`${path}/`)))) {
-      throw new Error(`Unknown Dockerfile source: ${line}`);
-    }
-    return [`COPY --from=source ${operands.map((path) => `/source/${path}`).join(' ')} ${target}`];
-  }).join('\n');
-  const encodedArchive = archive.stdout.toString('base64');
+  return embeddedFiles;
+}
+
+const workspacePackageCopies = new Set([
+  'COPY auth/package.json ./auth/package.json',
+  'COPY blog/package.json ./blog/package.json',
+  'COPY site/package.json ./site/package.json',
+  'COPY cfp/package.json ./cfp/package.json',
+]);
+const standaloneCommands = new Map([
+  ['RUN pnpm --filter @wts/auth install --frozen-lockfile', 'RUN pnpm install --frozen-lockfile'],
+  ['RUN pnpm --filter @wts/auth build', 'RUN pnpm build'],
+  ['RUN pnpm --filter @wts/auth deploy --prod /prod/auth',
+    'RUN pnpm prune --prod && mkdir -p /prod/auth && cp -a package.json node_modules dist migrations public scripts /prod/auth/'],
+]);
+
+function standaloneLine(line, availableFiles) {
+  if (workspacePackageCopies.has(line)) return [];
+  if (standaloneCommands.has(line)) return [standaloneCommands.get(line)];
+  if (!line.startsWith('COPY ') || line.startsWith('COPY --')) return [line];
+  const operands = line.slice(5).split(/\s+/);
+  const target = operands.pop()?.replace(/^\.\/auth\//, './');
+  if (!target || operands.some((path) => !availableFiles.includes(path) && !availableFiles.some((file) => file.startsWith(`${path}/`)))) {
+    throw new Error(`Unknown Dockerfile source: ${line}`);
+  }
+  return [`COPY --from=source ${operands.map((path) => `/source/${path}`).join(' ')} ${target}`];
+}
+
+function coolifyDockerfile(runtimeImage, archive, withSource) {
+  const encodedArchive = archive.toString('base64');
   const chunks = encodedArchive.match(/.{1,16000}/g);
   if (!chunks) throw new Error('The release archive is empty.');
   const archiveInput = chunks.map((chunk) => `  '${chunk}'`).join(' \\\n');
   const pinnedAssets = remoteSources.map((source) => `ADD --checksum=sha256:${source.sha256} ${source.url} /source/${source.path}`).join('\n');
-  const dockerfile = `FROM ${from[1]} AS source\nWORKDIR /source\nRUN printf '%s' \\\n${archiveInput} \\\n  | base64 -d | tar -xz\n${pinnedAssets}\n\n${withSource}`;
+  const dockerfile = `FROM ${runtimeImage} AS source\nWORKDIR /source\nRUN printf '%s' \\\n${archiveInput} \\\n  | base64 -d | tar -xz\n${pinnedAssets}\n\n${withSource}`;
   if (Buffer.byteLength(Buffer.from(dockerfile).toString('base64')) > 100000) throw new Error('The encoded Dockerfile exceeds the supported Coolify command size.');
+  return dockerfile;
+}
+
+async function writeOnce(path, content) {
+  try {
+    await writeFile(path, content, { flag: 'wx', mode: 0o600 });
+  } catch (error) {
+    if (error.code !== 'EEXIST' || await readFile(path, 'utf8') !== content) throw error;
+  }
+}
+
+async function buildRelease(staging) {
+  const exported = join(staging, 'export');
+  const autoInstallPeers = await exportLockfile(exported);
+
+  const archiveRoot = join(staging, 'source');
+  await mkdir(archiveRoot);
+  const generatedSources = await writeWorkspaceFiles(exported, archiveRoot, autoInstallPeers);
+  const embeddedFiles = await copyEmbeddedFiles(archiveRoot);
+  const archiveFiles = [...embeddedFiles, ...workspaceFiles].sort();
+  const archive = checkedSpawn(spawnSync('tar', [
+    '--sort=name', '--mtime=@0', '--owner=0', '--group=0', '--numeric-owner',
+    '-czf', '-', '--', ...archiveFiles,
+  ], { cwd: archiveRoot, maxBuffer: 16 * 1024 * 1024 }), (result) => `Release archive failed: ${result.stderr.toString()}`);
+  const sourceDockerfile = await readFile(join(root, 'auth/Dockerfile'), 'utf8');
+  const from = sourceDockerfile.split('\n')[0]?.match(/^FROM (\S+) AS build$/);
+  if (!from) throw new Error('The auth Dockerfile must start with a pinned build stage.');
+  const availableFiles = [...archiveFiles, ...remoteSources.map((source) => source.path)];
+  const withSource = sourceDockerfile.split('\n').flatMap((line) => standaloneLine(line, availableFiles)).join('\n');
+  const dockerfile = coolifyDockerfile(from[1], archive.stdout, withSource);
   const manifest = {
     formatVersion: 2,
     sourceDigest,
@@ -143,14 +178,15 @@ try {
     ['coolify.Dockerfile', dockerfile],
     ['manifest.json', `${JSON.stringify(manifest, null, 2)}\n`],
   ]) {
-    const path = join(destination, name);
-    try {
-      await writeFile(path, content, { flag: 'wx', mode: 0o600 });
-    } catch (error) {
-      if (error.code !== 'EEXIST' || await readFile(path, 'utf8') !== content) throw error;
-    }
+    await writeOnce(join(destination, name), content);
   }
   process.stdout.write(`${JSON.stringify({ directory: destination, sourceDigest, files: sources.length })}\n`);
+}
+
+await mkdir(destination, { recursive: true, mode: 0o700 });
+const staging = await mkdtemp(join(destination, '.source-'));
+try {
+  await buildRelease(staging);
 } finally {
   await rm(staging, { recursive: true, force: true });
 }

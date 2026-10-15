@@ -30,7 +30,8 @@ export default function LaunchScene(props: LaunchSceneProps) {
   let importRequested = false;
   let cancelIdle: (() => void) | undefined;
 
-  const isRendering = () => rendererStatus() === "webgl" && motionAllowed() && inView() && pageVisible() && (props.active ?? true);
+  const sceneWanted = () => motionAllowed() && inView() && pageVisible() && (props.active ?? true);
+  const isRendering = () => rendererStatus() === "webgl" && sceneWanted();
   const motionState = () => {
     if (rendererStatus() !== "webgl" || !motionAllowed()) return "static";
     return isRendering() ? "running" : "paused";
@@ -44,7 +45,7 @@ export default function LaunchScene(props: LaunchSceneProps) {
   };
 
   const createRenderer = () => {
-    if (disposed || rendererStatus() === "unavailable" || renderer || !rendererModule || !canvasElement || !motionAllowed() || !inView() || !pageVisible() || !(props.active ?? true)) return;
+    if (disposed || rendererStatus() === "unavailable" || renderer || !rendererModule || !canvasElement || !sceneWanted()) return;
     const created = rendererModule.createLaunchRenderer(canvasElement, setUnavailable);
     if (!created) {
       setUnavailable();
@@ -55,7 +56,7 @@ export default function LaunchScene(props: LaunchSceneProps) {
   };
 
   const beginDeferredImport = () => {
-    if (disposed || importStarted || !pageLoaded() || !motionAllowed() || !inView() || !pageVisible() || !(props.active ?? true)) return;
+    if (disposed || importStarted || !pageLoaded() || !sceneWanted()) return;
     importStarted = true;
     setRendererStatus("loading");
     const loadRenderer = () => {

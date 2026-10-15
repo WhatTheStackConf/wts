@@ -300,6 +300,20 @@ The existing PostgreSQL container, volume, runtime configuration, identity count
 CFP authorization still reaches central sign-in with its exact registered callback.
 The cutover did not exercise real password or Google authentication, recovery mail, or an authenticated CFP callback.
 
+### Registered consumers
+
+| Client | Exact callback |
+| --- | --- |
+| `wts-cfp` | `https://cfp.wts.sh/auth/callback` |
+| `wts-site-2027-preview` | `https://2027.wts.sh/auth/callback` |
+
+The 2027 site preview has its own client secret, host-only session, and SQLite database.
+Both clients request `openid profile email wts.profile`.
+The preview registration did not change the CFP policy, central users, identity mappings, or signing keys.
+See [the site deployment reference](../site/README.md#preview-deployment) for the preview configuration and verification limits.
+
+### Backup status
+
 Daily local backups use cron `0 2 * * *`, with seven backups and seven days of retention.
 Backup configuration: `msv3xiksy85e9aydsa5ibaqz`. An initial execution succeeded.
 These backups remain on the same server and do not protect against server loss. Off-site backups remain unconfigured.

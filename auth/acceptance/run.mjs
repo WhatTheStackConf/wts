@@ -71,37 +71,41 @@ async function newContext() {
   return browser.newContext({ serviceWorkers: 'block' });
 }
 
+async function submitCredentials(signIn, credentials, progress) {
+  if (!credentials) throw new Error('SSO requested credentials for an existing central session.');
+  if (!progress.submitted) {
+    progress.credentialPrompts++;
+    await signIn.locator('[name="email"]').fill(credentials.email);
+    await signIn.locator('[name="password"]').fill(credentials.password);
+    await signIn.getByRole('button', { name: 'Sign in', exact: true }).click();
+    progress.submitted = true;
+  }
+  const error = signIn.locator('[data-form-error]');
+  if (await error.isVisible() && (await error.textContent())?.trim()) throw new Error('The account page rejected the synthetic credentials.');
+}
+
+async function grantConsent(page, progress) {
+  const consent = page.locator('form[data-account-action="consent"]');
+  if (await consent.isVisible() && !progress.consentSubmitted) {
+    await consent.getByRole('button', { name: 'Allow access', exact: true }).click();
+    progress.consentSubmitted = true;
+  }
+}
+
 async function completeAuthorization(page, rp, { credentials, target } = {}) {
   await page.goto(target ?? `${rp.origin}/login`);
   const deadline = Date.now() + 30_000;
-  let credentialPrompts = 0;
-  let submitted = false;
-  let consentSubmitted = false;
+  const progress = { credentialPrompts: 0, submitted: false, consentSubmitted: false };
   while (Date.now() < deadline) {
     const url = new URL(page.url());
     if (url.origin === rp.origin && ['/session', '/callback'].includes(url.pathname)) {
       const body = JSON.parse(await page.locator('pre').innerText());
       expect(url.pathname === '/callback' ? body.captured === true : typeof body.wtsUserId === 'string', 'The relying party did not accept the OIDC callback.');
-      return { credentialPrompts, body };
+      return { credentialPrompts: progress.credentialPrompts, body };
     }
     const signIn = page.locator('form[data-account-action="sign-in"]');
-    if (await signIn.isVisible()) {
-      if (!credentials) throw new Error('SSO requested credentials for an existing central session.');
-      if (!submitted) {
-        credentialPrompts++;
-        await signIn.locator('[name="email"]').fill(credentials.email);
-        await signIn.locator('[name="password"]').fill(credentials.password);
-        await signIn.getByRole('button', { name: 'Sign in', exact: true }).click();
-        submitted = true;
-      }
-      const error = signIn.locator('[data-form-error]');
-      if (await error.isVisible() && (await error.textContent())?.trim()) throw new Error('The account page rejected the synthetic credentials.');
-    }
-    const consent = page.locator('form[data-account-action="consent"]');
-    if (await consent.isVisible() && !consentSubmitted) {
-      await consent.getByRole('button', { name: 'Allow access', exact: true }).click();
-      consentSubmitted = true;
-    }
+    if (await signIn.isVisible()) await submitCredentials(signIn, credentials, progress);
+    await grantConsent(page, progress);
     if (url.pathname === '/error') throw new Error('The real account page reported an authorization error.');
     await sleep(100);
   }

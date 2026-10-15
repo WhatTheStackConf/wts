@@ -145,49 +145,56 @@ type ProposedScheduleValidationCode =
   | "overlong_arguments"
   | "duplicate_arguments";
 
+type SlugListLimit = readonly [unknown, number];
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function exceedsLength(value: unknown, maximum: number): boolean {
+  return typeof value === "string" && value.length > maximum;
+}
+
+function hasOverlongSlugList([list, maximum]: SlugListLimit): boolean {
+  return Array.isArray(list) && (
+    list.length > maximum ||
+    list.some((slug) => exceedsLength(slug, MAX_PUBLIC_SLUG_LENGTH))
+  );
+}
+
+function hasOverlongWindowField(window: unknown): boolean {
+  if (!isPlainObject(window)) return false;
+  return exceedsLength(window.local_date, CALENDAR_DATE_LENGTH) ||
+    exceedsLength(window.start_time, LOCAL_TIME_LENGTH) ||
+    exceedsLength(window.end_time, LOCAL_TIME_LENGTH);
+}
+
+function hasOverlongAvailability(windows: unknown): boolean {
+  return Array.isArray(windows) && (
+    windows.length > MAX_AVAILABILITY_WINDOWS ||
+    windows.some((window) => hasOverlongWindowField(window))
+  );
+}
+
+function hasDuplicateSlugs([list]: SlugListLimit): boolean {
+  return Array.isArray(list) && list.every((slug) => typeof slug === "string") && !uniqueValues(list);
+}
+
 function proposedScheduleValidationCode(input: unknown): ProposedScheduleValidationCode | undefined {
   if (proposedScheduleInputSchema.safeParse(input).success) return undefined;
-  if (!input || typeof input !== "object" || Array.isArray(input)) return "malformed_arguments";
+  if (!isPlainObject(input)) return "malformed_arguments";
 
-  const value = input as Record<string, unknown>;
-  const lists = [
-    [value.ranked_session_slugs, MAX_RANKED_SESSION_SLUGS],
-    [value.must_attend_slugs, MAX_MUST_ATTEND_SLUGS],
-    [value.excluded_session_slugs, MAX_EXCLUDED_SESSION_SLUGS],
-  ] as const;
-  if (lists.some(([list, maximum]) =>
-    Array.isArray(list) && (
-      list.length > maximum ||
-      list.some((slug) =>
-        typeof slug === "string" && slug.length > MAX_PUBLIC_SLUG_LENGTH
-      )
-    )
-  )) return "overlong_arguments";
+  const lists: SlugListLimit[] = [
+    [input.ranked_session_slugs, MAX_RANKED_SESSION_SLUGS],
+    [input.must_attend_slugs, MAX_MUST_ATTEND_SLUGS],
+    [input.excluded_session_slugs, MAX_EXCLUDED_SESSION_SLUGS],
+  ];
+  if (lists.some(hasOverlongSlugList)) return "overlong_arguments";
   if (
-    Array.isArray(value.availability_windows) &&
-      (
-        value.availability_windows.length > MAX_AVAILABILITY_WINDOWS ||
-        value.availability_windows.some((window) => {
-          if (!window || typeof window !== "object" || Array.isArray(window)) return false;
-          const fields = window as Record<string, unknown>;
-          return (
-            typeof fields.local_date === "string" &&
-              fields.local_date.length > CALENDAR_DATE_LENGTH
-          ) || (
-            typeof fields.start_time === "string" &&
-              fields.start_time.length > LOCAL_TIME_LENGTH
-          ) || (
-            typeof fields.end_time === "string" &&
-              fields.end_time.length > LOCAL_TIME_LENGTH
-          );
-        })
-      ) ||
-    typeof value.prior_programme_version === "string" &&
-      value.prior_programme_version.length > PROGRAMME_VERSION_LENGTH
+    hasOverlongAvailability(input.availability_windows) ||
+    exceedsLength(input.prior_programme_version, PROGRAMME_VERSION_LENGTH)
   ) return "overlong_arguments";
-  if (lists.some(([list]) =>
-    Array.isArray(list) && list.every((slug) => typeof slug === "string") && !uniqueValues(list)
-  )) return "duplicate_arguments";
+  if (lists.some(hasDuplicateSlugs)) return "duplicate_arguments";
   return "malformed_arguments";
 }
 
