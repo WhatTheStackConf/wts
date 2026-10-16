@@ -79,7 +79,6 @@
     "fontkit": "2.0.4",
     "harfbuzzjs": "0.10.0",
     "jsqr": "1.4.0",
-    "lottie-web": "^5.13.0",
     "nitro": "^3.0.260610-beta",
     "pocketbase": "^0.28.0",
     "prosemirror-commands": "^1.7.2",

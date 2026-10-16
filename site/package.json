@@ -38,7 +38,6 @@
     "entities": "^8.0.0",
     "fontkit": "2.0.4",
     "harfbuzzjs": "0.10.0",
-    "lottie-web": "^5.13.0",
     "nitro": "^3.0.260610-beta",
     "sanitize-html": "^2.17.7",
     "satori": "^0.33.4",
