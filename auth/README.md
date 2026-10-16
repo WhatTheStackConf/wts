@@ -287,6 +287,8 @@ Consumer cutover and conference database migration remain separate work.
 - Private PostgreSQL resource: `iin9jvhp1mpkviqccy29h7cf`.
 - Verified Git-backed cutover deployment: `a7zs4spgi9rlhltakwbk6xlv`.
 - Git-backed cutover commit: `fc39113502b04c20a845eba3e07400ac103db3cf`.
+- Latest release: commit `aebcbc4b321916b01d3a8160a822b32d43d5390a` on 2026-10-16, deployment `v0rr76t1kxxwtqjrk9rowanv`.
+- Database backups were created before and after the latest release.
 - Dockerfile: `/auth/Dockerfile`, with the repository root as its build context.
 - Automatic deployment and the Coolify healthcheck override remain disabled.
 - Google enabled. GitHub disabled. Registration closed.

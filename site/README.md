@@ -206,7 +206,7 @@ The apex `https://wts.sh` still serves the unchanged 2026 PocketBase application
 | Project and environment | WTS, production |
 | Server | `fss8sk4` |
 | Source branch | `design/wts-2027-light-cyberpunk` |
-| Deployed commit | `20310d0b86f4bf57aeb449c0adb5931223d4a566` |
+| Deployed commit | `aebcbc4b321916b01d3a8160a822b32d43d5390a` (2026-10-16, deployment `0btrqz2hwav5sogcg66wns8l`) |
 | Dockerfile and build context | `/site/Dockerfile`, repository root |
 | `SITE_ORIGIN` and `PUBLIC_SITE_URL` | `https://2027.wts.sh` |
 | `OIDC_ISSUER` | `https://auth.wts.sh` |
