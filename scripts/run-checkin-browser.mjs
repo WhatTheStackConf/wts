@@ -116,7 +116,7 @@ async function createUsers(pbUrl, superuserEmail, password) {
 }
 
 async function main() {
-  await copyApp(repo, appDir);
+  await copyApp(repo, appDir, ["tokens.css"]);
   const pbPort = await freePort();
   const appPort = await freePort();
   const pbUrl = `http://127.0.0.1:${pbPort}`;
