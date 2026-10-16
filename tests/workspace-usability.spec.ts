@@ -144,6 +144,27 @@ for (const role of ["user", "reviewer", "admin", "mc", "checkin_operator"]) {
   });
 }
 
+test("profile email truncates inside the identity column", async ({ browser }) => {
+  const actor = await login(browser, "user");
+  try {
+    const { page } = actor;
+    await page.goto("/user/profile");
+    const email = page.getByText(state.users.user.email, { exact: true });
+    const logout = page.getByRole("button", { name: "Log out" });
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => document.fonts.ready);
+      const box = (await email.boundingBox())!;
+      const column = (await logout.boundingBox())!;
+      expect.soft(box.x, `email left edge at ${width}px`).toBeGreaterThanOrEqual(column.x - 1);
+      expect.soft(box.x + box.width, `email right edge at ${width}px`).toBeLessThanOrEqual(Math.min(column.x + column.width, width) + 1);
+      if (width > 390) continue;
+      const truncated = await email.evaluate(element => element.scrollWidth > element.clientWidth);
+      expect.soft(truncated, `email ellipsis at ${width}px`).toBe(true);
+    }
+  } finally { await actor.context.close(); }
+});
+
 test("admin destinations and closed CFP preparation remain usable", async ({ browser }, info) => {
   const actor = await login(browser, "admin");
   try {

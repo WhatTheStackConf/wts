@@ -319,7 +319,7 @@ const ProfilePage = () => {
                     <p class="max-w-full break-words text-xl font-bold text-white mb-1 font-mono">
                       {userName() || "Your account"}
                     </p>
-                    <p class="text-sm text-secondary-300 font-mono mb-6 truncate max-w-full px-2">
+                    <p class="text-sm text-secondary-300 font-mono mb-6 truncate w-full px-2">
                       {userEmail()}
                     </p>
 
