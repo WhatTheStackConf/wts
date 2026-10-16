@@ -102,6 +102,7 @@ jobs:
       - run: pnpm pocketbase:download-test
       - run: pnpm --filter @wts/auth build
       - run: pnpm --filter @wts/auth acceptance
+      - run: pnpm --filter @wts/auth test
       - name: Verify the independent site's real OIDC boundary
         run: pnpm --filter @wts/site test:oidc
       - name: Verify the independent CFP's real OIDC boundary
