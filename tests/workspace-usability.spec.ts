@@ -165,6 +165,29 @@ test("profile email truncates inside the identity column", async ({ browser }) =
   } finally { await actor.context.close(); }
 });
 
+test("profile name with no spaces wraps inside the identity column", async ({ browser }) => {
+  const name = "Wolfeschlegelsteinhausenbergerdorffvoralternwarengewissenhaftschaferswessen";
+  const pb = new PocketBase(state.pbUrl);
+  await pb.collection("_superusers").authWithPassword(state.superuserEmail, state.password);
+  await pb.collection("users").update(state.users.other.id, { name });
+  const actor = await loginWithCredentials(browser, state.users.other.email, state.users.other.password);
+  try {
+    const { page } = actor;
+    await page.goto("/user/profile");
+    const shown = page.getByText(name, { exact: true });
+    const logout = page.getByRole("button", { name: "Log out" });
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => document.fonts.ready);
+      const box = (await shown.boundingBox())!;
+      const column = (await logout.boundingBox())!;
+      expect.soft(box.x, `name left edge at ${width}px`).toBeGreaterThanOrEqual(column.x - 1);
+      expect.soft(box.x + box.width, `name right edge at ${width}px`).toBeLessThanOrEqual(column.x + column.width + 1);
+      expect.soft(await shown.evaluate(element => element.scrollWidth <= element.clientWidth), `name text fits its box at ${width}px`).toBe(true);
+    }
+  } finally { await actor.context.close(); }
+});
+
 test("admin destinations and closed CFP preparation remain usable", async ({ browser }, info) => {
   const actor = await login(browser, "admin");
   try {
