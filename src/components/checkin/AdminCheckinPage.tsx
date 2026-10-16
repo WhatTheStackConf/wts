@@ -132,7 +132,6 @@ export default function AdminCheckinPage() {
             <input id="issued-code" class="input input-bordered min-h-12 w-full font-mono text-base" readonly value={qr().provisionCode} />
             <div class="flex flex-wrap gap-3">
               <a class="btn btn-primary min-h-12" href={qr().qrDataUrl} download="wts-2026-station-provisioning.png">Download QR for printing</a>
-              <a class="btn btn-outline min-h-12" href={qr().provisionUrl} target="_self" rel="noreferrer">Review station on this device</a>
               <button type="button" class="btn btn-ghost min-h-12" onClick={() => setIssued(undefined)}>Hide QR</button>
             </div>
           </section>

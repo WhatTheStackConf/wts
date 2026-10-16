@@ -184,7 +184,9 @@ describe("authenticated Check-in HTTP boundary", () => {
     expect(result.status).toBe(200);
     expect(deps.target.adminControl).toHaveBeenCalledWith(control);
     expect(deps.provisioningQr).toHaveBeenCalledWith(`https://wts.example.test/checkin#provision=${token}`);
-    expect(await result.json()).toMatchObject({ provisionCode: token, qrDataUrl: "data:image/png;base64,test-only" });
+    const issued = await result.json();
+    expect(issued).toMatchObject({ provisionCode: token, qrDataUrl: "data:image/png;base64,test-only" });
+    expect(issued).not.toHaveProperty("provisionUrl");
   });
 
   it("previews without binding and confirms using only a persistent HttpOnly client identity", async () => {

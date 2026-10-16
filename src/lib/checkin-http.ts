@@ -81,7 +81,7 @@ async function provisionResponse(service: CheckinServiceContract, parsed: Extrac
   // The browser's verified same-origin header gives the public origin behind
   // a reverse proxy. The code stays in the fragment, never the request URL.
   const provisionUrl = `${new URL(request.headers.get("origin")!).origin}/checkin#provision=${result.provisionCode}`;
-  return response({ ...result, provisionUrl, qrDataUrl: await deps.provisioningQr(provisionUrl) });
+  return response({ ...result, qrDataUrl: await deps.provisioningQr(provisionUrl) });
 }
 
 async function previewResponse(service: CheckinServiceContract, parsed: Extract<CheckinCommand, { operation: "preview" | "printers" }>, clientToken: string | undefined, request: Request): Promise<Response> {

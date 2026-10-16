@@ -501,11 +501,13 @@ void test("station administration lists, pages and confirms controls", async () 
     await page.getByRole("article", { name: "Station 1" }).getByRole("button", { name: "Issue replacement QR" }).click();
     await expect(form.getByRole("heading", { name: "Confirm: Issue replacement QR: Station 1" })).toBeVisible();
     await form.locator("#control-reason").selectOption("security");
-    await plan("checkinAdminControl", ok({ actionId: "c2", replayed: false, provisionCode: "f".repeat(64), qrDataUrl: `data:image/png;base64,${png}`, provisionUrl: `/checkin/station#provision=${"f".repeat(64)}` }));
+    await plan("checkinAdminControl", ok({ actionId: "c2", replayed: false, provisionCode: "f".repeat(64), qrDataUrl: `data:image/png;base64,${png}` }));
     await form.getByRole("button", { name: "Confirm action" }).click();
     const issued = page.getByRole("region", { name: "Issued provisioning QR" });
     await expect(issued.locator("#issued-code")).toHaveValue("f".repeat(64));
     await expect(issued.getByRole("img", { name: "Reusable Station Provisioning QR" })).toBeVisible();
+    await expect(issued.getByText("Review station on this device")).toHaveCount(0);
+    await expect(page.locator('a[href*="#provision="]')).toHaveCount(0);
     await checkpoint("qr issued", sections);
 
     await page.getByRole("article", { name: "Station 2" }).getByRole("button", { name: "Restore station" }).click();

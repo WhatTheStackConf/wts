@@ -21,7 +21,6 @@ async function command<T>(body: object, signal?: AbortSignal): Promise<T> {
 }
 
 export interface IssuedCheckinQR extends CheckinAdminResult {
-  provisionUrl?: string;
   qrDataUrl?: string;
 }
 export const checkinStatus = () => command<CheckinStatusDTO>({ operation: "status" });

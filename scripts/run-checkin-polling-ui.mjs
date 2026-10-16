@@ -13,14 +13,13 @@ const fixture = `
 import { render } from "@solidjs/web";
 import { Head } from "@solidjs/meta";
 import CheckinScannerPage from "~/components/checkin/CheckinScannerPage";
-import CheckinStationPage from "~/components/checkin/CheckinStationPage";
 import CheckinToolsPage from "~/components/checkin/CheckinToolsPage";
 import { BoundAgentReadiness } from "~/components/checkin/AgentReadiness";
 import { CheckinMonitoringPanel } from "~/components/checkin/checkin-monitoring";
 import { CheckinEventAdmin } from "~/components/checkin/CheckinEventAdmin";
 import "~/styles/app.css";
 const mode = new URLSearchParams(location.search).get("mode");
-render(() => <Head>{mode === "agent" ? <BoundAgentReadiness stationId="wts2026station1" /> : mode === "monitoring" ? <CheckinMonitoringPanel audience="admin" readiness={[]} /> : mode === "station" ? <CheckinStationPage /> : mode === "tools" ? <CheckinToolsPage /> : mode === "events" ? <CheckinEventAdmin /> : <CheckinScannerPage />}</Head>, document.getElementById("app"));
+render(() => <Head>{mode === "agent" ? <BoundAgentReadiness stationId="wts2026station1" /> : mode === "monitoring" ? <CheckinMonitoringPanel audience="admin" readiness={[]} /> : mode === "tools" ? <CheckinToolsPage /> : mode === "events" ? <CheckinEventAdmin /> : <CheckinScannerPage />}</Head>, document.getElementById("app"));
 `;
 const auth = `const user = {id:"uuuuuuuuuuuuuuu",role:"admin",name:"Synthetic operator"}; export const useRequireCheckinOperator = () => ({authorized:()=>true,user:()=>user}); export const useAuth=()=>({user,logout:async()=>{}});`;
 const server = await createServer({ configFile: false, root, plugins: [tailwindcss(), solid({ ssr: false }), {
@@ -96,7 +95,6 @@ const pollingModes = {
   agent: { target: agentTarget, changed: page => expect(page.getByText("stale", { exact: true })).toBeVisible(), denied: agentGone, retry: page => refreshAgent(page).click(), retried: agentGone },
   monitoring: { target: async page => page.getByRole("button", { name: `Acknowledge incident ${incident.id}`, exact: true }), changed: (page, target) => expect(target).toHaveCount(0), denied: incidentsGone, retried: incidentsGone },
   tools: { target: toolsTarget, selectsEvent: true, changed: changedStation, denied: phoneEventGone, retried: phoneEventGone },
-  station: { target: async page => phoneEvent(page), selectsEvent: true, changed: changedStation, denied: phoneEventGone, retried: phoneEventGone },
   events: { target: admissionTarget, changed: eventOptionsChanged, denied: eventsGone, retried: eventsGone },
   scanner: { target: findAttendee, changed: changedStation, denied: connectionLost, retried: connectionLost },
 };
@@ -182,7 +180,7 @@ async function main() {
   let browser;
   try {
     browser = await chromium.launch({ headless: true, args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] });
-    for (const mode of (process.env.CHECKIN_POLLING_MODES || "agent,monitoring,station,tools,scanner,events").split(",")) await checkMode(browser, mode);
+    for (const mode of (process.env.CHECKIN_POLLING_MODES || "agent,monitoring,tools,scanner,events").split(",")) await checkMode(browser, mode);
   } finally { await browser?.close(); await server.close(); }
   assert.deepEqual(failures, [], "check-in polling UI regressions");
 }
