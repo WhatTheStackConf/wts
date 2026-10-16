@@ -1,20 +1,13 @@
 import PocketBase from "pocketbase";
 import { describe, expect, it } from "vite-plus/test";
-import { CheckinService } from "~/lib/checkin-service";
+import { CheckinService, pocketBaseFailure } from "~/lib/checkin-service";
 import { CHECKIN_STATION_IDS } from "~/lib/checkin-contract";
 import { startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
 
 type Fixture = Awaited<ReturnType<typeof startCheckinPocketBase>>;
 type Base = () => { operationId: string; expectedVersion: number; reason: "configuration" };
-/** Enables the first two stations and returns one fresh provisioning code for each. */
-async function provisionStations(service: CheckinService, base: Base) {
-  const codes: string[] = [];
-  for (const stationId of CHECKIN_STATION_IDS.slice(0, 2)) {
-    await service.adminControl({ ...base(), operation: "set_station_enabled", stationId, enabled: true });
-    const issued = await service.adminControl({ ...base(), expectedVersion: 2, operation: "rotate_provision_code", stationId });
-    codes.push(issued.provisionCode!);
-  }
-  return codes;
+async function enableStations(service: CheckinService, base: Base) {
+  for (const stationId of CHECKIN_STATION_IDS.slice(0, 2)) await service.adminControl({ ...base(), operation: "set_station_enabled", stationId, enabled: true });
 }
 async function expectAuditImmutable(test: Fixture, events: { id: string }[]) {
   for (const event of events) {
@@ -95,7 +88,27 @@ describe("durable authenticated Check-in Stations", () => {
       expect((await admin.adminList()).audit.items.filter(e => e.operation === "bind")).toHaveLength(1);
     } finally { await test.cleanup(); }
   });
-  it("previews without binding and confirms a durable browser identity", { timeout: 60_000 }, async () => {
+  it("label approval reset clears a legacy code hash without issuing a code, and code pairing is refused", { timeout: 60_000 }, async () => {
+    const test = await startCheckinPocketBase();
+    try {
+      const admin = await test.user("admin");
+      const service = new CheckinService(test.pb, admin.actor);
+      const stationId = CHECKIN_STATION_IDS[0];
+      const legacyHash = "e".repeat(64);
+      await test.pb.collection("checkin_stations").update(stationId, { provision_code_hash: legacyHash });
+      expect((await service.adminList()).stations[0]).toMatchObject({ version: 1, provisionCodeIssued: true });
+      const reset = await service.adminControl({ operationId: crypto.randomUUID(), expectedVersion: 1, reason: "security", operation: "rotate_provision_code", stationId });
+      expect(Object.keys(reset).sort()).toEqual(["actionId", "replayed", "station"]);
+      expect(reset.station).toMatchObject({ id: stationId, version: 2, generation: 2, provisionCodeIssued: false });
+      expect((await test.pb.collection("checkin_stations").getOne(stationId)).provision_code_hash).toBe("");
+      for (const operation of ["preview", "bind"]) {
+        const refused = await test.pb.send("/api/wts/checkin", { method: "POST", requestKey: null, body: { operation, actorUserId: admin.actor.userId, codeHash: legacyHash, identityHash: "a".repeat(64) } }).catch(pocketBaseFailure);
+        expect(refused).toEqual({ code: "invalid_input", status: 400 });
+      }
+      expect((await service.printers("a".repeat(64))).printers.map((printer) => printer.station.id)).toEqual(CHECKIN_STATION_IDS);
+    } finally { await test.cleanup(); }
+  });
+  it("lists printers without binding and keeps a selected browser identity across restarts", { timeout: 60_000 }, async () => {
     const test = await startCheckinPocketBase();
     try {
       const admin = await test.user("admin");
@@ -103,17 +116,16 @@ describe("durable authenticated Check-in Stations", () => {
       const base = { operationId: crypto.randomUUID(), expectedVersion: 1, reason: "configuration" as const };
       await service.adminControl({ ...base, operation: "set_system_enabled", enabled: true });
       await service.adminControl({ ...base, operationId: crypto.randomUUID(), operation: "set_station_enabled", stationId: CHECKIN_STATION_IDS[0], enabled: true });
-      const issued = await service.adminControl({ ...base, operationId: crypto.randomUUID(), expectedVersion: 2, operation: "rotate_provision_code", stationId: CHECKIN_STATION_IDS[0] });
-      const preview = await service.preview(issued.provisionCode!);
-      expect(preview.canBind).toBe(true);
+      const choice = (await service.printers("a".repeat(64))).printers[0];
+      expect(choice.canBind).toBe(true);
       expect((await service.adminList()).bindings.items).toHaveLength(0);
-      const bound = await service.bind(issued.provisionCode!, "a".repeat(64), preview.confirmation);
+      const bound = await service.selectPrinter("a".repeat(64), choice.confirmation);
       expect(bound.status).toMatchObject({ bindingState: "bound", operationsEnabled: false, station: { id: CHECKIN_STATION_IDS[0] } });
       await test.restart();
       expect((await service.status("a".repeat(64))).binding?.id).toBe(bound.status.binding?.id);
     } finally { await test.cleanup(); }
   });
-  it("serializes reusable QR binding, rebinding, revocation and live-role handoffs", { timeout: 60_000 }, async () => {
+  it("serializes printer selection, switching, revocation and live-role handoffs", { timeout: 60_000 }, async () => {
     const test = await startCheckinPocketBase();
     try {
       const admin = await test.user("admin", "private@example.test");
@@ -122,50 +134,48 @@ describe("durable authenticated Check-in Stations", () => {
       const phone = new CheckinService(test.pb, operator.actor);
       const base = () => ({ operationId: crypto.randomUUID(), expectedVersion: 1, reason: "configuration" as const });
       await service.adminControl({ ...base(), operation: "set_system_enabled", enabled: true });
-      const codes = await provisionStations(service, base);
-      const first = await phone.preview(codes[0]);
-      await expect(phone.bind(codes[0], null, first.confirmation)).rejects.toMatchObject({ code: "invalid_binding" });
-      await expect(phone.preview("f".repeat(64))).rejects.toMatchObject({ code: "invalid_code" });
+      await enableStations(service, base);
       const token = "b".repeat(64);
-      const simultaneous = await Promise.all([phone.bind(codes[0], token, first.confirmation), phone.bind(codes[0], token, first.confirmation)]);
+      const first = (await phone.printers(token)).printers[0];
+      await expect(phone.selectPrinter(null, first.confirmation)).rejects.toMatchObject({ code: "invalid_binding" });
+      const simultaneous = await Promise.all([phone.selectPrinter(token, first.confirmation), phone.selectPrinter(token, first.confirmation)]);
       expect(simultaneous[0].status.binding?.id).toBe(simultaneous[1].status.binding?.id);
       const bindingId = simultaneous[0].status.binding!.id;
       expect((await service.adminList()).bindings.items).toHaveLength(1);
-      const second = await phone.preview(codes[1], token);
-      const rebound = await phone.bind(codes[1], token, second.confirmation);
+      const second = (await phone.printers(token)).printers[1];
+      const rebound = await phone.selectPrinter(token, second.confirmation);
       expect(rebound.status.binding).toMatchObject({ id: bindingId, stationId: CHECKIN_STATION_IDS[1], version: 2 });
-      await expect(phone.bind(codes[0], token, first.confirmation)).rejects.toMatchObject({ code: "conflict" });
+      await expect(phone.selectPrinter(token, first.confirmation)).rejects.toMatchObject({ code: "conflict" });
       expect((await phone.status(token)).binding?.stationId).toBe(CHECKIN_STATION_IDS[1]);
       expect((await service.adminList()).audit.items.filter((event) => event.operation === "bind").map((event) => event.stationId).sort()).toEqual([CHECKIN_STATION_IDS[0], CHECKIN_STATION_IDS[1]]);
       // The identity belongs to the browser, not either login.
       expect((await service.status(token)).binding?.id).toBe(bindingId);
       await test.pb.collection("users").update(operator.record.id, { role: "reviewer" });
       await expect(phone.status(token)).rejects.toMatchObject({ code: "forbidden" });
-      await expect(phone.preview(codes[1])).rejects.toMatchObject({ code: "forbidden" });
+      await expect(phone.printers(token)).rejects.toMatchObject({ code: "forbidden" });
       await test.pb.collection("users").update(operator.record.id, { role: "checkin_operator", verified: false });
       await expect(phone.status(token)).rejects.toMatchObject({ code: "forbidden" });
       await test.pb.collection("users").update(operator.record.id, { verified: true });
-      const rotateCommand = { ...base(), expectedVersion: 3, operation: "rotate_provision_code" as const, stationId: CHECKIN_STATION_IDS[1] };
-      const rotated = await service.adminControl(rotateCommand);
-      expect(await service.adminControl(rotateCommand)).toMatchObject({ actionId: rotated.actionId, replayed: true });
-      expect((await service.adminControl(rotateCommand)).provisionCode).toBeUndefined();
-      await expect(phone.preview(codes[1])).rejects.toMatchObject({ code: "invalid_code" });
+      const resetCommand = { ...base(), expectedVersion: 2, operation: "rotate_provision_code" as const, stationId: CHECKIN_STATION_IDS[1] };
+      const reset = await service.adminControl(resetCommand);
+      expect(reset.station).toMatchObject({ id: CHECKIN_STATION_IDS[1], version: 3, provisionCodeIssued: false });
+      expect(await service.adminControl(resetCommand)).toEqual({ ...reset, replayed: true });
       expect((await phone.status(token)).binding?.id).toBe(bindingId);
       await service.adminControl({ ...base(), operation: "revoke_binding", bindingId, expectedVersion: 2, reason: "security" });
       expect(await phone.status(token)).toMatchObject({ bindingState: "revoked", binding: null, station: null });
-      const fresh = await phone.preview(rotated.provisionCode!);
-      await expect(phone.bind(rotated.provisionCode!, token, fresh.confirmation)).rejects.toMatchObject({ code: "revoked_binding" });
+      const fresh = (await phone.printers()).printers[1];
+      await expect(phone.selectPrinter(token, fresh.confirmation)).rejects.toMatchObject({ code: "revoked_binding" });
       await test.restart();
       expect((await phone.status(token)).bindingState).toBe("revoked");
       const overview = await service.adminList();
       expect(overview.bindings.items).toHaveLength(1);
       expect(overview.audit.items.filter((event) => event.actorUserId === admin.actor.userId).every((event) => event.actorName === "Authorized User")).toBe(true);
       const serialized = JSON.stringify(overview);
-      for (const secret of [token, ...codes, rotated.provisionCode!, "private@example.test", "identity_hash", "provision_code_hash"]) expect(serialized).not.toContain(secret);
+      for (const secret of [token, "private@example.test", "identity_hash", "provision_code_hash"]) expect(serialized).not.toContain(secret);
       await expectAuditImmutable(test, overview.audit.items);
       const actions = await test.pb.collection("admin_actions").getFullList();
       expect(actions).toHaveLength(overview.audit.items.filter((event) => event.operation !== "bind").length);
-      await expectActionsImmutable(test, actions, admin.actor.userId, [token, ...codes, rotated.provisionCode!, "private@example.test"]);
+      await expectActionsImmutable(test, actions, admin.actor.userId, [token, "private@example.test"]);
     } finally { await test.cleanup(); }
   });
   it("fences concurrent admin intents and stale confirmations across stop/restore without deleting bindings", { timeout: 60_000 }, async () => {
@@ -179,10 +189,8 @@ describe("durable authenticated Check-in Stations", () => {
       expect(raced.filter((item) => item.status === "fulfilled")).toHaveLength(1);
       expect(raced.find((item) => item.status === "rejected")).toMatchObject({ reason: { code: "conflict" } });
       await service.adminControl({ ...base(), operation: "set_station_enabled", stationId, enabled: true });
-      const issued = await service.adminControl({ ...base(), expectedVersion: 2, operation: "rotate_provision_code", stationId });
-      const code = issued.provisionCode!;
-      const preview = await service.preview(code);
-      for (const token of ["c", "d", "e"]) await service.bind(code, token.repeat(64), preview.confirmation);
+      const preview = (await service.printers()).printers[0];
+      for (const token of ["c", "d", "e"]) await service.selectPrinter(token.repeat(64), preview.confirmation);
       expect((await service.adminList()).stations[0]).toMatchObject({ activeBindingCount: 3, multiplePhonesWarning: true });
       const activeBindings = (await service.adminList()).bindings.items;
       for (const binding of activeBindings) await test.pb.collection("checkin_bindings").update(binding.id, { last_seen_at: "2020-01-01 00:00:00.000Z" });
@@ -191,22 +199,22 @@ describe("durable authenticated Check-in Stations", () => {
       expect((await service.adminList()).stations[0].activeBindingCount).toBe(1);
       const stop = { ...base(), expectedVersion: 2, operation: "set_system_enabled" as const, enabled: false, reason: "incident" as const };
       expect((await service.adminControl(stop)).system).toMatchObject({ version: 3, generation: 3, enabled: false });
-      expect((await service.preview(code)).canBind).toBe(false);
-      await expect(service.bind(code, "c".repeat(64), preview.confirmation)).rejects.toMatchObject({ code: "disabled" });
+      expect((await service.printers()).printers[0].canBind).toBe(false);
+      await expect(service.selectPrinter("c".repeat(64), preview.confirmation)).rejects.toMatchObject({ code: "disabled" });
       expect((await service.adminControl({ ...base(), expectedVersion: 3, operation: "set_system_enabled", enabled: true })).system).toMatchObject({ version: 4, generation: 4 });
       await service.adminControl(stop); // replay must not stop a restored system
       expect((await service.adminList()).system.enabled).toBe(true);
       await expect(service.adminControl({ ...stop, enabled: true })).rejects.toMatchObject({ code: "conflict" });
-      await expect(service.bind(code, "c".repeat(64), preview.confirmation)).rejects.toMatchObject({ code: "conflict" });
-      const current = await service.preview(code);
-      await service.adminControl({ ...base(), expectedVersion: 3, operation: "set_station_enabled", stationId, enabled: false });
-      await service.adminControl({ ...base(), expectedVersion: 4, operation: "set_station_enabled", stationId, enabled: true });
-      await expect(service.bind(code, "c".repeat(64), current.confirmation)).rejects.toMatchObject({ code: "conflict" });
-      const config = { ...base(), expectedVersion: 5, operation: "configure_station" as const, stationId, label: "L".repeat(80), location: "R".repeat(120), printerRef: "P".repeat(80) };
-      expect((await service.adminControl(config)).station).toMatchObject({ version: 6, generation: 6, label: config.label });
-      for (const note of ["a".repeat(241), "person@example.test", "https://private.test", "f".repeat(64)]) await expect(service.adminControl({ ...base(), expectedVersion: 6, operation: "set_station_enabled", stationId, enabled: false, note })).rejects.toMatchObject({ code: "invalid_input" });
+      await expect(service.selectPrinter("c".repeat(64), preview.confirmation)).rejects.toMatchObject({ code: "conflict" });
+      const current = (await service.printers()).printers[0];
+      await service.adminControl({ ...base(), expectedVersion: 2, operation: "set_station_enabled", stationId, enabled: false });
+      await service.adminControl({ ...base(), expectedVersion: 3, operation: "set_station_enabled", stationId, enabled: true });
+      await expect(service.selectPrinter("c".repeat(64), current.confirmation)).rejects.toMatchObject({ code: "conflict" });
+      const config = { ...base(), expectedVersion: 4, operation: "configure_station" as const, stationId, label: "L".repeat(80), location: "R".repeat(120), printerRef: "P".repeat(80) };
+      expect((await service.adminControl(config)).station).toMatchObject({ version: 5, generation: 5, label: config.label });
+      for (const note of ["a".repeat(241), "person@example.test", "https://private.test", "f".repeat(64)]) await expect(service.adminControl({ ...base(), expectedVersion: 5, operation: "set_station_enabled", stationId, enabled: false, note })).rejects.toMatchObject({ code: "invalid_input" });
       expect((await service.adminList()).bindings.items).toHaveLength(3);
-      expect((await service.adminList()).stations[0].version).toBe(6);
+      expect((await service.adminList()).stations[0].version).toBe(5);
       expect(await service.status("f".repeat(64))).toMatchObject({ bindingState: "invalid", station: null });
     } finally { await test.cleanup(); }
   });

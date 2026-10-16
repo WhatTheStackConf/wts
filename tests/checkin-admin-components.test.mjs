@@ -460,7 +460,7 @@ void test("event configuration review, freeze, rejection and affiliation scope",
 
 void test("station administration lists, pages and confirms controls", async () => {
   await mount("admin", { defaults: { checkinAdminList: ok(adminList) } }, async ({ page, plan, calls, checkpoint }) => {
-    const sections = 'form[aria-label="Confirm administrative action"], section[aria-label="Issued provisioning QR"], section[aria-label="System controls"], article[aria-label^="Station "], section[aria-label="Client bindings"], section[aria-label="Check-in audit"]';
+    const sections = 'form[aria-label="Confirm administrative action"], section[aria-label="System controls"], article[aria-label^="Station "], section[aria-label="Client bindings"], section[aria-label="Check-in audit"]';
     const system = page.getByRole("region", { name: "System controls" });
     await expect(system.getByRole("heading", { name: "System: enabled for provisioning" })).toBeVisible();
     await expect(system.getByText("Authorization generation 4 · Configuration version 7")).toBeVisible();
@@ -498,25 +498,24 @@ void test("station administration lists, pages and confirms controls", async () 
     await expect(form).toHaveCount(0);
     await checkpoint("stopped", sections);
 
-    await page.getByRole("article", { name: "Station 1" }).getByRole("button", { name: "Issue replacement QR" }).click();
-    await expect(form.getByRole("heading", { name: "Confirm: Issue replacement QR: Station 1" })).toBeVisible();
+    await page.getByRole("article", { name: "Station 1" }).getByRole("button", { name: "Reset label approval" }).click();
+    await expect(form.getByRole("heading", { name: "Confirm: Reset label approval: Station 1" })).toBeVisible();
     await form.locator("#control-reason").selectOption("security");
     await plan("checkinAdminControl", ok({ actionId: "c2", replayed: false, provisionCode: "f".repeat(64), qrDataUrl: `data:image/png;base64,${png}` }));
     await form.getByRole("button", { name: "Confirm action" }).click();
-    const issued = page.getByRole("region", { name: "Issued provisioning QR" });
-    await expect(issued.locator("#issued-code")).toHaveValue("f".repeat(64));
-    await expect(issued.getByRole("img", { name: "Reusable Station Provisioning QR" })).toBeVisible();
-    await expect(issued.getByText("Review station on this device")).toHaveCount(0);
-    await expect(page.locator('a[href*="#provision="]')).toHaveCount(0);
-    await checkpoint("qr issued", sections);
+    await expect(page.getByText("Reset label approval: Station 1 applied. Supervised admission and printing require current station readiness.")).toBeVisible();
+    await expect(page.locator("img")).toHaveCount(0);
+    await expect(page.locator("#issued-code")).toHaveCount(0);
+    expect(await page.content()).not.toContain("f".repeat(64));
+    await expect(page.locator('a[download], a[href^="data:"], a[href*="#provision="]')).toHaveCount(0);
+    await checkpoint("label approval reset", sections);
 
     await page.getByRole("article", { name: "Station 2" }).getByRole("button", { name: "Restore station" }).click();
     await expect(form.getByRole("heading", { name: "Confirm: Restore station: Station 2" })).toBeVisible();
-    await expect(issued).toHaveCount(0);
     await form.locator("#control-reason").selectOption("operations_restored");
     await plan("checkinAdminControl", ok({ actionId: "c3", replayed: true }));
     await form.getByRole("button", { name: "Confirm action" }).click();
-    await expect(page.getByText("This action was already applied. No action was repeated. If the QR response was lost, issue a new replacement QR.")).toBeVisible();
+    await expect(page.getByText("This action was already applied. No action was repeated.", { exact: true })).toBeVisible();
 
     await bindings.getByRole("button", { name: "Revoke binding" }).first().click();
     await expect(form.getByRole("heading", { name: "Confirm: Revoke binding: binding-a" })).toBeVisible();

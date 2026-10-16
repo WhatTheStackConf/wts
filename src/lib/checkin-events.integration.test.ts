@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { CheckinEventService, type CheckinEventSource } from "~/lib/checkin-event-service";
-import { startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
+import { selectPrinter, startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
 import { CheckinService } from "~/lib/checkin-service";
 
 /** Synthetic upstream fixtures only. These identifiers are not production defaults. */
@@ -37,21 +37,8 @@ describe("authenticated admission event configuration", () => {
       await stations.selectPrinter(token, (await stations.printers(token)).printers[0].confirmation);
       expect((await events.catalogue(token)).selected?.availability).toBe("stale");
       expect((await events.catalogue(token)).context).toBeNull();
-      // A legacy QR switch independently invalidates the selected binding
-      // version, even when the event itself has not changed. A later dropdown
-      // switch must not resurrect that stale choice.
-      const current = await events.catalogue(token);
-      await events.select(token, { ...current.fence, eventId: event.id, eventGeneration: 2 });
-      const station = (await stations.adminList()).stations.find(s => s.id === "wts2026station2")!;
-      const issued = await stations.adminControl({ ...base(), expectedVersion: station.version, operation: "rotate_provision_code", stationId: station.id });
-      const legacy = await stations.preview(issued.provisionCode!, token);
-      await stations.bind(issued.provisionCode!, token, legacy.confirmation);
-      expect((await events.catalogue(token)).selected?.availability).toBe("stale");
-      await stations.selectPrinter(token, (await stations.printers(token)).printers[0].confirmation);
-      const stillStale = await events.catalogue(token);
-      expect(stillStale.selected?.availability).toBe("stale");
-      expect(stillStale.context).toBeNull();
-      expect((await events.select(token, { ...stillStale.fence, eventId: event.id, eventGeneration: 2 })).context?.stationId).toBe("wts2026station1");
+      const stale = await events.catalogue(token);
+      expect((await events.select(token, { ...stale.fence, eventId: event.id, eventGeneration: 2 })).context?.stationId).toBe("wts2026station1");
     } finally { await test.cleanup(); }
   });
   it("keeps independent phone selections and fences stale new intake without retargeting snapshots", { timeout: 60_000 }, async () => {
@@ -66,10 +53,8 @@ describe("authenticated admission event configuration", () => {
       const base = () => ({ operationId: crypto.randomUUID(), expectedVersion: 1, reason: "configuration" as const });
       await stations.adminControl({ ...base(), operation: "set_system_enabled", enabled: true });
       await stations.adminControl({ ...base(), operation: "set_station_enabled", stationId, enabled: true });
-      const code = (await stations.adminControl({ ...base(), expectedVersion: 2, operation: "rotate_provision_code", stationId })).provisionCode!;
-      const preview = await stations.preview(code);
       const tokens = ["b".repeat(64), "c".repeat(64)];
-      for (const token of tokens) await stations.bind(code, token, preview.confirmation);
+      for (const token of tokens) await selectPrinter(stations, token, stationId);
       const first = (await service.configure({ ...intent(), enabled: true, listId: "201" })).configuration;
       const second = (await service.configure({ ...intent(), upstreamEventId: "102", enabled: true, listId: "202" })).configuration;
       await service.configure({ ...intent(), upstreamEventId: "103" });

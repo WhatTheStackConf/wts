@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import PocketBase from "pocketbase";
+import type { CheckinServiceContract, CheckinStationId } from "~/lib/checkin-contract";
 
 /** Real isolated PB; no .env, copied production data, or outbound-effect hooks.
  * All feature migrations are copied byte-for-byte, never rewritten or skipped. */
@@ -100,4 +101,10 @@ export async function startCheckinPocketBase() {
     rmSync(root, { recursive: true, force: true });
     throw error;
   }
+}
+
+/** Binds a browser identity to one station through the live printer selection path. */
+export async function selectPrinter(service: CheckinServiceContract, token: string, stationId: CheckinStationId) {
+  const printer = (await service.printers(token)).printers.find((entry) => entry.station.id === stationId)!;
+  return service.selectPrinter(token, printer.confirmation);
 }

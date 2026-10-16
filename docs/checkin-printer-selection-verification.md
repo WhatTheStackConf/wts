@@ -4,7 +4,7 @@
 
 Signed-in admins and check-in operators choose the printer directly on `/checkin`, or in **Tools → Phone**. The accessible native **Printer** dropdown replaces the QR scan/review/confirmation workflow. No printer is selected automatically. The browser retains its selection across reload and login handoff; revoked browser identities remain revoked.
 
-Configured stations remain the internal queue/journal/agent routing identities. Stopped choices are unavailable. Selection alone is not physical readiness or permission to print; normal event, profile, agent, lifecycle and authorization checks are unchanged. Old QR endpoints remain compatible for existing clients/admin workflows, but are not presented in the operator UI.
+Configured stations remain the internal queue/journal/agent routing identities. Stopped choices are unavailable. Selection alone is not physical readiness or permission to print; normal event, profile, agent, lifecycle and authorization checks are unchanged. The retired QR `preview` and `bind` commands are rejected with HTTP 400. **Reset label approval** on `/admin/checkin` keeps the stored `rotate_provision_code` operation name, but it issues no code or QR.
 
 A printer change:
 
@@ -16,7 +16,7 @@ A printer change:
 - reconciles an unknown response through status reads, not an automatic mutation retry;
 - cancels a choice queued behind Web Locks on actor change/unmount, and sends an expected-actor rejection fence to prevent using a newer shared login cookie.
 
-The catalogue establishes the persistent HttpOnly identity under the same Web Lock used by legacy preview calls. Status may temporarily describe that valid cookie without a binding row as `invalid`; this does not block first selection. Revocation does.
+The catalogue establishes the persistent HttpOnly identity under one cross-tab Web Lock. The lock keeps its legacy `wts-checkin-client-preview` name so tabs still open from an older release share it. Status may temporarily describe that valid cookie without a binding row as `invalid`; this does not block first selection. Revocation does.
 
 ## Verification
 

@@ -9,10 +9,10 @@ import { CheckinAdminMonitoring } from "~/components/checkin/checkin-monitoring"
 import { CheckinLifecycleAdmin } from "~/components/checkin/CheckinLifecycleAdmin";
 import { createAgentReadinessResource } from "~/components/checkin/AgentReadiness";
 import { agentAdminList } from "~/lib/checkin-agent-client";
-import { StationReadiness } from "~/components/checkin/CheckinStationPage";
+import { StationReadiness } from "~/components/checkin/StationReadiness";
 import { useRequireAdmin } from "~/lib/route-guards";
 import { createAsyncResource } from "~/lib/async-resource";
-import { checkinAdminControl, checkinAdminList, type IssuedCheckinQR } from "~/lib/checkin-client";
+import { checkinAdminControl, checkinAdminList } from "~/lib/checkin-client";
 import { CHECKIN_NOTE_MAX_LENGTH, CHECKIN_REASON_CODES, type CheckinAdminCommand, type CheckinReasonCode, type CheckinStationDTO } from "~/lib/checkin-contract";
 
 type ControlIntent = CheckinAdminCommand extends infer C ? C extends CheckinAdminCommand ? Omit<C, "operationId" | "reason" | "note"> : never : never;
@@ -65,12 +65,11 @@ export default function AdminCheckinPage() {
   const [pending, setPending] = createSignal(false);
   const [error, setError] = createSignal("");
   const [message, setMessage] = createSignal("");
-  const [issued, setIssued] = createSignal<IssuedCheckinQR>();
   let reasonInput: HTMLSelectElement | undefined;
   const locked = () => pending() || !!intent();
   function choose(command: ControlIntent, title: string) {
     setIntent({ command, title, operationId: crypto.randomUUID() });
-    setReason(""); setNote(""); setError(""); setMessage(""); setIssued(undefined);
+    setReason(""); setNote(""); setError(""); setMessage("");
     requestAnimationFrame(() => { reasonInput?.focus(); reasonInput?.scrollIntoView({ block: "center" }); });
   }
   async function confirm(event: SubmitEvent) {
@@ -81,8 +80,7 @@ export default function AdminCheckinPage() {
     setPending(true); setError("");
     try {
       const result = await checkinAdminControl({ ...current.command, operationId: current.operationId, reason: selectedReason, note: note() });
-      setIssued(result.provisionCode ? result : undefined);
-      setMessage(result.replayed ? "This action was already applied. No action was repeated. If the QR response was lost, issue a new replacement QR." : `${current.title} applied. Supervised admission and printing require current station readiness.`);
+      setMessage(result.replayed ? "This action was already applied. No action was repeated." : `${current.title} applied. Supervised admission and printing require current station readiness.`);
       setIntent(undefined);
       await actions.refetch();
     } catch (failure) {
@@ -123,19 +121,6 @@ export default function AdminCheckinPage() {
             </div>
           </form>
         )}</Show>
-        <Show when={issued()}>{(qr) => (
-          <section class="rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-3" aria-label="Issued provisioning QR">
-            <h2 class="text-xl font-bold">Replacement station QR</h2>
-            <p>Save this QR now. Its code is shown only in this response and is never recovered from storage. The previous QR is invalid; existing bindings remain unchanged.</p>
-            <Show when={qr().qrDataUrl}><img src={qr().qrDataUrl} width="320" height="320" class="h-auto max-w-full" alt="Reusable Station Provisioning QR" /></Show>
-            <label for="issued-code" class="block font-medium">Issued provisioning code</label>
-            <input id="issued-code" class="input input-bordered min-h-12 w-full font-mono text-base" readonly value={qr().provisionCode} />
-            <div class="flex flex-wrap gap-3">
-              <a class="btn btn-primary min-h-12" href={qr().qrDataUrl} download="wts-2026-station-provisioning.png">Download QR for printing</a>
-              <button type="button" class="btn btn-ghost min-h-12" onClick={() => setIssued(undefined)}>Hide QR</button>
-            </div>
-          </section>
-        )}</Show>
         <Show when={!data.error && data()}>{(current) => (
           <>
             <section class="rounded-lg border border-base-content/20 bg-base-200 p-5 space-y-3" aria-label="System controls">
@@ -153,7 +138,7 @@ export default function AdminCheckinPage() {
                   <StationConfiguration station={station} locked={locked()} submit={choose} />
                   <div class="flex flex-wrap gap-3">
                     <button type="button" class="btn btn-warning min-h-12" disabled={locked()} onClick={() => choose({ operation: "set_station_enabled", stationId: station.id, expectedVersion: station.version, enabled: !station.enabled }, `${station.enabled ? "Disable" : "Restore"} station: ${station.label}`)}>{station.enabled ? "Disable station" : "Restore station"}</button>
-                    <button type="button" class="btn btn-outline min-h-12" disabled={locked()} onClick={() => choose({ operation: "rotate_provision_code", stationId: station.id, expectedVersion: station.version }, `Issue replacement QR: ${station.label}`)}>Issue replacement QR</button>
+                    <button type="button" class="btn btn-outline min-h-12" disabled={locked()} onClick={() => choose({ operation: "rotate_provision_code", stationId: station.id, expectedVersion: station.version }, `Reset label approval: ${station.label}`)}>Reset label approval</button>
                   </div>
                 </article>
               )}</For>

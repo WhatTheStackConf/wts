@@ -2,6 +2,7 @@ import { expect, it } from "vite-plus/test";
 import { CheckinLookupService } from "~/lib/checkin-lookup-service";
 import type { CheckinLookupSource } from "~/lib/checkin-lookup-hievents";
 import { setup, events, ready, context } from "~/lib/checkin-lookup-test-helper";
+import { selectPrinter } from "~/lib/checkin-pocketbase-test-helper";
 import { CheckinEventService } from "~/lib/checkin-event-service";
 import type { CheckinArrivalSource } from "~/lib/checkin-arrival-source";
 
@@ -33,8 +34,7 @@ async function mutate(t: Fixture, change: string) {
   if (change === "rebind") {
     const stationId = "wts2026station2";
     await t.control.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), stationId, expectedVersion: 1, enabled: true, reason: "configuration" });
-    const code = (await t.control.adminControl({ operation: "rotate_provision_code", operationId: crypto.randomUUID(), stationId, expectedVersion: 2, reason: "configuration" })).provisionCode!;
-    await t.control.bind(code, t.token, (await t.control.preview(code, t.token)).confirmation);
+    await selectPrinter(t.control, t.token, stationId);
   }
 }
 

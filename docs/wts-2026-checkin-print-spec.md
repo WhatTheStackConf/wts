@@ -30,7 +30,7 @@ One initial Name Label per Hi.Events event and ticketed attendee. Identity is no
 
 ### Identity and station binding
 
-Keep the settled existing-login User role model: Check-in Operator plus admin authority; no separate supervisor identity. Every human mutation records its actor. Reusable station QRs bind authenticated clients to a station and contain neither attendee data nor User credentials. A binding survives login handoffs and browser restarts; role/session validity is checked independently on every operation.
+Keep the settled existing-login User role model: Check-in Operator plus admin authority; no separate supervisor identity. Every human mutation records its actor. Authenticated clients bind to a station when the operator chooses its printer from a dropdown. The binding contains neither attendee data nor User credentials. No station QR or provisioning code exists. A binding survives login handoffs and browser restarts; role/session validity is checked independently on every operation.
 
 Operators see their station's current-day completed history and unresolved work, including unresolved work originating on earlier days. Admins see all stations. No history or attempt chain changes station when a phone changes station or event.
 
@@ -135,9 +135,9 @@ Freeze print payloads once dispatched. A correction made while an attempt is act
 
 ### Suggested API boundary
 
-Browser-to-WTS authenticated commands: event catalogue/config readiness, provision/bind, select active event, lookup, confirm lookup/scan, workflow status/history, park/resume, preview/correct/replace, record observed output/handwritten, and admin truth/control actions. Use opaque internal references; no list capability or printer transport reaches the browser.
+Browser-to-WTS authenticated commands: event catalogue/config readiness, printer selection, select active event, lookup, confirm lookup/scan, workflow status/history, park/resume, preview/correct/replace, record observed output/handwritten, and admin truth/control actions. Use opaque internal references; no list capability or printer transport reaches the browser.
 
-Pi-to-coordinator API: per-agent authentication, heartbeat, receive/acknowledge station work, pre-start authorization, and idempotent outcome reporting. A station QR is never an agent credential. An agent can read only its station's minimal label payload and report only its own attempts; it cannot check attendees in or use PocketBase superuser credentials.
+Pi-to-coordinator API: per-agent authentication, heartbeat, receive/acknowledge station work, pre-start authorization, and idempotent outcome reporting. A browser station binding is never an agent credential. An agent can read only its station's minimal label payload and report only its own attempts; it cannot check attendees in or use PocketBase superuser credentials.
 
 Admin commands include event/list and optional affiliation configuration, profile approval, binding/agent revocation, station/global stop, reconciliation, audited explicit label authorization for an existing check-in, reset, cancellation, and edition closure. Reset never silently authorizes a new initial sticker or erases an old print chain.
 
@@ -177,7 +177,7 @@ Suggested manual checks cover normal arrivals, repeat scans, name/email ambiguit
 
 ## Operator runbook content for implementation
 
-1. Log in, bind the phone using its station QR, confirm the station/printer identity, and choose the configured event. Check visible readiness before opening the queue.
+1. Log in, choose the station printer from the **Printer** dropdown, confirm the station/printer identity, and choose the configured event. Check visible readiness before opening the queue.
 2. Scan the attendee QR. For an unreadable/missing QR, search name/email within the selected event/list, select the exact ticketed attendee, and confirm. Hand over the matching label after the normal result; do not rescan to request a replacement.
 3. For typos or damaged labels, open the owning station's record, edit the label-only draft, inspect the preview, and explicitly request a replacement. Source ticket data and prior attempt snapshots remain unchanged.
 4. For uncertain admission, park the record and ask an admin; continue with unrelated attendees if dependencies are ready. Do not submit that attendee through another scanner as a retry.

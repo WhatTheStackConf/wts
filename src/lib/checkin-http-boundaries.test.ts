@@ -40,9 +40,9 @@ const boundaries: Boundary[] = [
   { name: "label", handle: handleCheckinLabelRequest as Handler, role: "admin", valid: { operation: "list" }, denied: "Name Label access denied.", type: "Use a JSON Name Label command.", large: "Name Label command too large.", invalid: "Invalid Name Label command.", limit: 16384,
     service: { list: vi.fn().mockResolvedValue({ profiles: [] }), get: vi.fn(), configure: vi.fn(), approve: vi.fn() }, extra: { render: vi.fn() } },
   { name: "checkin", handle: handleCheckinRequest as Handler, role: "admin", valid: { operation: "status" }, denied: "Check-in access denied.", type: "Use a JSON check-in command.", large: "Check-in command too large.", invalid: "Invalid check-in command.", limit: 4096,
-    service: { status: vi.fn().mockResolvedValue({ ok: "status" }) }, extra: { provisioningQr: vi.fn() } },
+    service: { status: vi.fn().mockResolvedValue({ ok: "status" }) } },
 ];
-const stationCookie: Record<string, string> = { arrival: "Invalid station client identity.", resume: "Invalid station client identity.", event: "Invalid station client identity.", checkin: "Invalid station client identity. Clear this site's data to reprovision." };
+const stationCookie: Record<string, string> = { arrival: "Invalid station client identity.", resume: "Invalid station client identity.", event: "Invalid station client identity.", checkin: "Invalid station client identity. Clear this site's data, then choose the station again from the Printer dropdown." };
 const unavailable: Record<string, string> = {
   agent: "Agent service unavailable.",
   arrival: "Arrival service unavailable. The outcome remains unknown; do not start a new intake for this attendee.",

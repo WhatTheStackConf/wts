@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { CheckinServiceContract } from "~/lib/checkin-contract";
+import type { CheckinServiceContract, CheckinStationDTO } from "~/lib/checkin-contract";
 import { handleCheckinRequest } from "~/lib/checkin-http";
 import { CheckinError } from "~/lib/checkin-service";
 import { isCheckinPath, protectCheckinResponse } from "~/lib/checkin-privacy";
-import { checkinPrinters, previewCheckinStation, selectCheckinPrinter } from "~/lib/checkin-client";
+import { checkinPrinters, selectCheckinPrinter } from "~/lib/checkin-client";
 
 const token = "a".repeat(64);
 function request(body: unknown, options: { origin?: string; cookie?: string; method?: string } = {}) {
@@ -23,15 +23,12 @@ function dependencies(role = "checkin_operator") {
     status: vi.fn().mockResolvedValue({ bindingState: "unbound", operationsEnabled: false }),
     printers: vi.fn().mockResolvedValue({ printers: [] }),
     selectPrinter: vi.fn().mockResolvedValue({ status: { bindingState: "bound", operationsEnabled: false }, bindingToken: token }),
-    preview: vi.fn().mockResolvedValue({ canBind: true }),
-    bind: vi.fn().mockResolvedValue({ status: { bindingState: "bound", operationsEnabled: false }, bindingToken: token }),
     adminList: vi.fn().mockResolvedValue({ stations: [] }),
     adminControl: vi.fn().mockResolvedValue({ actionId: "action", replayed: false }),
   } satisfies CheckinServiceContract;
   return {
     authenticate: vi.fn().mockResolvedValue({ id: "operator", role }),
     service: vi.fn().mockResolvedValue(service),
-    provisioningQr: vi.fn().mockResolvedValue("data:image/png;base64,test-only"),
     target: service,
   };
 }
@@ -55,7 +52,7 @@ describe("authenticated Check-in HTTP boundary", () => {
     expect(result.status).toBe(403);
     expect(deps.service).not.toHaveBeenCalled();
   });
-  it.each(["printers", "legacy preview"])("serializes printer identity setup with %s through the complete response", async kind => {
+  it("serializes printer identity setup across tabs through the complete response", async () => {
     // Inject only the platform lock/fetch boundaries; exercise the real clients.
     const queues = new Map<string, Promise<unknown>>();
     const lock = vi.fn((name: string, _options: unknown, run: () => Promise<unknown>) => {
@@ -70,7 +67,7 @@ describe("authenticated Check-in HTTP boundary", () => {
     try {
       const first = checkinPrinters();
       await vi.waitFor(() => expect(fetched).toHaveBeenCalledTimes(1));
-      const second = kind === "printers" ? checkinPrinters() : previewCheckinStation(token);
+      const second = checkinPrinters();
       await Promise.resolve(); await Promise.resolve();
       expect(fetched).toHaveBeenCalledTimes(1);
       expect(lock.mock.calls.map(args => args[0])).toEqual(["wts-checkin-client-preview", "wts-checkin-client-preview"]);
@@ -95,6 +92,7 @@ describe("authenticated Check-in HTTP boundary", () => {
     const cookie = catalogue.headers.get("set-cookie")!;
     expect(cookie).toMatch(/^wts_checkin_client=[a-f0-9]{64};/);
     expect(cookie).toContain("HttpOnly; SameSite=Strict; Secure");
+    expect(cookie).toContain("Max-Age=31536000");
     expect(deps.target.selectPrinter).not.toHaveBeenCalled();
     const confirmation = { stationId: "wts2026station2", stationVersion: 2, systemGeneration: 2, bindingVersion: 0 };
     const body = { operation: "select_printer", confirmation };
@@ -149,12 +147,12 @@ describe("authenticated Check-in HTTP boundary", () => {
 
   it("distinguishes safe domain failures from unavailable storage without leaking diagnostics", async () => {
     const deps = dependencies();
-    vi.mocked(deps.target.preview).mockRejectedValueOnce(new CheckinError("invalid_code", 400));
-    const invalid = await handleCheckinRequest(request({ operation: "preview", code: token }), deps);
-    expect(invalid.status).toBe(400);
-    expect(await invalid.json()).toMatchObject({ code: "invalid_code" });
-    vi.mocked(deps.target.preview).mockRejectedValueOnce(new Error(`private upstream request ${token} attendee@example.test`));
-    const failed = await handleCheckinRequest(request({ operation: "preview", code: token }), deps);
+    vi.mocked(deps.target.printers).mockRejectedValueOnce(new CheckinError("revoked_binding", 403));
+    const invalid = await handleCheckinRequest(request({ operation: "printers" }), deps);
+    expect(invalid.status).toBe(403);
+    expect(await invalid.json()).toMatchObject({ code: "revoked_binding" });
+    vi.mocked(deps.target.printers).mockRejectedValueOnce(new Error(`private upstream request ${token} attendee@example.test`));
+    const failed = await handleCheckinRequest(request({ operation: "printers" }), deps);
     expect(failed.status).toBe(503);
     expect(await failed.text()).not.toMatch(/private upstream|attendee@|aaaa/);
   });
@@ -163,7 +161,8 @@ describe("authenticated Check-in HTTP boundary", () => {
     { body: { operation: "scan", code: token }, cookie: undefined },
     { body: { operation: "print" }, cookie: undefined },
     { body: { operation: "status", bindingToken: token }, cookie: undefined },
-    { body: { operation: "preview", code: "bad-code" }, cookie: undefined },
+    { body: { operation: "preview", code: token }, cookie: undefined },
+    { body: { operation: "bind", code: token, confirmation: { stationId: "wts2026station1", stationVersion: 1, systemGeneration: 1, bindingVersion: 0 } }, cookie: `wts_checkin_client=${token}` },
     { body: { operation: "status" }, cookie: "wts_checkin_client=bad" },
     { body: { operation: "status" }, cookie: `wts_checkin_client=${token}; wts_checkin_client=${token}` },
   ])("rejects malformed or unfinished capabilities before privileged work: $body.operation", async ({ body, cookie }) => {
@@ -173,37 +172,18 @@ describe("authenticated Check-in HTTP boundary", () => {
     expect(deps.service).not.toHaveBeenCalled();
   });
 
-  it("reserves admin controls for admins and returns a local provisioning QR without logging the code", async () => {
+  it("reserves admin controls for admins and returns a label approval reset without any code", async () => {
     const deps = dependencies();
     const control = { operation: "rotate_provision_code", operationId: "11111111-1111-4111-8111-111111111111", stationId: "wts2026station1", expectedVersion: 1, reason: "security" };
     expect((await handleCheckinRequest(request({ operation: "admin_control", command: control }), deps)).status).toBe(403);
     expect(deps.service).not.toHaveBeenCalled();
     deps.authenticate.mockResolvedValue({ id: "admin", role: "admin" });
-    vi.mocked(deps.target.adminControl).mockResolvedValue({ actionId: "action", replayed: false, provisionCode: token });
+    const station = { id: "wts2026station1", edition: "WTS2026", label: "Station 1", location: "", printerRef: "", enabled: true, version: 2, generation: 2, provisionCodeIssued: false, activeBindingCount: 0, multiplePhonesWarning: false, ready: false, unreadyReasons: [] } satisfies CheckinStationDTO;
+    vi.mocked(deps.target.adminControl).mockResolvedValue({ actionId: "action", replayed: false, station });
     const result = await handleCheckinRequest(request({ operation: "admin_control", command: control }), deps);
     expect(result.status).toBe(200);
     expect(deps.target.adminControl).toHaveBeenCalledWith(control);
-    expect(deps.provisioningQr).toHaveBeenCalledWith(`https://wts.example.test/checkin#provision=${token}`);
-    const issued = await result.json();
-    expect(issued).toMatchObject({ provisionCode: token, qrDataUrl: "data:image/png;base64,test-only" });
-    expect(issued).not.toHaveProperty("provisionUrl");
-  });
-
-  it("previews without binding and confirms using only a persistent HttpOnly client identity", async () => {
-    const deps = dependencies();
-    const preview = await handleCheckinRequest(request({ operation: "preview", code: token }), deps);
-    expect(preview.status).toBe(200);
-    const cookie = preview.headers.get("set-cookie")!;
-    expect(cookie).toMatch(/^wts_checkin_client=[a-f0-9]{64};/);
-    expect(cookie).toContain("HttpOnly; SameSite=Strict; Secure");
-    expect(cookie).toContain("Max-Age=31536000");
-    expect(deps.target.bind).not.toHaveBeenCalled();
-    const confirmation = { stationId: "wts2026station1", stationVersion: 1, systemGeneration: 1, bindingVersion: 0 };
-    const confirmed = await handleCheckinRequest(request({ operation: "bind", code: token, confirmation }, { cookie: cookie.split(";")[0] }), deps);
-    expect(confirmed.status).toBe(200);
-    expect(deps.target.bind).toHaveBeenCalledWith(token, cookie.split("=")[1].split(";")[0], confirmation);
-    expect(await confirmed.json()).toEqual({ bindingState: "bound", operationsEnabled: false });
-    expect(confirmed.headers.get("cache-control")).toBe("private, no-store");
+    expect(await result.json()).toEqual({ actionId: "action", replayed: false, station });
   });
 
   it("denies cross-origin and unprivileged requests before obtaining privileged access", async () => {

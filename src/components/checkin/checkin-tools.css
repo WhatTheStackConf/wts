@@ -35,7 +35,6 @@
 .wts-tools-held { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .wts-tools-event { display: flex; flex-direction: column; gap: 12px; }
 .wts-tools-pair { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--color-neutral); }
-.wts-tools-pair > section[aria-label="Station camera"] { height: min(280px, 45dvh); margin-block: 12px; }
 .wts-tools-arrivals > section, .wts-tools-arrival-work { padding: 16px 0; border: 0; border-radius: 0; background: none; }
 .wts-tools-arrivals > section + section { border-top: 1px solid var(--color-neutral); }
 .wts-tools-arrival-work > * + * { margin-top: 12px; }

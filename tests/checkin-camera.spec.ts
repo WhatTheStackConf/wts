@@ -19,7 +19,7 @@ test("manual QR polls actual bounded worker status from reservation through acce
     if(response.url().endsWith("/api/checkin-arrivals") && response.request().postDataJSON()?.operation==="status" && response.ok()) statuses.push(await response.json());
   });
   try {
-    await bindArrivalPhone(phone,setup.stations[0].provisionCode,setup.events[0].id);
+    await bindArrivalPhone(phone,setup.stations[0].stationId,setup.events[0].id);
     await phone.getByLabel("Attendee QR identity",{exact:true}).fill("A-CAM0001");
     const received=phone.waitForResponse(r=>r.url().endsWith("/api/checkin-arrivals") && r.request().postDataJSON()?.operation==="preflight");
     await phone.getByRole("button",{name:"Validate arrival",exact:true}).click();
@@ -89,7 +89,7 @@ test("camera synthetic media: real permission, decode, immediate hold, repeated 
   try {
     await installSyntheticCamera(phone);
     await phone.context().grantPermissions(["camera"]);
-    await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[0].id);
+    await bindArrivalPhone(phone, setup.stations[0].stationId, setup.events[0].id);
     await phone.setViewportSize({ width: 320, height: 740 });
     await start(phone);
     await showSyntheticQr(phone, "A-CAM0001");
@@ -141,7 +141,7 @@ test("camera unreadable held storage blocks both new camera and manual intake", 
   let preflights = 0;
   phone.on("request", request => { if (request.url().endsWith("/api/checkin-arrivals") && request.postDataJSON()?.operation === "preflight") preflights++; });
   try {
-    await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[0].id);
+    await bindArrivalPhone(phone, setup.stations[0].stationId, setup.events[0].id);
     await phone.addInitScript(() => {
       const read = Storage.prototype.getItem;
       Storage.prototype.getItem = function(key: string) {
@@ -171,7 +171,7 @@ test("camera permission denial and recovery; station QR is rejected and printer 
   phone.on("pageerror", error => errors.push(error.message));
   try {
     await installSyntheticCamera(phone);
-    await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[0].id);
+    await bindArrivalPhone(phone, setup.stations[0].stationId, setup.events[0].id);
     const session = await phone.context().newCDPSession(phone);
     const { targetInfo } = await session.send("Target.getTargetInfo");
     await session.send("Browser.setPermission", { permission: { name: "camera" }, setting: "denied", origin: state.baseURL, browserContextId: targetInfo.browserContextId });
@@ -180,7 +180,7 @@ test("camera permission denial and recovery; station QR is rejected and printer 
     await camera(phone).screenshot({ path: info.outputPath("camera-permission-denied.png") });
     await session.send("Browser.setPermission", { permission: { name: "camera" }, setting: "granted", origin: state.baseURL, browserContextId: targetInfo.browserContextId });
     await start(phone);
-    await showSyntheticQr(phone, `${state.baseURL}/checkin#provision=${setup.stations[0].provisionCode}`);
+    await showSyntheticQr(phone, `${state.baseURL}/checkin#provision=${"a".repeat(64)}`);
     await expect(held(phone)).toContainText("Not an attendee QR");
     await expect(held(phone)).toBeFocused();
     await held(phone).getByRole("button", { name: "Dismiss invalid QR" }).click();
@@ -224,7 +224,7 @@ test("camera opaque recovery: phone reload affiliation continuation, history Res
   try {
     await installSyntheticCamera(phone);
     await phone.context().grantPermissions(["camera"]);
-    await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[0].id);
+    await bindArrivalPhone(phone, setup.stations[0].stationId, setup.events[0].id);
     await phone.setViewportSize({ width: 320, height: 740 });
     await fault("affiliation_failure");
     await start(phone);

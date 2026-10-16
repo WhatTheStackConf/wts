@@ -119,7 +119,7 @@ for (const scenario of ["name", "email committed response lost", "affiliation re
       }
     });
     try {
-      await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[1].id);
+      await bindArrivalPhone(phone, setup.stations[0].stationId, setup.events[1].id);
       await phone.setViewportSize({ width: 320, height: 800 });
       const handoffFailure = scenario === "handoff storage failure";
       const failedRead = scenario === "affiliation reload blank";

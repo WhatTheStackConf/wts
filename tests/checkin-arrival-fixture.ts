@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { Page } from "@playwright/test";
 import type PocketBase from "pocketbase";
 import { expect, phoneProvisioning, selectPrinter, toolsView } from "./checkin-fixtures";
-import type { CheckinAdminDTO, CheckinPreviewDTO, CheckinStationId } from "~/lib/checkin-contract";
+import type { CheckinAdminDTO, CheckinStationId } from "~/lib/checkin-contract";
 import type { CheckinLabelCatalogue } from "~/lib/checkin-label-client";
 import type { CheckinLabelProfileResult } from "~/lib/checkin-label-profile-contract";
 import type { AgentControlResult } from "~/lib/checkin-agent-contract";
@@ -25,7 +25,7 @@ export async function arrivalPrerequisites(admin: Page, db: PocketBase, stationI
   const control = (command: object) => arrivalCommand(admin, "/api/checkin", { operation: "admin_control", command: { ...base(), ...command } });
   const start = await overview();
   if (!start.system.enabled) await control({ operation: "set_system_enabled", expectedVersion: start.system.version, enabled: true });
-  const stations: { stationId: CheckinStationId; label: string; provisionCode: string; credentialHash: string; heartbeat: {
+  const stations: { stationId: CheckinStationId; label: string; credentialHash: string; heartbeat: {
     stationId: CheckinStationId; agentIdentity: string; printerIdentity: string; journalIdentity: string; profileId: string;
     protocolGeneration: number; schemaGeneration: number; journalState: string; journalSequence: number; journalDigest: string;
   } }[] = [];
@@ -35,10 +35,6 @@ export async function arrivalPrerequisites(admin: Page, db: PocketBase, stationI
     await control({ operation: "configure_station", stationId, expectedVersion: station.version, label: station.label, location: station.location, printerRef: printer });
     station = (await overview()).stations.find((entry) => entry.id === stationId)!;
     if (!station.enabled) await control({ operation: "set_station_enabled", stationId, expectedVersion: station.version, enabled: true });
-    station = (await overview()).stations.find((entry) => entry.id === stationId)!;
-    const qr = await arrivalCommand<{ provisionCode: string }>(admin, "/api/checkin", { operation: "admin_control", command: {
-      ...base(), operation: "rotate_provision_code", stationId, expectedVersion: station.version,
-    } });
     station = (await overview()).stations.find((entry) => entry.id === stationId)!;
     const catalogue = await arrivalCommand<CheckinLabelCatalogue>(admin, "/api/checkin-labels", { operation: "list" });
     const latest = catalogue.profiles.find((entry) => entry.stationId === stationId);
@@ -54,7 +50,7 @@ export async function arrivalPrerequisites(admin: Page, db: PocketBase, stationI
       journalIdentity: `arrival-test-journal-${stationId}`, profileId: profile.profile.id, credentialLifetimeHours: 24,
     } });
     const agent = await db.collection("checkin_agents").getOne(issued.station.agentId!);
-    stations.push({ stationId, label: station.label, provisionCode: qr.provisionCode, credentialHash: createHash("sha256").update(`wts2026:agent:${issued.credential}`).digest("hex"), heartbeat: {
+    stations.push({ stationId, label: station.label, credentialHash: createHash("sha256").update(`wts2026:agent:${issued.credential}`).digest("hex"), heartbeat: {
       stationId, agentIdentity: `arrival-test-pi-${stationId}`, printerIdentity: printer, journalIdentity: `arrival-test-journal-${stationId}`,
       profileId: profile.profile.id, protocolGeneration: 1, schemaGeneration: 1, journalState: "healthy", journalSequence: Number(agent.journal_sequence) + 1, journalDigest: randomBytes(32).toString("hex"),
     } });
@@ -87,14 +83,11 @@ export async function arrivalPrerequisites(admin: Page, db: PocketBase, stationI
   return { stations, events, async cleanup() { clearInterval(timer); await ticking; await machine("release"); if (failure) throw failure; } };
 }
 
-export async function bindArrivalPhone(page: Page, code: string, eventId: string) {
+export async function bindArrivalPhone(page: Page, stationId: CheckinStationId, eventId: string) {
   await page.goto("/checkin-tools");
   await phoneProvisioning(page);
-  // Preserve existing callers' fixture codes, but use preview only to resolve
-  // their station ID. Selection itself exercises the new authenticated UI.
   await expect(page.getByLabel("Printer", { exact: true })).toBeEnabled();
-  const preview = await arrivalCommand<CheckinPreviewDTO>(page, "/api/checkin", { operation: "preview", code });
-  await selectPrinter(page, preview.station.id);
+  await selectPrinter(page, stationId);
   const catalogue = await arrivalCommand<CheckinEventCatalogue>(page, "/api/checkin-events", { operation: "catalogue" });
   if (catalogue.context?.eventId !== eventId) {
     await page.getByLabel("Event for this phone", { exact: true }).selectOption(eventId);

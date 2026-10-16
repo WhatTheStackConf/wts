@@ -27,16 +27,6 @@ export function createCameraFrameGate() {
   };
 }
 
-/** Station QR is an exact same-origin provisioning link, not an attendee, login
- * credential, arbitrary URL to navigate, or bare code to infer authority from. */
-export function provisioningCameraCode(value: string, origin: string): string | null {
-  try {
-    const url = new URL(value);
-    if (url.origin !== origin || url.pathname !== "/checkin" || url.search || url.username || url.password) return null;
-    return /^#provision=([a-f0-9]{64})$/.exec(url.hash)?.[1] ?? null;
-  } catch { return null; }
-}
-
 export function cameraDecisionSettled(decision: CheckinArrivalDecision | undefined): boolean {
   if (!decision) return false;
   if (decision.state === "already_handled" || decision.state === "rejected") return true;

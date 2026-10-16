@@ -1,8 +1,9 @@
 import { createServer, request } from "node:http";
 
-/** Test-only transport fault injection. Hold real upstream preview responses
- * before Chromium can process their Set-Cookie headers; fabricate no responses. */
-export async function delayedPreviewProxy(target: string, operation = "preview") {
+/** Test-only transport fault injection. Hold real upstream responses to one
+ * check-in operation before Chromium can process their Set-Cookie headers;
+ * fabricate no responses. */
+export async function delayedPreviewProxy(target: string, operation: string) {
   const upstreamUrl = new URL(target);
   if (upstreamUrl.hostname !== "127.0.0.1" || upstreamUrl.protocol !== "http:") throw new Error("Proxy requires a disposable loopback target");
   const first = Promise.withResolvers<void>();

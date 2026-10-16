@@ -78,16 +78,10 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
     if (!station) fail("invalid_input");
     return station;
   }
-  function provisionedStation(app) {
-    if (typeof body.codeHash !== "string" || !/^[a-f0-9]{64}$/.test(body.codeHash)) fail("invalid_code");
-    const station = find(app, "checkin_stations", "provision_code_hash = {:hash}", { hash: body.codeHash });
-    if (!station) fail("invalid_code");
-    return station;
-  }
   function assertConfirmation(confirmation, station, system) {
     if (!confirmation || confirmation.stationId !== station.id || confirmation.stationVersion !== station.getInt("version") || confirmation.systemGeneration !== system.getInt("generation")) fail("conflict", 409);
   }
-  function pairingBinding(app) {
+  function printerSelectionBinding(app) {
     if (typeof body.identityHash !== "string" || !/^[a-f0-9]{64}$/.test(body.identityHash)) fail("invalid_binding");
     const binding = find(app, "checkin_bindings", "identity_hash = {:hash}", { hash: body.identityHash });
     if (binding && binding.getBool("revoked")) fail("revoked_binding", 403);
@@ -101,9 +95,9 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
   }
   // Preserve only a still-current event choice on a printer dropdown change.
   // Frozen submissions keep their original routing; new intake gets fresh
-  // binding and selection fences. QR re-pairing retains its legacy behavior.
-  function selectedEventToKeep(app, binding, selecting, changed, bindingVersion) {
-    return selecting && changed && binding && binding.getInt("selected_binding_version") === bindingVersion
+  // binding and selection fences.
+  function selectedEventToKeep(app, binding, changed, bindingVersion) {
+    return changed && binding && binding.getInt("selected_binding_version") === bindingVersion
       ? find(app, "checkin_events", "id = {:id} && edition = 'WTS2026'", { id: binding.getString("selected_event") }) : null;
   }
   function eventStillCurrent(event, binding) {
@@ -123,16 +117,12 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
     set_system_enabled: { kind: "checkin_system", fields: ["enabled"], normalize: requireEnabled, apply: (target, command) => target.set("enabled", command.enabled) },
     set_station_enabled: { kind: "checkin_stations", fields: ["stationId", "enabled"], normalize: requireEnabled, apply: (target, command) => target.set("enabled", command.enabled) },
     configure_station: { kind: "checkin_stations", fields: ["stationId", "label", "location", "printerRef"], normalize: stationText, apply: configureStation },
-    rotate_provision_code: { kind: "checkin_stations", fields: ["stationId"], normalize: () => {}, apply: rotateProvisionCode },
+    rotate_provision_code: { kind: "checkin_stations", fields: ["stationId"], normalize: () => {}, apply: (target) => target.set("provision_code_hash", "") },
     revoke_binding: { kind: "checkin_bindings", fields: ["bindingId"], normalize: () => {}, apply: (target) => target.set("revoked", true) },
   };
   function requireEnabled(command) { if (typeof command.enabled !== "boolean") fail("invalid_input"); }
   function stationText(command) { command.label = text(command.label, 80, true); command.location = text(command.location, 120, false); command.printerRef = text(command.printerRef, 80, false); }
   function configureStation(target, command) { target.set("label", command.label); target.set("location", command.location); target.set("printer_ref", command.printerRef); }
-  function rotateProvisionCode(target) {
-    if (typeof body.provisionCodeHash !== "string" || !/^[a-f0-9]{64}$/.test(body.provisionCodeHash)) fail("invalid_input");
-    target.set("provision_code_hash", body.provisionCodeHash);
-  }
   function validControl(command) {
     if (!command || !Object.keys(CONTROLS).includes(command.operation) || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(command.operationId || "") || !Number.isInteger(command.expectedVersion) || command.expectedVersion < 1 || !["security", "device_replacement", "maintenance", "incident", "configuration", "operations_restored"].includes(command.reason)) fail("invalid_input");
     const control = CONTROLS[command.operation];
@@ -148,7 +138,7 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
   }
   function replayed(prior, fingerprint) {
     if (prior.getString("input_fingerprint") !== fingerprint || prior.getString("status") !== "applied") fail("conflict", 409);
-    // Return the original outcome, not a new mutation or a plaintext QR.
+    // Return the original outcome, not a new mutation.
     const previous = JSON.parse(prior.getString("replay_result"));
     previous.replayed = true;
     return previous;
@@ -204,14 +194,16 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
         canBind: system.getBool("enabled") && station.getBool("enabled"),
       })) };
     }
-    function bind(station, selecting) {
+    function selectPrinter() {
+      const station = selectedStation(app);
+      if (!system.getBool("enabled") || !station.getBool("enabled")) fail("disabled", 409);
       const confirmation = body.confirmation;
       assertConfirmation(confirmation, station, system);
-      let binding = pairingBinding(app);
+      let binding = printerSelectionBinding(app);
       const bindingVersion = assertBindingFence(binding, station, confirmation);
       const before = binding ? snapshot(binding, "checkin_bindings") : null;
       const changed = !binding || binding.getString("station") !== station.id;
-      const preserveEvent = eventStillCurrent(selectedEventToKeep(app, binding, selecting, changed, bindingVersion), binding);
+      const preserveEvent = eventStillCurrent(selectedEventToKeep(app, binding, changed, bindingVersion), binding);
       binding = upsertBinding(app, binding, changed);
       if (preserveEvent) {
         binding.set("selected_binding_version", binding.getInt("version"));
@@ -223,17 +215,6 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
       // A dropdown selection is still an audited browser-routing change.
       if (changed) audit("bind", station.id, binding.id, before, snapshot(binding, "checkin_bindings"), null, "");
       return statusDTO(app, system, binding, "bound");
-    }
-    function pair() {
-      const selecting = operation === "select_printer";
-      const station = selecting ? selectedStation(app) : provisionedStation(app);
-      const canBind = system.getBool("enabled") && station.getBool("enabled");
-      if (operation === "preview") {
-        const current = optionalBinding(app);
-        return { system: systemDTO(system), station: stationDTO(app, station, system), confirmation: confirmationFor(station, system, current), canBind };
-      }
-      if (!canBind) fail("disabled", 409);
-      return bind(station, selecting);
     }
     function adminControl() {
       const command = body.command;
@@ -252,7 +233,7 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
       const target = controlTarget(app, kind, id, system, command);
       const before = snapshot(target, kind);
       // Pause/resume fences authorization, not calibration. Capture before the
-      // version bump; configuration/provision changes still invalidate approval.
+      // version bump; configuration changes and label approval resets still invalidate approval.
       const profileConfigVersion = op === "set_station_enabled" ? target.getInt("profile_config_version") || target.getInt("version") : 0;
       control.apply(target, command);
       advance(target, kind, profileConfigVersion);
@@ -267,7 +248,7 @@ routerAdd("POST", "/api/wts/checkin", (e) => {
       audit(op, controlStationId(kind, target), kind === "checkin_bindings" ? target.id : "", before, after, command, action.id);
       return applied;
     }
-    const handlers = { admin_list: adminList, status, printers, preview: pair, bind: pair, select_printer: pair, admin_control: adminControl };
+    const handlers = { admin_list: adminList, status, printers, select_printer: selectPrinter, admin_control: adminControl };
     if (!Object.prototype.hasOwnProperty.call(handlers, operation)) fail("invalid_input");
     result = handlers[operation]();
   });

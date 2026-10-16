@@ -24,7 +24,7 @@ A Vite/Nitro shutdown/open-handle warning remains in unit runs despite successfu
 ## Before opening a station
 
 1. An admin configures edition membership, the exact event/list/affiliation mapping and an explicitly approved label profile for each physical station. Reusing another printer's profile is not approval.
-2. Provision a human phone with the station QR after login. Station provisioning QR authority is separate from an attendee QR. Verify the displayed station/event before intake.
+2. Sign in on a human phone and choose the station from the **Printer** dropdown on `/checkin`. No station QR or provisioning code exists. Verify the displayed station/event before intake.
 3. Verify current machine readiness: coordinator lease, original agent identity, journal, physical printer identity, approved profile/media and system/station gates. Merely connecting a device is insufficient.
 4. Configure designated admin notification recipients and verify real delivery separately. The maintenance service must run independently of the admission/print coordinator.
 5. The legacy protocol-1 `operationsEnabled: false` preflight metadata remains for wire compatibility; it is **not** a live producer switch. Actual authorization comes from system/station settings, ownership/generations and per-operation server fences. Use live readiness and admission/output projections, never that compatibility field, as the operational evidence.

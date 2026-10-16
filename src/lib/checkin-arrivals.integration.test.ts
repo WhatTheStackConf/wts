@@ -15,7 +15,7 @@ import type { CheckinEventContext } from "~/lib/checkin-event-contract";
 import { CheckinArrivalService } from "~/lib/checkin-arrival-service";
 import { CheckinEventService, type CheckinEventSource } from "~/lib/checkin-event-service";
 import { CheckinService } from "~/lib/checkin-service";
-import { startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
+import { selectPrinter, startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
 
 const events: CheckinEventSource = {
   sourceKey: "a".repeat(64),
@@ -34,22 +34,20 @@ async function setup() {
     await control.adminControl({ operation: "set_system_enabled", operationId: crypto.randomUUID(), expectedVersion: 1, enabled: true, reason: "configuration" });
     const stationId = "wts2026station1";
     await control.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), expectedVersion: 1, stationId, enabled: true, reason: "configuration" });
-    const code = (await control.adminControl({ operation: "rotate_provision_code", operationId: crypto.randomUUID(), expectedVersion: 2, stationId, reason: "configuration" })).provisionCode!;
     const token = "b".repeat(64);
-    await control.bind(code, token, (await control.preview(code)).confirmation);
+    await selectPrinter(control, token, stationId);
     const initial = await catalogue.catalogue(token);
     const selected = await catalogue.select(token, { ...initial.fence, eventId: configuration.configuration.id, eventGeneration: 1 });
     const source: CheckinArrivalSource = { sourceKey: events.sourceKey, resolve: async () => ({ state: "eligible" as const, attendee: { upstreamAttendeeId: "501", publicId: qrIdentity, productId: "401", name: "Тест Attendee", alreadyCheckedIn: false } }), affiliation: async () => ({ state: "present" as const, text: "Test organisation" }) };
     const service = new CheckinArrivalService(test.pb, operator.actor, source);
     const command = () => ({ operationId: crypto.randomUUID(), context: selected.context!, qrIdentity, affiliationChoice: "fetch" as const });
-    return { ...test, admin, operator, control, catalogue, configuration, token, code, source, service, command };
+    return { ...test, admin, operator, control, catalogue, configuration, token, source, service, command };
   } catch (error) { await test.cleanup(); throw error; }
 }
 
 async function ready(t: Awaited<ReturnType<typeof setup>>, stationId: CheckinStationId = "wts2026station1", coordinator = new Coordinator(t.pb)) {
   const row = await t.pb.collection("checkin_stations").getOne(stationId);
   let version = Number(row.version);
-  const code = row.provision_code_hash ? t.code : (await t.control.adminControl({ operation: "rotate_provision_code", operationId: crypto.randomUUID(), stationId, expectedVersion: version++, reason: "configuration" })).provisionCode!;
   if (!row.enabled) { await t.control.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), stationId, expectedVersion: version++, enabled: true, reason: "configuration" }); }
   await t.control.adminControl({ operation: "configure_station", operationId: crypto.randomUUID(), stationId, expectedVersion: version++, label: "Test station", location: "Test", printerRef: "test-printer", reason: "configuration" });
   const profiles = new CheckinLabelProfileService(t.pb, t.admin.actor);
@@ -58,7 +56,7 @@ async function ready(t: Awaited<ReturnType<typeof setup>>, stationId: CheckinSta
   const identity = { stationId, agentIdentity: "test-pi", printerIdentity: "test-printer", journalIdentity: "test-journal", profileId: saved.profile.id };
   const issued = await new CheckinAgentService(t.pb, t.admin.actor).issue({ ...identity, operationId: crypto.randomUUID(), expectedStationVersion: version, reason: "configuration", note: "Synthetic agent", credentialLifetimeHours: 24 });
   const heartbeat = () => coordinator.machine(issued.credential!, "heartbeat", { ...identity, protocolGeneration: 1, schemaGeneration: 1, journalSequence: 1, journalDigest: "c".repeat(64), journalState: "healthy" });
-  return { coordinator, heartbeat, issued, saved, code };
+  return { coordinator, heartbeat, issued, saved };
 }
 async function context(t: Awaited<ReturnType<typeof setup>>, token = t.token): Promise<CheckinEventContext> {
   const current = await t.catalogue.catalogue(token);
@@ -87,8 +85,7 @@ it("reopens the immutable snapshot after mapping changes and dependency loss wit
     // Rebinding the same phone never transfers the original work or exposes it.
     const stationId = "wts2026station2";
     await t.control.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), stationId, expectedVersion: 1, enabled: true, reason: "configuration" });
-    const code = (await t.control.adminControl({ operation: "rotate_provision_code", operationId: crypto.randomUUID(), stationId, expectedVersion: 2, reason: "configuration" })).provisionCode!;
-    await t.control.bind(code, t.token, (await t.control.preview(code, t.token)).confirmation);
+    await selectPrinter(t.control, t.token, stationId);
     const rebound = await t.catalogue.catalogue(t.token);
     const foreign = await t.catalogue.select(t.token, { ...rebound.fence, eventId: command.context.eventId, eventGeneration: 2 });
     expect(await unavailable.preflight(t.token, { ...command, operationId: crypto.randomUUID(), context: foreign.context! })).toMatchObject({ state: "already_handled", operationsEnabled: false });
@@ -137,8 +134,7 @@ for (const phase of ["before", "affiliation"] as const) {
           rebind: async () => {
             const stationId = "wts2026station2";
             await t.control.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), stationId, expectedVersion: 1, enabled: true, reason: "configuration" });
-            const code = (await t.control.adminControl({ operation: "rotate_provision_code", operationId: crypto.randomUUID(), stationId, expectedVersion: 2, reason: "configuration" })).provisionCode!;
-            await t.control.bind(code, t.token, (await t.control.preview(code, t.token)).confirmation);
+            await selectPrinter(t.control, t.token, stationId);
           },
           system: async () => {
             const system = await t.pb.collection("checkin_system").getOne("wts2026system00");
@@ -413,9 +409,8 @@ it("races independent actors and stations into one immutable not-submitted workf
   try {
     const second = await ready(t, "wts2026station2", first.coordinator);
     await first.heartbeat(); await second.heartbeat();
-    const code = second.code;
     const otherToken = "d".repeat(64);
-    await t.control.bind(code, otherToken, (await t.control.preview(code)).confirmation);
+    await selectPrinter(t.control, otherToken, "wts2026station2");
     const a = { ...t.command(), context: await context(t) };
     const b = { ...t.command(), context: await context(t, otherToken) };
     const pb2 = new PocketBase(t.baseUrl); pb2.authStore.save(t.pb.authStore.token, t.pb.authStore.record);

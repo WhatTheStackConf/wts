@@ -2,6 +2,7 @@ import { expect, it, vi } from "vite-plus/test";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { setup, ready, context } from "./checkin-recovery-test-helper";
+import { selectPrinter } from "~/lib/checkin-pocketbase-test-helper";
 import { CheckinRecoveryService } from "./checkin-recovery-service";
 import { handleCheckinRecoveryRequest } from "./checkin-recovery-http";
 import { recoveryResultSchema, recoveryWorkflowSchema } from "./checkin-recovery-client-contract";
@@ -72,10 +73,9 @@ it("owning operator grants one audited safe-read budget through recovery HTTP; l
     // Foreign active binding, absent binding, and revoked original binding cannot
     // grant OR replay, even for an admin. Admin global evidence is read-only here.
     const stationId = "wts2026station2";
-    const foreignCode = (await t.control.adminControl({ operation: "rotate_provision_code", operationId: crypto.randomUUID(), expectedVersion: 1, stationId, reason: "configuration" })).provisionCode!;
-    await t.control.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), expectedVersion: 2, stationId, enabled: true, reason: "configuration" });
+    await t.control.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), expectedVersion: 1, stationId, enabled: true, reason: "configuration" });
     const foreign = "e".repeat(64);
-    await t.control.bind(foreignCode, foreign, (await t.control.preview(foreignCode)).confirmation);
+    await selectPrinter(t.control, foreign, stationId);
     const next = { ...command, operationId: crypto.randomUUID(), expectedVersion: 1 };
     for (const value of [command, next]) for (const token of [foreign, "f".repeat(64)]) for (const admin of [false, true]) expect((await send(value, token, admin)).status).toBe(403);
     const foreignEvidence = recoveryWorkflowSchema.parse(await (await http({ operation: "get", workflowId }, foreign, true)).json());

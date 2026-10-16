@@ -19,7 +19,7 @@ import type { CheckinEventContext } from "~/lib/checkin-event-contract";
 import { CheckinArrivalService } from "~/lib/checkin-arrival-service";
 import { CheckinEventService, type CheckinEventSource } from "~/lib/checkin-event-service";
 import { CheckinService } from "~/lib/checkin-service";
-import { startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
+import { selectPrinter, startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
 
 const events: CheckinEventSource = {
   sourceKey: "a".repeat(64),
@@ -38,22 +38,20 @@ async function setup() {
     await control.adminControl({ operation: "set_system_enabled", operationId: crypto.randomUUID(), expectedVersion: 1, enabled: true, reason: "configuration" });
     const stationId = "wts2026station1";
     await control.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), expectedVersion: 1, stationId, enabled: true, reason: "configuration" });
-    const code = (await control.adminControl({ operation: "rotate_provision_code", operationId: crypto.randomUUID(), expectedVersion: 2, stationId, reason: "configuration" })).provisionCode!;
     const token = "b".repeat(64);
-    await control.bind(code, token, (await control.preview(code)).confirmation);
+    await selectPrinter(control, token, stationId);
     const initial = await catalogue.catalogue(token);
     const selected = await catalogue.select(token, { ...initial.fence, eventId: configuration.configuration.id, eventGeneration: 1 });
     const source: CheckinArrivalSource = { sourceKey: events.sourceKey, resolve: async () => ({ state: "eligible" as const, attendee: { upstreamAttendeeId: "501", publicId: qrIdentity, productId: "401", name: "Тест Attendee", alreadyCheckedIn: false } }), affiliation: async () => ({ state: "present" as const, text: "Test organisation" }) };
     const service = new CheckinArrivalService(test.pb, operator.actor, source);
     const command = () => ({ operationId: crypto.randomUUID(), context: selected.context!, qrIdentity, affiliationChoice: "fetch" as const });
-    return { ...test, admin, operator, control, catalogue, configuration, token, code, source, service, command };
+    return { ...test, admin, operator, control, catalogue, configuration, token, source, service, command };
   } catch (error) { await test.cleanup(); throw error; }
 }
 
 async function ready(t: Awaited<ReturnType<typeof setup>>, stationId: CheckinStationId = "wts2026station1", coordinator = new Coordinator(t.pb)) {
   const row = await t.pb.collection("checkin_stations").getOne(stationId);
   let version = Number(row.version);
-  const code = row.provision_code_hash ? t.code : (await t.control.adminControl({ operation: "rotate_provision_code", operationId: crypto.randomUUID(), stationId, expectedVersion: version++, reason: "configuration" })).provisionCode!;
   if (!row.enabled) { await t.control.adminControl({ operation: "set_station_enabled", operationId: crypto.randomUUID(), stationId, expectedVersion: version++, enabled: true, reason: "configuration" }); }
   await t.control.adminControl({ operation: "configure_station", operationId: crypto.randomUUID(), stationId, expectedVersion: version++, label: "Test station", location: "Test", printerRef: "test-printer", reason: "configuration" });
   const profiles = new CheckinLabelProfileService(t.pb, t.admin.actor);
@@ -62,7 +60,7 @@ async function ready(t: Awaited<ReturnType<typeof setup>>, stationId: CheckinSta
   const identity = { stationId, agentIdentity: "test-pi", printerIdentity: "test-printer", journalIdentity: "test-journal", profileId: saved.profile.id };
   const issued = await new CheckinAgentService(t.pb, t.admin.actor).issue({ ...identity, operationId: crypto.randomUUID(), expectedStationVersion: version, reason: "configuration", note: "Synthetic agent", credentialLifetimeHours: 24 });
   const heartbeat = () => coordinator.machine(issued.credential!, "heartbeat", { ...identity, protocolGeneration: 1, schemaGeneration: 1, journalSequence: 1, journalDigest: "c".repeat(64), journalState: "healthy" });
-  return { coordinator, heartbeat, issued, saved, code };
+  return { coordinator, heartbeat, issued, saved };
 }
 async function context(t: Awaited<ReturnType<typeof setup>>, token = t.token): Promise<CheckinEventContext> {
   const current = await t.catalogue.catalogue(token);
@@ -132,7 +130,7 @@ it("projects live completed history and replay without rewriting the accepted co
     expect((await t.service.history(t.token)).items).toMatchObject([{completedAt:null,result:{workflow:{printState:"queued"}}}]);
     const second = await ready(t,"wts2026station2",runtime.coordinator);
     const otherToken = "d".repeat(64);
-    await t.control.bind(second.code,otherToken,(await t.control.preview(second.code)).confirmation);
+    await selectPrinter(t.control,otherToken,"wts2026station2");
     expect(await t.service.preflight(otherToken,command)).toEqual({state:"already_handled",operationId:command.operationId,replayed:true,operationsEnabled:false});
     expect((await historyDay(currentDay,otherToken)).items).toEqual([]);
     expect((await t.service.status(otherToken, command.operationId)).result).toBeNull();
@@ -162,7 +160,7 @@ it("status follows station ownership through login and phone handoffs, without w
     const absent=await t.service.status(t.token,crypto.randomUUID()); expect(absent.result).toBeNull();
     expect(await new CheckinArrivalService(t.pb,t.admin.actor,t.source).status(t.token,command.operationId)).toEqual(own);
     expect((await t.pb.collection("checkin_audit_events").getFullList()).length).toBe(audits);
-    const otherToken="e".repeat(64);await t.control.bind(t.code,otherToken,(await t.control.preview(t.code)).confirmation);
+    const otherToken="e".repeat(64);await selectPrinter(t.control,otherToken,"wts2026station1");
     expect(await t.service.status(otherToken,command.operationId)).toEqual(own);
     await expect(t.service.status(undefined,command.operationId)).rejects.toMatchObject({status:403});
     await expect(t.service.status(t.token,"bad' OR 1=1")).rejects.toMatchObject({status:400});

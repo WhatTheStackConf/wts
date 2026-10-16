@@ -2,7 +2,7 @@ import PocketBase from "pocketbase";
 import { describe, expect, it } from "vite-plus/test";
 import { CheckinEventService, type CheckinEventSource } from "~/lib/checkin-event-service";
 import { CheckinService } from "~/lib/checkin-service";
-import { startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
+import { selectPrinter, startCheckinPocketBase } from "~/lib/checkin-pocketbase-test-helper";
 
 const source: CheckinEventSource = {
   sourceKey: "d".repeat(64),
@@ -20,9 +20,8 @@ async function setup() {
     const control = () => ({ operationId: crypto.randomUUID(), expectedVersion: 1, reason: "configuration" as const });
     await stations.adminControl({ ...control(), operation: "set_system_enabled", enabled: true });
     await stations.adminControl({ ...control(), operation: "set_station_enabled", stationId: "wts2026station1", enabled: true });
-    const code = (await stations.adminControl({ ...control(), expectedVersion: 2, operation: "rotate_provision_code", stationId: "wts2026station1" })).provisionCode!;
     const token = "e".repeat(64);
-    await stations.bind(code, token, (await stations.preview(code)).confirmation);
+    await selectPrinter(stations, token, "wts2026station1");
     const phone = new CheckinEventService(test.pb, operator.actor, source);
     return { ...test, admin, operator, service, stations, phone, token, control };
   } catch (error) { await test.cleanup(); throw error; }
@@ -151,9 +150,9 @@ describe("event safety at real authenticated storage boundaries", () => {
       await test.stations.adminControl({ ...test.control(), expectedVersion: 3, operation: "set_system_enabled", enabled: true });
       await expect(test.phone.validateContext(test.token, current.context!)).rejects.toMatchObject({ code: "conflict" });
       await test.stations.adminControl({ ...test.control(), operation: "set_station_enabled", stationId: "wts2026station2", enabled: true });
-      const code = (await test.stations.adminControl({ ...test.control(), expectedVersion: 2, operation: "rotate_provision_code", stationId: "wts2026station2" })).provisionCode!;
-      await test.stations.bind(code, test.token, (await test.stations.preview(code, test.token)).confirmation);
-      expect(await test.phone.catalogue(test.token)).toMatchObject({ selected: { availability: "stale" }, context: null });
+      await selectPrinter(test.stations, test.token, "wts2026station2");
+      expect(await test.phone.catalogue(test.token)).toMatchObject({ selected: { availability: "available" }, context: { stationId: "wts2026station2", eventId: winning.eventId, bindingVersion: 2 } });
+      await expect(test.phone.validateContext(test.token, current.context!)).rejects.toMatchObject({ code: "conflict" });
       await expect(test.phone.select(test.token, winning)).rejects.toMatchObject({ code: "conflict" });
     } finally { await test.cleanup(); }
   });

@@ -1,14 +1,13 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import type PocketBase from "pocketbase";
 import type {
   CheckinActor, CheckinAdminCommand, CheckinAdminDTO, CheckinAdminResult,
-  CheckinBindResult, CheckinConfirmation, CheckinErrorCode, CheckinPreviewDTO,
+  CheckinBindResult, CheckinConfirmation, CheckinErrorCode,
   CheckinServiceContract, CheckinStatusDTO, CheckinPrinterCatalogueDTO,
 } from "~/lib/checkin-contract";
 
 const messages: Record<CheckinErrorCode, string> = {
   forbidden: "Check-in authorization required.", invalid_input: "Check the supplied values.",
-  invalid_code: "This provisioning code is invalid or has been replaced.",
   invalid_binding: "This browser has no valid station binding.",
   revoked_binding: "This browser binding has been revoked. Ask an admin for help.",
   disabled: "The system or station is disabled.", conflict: "State changed. Review the current state and confirm again.",
@@ -37,9 +36,9 @@ function checkinFailure(error: unknown): CheckinError {
   const denied = status === 403 || status === 401;
   return new CheckinError(denied ? "forbidden" : "unavailable", denied ? 403 : 503);
 }
-function digest(value: string, kind: "binding" | "provision"): string {
-  if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) throw new CheckinError(kind === "binding" ? "invalid_binding" : "invalid_code", 400);
-  return createHash("sha256").update(`wts2026:${kind}:${value}`).digest("hex");
+function bindingHash(token: string): string {
+  if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)) throw new CheckinError("invalid_binding", 400);
+  return createHash("sha256").update(`wts2026:binding:${token}`).digest("hex");
 }
 /** Server-only domain service. The caller must first resolve the canonical live
  * human session; the privileged PB hook independently rereads that User inside
@@ -56,33 +55,20 @@ export class CheckinService implements CheckinServiceContract {
     } catch (error) { throw checkinFailure(error); }
   }
   status(bindingToken?: string | null): Promise<CheckinStatusDTO> {
-    return this.request("status", { identityHash: bindingToken ? digest(bindingToken, "binding") : "" });
+    return this.request("status", { identityHash: bindingToken ? bindingHash(bindingToken) : "" });
   }
   printers(bindingToken?: string | null): Promise<CheckinPrinterCatalogueDTO> {
-    return this.request("printers", { identityHash: bindingToken ? digest(bindingToken, "binding") : "" });
+    return this.request("printers", { identityHash: bindingToken ? bindingHash(bindingToken) : "" });
   }
   async selectPrinter(bindingToken: string | null | undefined, confirmation: CheckinConfirmation): Promise<CheckinBindResult> {
     if (!bindingToken) throw new CheckinError("invalid_binding", 400);
-    const status = await this.request<CheckinStatusDTO>("select_printer", { identityHash: digest(bindingToken, "binding"), confirmation });
-    return { status, bindingToken };
-  }
-  preview(code: string, bindingToken?: string): Promise<CheckinPreviewDTO> {
-    return this.request("preview", { codeHash: digest(code, "provision"), identityHash: bindingToken ? digest(bindingToken, "binding") : "" });
-  }
-  async bind(code: string, bindingToken: string | null | undefined, confirmation: CheckinConfirmation): Promise<CheckinBindResult> {
-    // HTTP issues the persistent identity on preview, before any confirmation.
-    if (!bindingToken) throw new CheckinError("invalid_binding", 400);
-    const status = await this.request<CheckinStatusDTO>("bind", { codeHash: digest(code, "provision"), identityHash: digest(bindingToken, "binding"), confirmation });
+    const status = await this.request<CheckinStatusDTO>("select_printer", { identityHash: bindingHash(bindingToken), confirmation });
     return { status, bindingToken };
   }
   adminList(query: { bindingPage?: number; auditPage?: number } = {}): Promise<CheckinAdminDTO> {
     return this.request("admin_list", query);
   }
-  async adminControl(command: CheckinAdminCommand): Promise<CheckinAdminResult> {
-    const code = command.operation === "rotate_provision_code" ? randomBytes(32).toString("hex") : undefined;
-    const result = await this.request<CheckinAdminResult>("admin_control", {
-      command, ...(code ? { provisionCodeHash: digest(code, "provision") } : {}),
-    });
-    return code && !result.replayed ? { ...result, provisionCode: code } : result;
+  adminControl(command: CheckinAdminCommand): Promise<CheckinAdminResult> {
+    return this.request("admin_control", { command });
   }
 }

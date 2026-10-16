@@ -417,7 +417,7 @@ function FullCameraArrival(props: FullCameraArrivalProps) {
     <h3 class="text-lg font-bold">Scan attendee QR</h3>
     <p>Station: {props.arrival.stationLabel() || "Unverified"} · Event: {props.arrival.eventTitle() || "Unverified"}</p>
     <p>One scan starts the durable arrival flow without a preview-confirmation tap. Keep this attendee here until the print protocol completes or explicitly park the exception. Event-use approval remains disabled.</p>
-    <CheckinCameraScanner purpose="attendee" enabled={props.arrival.held() ? props.arrival.reacquiring() && props.arrival.recoveryAvailable() : props.arrival.enabled()} held={props.arrival.scannerHeld()} scope={props.arrival.scannerScope()} onDecode={props.arrival.scan} />
+    <CheckinCameraScanner enabled={props.arrival.held() ? props.arrival.reacquiring() && props.arrival.recoveryAvailable() : props.arrival.enabled()} held={props.arrival.scannerHeld()} scope={props.arrival.scannerScope()} onDecode={props.arrival.scan} />
     <Show when={!props.arrival.enabled()}><p role="status">New camera intake is paused: verify login, station, event and live printer/coordinator readiness. Held work is not cancelled.</p></Show>
     <button type="button" class="btn btn-outline min-h-12" disabled={props.arrival.readinessLoading()} onClick={() => void props.arrival.refreshReadiness()}>Refresh camera readiness</button>
     <section ref={(element) => { props.arrival.setFeedback(element); }} aria-label="Held camera arrival" tabindex="-1" aria-live="polite" class="space-y-3 focus-visible:outline focus-visible:outline-2">
@@ -484,7 +484,7 @@ function CompactCameraArrival(props: CompactCameraArrivalProps) {
       {/* Hide, never unmount: routine verification and held results keep the
           same video element and stream. Scope loss still stops the scanner. */}
       <div class="checkin-scanner-slot" hidden={props.arrival.compactHasResult() && !props.arrival.reacquiring()}>
-        <CheckinCameraScanner compact purpose="attendee" enabled={props.arrival.held() ? props.arrival.reacquiring() && props.arrival.recoveryAvailable() && !props.arrival.accessDenied() : props.arrival.enabled()} held={props.arrival.scannerHeld()} scope={props.arrival.scannerScope()} onDecode={props.arrival.scan} onActivate={props.arrival.unlockScanFeedback} />
+        <CheckinCameraScanner compact enabled={props.arrival.held() ? props.arrival.reacquiring() && props.arrival.recoveryAvailable() && !props.arrival.accessDenied() : props.arrival.enabled()} held={props.arrival.scannerHeld()} scope={props.arrival.scannerScope()} onDecode={props.arrival.scan} onActivate={props.arrival.unlockScanFeedback} />
       </div>
       <CompactHeldResult arrival={props.arrival} />
       <Show when={props.arrival.captureFlash() && !props.arrival.verifying() && !!props.arrival.bindingScope()}><span class="checkin-capture-flash" aria-hidden="true" /></Show>

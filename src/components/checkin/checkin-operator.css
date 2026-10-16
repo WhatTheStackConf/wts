@@ -38,7 +38,6 @@
 .wts-operator-step label { font-size: 1rem; font-weight: 600; }
 .wts-operator-step .input, .wts-operator-step .select { width: 100%; min-height: 48px; font-size: 1rem; }
 .wts-operator-step summary { padding-block: 12px; cursor: pointer; }
-.wts-operator-step > section[aria-label="Station camera"] { height: min(280px, 45dvh); margin-block: 12px; }
 .wts-operator-lookup > section { border: 0; padding: 8px 0; }
 .wts-operator-footer { min-height: 64px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding-block: 8px; }
 .wts-operator-footer p { font-size: .875rem; color: var(--color-warning); }

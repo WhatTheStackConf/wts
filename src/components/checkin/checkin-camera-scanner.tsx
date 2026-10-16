@@ -6,7 +6,6 @@ interface CheckinCameraScannerProps {
   compact?: boolean;
   /** Runs in the Start button gesture, before the media permission promise. */
   onActivate?: () => void | Promise<void>;
-  purpose: "attendee" | "station";
   /** Live authority gate. Checking permission does not grant arrival authority. */
   enabled: boolean;
   held: boolean;
@@ -52,7 +51,6 @@ export function CheckinCameraScanner(props: CheckinCameraScannerProps) {
   onCleanup(stop);
   const paused = () => props.held || !props.enabled;
   const canDecode = () => props.enabled && !props.held && !document.hidden;
-  const cameraLabel = () => props.purpose === "attendee" ? "Attendee" : "Station";
   function fail(current: number, message: string) {
     if (current === generation) { stop(); setError(message); setState("error"); }
   }
@@ -108,24 +106,24 @@ export function CheckinCameraScanner(props: CheckinCameraScannerProps) {
       fail(current, cameraErrorMessage(failure));
     }
   }
-  return <Show when={props.compact} fallback={<section aria-label={`${cameraLabel()} camera`} class="min-w-0 space-y-3">
-    <video ref={(element) => { video = element; }} muted playsinline aria-label={`${props.purpose} camera preview`} class="w-full max-w-md rounded-lg bg-black aspect-[4/3] object-contain" hidden={state() !== "running"} />
+  return <Show when={props.compact} fallback={<section aria-label="Attendee camera" class="min-w-0 space-y-3">
+    <video ref={(element) => { video = element; }} muted playsinline aria-label="attendee camera preview" class="w-full max-w-md rounded-lg bg-black aspect-[4/3] object-contain" hidden={state() !== "running"} />
     <p role="status"><Show when={state() === "starting"} fallback={<Show when={state() === "running"} fallback="Camera off."><Show when={paused()} fallback="Camera scanning. Show one QR at a time.">Camera paused. Resolve or safely park held work before another attendee.</Show></Show>}>Waiting for camera permission. You can cancel without submitting an arrival.</Show></p>
     <Show when={error()}><p role="alert" class="alert alert-error">{error()}</p></Show>
     <div class="flex flex-wrap gap-3">
-      <button type="button" class="btn btn-primary min-h-12" disabled={paused() || state() === "starting" || state() === "running"} onClick={() => void start()}>Start {props.purpose} camera</button>
-      <button type="button" class="btn btn-outline min-h-12" disabled={state() === "off" || state() === "error"} onClick={stop}>Stop {props.purpose} camera</button>
+      <button type="button" class="btn btn-primary min-h-12" disabled={paused() || state() === "starting" || state() === "running"} onClick={() => void start()}>Start attendee camera</button>
+      <button type="button" class="btn btn-outline min-h-12" disabled={state() === "off" || state() === "error"} onClick={stop}>Stop attendee camera</button>
     </div>
     <p class="text-sm">Camera frames are decoded on this phone and never uploaded. Remove the previous QR before scanning again. Switching apps stops the camera; return here and restart explicitly.</p>
   </section>}>
-    <section aria-label={`${cameraLabel()} camera`} class="checkin-scanner-compact">
+    <section aria-label="Attendee camera" class="checkin-scanner-compact">
       <div class="checkin-scanner-preview">
-        <video ref={(element) => { video = element; }} muted playsinline aria-label={`${props.purpose} camera preview`} hidden={state() !== "running"} />
-        <Show when={state() === "running"} fallback={<p class="checkin-scanner-placeholder"><Show when={state() === "starting"} fallback={<Show when={props.purpose === "station"} fallback="Show one attendee QR at a time">Show your station QR</Show>}>Allow camera access to scan</Show></p>}>
+        <video ref={(element) => { video = element; }} muted playsinline aria-label="attendee camera preview" hidden={state() !== "running"} />
+        <Show when={state() === "running"} fallback={<p class="checkin-scanner-placeholder"><Show when={state() === "starting"} fallback="Show one attendee QR at a time">Allow camera access to scan</Show></p>}>
           <span class="checkin-scanner-target" aria-hidden="true" />
         </Show>
       </div>
-      <p role="status" class="checkin-scanner-status"><Switch fallback="Camera off"><Match when={state() === "starting"}>Waiting for camera permission…</Match><Match when={state() === "running"}><Show when={paused()} fallback={<Show when={props.purpose === "station"} fallback="Ready for an attendee QR">Ready for your station QR</Show>}>Scanning paused</Show></Match></Switch></p>
+      <p role="status" class="checkin-scanner-status"><Switch fallback="Camera off"><Match when={state() === "starting"}>Waiting for camera permission…</Match><Match when={state() === "running"}><Show when={paused()} fallback="Ready for an attendee QR">Scanning paused</Show></Match></Switch></p>
       <Show when={error()}><p role="alert" class="text-sm break-words">{error()}</p></Show>
       <div class="checkin-scanner-controls">
         <Show when={state() === "running" || state() === "starting"} fallback={<button type="button" class="btn btn-primary" disabled={paused()} onClick={() => void start()}>Start scanning</button>}>

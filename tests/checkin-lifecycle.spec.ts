@@ -22,12 +22,12 @@ async function enable(page: Page, station: Locator) {
   if (await page.getByRole("button", { name: "Restore system", exact: true }).count()) await confirmAdmin(page, page.getByRole("button", { name: "Restore system", exact: true }));
   if (await station.getByRole("button", { name: "Restore station", exact: true }).count()) await confirmAdmin(page, station.getByRole("button", { name: "Restore station", exact: true }));
 }
-async function issue(page: Page, station: Locator) {
-  await confirmAdmin(page, station.getByRole("button", { name: "Issue replacement QR", exact: true }));
-  const code = await page.getByLabel("Issued provisioning code").inputValue();
-  expect(code).toMatch(/^[a-f0-9]{64}$/);
-  await expect(page.getByRole("img", { name: "Reusable Station Provisioning QR" })).toBeVisible();
-  return code;
+async function resetLabelApproval(page: Page, station: Locator) {
+  const result = await confirmAdmin(page, station.getByRole("button", { name: "Reset label approval", exact: true }));
+  expect(Object.keys(result).sort()).toEqual(["actionId", "replayed", "station"]);
+  expect(result.station).toMatchObject({ provisionCodeIssued: false });
+  await expect(page.getByText(/^Reset label approval: .+ applied\./)).toBeVisible();
+  await expect(page.locator('img[alt*="QR"], #issued-code, a[download]')).toHaveCount(0);
 }
 async function bind(page: Page, stationId: string) {
   await phoneProvisioning(page);
@@ -47,7 +47,7 @@ async function unready(page: Page) {
   }
 }
 
-test("real printer selection, stops, switching, legacy code rotation and revocation", async ({ page, state, db, actorPage }, info) => {
+test("real printer selection, stops, switching, label approval reset and revocation", async ({ page, state, db, actorPage }, info) => {
   test.setTimeout(180_000);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -61,14 +61,13 @@ test("real printer selection, stops, switching, legacy code rotation and revocat
   await first.getByLabel("Printer asset reference").fill("TEST-PRINTER-ONE");
   await confirmAdmin(page, first.getByRole("button", { name: "Save station configuration", exact: true }));
   expect((await db.collection("checkin_stations").getOne("wts2026station1")).location).toBe("Synthetic North entrance");
-  const code1 = await issue(page, first);
-  const code2 = await issue(page, second);
+  await resetLabelApproval(page, first);
+  await resetLabelApproval(page, second);
   await page.screenshot({ path: info.outputPath("admin-desktop.png"), fullPage: true });
   const phone = await actorPage(state.users.operator);
   await phone.setViewportSize({ width: 390, height: 844 });
   await phone.goto("/checkin-tools");
   await expect(phone).toHaveURL(`${state.baseURL}/checkin-tools`);
-  expect(await phone.evaluate(() => JSON.stringify({ local: Object.entries(localStorage), session: Object.entries(sessionStorage), history: history.state }))).not.toContain(code1);
   await phoneProvisioning(phone);
   expect((await status(phone)).binding).toBeNull();
   await expect(phone.getByLabel("Station provisioning code")).toHaveCount(0);
@@ -110,9 +109,8 @@ test("real printer selection, stops, switching, legacy code rotation and revocat
   await unready(phone);
   await confirmAdmin(page, page.getByRole("button", { name: "Restore system", exact: true }));
   await phone.reload(); await unready(phone);
-  const replacement = await issue(page, second);
-  expect(replacement).not.toBe(code2);
-  const obsolete = await phone.evaluate(async code => (await fetch("/api/checkin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operation: "preview", code }) })).status, code2);
+  await resetLabelApproval(page, second);
+  const obsolete = await phone.evaluate(async code => (await fetch("/api/checkin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operation: "preview", code }) })).status, "a".repeat(64));
   expect(obsolete).toBe(400);
   expect((await status(phone)).bindingState).toBe("bound");
   await page.getByRole("button", { name: "Refresh administration", exact: true }).click();
@@ -229,7 +227,7 @@ test("operator cannot administer, and JSON/origin validation rejects without aud
     const response = await page.request.post("/api/checkin", { headers: { ...headers, Cookie }, data: { operation: "status" } });
     expect(response.status()).toBe(403);
   }
-  const invalid = await page.request.post("/api/checkin", { headers: { Origin: state.baseURL, Cookie }, data: { operation: "preview", code: "not-a-code" } });
+  const invalid = await page.request.post("/api/checkin", { headers: { Origin: state.baseURL, Cookie }, data: { operation: "preview", code: "a".repeat(64) } });
   expect(invalid.status()).toBe(400);
   expect(invalid.headers()["cache-control"]).toContain("no-store");
   expect(invalid.headers()["referrer-policy"]).toBe("no-referrer");

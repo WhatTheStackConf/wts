@@ -1,5 +1,6 @@
 import { expect, it } from "vite-plus/test";
 import { setup, ready, context } from "~/lib/checkin-arrival-resume-test-helper";
+import { selectPrinter } from "~/lib/checkin-pocketbase-test-helper";
 import { CheckinArrivalResumeService } from "~/lib/checkin-arrival-resume-service";
 
 it("reacquires only opaque frozen context after reload, without reads or effects", { timeout: 60000 }, async () => {
@@ -83,7 +84,7 @@ it("rejects foreign bindings and stale authority, and never rebases a changed se
   const input = { action: "retry" as const, operationId: command.operationId, nextOperationId: crypto.randomUUID(), qrIdentity: command.qrIdentity };
   await expect(resume.resume(t.token, { ...input, action: "blank" })).rejects.toMatchObject({ code: "conflict" });
   const foreign = "e".repeat(64);
-  await t.control.bind(t.code, foreign, (await t.control.preview(t.code)).confirmation);
+  await selectPrinter(t.control, foreign, "wts2026station1");
   await expect(resume.get(foreign, command.operationId)).rejects.toMatchObject({ code: "forbidden" });
   await expect(t.operator.client.send("/api/wts/checkin-arrival-resume", { method: "POST", body: {} })).rejects.toMatchObject({ status: 403 });
   await t.pb.collection("users").update(t.operator.actor.userId, { role: "user" });

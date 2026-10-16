@@ -37,7 +37,7 @@ describe("held camera recovery", () => {
     expect(result).toBeUndefined();
   });
 });
-import { cameraDecisionSettled, createCameraFrameGate, decodeCameraPixels, provisioningCameraCode } from "~/lib/checkin-camera";
+import { cameraDecisionSettled, createCameraFrameGate, decodeCameraPixels } from "~/lib/checkin-camera";
 import type { CheckinArrivalDecision } from "~/lib/checkin-arrival-contract";
 
 describe("camera arrival public boundaries", () => {
@@ -62,13 +62,6 @@ describe("camera arrival public boundaries", () => {
     expect(gate.accept("A-TEST001")).toBe(false);
     gate.accept(null); gate.accept(null); gate.accept(null);
     expect(gate.accept("A-TEST001")).toBe(true);
-  });
-  it("keeps provisioning authority distinct and never follows a foreign URL", () => {
-    const code = "a".repeat(64);
-    expect(provisioningCameraCode(`https://wts.test/checkin#provision=${code}`, "https://wts.test")).toBe(code);
-    for (const value of ["A-TEST001", code, `https://evil.test/checkin#provision=${code}`, `https://wts.test/checkin?x=1#provision=${code}`]) {
-      expect(provisioningCameraCode(value, "https://wts.test")).toBeNull();
-    }
   });
   it("never releases queued, pending or physically uncertain work as a completed result", () => {
     const workflow = { id: "a".repeat(15), stationId: "wts2026station1", eventId: "e".repeat(15), eventTitle: "Synthetic", state: "accepted", name: "Synthetic", affiliation: "", profileId: "p", createdAt: "2026-09-10" } as const;

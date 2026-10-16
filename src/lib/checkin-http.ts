@@ -5,7 +5,6 @@ import { CheckinError } from "~/lib/checkin-service";
 import { CLIENT_COOKIE, authenticateCheckinActor, checkinClientToken, readCheckinCommand } from "~/lib/checkin-http-request";
 import { CHECKIN_STATION_IDS, CHECKIN_REASON_CODES, CHECKIN_NOTE_MAX_LENGTH, type CheckinServiceContract } from "~/lib/checkin-contract";
 
-const opaqueToken = z.string().regex(/^[a-f0-9]{64}$/);
 const confirmation = z.strictObject({
   stationId: z.enum(CHECKIN_STATION_IDS),
   stationVersion: z.number().int().positive(),
@@ -30,8 +29,6 @@ const command = z.discriminatedUnion("operation", [
   z.strictObject({ operation: z.literal("status") }),
   z.strictObject({ operation: z.literal("printers") }),
   z.strictObject({ operation: z.literal("select_printer"), confirmation, expectedActorId: z.string().regex(/^[a-z0-9]{15}$/).optional() }),
-  z.strictObject({ operation: z.literal("preview"), code: opaqueToken }),
-  z.strictObject({ operation: z.literal("bind"), code: opaqueToken, confirmation }),
   z.strictObject({ operation: z.literal("admin_list"), bindingPage: z.number().int().positive().max(10000).optional(), auditPage: z.number().int().positive().max(10000).optional() }),
   z.strictObject({ operation: z.literal("admin_control"), command: adminCommand }),
 ]);
@@ -40,7 +37,6 @@ interface CheckinHttpActor { id: string; role: string }
 export interface CheckinHttpDependencies {
   authenticate(): Promise<CheckinHttpActor>;
   service(actor: CheckinHttpActor): Promise<CheckinServiceContract>;
-  provisioningQr(url: string): Promise<string>;
 }
 
 function response(body: unknown, status = 200, cookie?: string) {
@@ -75,39 +71,23 @@ function clientCookie(request: Request): string {
   return `${CLIENT_COOKIE}=${randomBytes(32).toString("hex")}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict${secure ? "; Secure" : ""}`;
 }
 
-async function provisionResponse(service: CheckinServiceContract, parsed: Extract<CheckinCommand, { operation: "admin_control" }>, request: Request, deps: CheckinHttpDependencies): Promise<Response> {
-  const result = await service.adminControl(parsed.command);
-  if (!result.provisionCode) return response(result);
-  // The browser's verified same-origin header gives the public origin behind
-  // a reverse proxy. The code stays in the fragment, never the request URL.
-  const provisionUrl = `${new URL(request.headers.get("origin")!).origin}/checkin#provision=${result.provisionCode}`;
-  return response({ ...result, qrDataUrl: await deps.provisioningQr(provisionUrl) });
-}
-
-async function previewResponse(service: CheckinServiceContract, parsed: Extract<CheckinCommand, { operation: "preview" | "printers" }>, clientToken: string | undefined, request: Request): Promise<Response> {
-  const preview = parsed.operation === "printers" ? await service.printers(clientToken) : await service.preview(parsed.code, clientToken);
-  // The browser serializes previews across tabs until the response arrives.
-  // Establish identity before confirmation; never replace an existing cookie.
-  return response(preview, 200, clientToken ? undefined : clientCookie(request));
-}
-
-async function run(service: CheckinServiceContract, parsed: CheckinCommand, clientToken: string | undefined, request: Request, deps: CheckinHttpDependencies): Promise<Response> {
+async function run(service: CheckinServiceContract, parsed: CheckinCommand, clientToken: string | undefined, request: Request): Promise<Response> {
   if (parsed.operation === "admin_list") {
     return response(await service.adminList({ bindingPage: parsed.bindingPage, auditPage: parsed.auditPage }));
   }
-  if (parsed.operation === "admin_control") return provisionResponse(service, parsed, request, deps);
+  if (parsed.operation === "admin_control") return response(await service.adminControl(parsed.command));
   if (parsed.operation === "status") return response(await service.status(clientToken));
-  if (parsed.operation === "preview" || parsed.operation === "printers") return previewResponse(service, parsed, clientToken, request);
+  // The browser serializes catalogue requests across tabs until the response
+  // arrives. Establish identity before selection; never replace an existing cookie.
+  if (parsed.operation === "printers") return response(await service.printers(clientToken), 200, clientToken ? undefined : clientCookie(request));
   if (!clientToken) return response({ error: "Load the printer list on this browser before choosing a printer." }, 400);
-  if (parsed.operation === "select_printer") return response((await service.selectPrinter(clientToken, parsed.confirmation)).status);
-  const result = await service.bind(parsed.code, clientToken, parsed.confirmation);
-  return response(result.status);
+  return response((await service.selectPrinter(clientToken, parsed.confirmation)).status);
 }
 
 function failure(error: unknown): Response {
   if (error instanceof CheckinError) return response({ code: error.code, error: error.message }, error.status);
   // Never serialize PocketBase errors: they can contain request bodies,
-  // provisioning identities or server credentials.
+  // client identities or server credentials.
   return response({ error: "Check-in unavailable. Refresh before retrying." }, 503);
 }
 
@@ -124,10 +104,10 @@ export async function handleCheckinRequest(request: Request, deps: CheckinHttpDe
   if (rejection) return response({ error: rejection }, 403);
   const client = checkinClientToken(request);
   if (!client.valid) {
-    return response({ error: "Invalid station client identity. Clear this site's data to reprovision." }, 403);
+    return response({ error: "Invalid station client identity. Clear this site's data, then choose the station again from the Printer dropdown." }, 403);
   }
   try {
     const service = await deps.service(actor);
-    return await run(service, read.command, client.token, request, deps);
+    return await run(service, read.command, client.token, request);
   } catch (error) { return failure(error); }
 }

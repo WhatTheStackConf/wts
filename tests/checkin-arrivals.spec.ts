@@ -46,7 +46,7 @@ test("arrival preflight reserves exact list members, isolates stations and prese
   const errors: string[] = [];
   phone.on("pageerror", (error) => errors.push(error.message));
   try {
-    await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[0].id);
+    await bindArrivalPhone(phone, setup.stations[0].stationId, setup.events[0].id);
     await phone.setViewportSize({ width: 320, height: 740 });
     await preflight(phone).getByLabel("Attendee QR identity", { exact: true }).focus();
     await expect(preflight(phone).getByLabel("Attendee QR identity", { exact: true })).toBeFocused();
@@ -65,7 +65,7 @@ test("arrival preflight reserves exact list members, isolates stations and prese
     await preflight(phone).screenshot({ path: info.outputPath("arrival-reserved-320.png") });
     const again = await submit(phone, "A-TEST001");
     expect(again).toMatchObject({ state: "existing", workflow: { id: first.workflow.id } });
-    await bindArrivalPhone(foreign, setup.stations[1].provisionCode, setup.events[0].id);
+    await bindArrivalPhone(foreign, setup.stations[1].stationId, setup.events[0].id);
     const handled = await submit(foreign, "A-TEST001");
     expect(handled.state).toBe("already_handled");
     expect(JSON.stringify(handled)).not.toMatch(/Ана|O’Neill|Synthetic organisation|profileId|workflow|history/);
@@ -102,7 +102,7 @@ test("arrival answer outages require explicit retry or blank and delayed continu
   const setup = await arrivalPrerequisites(page, db);
   const phone = await actorPage(state.users.operator);
   try {
-    await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[0].id);
+    await bindArrivalPhone(phone, setup.stations[0].stationId, setup.events[0].id);
     await upstream(state, "affiliation_failure");
     const failed = await submit(phone, "A-TEST005");
     expect(failed.state).toBe("needs_affiliation_choice");
@@ -171,7 +171,7 @@ test("arrival malformed committed response keeps an exact-payload retry despite 
   const setup = await arrivalPrerequisites(page, db);
   const phone = await actorPage(state.users.operator);
   try {
-    await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[0].id);
+    await bindArrivalPhone(phone, setup.stations[0].stationId, setup.events[0].id);
     const submitted: CheckinArrivalInput[] = [];
     let saved: CheckinArrivalResult | undefined;
     await phone.route(`**${endpoint}`, async (route) => {
@@ -223,7 +223,7 @@ test("arrival rebinding hides prior and delayed foreign-station results without 
   }
   let release: (() => void) | undefined;
   try {
-    await bindArrivalPhone(phone, setup.stations[0].provisionCode, setup.events[0].id);
+    await bindArrivalPhone(phone, setup.stations[0].stationId, setup.events[0].id);
     expect(["reserved", "existing"]).toContain((await submit(phone, "A-TEST001")).state);
     await expect(result(phone).getByText("Ана O’Neill", { exact: true })).toBeVisible();
     await rebind(1);
