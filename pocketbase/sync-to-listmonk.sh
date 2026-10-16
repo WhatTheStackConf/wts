@@ -72,7 +72,7 @@ load_env
 
 PB_URL="${PB_REMOTE_URL:-https://pb-2026.wts.sh}"
 LISTMONK_URL="${LISTMONK_REMOTE_URL:-https://listmonk.wts.sh}"
-LISTMONK_LIST_ID=2
+LISTMONK_LIST_ID="${LISTMONK_LIST_ID:-2}"
 
 require_vars
 authenticate

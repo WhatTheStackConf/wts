@@ -20,7 +20,7 @@ case "$url" in
 esac
 `;
 
-function runSync(users) {
+function runSync(users, extraEnv = []) {
   const root = mkdtempSync(join(tmpdir(), "wts-listmonk-sync-"));
   try {
     mkdirSync(join(root, "repo", "pocketbase"), { recursive: true });
@@ -30,7 +30,7 @@ function runSync(users) {
     chmodSync(join(root, "bin", "curl"), 0o755);
     writeFileSync(join(root, "repo", ".env.local"), [
       "POCKETBASE_SUPERUSER_EMAIL=root@example.test", "POCKETBASE_SUPERUSER_PASSWORD=pw",
-      "LISTMONK_USERNAME=sync", "LISTMONK_API_TOKEN=tok", "",
+      "LISTMONK_USERNAME=sync", "LISTMONK_API_TOKEN=tok", ...extraEnv, "",
     ].join("\n"));
     writeFileSync(join(root, "users.json"), JSON.stringify({ totalItems: users.length, totalPages: 1, items: users }));
     writeFileSync(join(root, "subscribers.log"), "");
@@ -39,7 +39,7 @@ function runSync(users) {
       "bash", join(root, "repo", "pocketbase", "sync-to-listmonk.sh"),
     ], { encoding: "utf8" });
     const posted = readFileSync(join(root, "subscribers.log"), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
-    return { status: run.status, stdout: run.stdout, posted: posted.map(({ email, name }) => ({ email, name })) };
+    return { status: run.status, stdout: run.stdout, posted: posted.map(({ email, name }) => ({ email, name })), lists: posted.map(({ lists }) => lists) };
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -57,4 +57,16 @@ test("skips users without an email instead of posting their name as the email", 
     { email: "solo@example.test", name: "" },
   ]);
   assert.match(result.stdout, /Synced: {2}2\n/);
+});
+
+test("subscribes to LISTMONK_LIST_ID from the env file", () => {
+  const result = runSync([{ email: "ann@example.test", name: "Ann Lee" }], ["LISTMONK_LIST_ID=7"]);
+  assert.equal(result.status, 0, result.stdout);
+  assert.deepEqual(result.lists, [[7]]);
+});
+
+test("subscribes to list 2 when the env file sets no LISTMONK_LIST_ID", () => {
+  const result = runSync([{ email: "ann@example.test", name: "Ann Lee" }]);
+  assert.equal(result.status, 0, result.stdout);
+  assert.deepEqual(result.lists, [[2]]);
 });
