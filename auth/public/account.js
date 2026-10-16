@@ -9,6 +9,7 @@ class AccountRequestError extends Error {
 }
 
 const errors = {
+  __proto__: null,
   INVALID_EMAIL_OR_PASSWORD: "The email or password is incorrect. Check both fields, or request a password reset.",
   INVALID_PASSWORD: "The password is incorrect. Try again, or request a password reset.",
   EMAIL_NOT_VERIFIED: "Verify your email before you sign in. Use the verification link below to request a new email.",
