@@ -50,7 +50,7 @@ async function waitForFeedback(app, baseURL) {
 }
 async function main() {
   fixture = await startFeedbackPocketBase();
-  await copyApp(repo, appDir);
+  await copyApp(repo, appDir, ["tokens.css"]);
   const port = await freePort();
   const baseURL = `http://127.0.0.1:${port}`;
   Object.assign(env, {
