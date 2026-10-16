@@ -64,12 +64,12 @@ function resolveIcon(prefix, name, seen = new Set()) {
   const alias = collection.aliases?.[name];
   if (!alias) throw new Error(`Icon not found in @iconify-json/${prefix}: ${name}`);
 
-  const parent = resolveIcon(prefix, alias.parent, seen);
-  const rotate = ((parent.rotate ?? 0) + (alias.rotate ?? 0)) % 4;
+  const { rotate: parentRotate = 0, hFlip, vFlip, ...parent } = resolveIcon(prefix, alias.parent, seen);
+  const rotate = (parentRotate + (alias.rotate ?? 0)) % 4;
   return {
     ...parent,
     ...aliasBox(alias),
-    ...transforms(rotate, combineFlip(parent.hFlip, alias.hFlip), combineFlip(parent.vFlip, alias.vFlip)),
+    ...transforms(rotate, combineFlip(hFlip, alias.hFlip), combineFlip(vFlip, alias.vFlip)),
   };
 }
 
