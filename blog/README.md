@@ -138,7 +138,8 @@ The original logo comes from the WTS project. The header and footer logos show *
 Run `pnpm --filter @wts/blog typecheck` to check Astro and TypeScript.
 Run `pnpm --filter @wts/blog build` to build the standalone Node server in `blog/dist/`.
 
-`blog/Dockerfile` uses Node 24 and pnpm 11.24.0.
+`blog/Dockerfile` pins Node.js 24.22.1 in both Node stages and uses pnpm 11.24.0.
+The root lockfile selects `@astrojs/node` 11.1.7 for the Host-header validation security fix.
 It installs only the blog dependency graph from the root lockfile with a frozen install.
 The build uses the `@wts/blog` filter.
 `pnpm deploy --prod` copies portable production dependencies and `dist/` into the runtime image.
@@ -189,8 +190,10 @@ The blog deployed on 2026-09-30. The existing WTS application and local account 
 | Project / environment | WTS / production |
 | Server | `hetzner-one` |
 | Service UUID | `ejzjdlbdeatc5po2ndzncgqb` |
-| Image | `wts-blog:20261015-124439` |
+| Running image before the security build | `wts-blog:20261015-124439` |
+| Configured image for the security build | `wts-blog:security-20261025-node24.22.1` |
 | Server source | `/opt/wts-blog/releases/20261015-124439` |
+| Server Dockerfile | `blog/Dockerfile` |
 | Persistent volume | `ejzjdlbdeatc5po2ndzncgqb_blog-data` |
 | Volume mount | `/app/data` |
 | Proxy network | `coolify` |
@@ -199,6 +202,8 @@ The blog deployed on 2026-09-30. The existing WTS application and local account 
 The production database contains both original posts and their publication dates. The upload directory contains the original image. The initial copy excludes local users, passkeys, sessions, and tokens. Production requires its own admin account.
 
 Coolify builds from the server source directory. A stop can remove an unused image, so the Compose service includes a build context. Keep the server source directory. The local project does not deploy changes automatically.
+On 2026-10-25, the server source received Node.js 24.22.1 and `@astrojs/node` 11.1.7 without a deployment.
+The Coolify configuration now selects the workspace Dockerfile and a separate security image tag.
 
 The Compose file publishes no host port. Traefik routes HTTPS to container port 4321. The host uses Traefik 2.10, so the setup restriction uses `ipwhitelist`.
 

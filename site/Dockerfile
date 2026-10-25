@@ -1,4 +1,4 @@
-FROM node:24.15.0-bookworm-slim@sha256:152aceace5c03e2597988763165ee33e3fd3633636db0fc983cd2e126b02cfde AS build
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS build
 WORKDIR /workspace
 RUN npm install --global pnpm@11.24.0
 RUN apt-get update \
@@ -22,7 +22,7 @@ ENV PUBLIC_SITE_URL=${PUBLIC_SITE_URL} \
 RUN pnpm --filter @wts/site build \
     && pnpm --filter @wts/site deploy --prod /production
 
-FROM node:24.15.0-bookworm-slim@sha256:152aceace5c03e2597988763165ee33e3fd3633636db0fc983cd2e126b02cfde AS runtime
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \

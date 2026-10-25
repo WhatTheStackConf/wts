@@ -47,6 +47,7 @@ The imported blog excludes the original local directory's accounts and data.
 Existing root commands such as `pnpm dev`, `pnpm build`, and `pnpm test` still target the preserved conference application.
 Use the repository root as the Docker build context for each app.
 Select `Dockerfile`, `site/Dockerfile`, `cfp/Dockerfile`, `auth/Dockerfile`, or `blog/Dockerfile` for the app you want to build.
+The CFP, site, auth, and blog Dockerfiles pin Node.js 24.22.1 in every Node stage.
 The container builds use `pnpm deploy` to package each app with its production dependencies.
 Do not change production deployment settings without a separate approved deployment.
 
