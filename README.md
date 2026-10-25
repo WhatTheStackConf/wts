@@ -21,6 +21,7 @@ The workspace disables automatic peer installation and cross-app peer resolution
 The site keeps its Vite Plus dependency without overriding the blog's Vite dependency.
 
 Each app has its own build, runtime configuration, deployment, and database ownership.
+The CFP, site, and auth production images pin Node.js `24.22.1` for the October 2026 security release.
 The workspace does not merge databases or change the 2026 site's PocketBase authentication.
 Local databases, uploads, environment files, and private verification artifacts stay outside Git.
 The imported blog excludes the original local directory's accounts and data.
@@ -272,7 +273,7 @@ It never registers a production client or reads production data.
 
 On 2026-10-03, Coolify deployed commit `cd2b730705a485af1d178cf4114e61bc34e8efd5` to `https://cfp.wts.sh`.
 The application is `wts-cfp-2027`, resource `bqqm98rkzhgbzkqvvg3sooxi`.
-It builds `/cfp/Dockerfile` from the repository root on `design/wts-2027-light-cyberpunk`.
+It builds `/cfp/Dockerfile` from the repository root on `security/wts2027-runtime-20261025`.
 Automatic deployment remains disabled.
 Edition `2027` starts closed.
 
