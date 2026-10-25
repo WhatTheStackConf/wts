@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-ARG PB_VERSION=0.34.0
+ARG PB_VERSION=0.39.7
 
 RUN apk add --no-cache \
     unzip \
@@ -9,7 +9,8 @@ RUN apk add --no-cache \
 
 # download and unzip PocketBase
 ADD https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_amd64.zip /tmp/pb.zip
-RUN unzip /tmp/pb.zip -d /pb/
+RUN echo "0fe09a4e1a8f6e5b53d206c2e6b94a5812febcb43082d66d69bc8ba4d8e8429c  /tmp/pb.zip" | sha256sum -c - \
+    && unzip /tmp/pb.zip -d /pb/
 
 # Copy entrypoint script and migrations
 # Note: seed_data excluded as it does not exist in the project

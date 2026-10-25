@@ -233,11 +233,15 @@ The build produces a Nitro Node server. Open <http://localhost:3000>.
 
 ## Docker / Production
 
+The `Dockerfile` pins Node.js 22.23.4 for both the build and the web runtime.
+
 ```bash
 pnpm docker:up
 ```
 
-`docker-compose.yml` spins up the web app + PocketBase with persistent volume for `pb_data`. Deploys to Coolify. Superuser auto-provisions on first run from env.
+`docker-compose.yml` starts the web app and PocketBase with a persistent `pb_data` volume.
+The production PocketBase service retains existing superuser credentials instead of updating them on each restart.
+For a new database, create its initial superuser before starting the web app.
 
 Drain every web replica running the `2cce0be` baseline before converting persisted MCP scopes, then deploy the PocketBase image and its migrations before or together with the new web image. Migration `1787000005_migrate_mcp_token_scopes.js` expands persisted `program:read` grants before the new runtime scope allowlist is used; authenticated MCP also durably expands a legacy grant on first use as a web-first rollout safeguard. Do not run baseline and new web replicas concurrently during that conversion, and do not treat the safeguard as a substitute for deploying the remaining Partner, Admin Action, and token-governance migrations and hooks.
 

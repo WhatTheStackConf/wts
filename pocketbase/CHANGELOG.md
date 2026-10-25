@@ -1,3 +1,17 @@
+## Security maintenance: 2026-10-25
+
+- Pin the container runtime to PocketBase 0.39.7.
+- Verify the official Linux AMD64 archive with SHA256 before extraction.
+- Include the worker panic fix for CVE-2026-82410 and the OAuth2 pre-hijacking fix for CVE-2026-44166.
+- Preserve application hooks and migrations.
+- Preserve existing superuser credentials by removing automatic production superuser updates from Compose.
+- Keep the previous image and a consistent data backup before deployment.
+- Restore the previous image with its matching data backup if a schema rollback is necessary.
+
+Sources: [0.39.7 release](https://github.com/pocketbase/pocketbase/releases/tag/v0.39.7),
+[worker panic advisory](https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx),
+[OAuth2 advisory](https://github.com/pocketbase/pocketbase/security/advisories/GHSA-pq7p-mc74-g65w).
+
 ## v0.30.4
 
 - Fixed `json` field CSS regression introduced with the overflow workaround in v0.30.3 ([#7259](https://github.com/pocketbase/pocketbase/issues/7259)).
