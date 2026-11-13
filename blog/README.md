@@ -194,9 +194,9 @@ The blog deployed on 2026-09-30. The current release deployed on 2026-11-13. The
 | Project / environment | WTS / production |
 | Server | `hetzner-one` |
 | Service UUID | `ejzjdlbdeatc5po2ndzncgqb` |
-| Image | `wts-blog:20261113-bdd3a27` |
-| Server source | `/opt/wts-blog/releases/20261113-bdd3a27` |
-| Previous image (rollback) | `wts-blog:security-20261025-node24.22.1` |
+| Image | `wts-blog:20261113-65214fe` |
+| Server source | `/opt/wts-blog/releases/20261113-65214fe` |
+| Previous image (rollback) | `wts-blog:20261113-bdd3a27` |
 | Sessions | `SESSIONS_DIRECTORY=/app/data/sessions` |
 | Persistent volume | `ejzjdlbdeatc5po2ndzncgqb_blog-data` |
 | Volume mount | `/app/data` |
@@ -273,7 +273,9 @@ The `20260930-202250` release directory contains the credential-free initial dat
 
 The cover update created `/app/data/backups/covers-before-2026-10-01T08-40-21.035Z.db` with mode `0600`. This database backup contains the state before the cover update, not the new cover media.
 
-The 2026-11-13 release created `/app/data/backups/before-release-20261113-bdd3a27.db` with mode `0600` through the SQLite backup API.
+The first 2026-11-13 release created `/app/data/backups/before-release-20261113-bdd3a27.db` with mode `0600` through the SQLite backup API.
+
+The second 2026-11-13 release, with the light theme, created `/app/data/backups/before-release-20261113-65214fe.db` the same way.
 
 ## EmDash references
 
