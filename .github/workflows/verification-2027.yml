@@ -1,0 +1,121 @@
+# Verification for the 2027 apps: site, cfp, auth, and blog.
+# The 2026 root app deploys from security/wts2026-runtime-20261025 and keeps
+# its own suites in verification.yml on master.
+name: Verification 2027
+
+on:
+  pull_request:
+    branches: [security/wts2027-runtime-20261025]
+  push:
+    branches: [security/wts2027-runtime-20261025]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verification-2027-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Match the node:24.22.1 base image of the 2027 Dockerfiles.
+  NODE_VERSION: 24.22.1
+  APPS: --filter @wts/site --filter @wts/cfp --filter @wts/auth --filter @wts/blog
+
+jobs:
+  quality:
+    name: ${{ matrix.gate }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [typecheck, check, test, build, audit]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The pnpm version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - if: matrix.gate == 'typecheck'
+        run: pnpm $APPS run typecheck
+      - if: matrix.gate == 'check'
+        run: pnpm --filter @wts/site --filter @wts/cfp run check
+      - if: matrix.gate == 'test'
+        run: pnpm $APPS --workspace-concurrency=1 run test
+      - if: matrix.gate == 'test'
+        run: node --test scripts/audit-2027.test.mjs
+      - if: matrix.gate == 'build'
+        run: pnpm $APPS run build
+      # Fails only for high or critical advisories that reach a 2027 app.
+      - if: matrix.gate == 'audit'
+        run: node scripts/audit-2027.mjs
+
+  acceptance:
+    name: Shared auth acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install --no-install-recommends -y podman
+      - run: pnpm --filter @wts/auth exec playwright install --with-deps chromium
+      # Auth acceptance imports accounts from a PocketBase 0.30.4 source.
+      - run: pnpm pocketbase:download-test
+      - run: pnpm --filter @wts/auth build
+      - run: pnpm --filter @wts/auth acceptance
+      - name: Verify the independent site's real OIDC boundary
+        run: pnpm --filter @wts/site test:oidc
+      - name: Verify the independent CFP's real OIDC boundary
+        run: pnpm --filter @wts/cfp test:oidc
+      - name: Build the independent CFP for browser acceptance
+        run: pnpm --filter @wts/cfp build
+      - name: Verify built applicant, reviewer, admin, and recovery workflows
+        run: pnpm --filter @wts/cfp test:browser
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: auth-acceptance-failure
+          path: |
+            auth/acceptance/artifacts/
+            cfp/acceptance/artifacts/
+          retention-days: 3
+          if-no-files-found: ignore
+
+  image:
+    name: ${{ matrix.app }} image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [site, cfp, auth, blog]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Coolify builds these Dockerfiles from the repository root.
+      - run: docker build -f ${{ matrix.app }}/Dockerfile -t wts-${{ matrix.app }}:ci .
+
+  cfp-container:
+    name: CFP container proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install --no-install-recommends -y podman
+      - run: podman build --format docker -f cfp/Dockerfile -t localhost/wts-cfp:ci .
+      # Migrations, initialization, and storage inside the packaged image.
+      - run: node --experimental-strip-types cfp/tests/container-proof.mjs localhost/wts-cfp:ci
