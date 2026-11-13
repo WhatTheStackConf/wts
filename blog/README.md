@@ -147,10 +147,11 @@ The root `.dockerignore` controls the build context and excludes private state.
 The server runs as the `node` user.
 The server build bundles ESM dependencies that Astro and EmDash otherwise expose as undeclared runtime imports.
 The package declares Sharp at its existing `0.35.5` version so the portable image can load its native image library.
-The package also declares `sanitize-html` at its existing `2.17.7` version so Node can load it as CommonJS.
+The package also declares `sanitize-html` at version `2.18.2` so Node can load it as CommonJS.
 
-EmDash stores database and upload paths in the build output.
-The Dockerfile sets `DATABASE_PATH=/app/data/data.db` and `UPLOADS_DIRECTORY=/app/data/uploads` before the build and at runtime.
+EmDash stores database and upload paths in the build output. Astro stores the session path there too.
+The Dockerfile sets `DATABASE_PATH=/app/data/data.db`, `UPLOADS_DIRECTORY=/app/data/uploads`, and `SESSIONS_DIRECTORY=/app/data/sessions` before the build and at runtime.
+Sign-in writes the session to `SESSIONS_DIRECTORY`. If the build bakes in a path that the container cannot create, every sign-in fails with `Failed to verify authentication`.
 If you change these paths, rebuild the image.
 
 The new `blog/.env` contains only the new local `EMDASH_ENCRYPTION_KEY`.
