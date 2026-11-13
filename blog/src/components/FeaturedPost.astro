@@ -1,6 +1,7 @@
 ---
 import type { ContentBylineCredit, EditProxy, MediaValue } from "emdash";
 import { Image } from "emdash/ui";
+import Arrow from "./Arrow.astro";
 import BylineSummary from "./BylineSummary.astro";
 import { formatUtcDate } from "../utils/date";
 
@@ -29,49 +30,41 @@ const {
 } = Astro.props;
 ---
 
-<article class="featured-section">
-	<div class="featured-grid">
+<article class="featured hair-panel" data-marks data-has-image={featuredImage ? "" : undefined}>
+	{
+		featuredImage && (
+			<div class="featured-image" {...edit.featured_image}>
+				<Image image={featuredImage} priority />
+			</div>
+		)
+	}
+	<div class="featured-content">
+		<div class="featured-meta meta-label meta-row">
+			{date && <time datetime={date.toISOString()}>{formatUtcDate(date)}</time>}
+			<span>{readingTime} min read</span>
+			{bylines.length > 0 && <BylineSummary credits={bylines} shown={2} variant="featured" />}
+		</div>
+		<h2 class="featured-title" {...edit.title}>
+			<a href={href}>{title}</a>
+		</h2>
 		{
-			featuredImage && (
-				<a href={href} class="featured-image-link" aria-label={`Read ${title}`}>
-					<div class="featured-image" {...edit.featured_image}>
-						<Image image={featuredImage} priority />
-					</div>
-				</a>
+			excerpt && (
+				<p class="featured-excerpt" {...edit.excerpt}>
+					{excerpt}
+				</p>
 			)
 		}
-		<div class="featured-content">
-			<div class="featured-meta">
-				{
-					bylines.length > 0 && (
-						<>
-							<BylineSummary credits={bylines} shown={2} variant="featured" />
-							<span class="meta-dot" />
-						</>
-					)
-				}
-				{date && <time datetime={date.toISOString()}>{formatUtcDate(date)}</time>}
-				<span class="meta-dot" />
-				<span>{readingTime} min read</span>
-			</div>
-			<a href={href} class="featured-title-link">
-				<h2 class="featured-title" {...edit.title}>
-					{title}
-				</h2>
-			</a>
-			{
-				excerpt && (
-					<p class="featured-excerpt" {...edit.excerpt}>
-						{excerpt}
-					</p>
-				)
-			}
+		<div class="featured-footer">
+			<span class="inline-action" aria-hidden="true">
+				Read the post
+				<Arrow />
+			</span>
 			{
 				tags.length > 0 && (
-					<div class="featured-tags">
+					<div class="tag-list">
 						{tags.map((tag) => (
-							<a href={`/tag/${tag.slug}`} class="featured-tag">
-								{tag.label}
+							<a href={`/tag/${tag.slug}`} class="tag-chip">
+								<span>{tag.label}</span>
 							</a>
 						))}
 					</div>
@@ -82,169 +75,188 @@ const {
 </article>
 
 <style>
-	.featured-section {
-		margin-bottom: var(--spacing-16);
-	}
-
-	.featured-grid {
+	.featured {
 		display: grid;
-		grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-		gap: var(--spacing-8);
-		align-items: center;
+		grid-template-columns: minmax(0, 1fr);
 	}
 
-	.featured-image-link {
-		display: block;
-		min-width: 0;
+	.featured[data-has-image] {
+		grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
 	}
 
 	.featured-image {
+		display: block;
+		min-height: 100%;
 		overflow: hidden;
-		background: var(--color-surface);
+		border-right: 1px solid var(--color-orbit-hair-strong);
+		background: var(--color-orbit-surface);
 	}
 
-	.featured-image img {
+	.featured-image :global(img) {
 		width: 100%;
-		height: auto;
+		height: 100%;
+		min-height: 22rem;
 		aspect-ratio: 4 / 3;
 		object-fit: cover;
-		transition: transform 0.4s ease;
-	}
-
-	.featured-image-link:hover .featured-image img {
-		transform: scale(1.02);
 	}
 
 	.featured-content {
 		display: flex;
 		min-width: 0;
 		flex-direction: column;
-		gap: var(--spacing-4);
+		gap: 1rem;
+		padding: clamp(1.5rem, 3.5vw, 3rem);
 	}
 
-	.featured-meta {
+	.featured-title {
+		color: var(--color-orbit-ink);
+		font-size: clamp(1.75rem, 3vw, 2.625rem);
+		font-weight: 600;
+		line-height: 1.12;
+		letter-spacing: -0.025em;
+		text-wrap: balance;
+	}
+
+	.featured-title a {
+		color: inherit;
+		text-decoration: none;
+		transition: color var(--fk-step) var(--ease-orbit-out);
+	}
+
+	/* The title link covers the whole panel, so the image and "Read the post" open the post too. */
+	.featured-title a::after {
+		position: absolute;
+		inset: 0;
+		content: "";
+	}
+
+	.featured-title a:focus-visible {
+		outline: none;
+	}
+
+	/* Kit row: focus outlines the whole panel and prints the dot screen; press makes it 2px. */
+	.featured {
+		transition: border-color var(--fk-step) var(--ease-orbit-out);
+	}
+
+	.featured:has(.featured-title a:focus-visible) {
+		border-color: color-mix(in oklch, var(--color-orbit-accent) 60%, var(--color-orbit-hair-strong));
+		outline: 3px solid var(--color-orbit-focus);
+		outline-offset: 4px;
+		background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--fk-row-dot) 0) 0 0 / 3px 3px, var(--color-orbit-paper);
+	}
+
+	.featured-title a:focus-visible {
+		color: var(--color-orbit-accent);
+	}
+
+	.featured:has(.featured-title a:active) {
+		background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--fk-row-dot) 0) 0 0 / 2px 2px, var(--color-orbit-paper);
+		translate: 0 1px;
+	}
+
+	.featured-excerpt {
+		max-width: 52ch;
+		color: var(--color-orbit-muted);
+		font-size: 1.0625rem;
+		line-height: 1.65;
+		text-wrap: pretty;
+	}
+
+	.featured-footer {
 		display: flex;
-		align-items: center;
 		flex-wrap: wrap;
-		column-gap: var(--spacing-3);
-		row-gap: var(--spacing-1);
-		font-size: var(--font-size-sm);
-		color: var(--color-text-secondary);
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem 1.5rem;
+		margin-top: auto;
+		padding-top: 1rem;
+		border-top: 1px solid var(--color-orbit-hair);
 	}
 
-	.meta-dot {
-		width: 3px;
-		height: 3px;
-		border-radius: 50%;
-		background: currentColor;
+	/* Tags stay clickable above the panel-wide title link. */
+	.featured-footer .tag-list {
+		position: relative;
+		z-index: 2;
 	}
 
 	.featured-bylines {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
-		gap: 2px;
+		gap: 0.25rem;
 	}
 
 	.featured-byline {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--spacing-2);
+		gap: 0.375rem;
 	}
 
 	.featured-byline-avatar {
 		width: var(--avatar-size-md);
 		height: var(--avatar-size-md);
-		border-radius: 50%;
+		border: 1px solid var(--color-orbit-hair-strong);
 		object-fit: cover;
 	}
 
-	.featured-byline-name {
-		font-weight: 500;
-		color: var(--color-text-secondary);
+	/* Without a cover: the title and the excerpt share the panel side by side. */
+	@media (min-width: 901px) {
+		.featured:not([data-has-image]) .featured-content {
+			display: grid;
+			grid-template-areas:
+				"meta meta"
+				"title excerpt"
+				"footer footer";
+			grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+			gap: 1.5rem clamp(2rem, 5vw, 4.5rem);
+		}
+
+		.featured:not([data-has-image]) .featured-meta {
+			grid-area: meta;
+		}
+
+		.featured:not([data-has-image]) .featured-title {
+			grid-area: title;
+			font-size: clamp(2.25rem, 3.8vw, 3.25rem);
+		}
+
+		.featured:not([data-has-image]) .featured-excerpt {
+			grid-area: excerpt;
+			align-self: end;
+		}
+
+		.featured:not([data-has-image]) .featured-footer {
+			grid-area: footer;
+		}
 	}
 
-	.byline-sep {
-		color: var(--color-muted);
-		margin-right: 2px;
-	}
+	@media (hover: hover) and (pointer: fine) {
+		.featured:hover {
+			border-color: color-mix(in oklch, var(--color-orbit-accent) 60%, var(--color-orbit-hair-strong));
+		}
 
-	.byline-more {
-		font-size: var(--font-size-xs);
-		color: var(--color-text-secondary);
-		margin-left: 2px;
-	}
+		.featured:hover:not(:has(.featured-title a:active)) {
+			background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--fk-row-dot) 0) 0 0 / 3px 3px, var(--color-orbit-paper);
+		}
 
-	.featured-title-link {
-		color: inherit;
-		text-decoration: none;
-	}
-
-	.featured-title {
-		min-width: 0;
-		overflow-wrap: anywhere;
-		font-size: clamp(var(--font-size-2xl), 3vw, var(--font-size-4xl));
-		font-weight: var(--font-weight-display);
-		line-height: var(--leading-tight);
-		letter-spacing: var(--tracking-tight);
-		transition: color var(--transition-fast);
-	}
-
-	.featured-title-link:hover .featured-title {
-		color: var(--color-brand);
-	}
-
-	.featured-excerpt {
-		max-width: 65ch;
-		font-size: var(--font-size-lg);
-		line-height: var(--leading-relaxed);
-		color: var(--color-text-secondary);
-	}
-
-	.featured-tags {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--spacing-2);
-		margin-top: var(--spacing-2);
-	}
-
-	.featured-tag {
-		display: inline-flex;
-		min-height: 44px;
-		align-items: center;
-		padding: var(--tag-padding-y) var(--spacing-3);
-		font-size: var(--font-size-xs);
-		color: var(--color-text-secondary);
-		background: var(--color-surface);
-		border-radius: var(--radius);
-		text-decoration: none;
-		transition: color var(--transition-fast), background var(--transition-fast);
-	}
-
-	.featured-tag:hover {
-		color: var(--color-text);
-		background: var(--color-border);
+		.featured:hover .featured-title a {
+			color: var(--color-orbit-accent);
+		}
 	}
 
 	@media (max-width: 900px) {
-		.featured-grid {
+		.featured[data-has-image] {
 			grid-template-columns: minmax(0, 1fr);
-			gap: var(--spacing-6);
 		}
 
-		.featured-image img {
+		.featured-image {
+			border-right: 0;
+			border-bottom: 1px solid var(--color-orbit-hair-strong);
+		}
+
+		.featured-image :global(img) {
+			min-height: 0;
 			aspect-ratio: 16 / 9;
-		}
-	}
-
-	@media (max-width: 600px) {
-		.featured-title {
-			font-size: var(--font-size-2xl);
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.featured-image img {
-			transition: none;
 		}
 	}
 </style>

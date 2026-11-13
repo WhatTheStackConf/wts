@@ -1,0 +1,182 @@
+/* HUD boot · the copy powers on like an instrument readout as each block climbs into the window.
+ * Clock: 100 BPM, one step = an eighth (150 ms). A panel frame opens from a hairline, its corner
+ * marks lock on, then the lines come up in order: labels type, headings flicker, text scans in.
+ * Only real copy animates. Nothing is hidden before hud-boot.ts sets data-hud-boot="ready", and
+ * reduced motion never hides anything. Fill mode is backwards so no clip stays on focus rings.
+ */
+
+@media (prefers-reduced-motion: no-preference) {
+  .landing-2027[data-hud-boot="ready"] [data-hud] {
+    --hud-step: var(--dur-orbit-eighth);
+    --hud-lead: calc(var(--hud-step) * 2);
+  }
+
+  .landing-2027[data-hud-boot="ready"] [data-hud]:not(.orbit-panel) {
+    --hud-lead: 0ms;
+  }
+
+  /* Power-on dither: the opening frame prints as a dot screen before the glass settles. */
+  .landing-2027[data-hud-boot="ready"] [data-hud].orbit-panel {
+    --hud-dot: color-mix(in oklch, var(--color-orbit-ink) 22%, transparent);
+    --hud-dither-dense: conic-gradient(var(--hud-dot) 25%, transparent 0 50%, var(--hud-dot) 0 75%, transparent 0);
+    --hud-dither-sparse: conic-gradient(from 90deg at 2px 2px, transparent 75%, var(--hud-dot) 0);
+    background-size: 4px 4px;
+  }
+
+  .landing-2027[data-hud-boot="ready"] [data-hud].orbit-signup-panel {
+    --hud-dot: color-mix(in oklch, var(--color-orbit-paper) 22%, transparent);
+  }
+
+  /* Powered down: below the window, so the hidden state is never seen. */
+  .landing-2027[data-hud-boot="ready"] [data-hud]:not([data-hud-state="on"], :focus-within).orbit-panel {
+    clip-path: inset(50% 50%);
+  }
+
+  .landing-2027[data-hud-boot="ready"] [data-hud]:not([data-hud-state="on"], :focus-within) [data-hud-line] {
+    clip-path: inset(-1em 100% -1em 0);
+  }
+
+  .landing-2027[data-hud-boot="ready"] [data-hud]:not([data-hud-state="on"], :focus-within) .orbit-edition-mark::before {
+    transform: scaleY(0);
+  }
+
+  /* Boot. */
+  .landing-2027[data-hud-boot="ready"] [data-hud][data-hud-state="on"].orbit-panel {
+    animation:
+      hud-frame-open calc(var(--hud-step) * 3) linear backwards,
+      hud-dither calc(var(--hud-step) * 3) steps(1, end) backwards;
+  }
+
+  .landing-2027[data-hud-boot="ready"] [data-hud][data-hud-state="on"].orbit-panel::before,
+  .landing-2027[data-hud-boot="ready"] [data-hud][data-hud-state="on"].orbit-panel::after {
+    animation: hud-mark-lock calc(var(--hud-step) * 2) var(--ease-orbit-out) var(--hud-step) backwards;
+  }
+
+  .landing-2027[data-hud-boot="ready"] [data-hud][data-hud-state="on"].orbit-panel::after {
+    --hud-mark-from: -10px;
+  }
+
+  .landing-2027[data-hud-boot="ready"] [data-hud][data-hud-state="on"] [data-hud-line] {
+    --hud-at: calc(var(--hud-lead) + var(--hud-step) * var(--hud-i, 0));
+    animation: hud-scan calc(var(--hud-step) * 2) var(--ease-orbit-out) var(--hud-at) backwards;
+  }
+
+  .landing-2027[data-hud-boot="ready"] [data-hud][data-hud-state="on"] [data-hud-line="type"] {
+    animation: hud-scan calc(var(--hud-step) * 2) steps(9, end) var(--hud-at) backwards;
+  }
+
+  .landing-2027[data-hud-boot="ready"] [data-hud][data-hud-state="on"] [data-hud-line="flicker"] {
+    animation:
+      hud-scan var(--hud-step) steps(3, end) var(--hud-at) backwards,
+      hud-flicker calc(var(--hud-step) * 3) steps(1, end) var(--hud-at) backwards;
+  }
+
+  /* The edition axis draws upward, segment by segment, as its rows come up. */
+  .landing-2027[data-hud-boot="ready"] [data-hud][data-hud-state="on"] .orbit-edition-mark::before {
+    transform-origin: bottom;
+    animation: hud-axis calc(var(--hud-step) * 2) var(--ease-orbit-out) var(--hud-at) backwards;
+  }
+
+  @keyframes hud-frame-open {
+    from {
+      clip-path: inset(calc(50% - 0.5px) 50%);
+    }
+
+    40% {
+      clip-path: inset(calc(50% - 0.5px) 0);
+    }
+
+    to {
+      clip-path: inset(0);
+    }
+  }
+
+  @keyframes hud-mark-lock {
+    from {
+      opacity: 0;
+      translate: var(--hud-mark-from, 10px) var(--hud-mark-from, 10px);
+    }
+
+    35% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.25;
+    }
+
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+
+  @keyframes hud-scan {
+    from {
+      clip-path: inset(-1em 100% -1em 0);
+    }
+
+    to {
+      clip-path: inset(-1em -1em -1em 0);
+    }
+  }
+
+  @keyframes hud-flicker {
+    from {
+      opacity: 0.85;
+      translate: -3px 0;
+    }
+
+    14% {
+      opacity: 0.15;
+      translate: 0 0;
+    }
+
+    28% {
+      opacity: 1;
+    }
+
+    /* One glitch slice: a band of the heading slips sideways for a frame or two. */
+    44% {
+      opacity: 1;
+      translate: 2px 0;
+      clip-path: inset(46% -1em 40% 0);
+    }
+
+    58% {
+      opacity: 0.4;
+      translate: 2px 0;
+      clip-path: inset(-1em -1em -1em 0);
+    }
+
+    60%,
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+
+  @keyframes hud-dither {
+    from {
+      background-image: var(--hud-dither-dense);
+    }
+
+    50% {
+      background-image: var(--hud-dither-sparse);
+    }
+
+    to {
+      background-image: none;
+    }
+  }
+
+  @keyframes hud-axis {
+    from {
+      transform: scaleY(0);
+    }
+
+    to {
+      transform: scaleY(1);
+    }
+  }
+}

@@ -1,37 +1,4 @@
 .newsletter-dialog {
-  --newsletter-paper: var(--color-base-100, oklch(15% 0.04 270));
-  --newsletter-surface: var(--color-base-200, oklch(10% 0.02 270));
-  --newsletter-ink: var(--color-base-content, oklch(98% 0 0));
-  --newsletter-muted: oklch(78% 0.025 270);
-  --newsletter-rule: oklch(42% 0.035 270);
-  --newsletter-accent: var(--color-primary, oklch(60% 0.25 330));
-  --newsletter-accent-ink: var(--color-primary-content, oklch(98% 0 0));
-  --newsletter-focus: var(--color-secondary, oklch(75% 0.15 80));
-  --newsletter-error: var(--color-error, oklch(71% 0.194 13));
-  --newsletter-success: var(--color-success, oklch(76% 0.177 163));
-  --newsletter-body: inherit;
-  --newsletter-display: inherit;
-  position: fixed;
-  inset: 0;
-  width: min(100% - 2rem, 34rem);
-  max-width: none;
-  max-height: min(90vh, 48rem);
-  margin: auto;
-  padding: 0;
-  overflow: auto;
-  color: var(--newsletter-ink);
-  background: var(--newsletter-paper);
-  border: 1px solid var(--newsletter-rule);
-  border-radius: 1rem;
-  box-shadow: 0 1.5rem 5rem oklch(0% 0 0 / 0.42);
-  font-family: var(--newsletter-body);
-}
-
-.newsletter-dialog::backdrop {
-  background: oklch(8% 0.025 260 / 0.78);
-}
-
-.newsletter-dialog[data-newsletter-appearance="light"] {
   --newsletter-paper: var(--color-orbit-paper);
   --newsletter-surface: var(--color-orbit-surface);
   --newsletter-ink: var(--color-orbit-ink);
@@ -44,9 +11,27 @@
   --newsletter-success: var(--color-orbit-success);
   --newsletter-body: var(--font-orbit-body);
   --newsletter-display: var(--font-orbit-display);
+  --newsletter-field: color-mix(in oklch, var(--color-orbit-paper), white 55%);
+  --newsletter-field-line: var(--color-orbit-muted);
   color-scheme: light;
-  border-radius: 0.35rem;
+  position: fixed;
+  inset: 0;
+  width: min(100% - 2rem, 34rem);
+  max-width: none;
+  max-height: min(90vh, 48rem);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  color: var(--newsletter-ink);
+  background: var(--newsletter-paper);
+  border: 1px solid var(--newsletter-rule);
+  border-radius: 0;
   box-shadow: 0 1.25rem 4rem oklch(24% 0.03 245 / 0.2);
+  font-family: var(--newsletter-body);
+}
+
+.newsletter-dialog::backdrop {
+  background: oklch(8% 0.025 260 / 0.78);
 }
 
 .newsletter-panel {
@@ -61,7 +46,7 @@
   min-width: 0;
   max-width: 100%;
   margin: 0;
-  padding-inline-end: 2rem;
+  padding-inline-end: 2.75rem;
   overflow-wrap: anywhere;
   font-family: var(--newsletter-display);
   font-size: clamp(1.8rem, 7vw, 2.5rem);
@@ -100,33 +85,123 @@
 
 .newsletter-optional {
   color: var(--newsletter-muted);
-  font-weight: 400;
+  font-weight: 600;
 }
 
-.newsletter-field input {
+/* Field readouts: the label is a tracked instrument label, the field a notched frame like the
+ * buttons. Focus thickens the frame in accent and scans a dot line along its foot. */
+.newsletter-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.newsletter-input {
+  --field-line: var(--newsletter-field-line);
+  --field-weight: 0.5px;
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+/* The cut corner: paper over the corner, with its own diagonal of the frame. */
+.newsletter-input::after {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  width: var(--ctl-notch, 9px);
+  height: var(--ctl-notch, 9px);
+  background: linear-gradient(to bottom left, var(--newsletter-paper) calc(50% - var(--field-weight)), var(--field-line) 0 calc(50% + var(--field-weight)), transparent 0);
+  content: "";
+  pointer-events: none;
+}
+
+.newsletter-input::before {
+  position: absolute;
+  z-index: 1;
+  right: 2px;
+  bottom: 3px;
+  left: 2px;
+  height: 2px;
+  color: var(--newsletter-accent);
+  background: var(--ctl-line-on, currentColor);
+  clip-path: inset(0 100% 0 0);
+  content: "";
+  pointer-events: none;
+}
+
+.newsletter-field .newsletter-input input {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
   min-height: 3rem;
   padding: 0.7rem 0.85rem;
   color: var(--newsletter-ink);
-  background: var(--newsletter-surface);
-  border: 1px solid var(--newsletter-rule);
-  border-radius: 0.3rem;
+  caret-color: var(--newsletter-accent);
+  background: var(--newsletter-field);
+  border: 1px solid var(--field-line);
+  border-radius: 0;
+  box-shadow: none;
   font: inherit;
   font-weight: 400;
-  font-size: 1rem;
+  font-size: max(1rem, 1em);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
-.newsletter-dialog[data-newsletter-appearance="light"] .newsletter-field input,
-.newsletter-dialog[data-newsletter-appearance="light"] .newsletter-submit,
-.newsletter-dialog[data-newsletter-appearance="light"] .newsletter-close {
+.newsletter-input:has(input:focus-visible) {
+  --field-line: var(--newsletter-accent);
+  --field-weight: 1px;
+}
+
+.newsletter-field .newsletter-input input:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--field-line);
+}
+
+.newsletter-input:has(input:focus-visible)::before {
+  clip-path: inset(0);
+}
+
+/* Autofill. Browsers force their own field colours with !important, so the fill and an accent
+ * ring come back as inset shadows. The ring marks the autofilled value without colour alone. */
+.newsletter-field .newsletter-input input:is(:autofill, :-webkit-autofill) {
+  box-shadow:
+    inset 0 0 0 2px var(--newsletter-accent),
+    inset 0 0 0 100vmax var(--newsletter-field);
+  -webkit-text-fill-color: var(--newsletter-ink);
+}
+
+.newsletter-input:has(input:user-invalid) {
+  --field-line: var(--newsletter-error);
+}
+
+.newsletter-field .newsletter-input input:user-invalid {
+  box-shadow: inset 0 0 0 1px var(--field-line);
+}
+
+.newsletter-input:has(input:user-invalid)::before {
+  color: var(--newsletter-error);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .newsletter-input:has(input:focus-visible)::before {
+    animation: ctl-line-scan calc(var(--dur-orbit-eighth, 150ms) * 2) steps(10, end);
+  }
+}
+
+.newsletter-field input,
+.newsletter-submit,
+.newsletter-close {
   min-height: 3rem;
   font-family: var(--font-orbit-body);
 }
 
-.newsletter-field input:hover:not(:disabled) {
-  border-color: var(--newsletter-accent);
+@media (hover: hover) and (pointer: fine) {
+  .newsletter-input:has(input:hover:enabled) {
+    --field-line: var(--newsletter-accent);
+  }
 }
 
 .newsletter-field input:focus-visible,
@@ -137,23 +212,18 @@
 }
 
 .newsletter-submit {
+  --ctl-fill: var(--newsletter-accent);
+  --ctl-ink: var(--newsletter-accent-ink);
+  --ctl-fill-hover: color-mix(in oklch, var(--newsletter-accent), var(--newsletter-ink) 24%);
   min-height: 3rem;
-  color: var(--newsletter-accent-ink);
-  background: var(--newsletter-accent);
-  border: 1px solid var(--newsletter-accent);
-  border-radius: 0.3rem;
+  color: var(--ctl-ink);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   font: inherit;
   font-weight: 700;
   cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
-}
-
-.newsletter-submit:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-.newsletter-submit:active:not(:disabled) {
-  filter: brightness(0.92);
 }
 
 .newsletter-submit:disabled,
@@ -163,10 +233,13 @@
   opacity: 0.62;
 }
 
+/* Close: the secondary notched frame (public-links.css) at a 48px square. */
 .newsletter-close {
+  --ctl-line: var(--newsletter-field-line);
+  --ctl-dot: color-mix(in oklch, var(--newsletter-accent) 30%, transparent);
   position: absolute;
-  inset-block-start: 0.5rem;
-  inset-inline-end: 0.5rem;
+  inset-block-start: 0.75rem;
+  inset-inline-end: 0.75rem;
   display: grid;
   place-items: center;
   width: 3rem;
@@ -175,17 +248,32 @@
   min-height: 3rem;
   padding: 0;
   color: var(--newsletter-ink);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 0.3rem;
+  background: transparent !important;
+  border: 0;
+  border-radius: 0;
   box-shadow: none;
-  transition: background-color 120ms ease, color 120ms ease;
 }
 
-.newsletter-close:hover:not(:disabled),
+.newsletter-close svg {
+  transition: rotate var(--dur-orbit-eighth, 150ms) steps(2, end);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .newsletter-close:hover:not(:disabled) {
+    --ctl-line: var(--newsletter-accent);
+  }
+
+  .newsletter-close:hover:not(:disabled) svg {
+    rotate: 90deg;
+  }
+}
+
+.newsletter-close:focus-visible {
+  --ctl-line: var(--newsletter-accent);
+}
+
 .newsletter-close:active:not(:disabled) {
-  color: var(--newsletter-ink);
-  background: var(--newsletter-surface);
+  translate: 0 1px;
 }
 
 .newsletter-error {
@@ -203,8 +291,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .newsletter-submit,
-  .newsletter-close {
+  .newsletter-close svg {
     transition: none;
   }
+}
+
+/* The form grid gap is for fields. An error line stays close to the field above it. */
+.newsletter-form > .field-error {
+  margin-top: -0.625rem;
 }

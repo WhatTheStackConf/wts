@@ -34,5 +34,5 @@ export default defineConfig({
     },
   },
   resolve: { alias: { "~": fileURLToPath(new URL("./src", import.meta.url)) } },
-  test: { environment: "node", include: ["src/lib/**/*.test.{ts,tsx}"] },
+  test: { environment: "node", include: ["src/lib/**/*.test.{ts,tsx}", "src/components/**/*.test.{ts,tsx}"] },
 });

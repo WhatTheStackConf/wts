@@ -172,9 +172,9 @@ export default function AdminWorkspacePage() {
         <p class="mono" aria-label="Conference edition">Edition <strong>{workspace()?.editionId}</strong></p>
       </Show>
     </header>
-    <nav class="row" aria-label="CFP administration">
-      <a class="button button-secondary button-small" href="/admin" aria-current="page">Proposals</a>
-      <a class="button button-secondary button-small" href="/admin/staff">Staff and gates</a>
+    <nav class="staff-subnav" aria-label="CFP administration">
+      <a href="/admin" aria-current="page">Proposals</a>
+      <a href="/admin/staff">Staff and gates</a>
     </nav>
     <Switch>
       <Match when={loading()}><AdminLoading label="Loading CFP administration…" /></Match>
@@ -214,15 +214,15 @@ export default function AdminWorkspacePage() {
                 <ul><For each={selected()}>{(item) => <li>{item.title} · {item.status} · application {item.applicationRevision} · presentation {item.presentationRevision} · assessment {item.assessmentRevision}</li>}</For></ul>
                 <div class="row">
                   <button class="button" type="button" onClick={() => void decide("accepted")}>{busy() ? "Saving…" : "Accept selected"}</button>
-                  <button class="button button-secondary" type="button" onClick={() => void decide("rejected")}>Reject selected</button>
+                  <button class="button button-danger" type="button" onClick={() => void decide("rejected")}>Reject selected</button>
                   <button class="button button-secondary" type="button" disabled={!selected().some((item) => item.status !== "pending")} onClick={() => void decide("pending")}>Reopen selected to pending</button>
                   <button class="button button-quiet" type="button" onClick={() => setSelected([])}>Clear selection</button>
                 </div>
               </fieldset>
             </Show>
             <Show when={workspace()!.proposals.length} fallback={<p class="empty-state">No proposals match these filters.</p>}>
-              <div class="overflow-x-auto admin-table-wrapper" tabindex="0" aria-label="Scrollable proposal results">
-                <table class="table table-zebra min-w-[70rem] admin-table">
+              <div class="admin-table-wrapper" tabindex="0" role="region" aria-label="Scrollable proposal results">
+                <table class="table min-w-[70rem] admin-table">
                   <caption class="sr-only">CFP proposals, review evidence, and decisions</caption>
                   <thead><tr><th><span class="sr-only">Select</span></th><th>Proposal</th><th>Applicant</th><th>Status</th><th>Normalized score</th><th>Reviews current / stale / total</th><th>Expenses</th><th>Submitted</th></tr></thead>
                   <tbody><For each={workspace()!.proposals}>{(row) => <tr>

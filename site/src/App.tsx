@@ -1,6 +1,7 @@
 import { Loading, createSignal, onSettled, type ParentProps } from "solid-js";
 import { isServer } from "@solidjs/web";
 import { initializeServerFunctionTransport } from "~/lib/server-function-transport";
+import { watchFieldErrors } from "~/lib/field-errors";
 import { Router } from "~/router";
 import "./styles/app.css";
 import "./styles/public-support.css";
@@ -62,6 +63,7 @@ function DeferredBackground() {
 }
 
 function ApplicationShell(props: ParentProps) {
+  onSettled(() => watchFieldErrors());
   return (
     <div class="view-transition-container isolate relative min-h-screen">
       <DeferredBackground />

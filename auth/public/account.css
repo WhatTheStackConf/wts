@@ -1,6 +1,15 @@
-/* Hallmark · macrostructure: task-first identity forms · theme: existing WTS 2027
- * Genre: app · tone: compact and direct · anchor: navy with cyan actions
- * Pre-emit critique: P4 H4 E4 S4 R5 V4 · scope: locked-system redesign
+/* WTS account · ALT 0 supporting surface of the 2027 "section through the sky" world.
+ * Paper ground, light glass header, one narrow form column without an outer card.
+ * Palette values are copied from site/tokens.css (orbit tokens). Keep them in sync.
+ *
+ * Controls use the WTS 2027 flight kit (UI_Moodboard/source/flight-kit/flight-kit.css),
+ * copied onto the existing selectors. Invariants:
+ *   - Square corners. Plates and frames cut the top-right and bottom-left corners.
+ *   - Fills and frames live on ::before/::after or background layers, never clip-path on a
+ *     focusable element, so the 3px amber focus outline stays a full rectangle.
+ *   - Hover and focus print a 3px dot screen. Press makes it 2px. Dots move away from the
+ *     text colour, so a state never lowers text contrast.
+ *   - Motion is stepped on the 150 ms eighth. Reduced motion keeps the end states.
  */
 @font-face {
   font-family: "Space Grotesk";
@@ -20,430 +29,678 @@
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
-:root {
-  color-scheme: light;
-  --paper: #f8f4e9;
-  --surface: #eeeadf;
-  --input: #fcf9f1;
-  --ink: #20313d;
-  --muted: #52616a;
-  --border: #89928e;
-  --rule: #d7d2c6;
-  --navy: #102331;
-  --cyan: #70d7e4;
-  --cyan-hover: #8be4ee;
-  --link: #07677d;
-  --focus: #a45c06;
-  --error: #ad302c;
-  --success: #216b47;
-  font-family: "Space Grotesk", sans-serif;
-  color: var(--ink);
-  background: var(--paper);
-  line-height: 1.55;
-  scrollbar-color: #7c8b90 var(--paper);
-  scrollbar-width: auto;
-}
-
-* { box-sizing: border-box; }
-[hidden] { display: none !important; }
-body { margin: 0; min-width: 0; }
-::selection { color: var(--navy); background: var(--cyan); }
-a { color: var(--link); text-underline-offset: 0.22em; text-decoration-thickness: 1px; }
-a:hover { text-decoration-thickness: 2px; }
-:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
-main:focus { outline: none; }
-button, input { font: inherit; }
-button, a, input { -webkit-tap-highlight-color: transparent; }
-button { cursor: pointer; }
-input { caret-color: var(--link); }
-
-.skip-link {
-  position: fixed;
-  z-index: 10;
-  top: 0.5rem;
-  left: 0.5rem;
-  padding: 0.75rem 1rem;
-  background: var(--paper);
-  transform: translateY(-200%);
-}
-.skip-link:focus { transform: none; }
-
-.support-header {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  color: var(--paper);
-  background: var(--navy);
-}
-.header-inner {
-  width: min(100%, 1320px);
-  min-height: 90px;
-  margin-inline: auto;
-  padding: 1rem 2rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem 2rem;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  color: var(--paper);
-  text-decoration: none;
-  font-weight: 700;
-  font-size: 1.25rem;
-  line-height: 1.1;
-  white-space: nowrap;
-}
-.brand img { flex: none; }
-.brand-year { display: block; font-size: 0.8rem; font-weight: 500; margin-top: 0.2rem; }
-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 0.25rem 1.25rem; }
-nav a { color: var(--paper); min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; font-size: 0.875rem; }
-nav a:hover, nav a:focus-visible { text-decoration: underline; }
-nav a:last-child { color: var(--cyan); }
-.support-header :focus-visible { outline-color: #ffc572; }
-
-.account-main {
-  width: min(100%, 36rem);
-  margin-inline: auto;
-  padding: clamp(2rem, 6vw, 4rem) 1.5rem 4rem;
-  min-height: calc(100svh - 90px - 140px);
-  overflow-wrap: anywhere;
-}
-h1, h2 { line-height: 1.15; text-wrap: balance; }
-h1 { margin: 0 0 1rem; font-size: clamp(2rem, 6vw, 2.75rem); font-weight: 700; letter-spacing: -0.025em; }
-h2 { margin: 0 0 0.75rem; font-size: 1.3rem; font-weight: 600; letter-spacing: -0.015em; }
-p { margin: 0 0 1rem; }
-.intro { color: var(--muted); margin-bottom: 1.75rem; }
-form { display: grid; gap: 1.25rem; }
-.field { display: grid; gap: 0.5rem; min-width: 0; }
-label { font-weight: 600; }
-.required { font-size: 0.8125rem; font-weight: 400; color: var(--muted); }
-.field-help { font-size: 0.875rem; color: var(--muted); margin: 0; }
-input:not([type="hidden"]) {
-  min-height: 48px;
-  width: 100%;
-  min-width: 0;
-  padding: 0.7rem 0.875rem;
-  color: var(--ink);
-  background: var(--input);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 1rem;
-}
-input::placeholder { color: var(--muted); opacity: 1; }
-input:disabled { color: var(--muted); background: var(--surface); }
-input:user-invalid { border-color: var(--error); outline: 2px solid var(--error); outline-offset: 0; }
-.password-toggle {
-  justify-self: start;
-  min-height: 48px;
-  padding: 0 0.5rem;
-  margin-left: -0.5rem;
-  background: none;
-  border: 0;
-  color: var(--link);
-  text-decoration: underline;
-  text-underline-offset: 0.22em;
-  font-size: 0.875rem;
-}
-.password-toggle:hover { text-decoration-thickness: 2px; }
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 48px;
-  padding: 0.75rem 1.25rem;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: var(--cyan);
-  color: var(--navy);
-  font-weight: 600;
-  text-align: center;
-  text-decoration: none;
-  line-height: 1.3;
-  transition: background-color 150ms ease-out;
-}
-.button:hover { background: var(--cyan-hover); text-decoration: underline; }
-.button-secondary { background: var(--paper); border-color: var(--border); color: var(--ink); }
-.button-secondary:hover { background: var(--surface); }
-button:disabled { background: var(--surface); color: var(--muted); cursor: wait; }
-.form-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-block: 1rem 0; }
-.form-links a { min-height: 44px; display: inline-flex; align-items: center; }
-.form-message { margin: 0; padding: 0.875rem 1rem; border-radius: 8px; background: var(--surface); }
-.form-error { color: var(--error); border: 1px solid var(--error); }
-.form-status { color: var(--ink); }
-form[aria-busy="true"] .form-status { color: var(--muted); }
-.page-notice { padding: 1rem; margin: 0 0 1.75rem; background: var(--surface); border-radius: 8px; }
-.notice-error { color: var(--error); border: 1px solid var(--error); }
-.notice-success { color: var(--success); border: 1px solid var(--success); }
-.provider-section, .registration-note, .session-section { margin-top: 2rem; padding-top: 1.75rem; border-top: 1px solid var(--rule); }
-.provider-section { display: grid; gap: 1rem; }
-.provider-section > p { margin: 0; }
-.provider-section form { gap: 0.75rem; }
-.registration-note > a { display: inline-flex; align-items: center; min-height: 44px; margin-bottom: 0.5rem; }
-.scope-list { padding-left: 1.4rem; margin: 0 0 1.5rem; }
-.scope-list li { margin-block: 0.5rem; }
-.destination { overflow-wrap: anywhere; }
-.consent-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-.account-details { margin: 0 0 2rem; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
-.account-details > div { margin-bottom: 0.75rem; }
-dt { color: var(--muted); }
-dd { margin: 0; overflow-wrap: anywhere; }
-.session-section > a { display: inline-flex; align-items: center; min-height: 44px; margin-top: 1rem; }
-.account-footer { border-top: 1px solid var(--rule); padding: 1.5rem; text-align: center; color: var(--muted); font-size: 0.875rem; }
-.account-footer a { display: inline-flex; align-items: center; min-height: 44px; }
-.account-footer p { margin: 0; }
-
-@media (max-width: 767px) {
-  .header-inner { min-height: 116px; padding: 0.875rem 1rem; flex-direction: column; gap: 0.5rem; }
-  .brand { align-self: flex-start; font-size: 1.125rem; }
-  .brand img { width: 28px; height: 36px; }
-  nav { width: 100%; gap: 0 1rem; }
-  nav a { font-size: 0.8125rem; }
-  .account-main { padding-inline: 1rem; min-height: calc(100svh - 116px - 140px); }
-}
-
-@media (max-width: 360px) {
-  nav { gap: 0 0.75rem; }
-  .consent-actions { grid-template-columns: 1fr; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
-}
 @font-face {
-  font-family: "Starzoom Shavian";
+  font-family: "StarzoomShavian";
   src: url("/assets/fonts/starzoom-shavian.regular.woff2") format("woff2");
   font-style: normal;
   font-weight: 400;
   font-display: swap;
 }
 
-.header-inner {
-  width: min(100%, 1320px);
-  min-height: 72px;
-  padding: 0.75rem 2rem;
-}
-.brand {
-  gap: 0.7rem;
-  font-size: 1.1rem;
-}
-.brand img {
-  width: 28px;
-  height: 36px;
-}
-.brand-name {
-  font-family: var(--font-brand);
-  font-size: 1.35rem;
-  line-height: 1;
-  letter-spacing: 0;
-}
-.brand-year {
-  margin-top: 0.25rem;
-  color: var(--paper);
-  font-size: 0.75rem;
-  line-height: 1.2;
-}
-.account-main {
-  width: min(100%, 40rem);
-  min-height: calc(100svh - 72px - 112px);
-  padding: clamp(2.5rem, 6vw, 4rem) 1.5rem 3.5rem;
-}
-h1 {
-  margin-bottom: 0.65rem;
-  font-size: clamp(1.9rem, 5vw, 2.35rem);
-  letter-spacing: -0.025em;
-}
-h2 {
-  font-size: 1.125rem;
-  letter-spacing: -0.015em;
-}
-.intro {
-  max-width: 38ch;
-  margin-bottom: 1.5rem;
-}
-form {
-  gap: 1rem;
-}
-input:not([type="hidden"]) {
-  border-radius: 5px;
-}
-.button {
-  border-radius: 5px;
-  white-space: nowrap;
-}
-.button:focus-visible,
-.password-toggle:focus-visible,
-a:focus-visible,
-input:focus-visible {
-  outline-color: var(--focus);
-}
-.form-links {
-  gap: 0.25rem 1.25rem;
-  margin-top: 1.25rem;
-}
-.provider-section,
-.registration-note,
-.session-section,
-.identity-summary,
-.profile-section,
-.consent-details {
-  margin-top: 1.75rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--rule);
-}
-.provider-section {
-  gap: 0.75rem;
-}
-.provider-section form .button {
-  width: 100%;
-}
-.registration-note h2 {
-  margin-bottom: 0.5rem;
-}
-.registration-note p:last-child {
-  margin-bottom: 0;
-}
-.signup-link {
-  margin-top: 0.75rem;
-}
-.state-copy {
-  margin-block: 1rem 1.25rem;
-}
-.state-copy p:last-child {
-  margin-bottom: 0;
-}
-.consent-details {
-  margin-top: 0.5rem;
-  padding-bottom: 0.25rem;
-}
-.consent-details h2 {
-  margin-bottom: 0.6rem;
-}
-.scope-list {
-  padding-left: 1.2rem;
-}
-.scope-list li {
-  padding-left: 0.15rem;
-  margin-block: 0.4rem;
-}
-.consent-actions {
-  gap: 0.65rem;
-}
-.consent-actions .button {
-  min-width: 0;
-  padding-inline: 0.65rem;
-}
-.identity-summary h2,
-.profile-section h2 {
-  margin-bottom: 0.75rem;
-}
-.account-details {
-  display: grid;
-  gap: 0.6rem;
-  margin-bottom: 0;
-}
-.account-details > div {
-  display: grid;
-  grid-template-columns: minmax(7rem, 0.7fr) minmax(0, 1.3fr);
-  gap: 0.75rem;
-  margin: 0;
-}
-.profile-section > .field-help {
-  margin-bottom: 1rem;
-}
-.session-section > p {
-  max-width: 55ch;
-}
-.session-section > a {
-  margin-top: 0.5rem;
-}
-.account-footer {
-  padding: 1rem 1.5rem;
+/* The field foot scan. Registered so it can step through a transition. */
+@property --fk-scan {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
 }
 
-@media (max-width: 767px) {
-  .header-inner {
-    min-height: 104px;
-    padding: 0.65rem 1rem;
-    flex-direction: row;
-    gap: 0.5rem;
-  }
-  .brand {
-    align-self: auto;
-    flex: 0 1 auto;
-    min-width: 0;
-    font-size: 1rem;
-  }
-  .brand-name {
-    font-size: 1.15rem;
-  }
-  nav {
-    width: auto;
-    justify-content: flex-end;
-    gap: 0 0.75rem;
-  }
-  nav a {
-    font-size: 0.75rem;
-    white-space: nowrap;
-  }
-  .account-main {
-    min-height: calc(100svh - 104px - 112px);
-    padding: 2.5rem 1rem 3rem;
-  }
-}
-
-@media (max-width: 420px) {
-  .header-inner {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.2rem;
-  }
-  .brand {
-    align-self: flex-start;
-  }
-  nav {
-    justify-content: flex-start;
-  }
-  .account-main {
-    padding-top: 2rem;
-  }
-}
-
-@media (max-width: 360px) {
-  .consent-actions {
-    grid-template-columns: 1fr;
-  }
-  .consent-actions .button {
-    width: 100%;
-  }
-  .account-details > div {
-    grid-template-columns: minmax(5.5rem, 0.8fr) minmax(0, 1.2fr);
-    gap: 0.5rem;
-  }
-}
-.support-header nav a {
-  color: var(--paper);
-}
-.account-main nav a {
-  color: var(--link);
+@property --fk-scan {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
 }
 
 :root {
-  --font-brand: "Starzoom Shavian", "Space Grotesk", sans-serif;
-  --font-body: "Space Grotesk", sans-serif;
-  font-family: var(--font-body);
+  /* Orbit tokens (values from site/tokens.css). */
+  --color-orbit-paper: oklch(97% 0.018 82);
+  --color-orbit-surface: oklch(93% 0.025 78);
+  --color-orbit-ink: oklch(24% 0.03 245);
+  --color-orbit-muted: oklch(46% 0.025 245);
+  --color-orbit-rule: oklch(86% 0.025 78);
+  --color-orbit-accent: oklch(43% 0.09 225);
+  --color-orbit-accent-ink: oklch(97% 0.018 82);
+  --color-orbit-focus: oklch(54% 0.15 65);
+  --color-orbit-error: oklch(52% 0.18 25);
+  --color-orbit-success: oklch(43% 0.12 150);
+  --color-orbit-amber: oklch(65% 0.16 72);
+  --color-orbit-hair: color-mix(in oklch, var(--color-orbit-ink) 14%, transparent);
+  --color-orbit-hair-strong: color-mix(in oklch, var(--color-orbit-ink) 30%, transparent);
+  --color-orbit-glass: color-mix(in oklch, var(--color-orbit-paper) 64%, transparent);
+  --launch-cyan: oklch(78% 0.11 205);
+  --font-orbit-display: "StarzoomShavian", "Space Grotesk", sans-serif;
+  --font-orbit-body: "Space Grotesk", sans-serif;
+  --text-orbit-small: 0.8125rem;
+  --ease-orbit-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-orbit-fast: 160ms;
+  --dur-orbit-eighth: 150ms;
+  --dur-orbit-beat: 600ms;
+  --size-orbit-mark: 14px;
+  --width-orbit-mark: 1.5px;
+  --blur-orbit-glass: 12px;
+
+  /* Flight kit roles (flight-kit.css). Plate polygons are declared on each control, so a
+   * control that sets its own --ctl-notch gets a matching cut. */
+  --ctl-notch: 9px;
+  --ctl-line-on: conic-gradient(currentColor 25%, transparent 0 50%, currentColor 0 75%, transparent 0) 0 0 / 2px 2px;
+  --fk-ground: var(--color-orbit-paper);
+  --fk-ok: var(--color-orbit-success);
+  --fk-warn: var(--color-orbit-focus);
+  --fk-bad: var(--color-orbit-error);
+  --fk-info: var(--color-orbit-accent);
+
+  /* Account roles derived from the orbit tokens. */
+  --account-field: color-mix(in oklch, var(--color-orbit-paper), white 55%);
+  --account-autofill: color-mix(in oklch, var(--color-orbit-accent) 9%, var(--color-orbit-paper));
+  --account-header-height: 72px;
+
+  color-scheme: light;
+  font-family: var(--font-orbit-body);
+  color: var(--color-orbit-ink);
+  background: var(--color-orbit-paper);
+  line-height: 1.55;
+  scrollbar-color: var(--color-orbit-muted) var(--color-orbit-paper);
 }
 
-html,
-body {
-  overflow-x: clip;
-}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { overflow-x: clip; }
+body { margin: 0; min-width: 0; display: flex; flex-direction: column; min-height: 100svh; }
+::selection { color: var(--color-orbit-ink); background: color-mix(in oklch, var(--launch-cyan) 45%, transparent); }
+main:focus { outline: none; }
+button, input { font: inherit; }
+button, a, input { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
 
-h1,
-h2 {
-  min-width: 0;
+/* Focus: one amber rectangle for everything. Fields sit it closer to the frame. */
+:focus-visible { outline: 3px solid var(--color-orbit-focus); outline-offset: 4px; }
+
+/* Copy links: a dotted rule at rest that thickens on hover and focus and goes solid on press.
+ * :where() keeps them at zero specificity, so plates, nav links and the brand keep their own ink. */
+:where(a) {
+  color: var(--color-orbit-accent);
+  font-weight: 600;
+  text-decoration: underline dotted 1px;
+  text-underline-offset: 0.25em;
+  transition: color var(--dur-orbit-eighth) var(--ease-orbit-out);
+}
+:where(a:focus-visible) {
+  color: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 30%);
+  text-decoration-thickness: 2px;
+}
+:where(a:active) { text-decoration-style: solid; }
+
+/* Header: light glass over paper, hairline base. */
+.support-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  color: var(--color-orbit-ink);
+  background: var(--color-orbit-glass);
+  box-shadow: inset 0 -1px 0 var(--color-orbit-hair);
+  -webkit-backdrop-filter: blur(var(--blur-orbit-glass)) saturate(1.2);
+  backdrop-filter: blur(var(--blur-orbit-glass)) saturate(1.2);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .support-header { background: color-mix(in oklch, var(--color-orbit-glass), var(--color-orbit-paper) 70%); }
+}
+.header-inner {
+  width: min(100% - 3rem, 1320px);
+  min-height: var(--account-header-height);
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 2rem;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 44px;
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--dur-orbit-eighth) var(--ease-orbit-out);
+}
+.brand img { display: block; flex: none; width: auto; height: 36px; }
+.brand-name {
+  position: relative;
+  font-family: var(--font-orbit-display);
+  font-size: 1.5rem;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.brand-year {
+  align-self: center;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 1px solid var(--color-orbit-hair-strong);
+  color: var(--color-orbit-accent);
+  font-size: var(--text-orbit-small);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.support-header nav { display: flex; align-items: center; flex-wrap: wrap; gap: 0 1.75rem; }
+
+/* Nav links (kit 4): no rule at rest, a 2px dot rule scans in on hover and focus, solid on
+ * press and on the current page. The brand wordmark and the footer link use the same rule. */
+.support-header nav a,
+.account-footer a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-orbit-ink);
+  text-decoration: none;
+  transition: color var(--dur-orbit-eighth) var(--ease-orbit-out);
+}
+.support-header nav a { font-size: 0.875rem; font-weight: 600; }
+.support-header nav a:last-child { color: var(--color-orbit-accent); }
+.support-header nav a[aria-current="page"] { font-weight: 700; }
+.support-header nav a::after,
+.account-footer a::after,
+.brand-name::after {
+  position: absolute;
+  right: 0;
+  bottom: 0.5rem;
+  left: 0;
+  height: 2px;
+  background: var(--ctl-line-on);
+  clip-path: inset(0 100% 0 0);
+  content: "";
+}
+.brand-name::after { bottom: -0.4rem; }
+:is(.support-header nav a, .account-footer a, .brand):focus-visible { color: var(--color-orbit-accent); }
+:is(.support-header nav a, .account-footer a):focus-visible::after,
+.brand:focus-visible .brand-name::after { clip-path: inset(0); }
+.support-header nav a[aria-current="page"]::after,
+:is(.support-header nav a, .account-footer a):active::after,
+.brand:active .brand-name::after { background: currentColor; clip-path: inset(0); }
+
+/* Skip link: a plate that drops in on focus (kit 19). The plate itself is drawn below. */
+.skip-link {
+  position: fixed;
+  z-index: 10;
+  top: 0.75rem;
+  left: 0.75rem;
+  translate: 0 -200%;
+}
+.skip-link:focus { translate: 0 0; }
+
+/* ALT 0 column: no band, no outer card. */
+.account-main {
+  flex: 1;
+  width: min(100%, 34rem);
+  margin-inline: auto;
+  padding: clamp(2.5rem, 7vw, 4.5rem) 1.5rem clamp(3rem, 8vw, 5rem);
   overflow-wrap: anywhere;
-  font-style: normal;
 }
+h1, h2 { min-width: 0; margin: 0; overflow-wrap: anywhere; font-style: normal; text-wrap: balance; }
+.account-main h1 {
+  margin-bottom: 0.875rem;
+  font-family: var(--font-orbit-display);
+  font-size: clamp(2.375rem, 7vw, 3.25rem);
+  font-weight: 400;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+}
+p { margin: 0 0 1rem; }
+.intro { max-width: 40ch; margin-bottom: 2rem; color: var(--color-orbit-muted); font-size: 1.0625rem; text-wrap: pretty; }
+strong { font-weight: 600; color: var(--color-orbit-ink); }
+
+/* Section rules (kit 8 fieldset): a stronger hairline plus a tracked label. */
+.identity-summary,
+.profile-section,
+.session-section,
+.provider-section,
+.registration-note {
+  margin-top: 2.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-orbit-hair-strong);
+}
+.account-main section > h2,
+.provider-section > p:first-child {
+  margin: 0 0 1.25rem;
+  color: var(--color-orbit-accent);
+  font-family: var(--font-orbit-body);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+.registration-note > h2 { margin-bottom: 0.75rem; }
+.registration-note p:last-child { margin-bottom: 0; }
+
+/* Forms: tracked instrument labels above notched 48px fields (kit 5). */
+form { display: grid; gap: 1.25rem; }
+.field { display: grid; gap: 0.4rem; min-width: 0; }
+label {
+  color: var(--color-orbit-ink);
+  font: 700 0.75rem/1.3 var(--font-orbit-body);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.required { color: var(--color-orbit-muted); font-weight: 500; }
+.field-help { margin: 0; color: var(--color-orbit-muted); font-size: 0.875rem; line-height: 1.45; text-wrap: pretty; }
+
+/* The frame is drawn with background layers, so no wrapper is needed: a 1px line on the left,
+ * bottom and top, the right edge stopping short of the cut corner, and one diagonal over
+ * --fk-ground. Focus scans a dot rule along the foot. */
+input:not([type="hidden"]) {
+  --field-line: var(--color-orbit-muted);
+  --field-w: 1px;
+  --field-fill: var(--account-field);
+  width: 100%;
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0.7rem 0.85rem;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--color-orbit-ink);
+  caret-color: var(--color-orbit-accent);
+  font: 400 max(1rem, 1em)/1.4 var(--font-orbit-body);
+  appearance: none;
+  background:
+    repeating-linear-gradient(90deg, var(--color-orbit-accent) 0 2px, transparent 0 3px) left 2px bottom 3px / calc(var(--fk-scan) - 4px) 2px no-repeat,
+    linear-gradient(var(--field-line) 0 0) left top / var(--field-w) 100% no-repeat,
+    linear-gradient(var(--field-line) 0 0) left bottom / 100% var(--field-w) no-repeat,
+    linear-gradient(var(--field-line) 0 0) left top / calc(100% - var(--ctl-notch)) var(--field-w) no-repeat,
+    linear-gradient(var(--field-line) 0 0) right bottom / var(--field-w) calc(100% - var(--ctl-notch)) no-repeat,
+    linear-gradient(to bottom left, var(--fk-ground) calc(50% - var(--field-w) / 2), var(--field-line) 0 calc(50% + var(--field-w) / 2), transparent 0) right top / var(--ctl-notch) var(--ctl-notch) no-repeat,
+    var(--field-fill);
+}
+input::placeholder { color: var(--color-orbit-muted); opacity: 1; }
+input:focus-visible { outline-offset: 2px; }
+
+/* Autofill. Browsers force their own background with !important, which also removes the frame
+ * layers, so the frame and fill come back as inset shadows. The 2px ring marks the autofilled
+ * value without colour alone and without a layout shift. */
+input:is(:autofill, :-webkit-autofill) {
+  --field-line: var(--color-orbit-accent);
+  --field-w: 2px;
+  box-shadow:
+    inset 0 0 0 var(--field-w) var(--field-line),
+    inset 0 0 0 100vmax var(--account-autofill);
+  filter: none;
+  -webkit-text-fill-color: var(--color-orbit-ink);
+}
+
+input:disabled {
+  --field-line: var(--color-orbit-rule);
+  --field-fill: var(--color-orbit-surface);
+  color: var(--color-orbit-muted);
+  cursor: not-allowed;
+}
+input:focus-visible:enabled {
+  --field-line: var(--color-orbit-accent);
+  --field-w: 2px;
+  --fk-scan: 100%;
+}
+/* Invalid only after interaction, and it wins over hover and focus: a 2px error frame. */
+input:is(:user-invalid, [aria-invalid="true"]):enabled {
+  --field-line: var(--color-orbit-error);
+  --field-w: 2px;
+}
+
+/* Password reveal (kit 3, toggled tool): a small notched frame; aria-pressed makes it a plate. */
+.password-toggle {
+  --ctl-notch: 6px;
+  --ctl-line: var(--color-orbit-muted);
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.85rem;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font: 600 0.875rem/1.2 var(--font-orbit-body);
+}
+
+/* Plates (kit 1) and frames (kit 2). Fills and frames live on ::before and ::after, so the
+ * clip-path never clips the focus outline on the control itself. */
+.button,
+.skip-link,
+.password-toggle,
+.page-notice,
+.form-message {
+  --ctl-plate: polygon(0 0, calc(100% - var(--ctl-notch)) 0, 100% var(--ctl-notch), 100% 100%, var(--ctl-notch) 100%, 0 calc(100% - var(--ctl-notch)));
+  --ctl-plate-off: polygon(0 0, 0 0, 0 var(--ctl-notch), 0 100%, 0 100%, 0 calc(100% - var(--ctl-notch)));
+  isolation: isolate;
+}
+.button,
+.password-toggle,
+.page-notice,
+.form-message { position: relative; }
+
+.button,
+.skip-link {
+  --ctl-fill: var(--color-orbit-accent);
+  --ctl-ink: var(--color-orbit-accent-ink);
+  --ctl-fill-hover: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 24%);
+  --ctl-dot: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 60%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  min-height: 48px;
+  padding: 0.7rem 1.2rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ctl-ink);
+  font: 700 0.9375rem/1.2 var(--font-orbit-body);
+  text-align: center;
+  text-decoration: none;
+  text-wrap: balance;
+}
+form > .button, .account-main > .button { justify-self: stretch; width: 100%; }
+
+.button-secondary,
+.password-toggle {
+  --ctl-line: var(--color-orbit-ink);
+  --ctl-dot: color-mix(in oklch, var(--color-orbit-accent) 30%, transparent);
+  color: var(--color-orbit-ink);
+}
+.password-toggle { --ctl-line: var(--color-orbit-muted); }
+
+:is(.button, .skip-link, .password-toggle)::before,
+:is(.button, .skip-link, .password-toggle)::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+}
+
+/* Plate: the fill on ::before, the dot screen on ::after, hidden until hover or focus. */
+:is(.button:not(.button-secondary), .skip-link)::before {
+  background: var(--ctl-fill);
+  clip-path: var(--ctl-plate);
+  transition: background-color var(--dur-orbit-eighth) var(--ease-orbit-out);
+}
+:is(.button:not(.button-secondary), .skip-link)::after {
+  background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 3px 3px;
+  clip-path: var(--ctl-plate-off);
+}
+:is(.button:not(.button-secondary), .skip-link):focus-visible:not(:disabled)::before { background: var(--ctl-fill-hover); }
+:is(.button:not(.button-secondary), .skip-link):focus-visible:not(:disabled)::after { clip-path: var(--ctl-plate); }
+:is(.button:not(.button-secondary), .skip-link):active:not(:disabled)::after {
+  background-size: 2px 2px;
+  clip-path: var(--ctl-plate);
+}
+
+/* Frame: a 1px notched outline with its own diagonals; hover and focus print dots inside. */
+:is(.button-secondary, .password-toggle)::before {
+  border: 1px solid var(--ctl-line);
+  clip-path: var(--ctl-plate);
+}
+:is(.button-secondary, .password-toggle)::after {
+  background:
+    linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 100% 0 / var(--ctl-notch) var(--ctl-notch) no-repeat,
+    linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 0 100% / var(--ctl-notch) var(--ctl-notch) no-repeat;
+}
+.password-toggle:focus-visible { --ctl-line: var(--color-orbit-accent); }
+:is(.button-secondary, .password-toggle):focus-visible:not(:disabled)::before {
+  background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 3px 3px;
+}
+:is(.button-secondary, .password-toggle):active:not(:disabled)::before {
+  background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 2px 2px;
+}
+
+/* Shown password: the toggle becomes an accent plate in every state. */
+.password-toggle[aria-pressed="true"] {
+  --ctl-line: var(--color-orbit-accent);
+  color: var(--color-orbit-accent-ink);
+}
+.password-toggle[aria-pressed="true"]::before { background: var(--color-orbit-accent); }
+.password-toggle[aria-pressed="true"]:is(:focus-visible, :active)::before {
+  background: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 24%);
+}
+
+:is(.button, .skip-link, .password-toggle):active:not(:disabled) { translate: 0 1px; }
+
+/* Disabled while a request is pending: a surface plate or a pale frame, muted text. */
+.button:disabled {
+  --ctl-fill: var(--color-orbit-surface);
+  --ctl-line: var(--color-orbit-hair-strong);
+  color: var(--color-orbit-muted);
+  cursor: not-allowed;
+}
+form[aria-busy="true"] .button:disabled { cursor: progress; }
+
+@media (hover: hover) and (pointer: fine) {
+  :where(a:hover) {
+    color: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 30%);
+    text-decoration-thickness: 2px;
+  }
+  :is(.support-header nav a, .account-footer a, .brand):hover { color: var(--color-orbit-accent); }
+  :is(.support-header nav a, .account-footer a):hover::after,
+  .brand:hover .brand-name::after { clip-path: inset(0); }
+  input:hover:enabled:not(:focus-visible, :user-invalid, [aria-invalid="true"]) { --field-line: var(--color-orbit-accent); }
+  :is(.button:not(.button-secondary), .skip-link):hover:not(:disabled)::before { background: var(--ctl-fill-hover); }
+  :is(.button:not(.button-secondary), .skip-link):hover:not(:disabled)::after { clip-path: var(--ctl-plate); }
+  .password-toggle:hover { --ctl-line: var(--color-orbit-accent); }
+  :is(.button-secondary, .password-toggle):hover:not(:disabled)::before {
+    background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 3px 3px;
+  }
+  :is(.button-secondary, .password-toggle):hover:active:not(:disabled)::before {
+    background-size: 2px 2px;
+  }
+  .password-toggle[aria-pressed="true"]:hover::before {
+    background: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 24%);
+  }
+}
+
+/* Notices (kit 12): a notched hairline frame with a status square; the text names the state.
+ * Status colours mix in oklab, because oklch mixes of red drift to purple. */
+.form-message,
+.page-notice {
+  --notice-led: var(--fk-info);
+  --ctl-line: color-mix(in oklab, var(--notice-led) 60%, var(--color-orbit-ink));
+  margin: 0;
+  padding: 0.9rem 1.1rem 0.9rem 2.4rem;
+  color: var(--color-orbit-ink);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+.page-notice { margin-bottom: 2rem; }
+:is(.form-message, .page-notice)::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border: 1px solid var(--ctl-line);
+  background:
+    linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 100% 0 / var(--ctl-notch) var(--ctl-notch) no-repeat border-box,
+    linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 0 100% / var(--ctl-notch) var(--ctl-notch) no-repeat border-box,
+    color-mix(in oklab, var(--notice-led) 6%, var(--color-orbit-paper));
+  clip-path: var(--ctl-plate);
+  content: "";
+}
+:is(.form-message, .page-notice)::after {
+  position: absolute;
+  top: 1.25rem;
+  left: 1.1rem;
+  width: 8px;
+  height: 8px;
+  background: var(--notice-led);
+  content: "";
+}
+:is(.form-error, .notice-error) { --notice-led: var(--fk-bad); }
+.notice-success { --notice-led: var(--fk-ok); }
+:is(.form-status, .notice-info) { --notice-led: var(--fk-info); }
+
+.form-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0 1.5rem; margin: 1.25rem 0 0; font-size: 0.9375rem; }
+.form-links a { display: inline-flex; align-items: center; min-height: 44px; }
+.signup-link { margin-top: 0.5rem; color: var(--color-orbit-muted); gap: 0 0.5rem; }
+.state-copy { margin-block: 0.5rem 1.75rem; color: var(--color-orbit-muted); }
+.state-copy p:last-child { margin-bottom: 0; }
+
+.provider-section { display: grid; gap: 0.75rem; }
+.provider-section > p:first-child { margin-bottom: 0.25rem; }
+.provider-section form { gap: 0.75rem; }
+.provider-section form .button { width: 100%; }
+
+/* Consent: one hairline panel with the kit's dialog corner marks holds the client request. */
+.consent-details {
+  position: relative;
+  margin: 0.75rem 0 1.75rem;
+  padding: 1.75rem 1.5rem 1.5rem;
+  border: 1px solid var(--color-orbit-hair-strong);
+  background: color-mix(in oklch, var(--color-orbit-surface) 35%, transparent);
+}
+.consent-details::before,
+.consent-details::after {
+  position: absolute;
+  width: var(--size-orbit-mark);
+  height: var(--size-orbit-mark);
+  border: 0 solid var(--color-orbit-ink);
+  pointer-events: none;
+  content: "";
+}
+.consent-details::before { top: 6px; left: 6px; border-width: var(--width-orbit-mark) 0 0 var(--width-orbit-mark); }
+.consent-details::after { right: 6px; bottom: 6px; border-width: 0 var(--width-orbit-mark) var(--width-orbit-mark) 0; }
+.consent-client {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--color-orbit-hair);
+  color: var(--color-orbit-muted);
+  font-size: 1.0625rem;
+  text-wrap: pretty;
+}
+.consent-client strong { display: block; margin-bottom: 0.15rem; font-size: 1.375rem; line-height: 1.25; }
+.consent-details > h2 { margin-bottom: 0.5rem; }
+.scope-list { margin: 0 0 1.25rem; padding: 0; list-style: none; }
+.scope-list li {
+  position: relative;
+  padding: 0.6rem 0 0.6rem 1.25rem;
+  border-bottom: 1px solid var(--color-orbit-hair);
+}
+.scope-list li::before {
+  position: absolute;
+  top: 1.2rem;
+  left: 0.15rem;
+  width: 0.375rem;
+  height: 0.375rem;
+  background: var(--color-orbit-accent);
+  content: "";
+}
+.consent-details .field-help + .field-help { margin-top: 0.5rem; }
+.destination {
+  overflow-wrap: anywhere;
+  color: var(--color-orbit-ink);
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+  font-size: 0.8125rem;
+}
+.consent-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.consent-actions .button { min-width: 0; padding-inline: 0.75rem; }
+
+/* Account: identity readout (kit 13 table headers on hairline rows), shared profile, security. */
+.account-details { display: grid; margin: 0; font-size: 0.9375rem; }
+.account-details > div {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 0.7fr) minmax(0, 1.3fr);
+  align-items: baseline;
+  gap: 1rem;
+  padding-block: 0.7rem;
+  border-bottom: 1px solid var(--color-orbit-hair);
+}
+.account-details > div:first-child { padding-top: 0; }
+dt {
+  color: var(--color-orbit-ink);
+  font: 700 0.6875rem/1.3 var(--font-orbit-body);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.profile-section > .field-help { margin-bottom: 1.5rem; }
+.session-section > p { max-width: 55ch; color: var(--color-orbit-muted); }
+.session-section form .button { width: 100%; }
+.session-section > a { display: inline-flex; align-items: center; min-height: 44px; margin-top: 0.75rem; font-size: 0.9375rem; }
+
+.account-footer {
+  width: min(100% - 3rem, 1320px);
+  margin-inline: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 1.5rem;
+  padding-block: 1rem 1.25rem;
+  border-top: 1px solid var(--color-orbit-hair);
+  color: var(--color-orbit-muted);
+  font-size: var(--text-orbit-small);
+}
+.account-footer a { font-family: var(--font-orbit-display); font-size: 1rem; font-weight: 400; }
+.account-footer p { margin: 0; }
+
+@media (max-width: 767px) {
+  .header-inner { width: calc(100% - 2rem); gap: 0.5rem 1rem; }
+  .brand { gap: 0.6rem; }
+  .brand img { height: 30px; }
+  .brand-name { font-size: 1.25rem; }
+  .brand-year { padding-inline-start: 0.6rem; font-size: 0.75rem; }
+  .support-header nav { gap: 0 1rem; }
+  .support-header nav a { font-size: var(--text-orbit-small); white-space: nowrap; }
+  .account-main { padding-inline: 1rem; }
+  .account-footer { width: calc(100% - 2rem); }
+}
+
+@media (max-width: 480px) {
+  .header-inner { flex-direction: column; align-items: flex-start; gap: 0; padding-block: 0.5rem 0.25rem; }
+  .support-header nav { gap: 0 1.25rem; }
+  .consent-details { padding-inline: 1.125rem; }
+}
+
+@media (max-width: 360px) {
+  .consent-actions { grid-template-columns: 1fr; }
+  .account-details > div { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; }
+}
+
+/* Motion: stepped scans on the eighth grid. Reduced motion keeps every end state. */
+@media (prefers-reduced-motion: no-preference) {
+  :is(.button:not(.button-secondary), .skip-link):focus-visible:not(:disabled)::after {
+    animation: account-plate-scan var(--dur-orbit-eighth) steps(5, end);
+  }
+  :is(.support-header nav a, .account-footer a):focus-visible::after,
+  .brand:focus-visible .brand-name::after {
+    animation: account-line-scan var(--dur-orbit-eighth) steps(6, end);
+  }
+  input:not([type="hidden"]) { transition: --fk-scan calc(var(--dur-orbit-eighth) * 2) steps(10, end); }
+  form[aria-busy="true"] .form-status::after { animation: account-led var(--dur-orbit-beat) steps(1, end) infinite; }
+
+  @media (hover: hover) and (pointer: fine) {
+    :is(.button:not(.button-secondary), .skip-link):hover:not(:disabled)::after {
+      animation: account-plate-scan var(--dur-orbit-eighth) steps(5, end);
+    }
+    :is(.support-header nav a, .account-footer a):hover::after,
+    .brand:hover .brand-name::after {
+      animation: account-line-scan var(--dur-orbit-eighth) steps(6, end);
+    }
+  }
+
+  @keyframes account-plate-scan {
+    from { clip-path: var(--ctl-plate-off); }
+    to { clip-path: var(--ctl-plate); }
+  }
+  @keyframes account-line-scan {
+    from { clip-path: inset(0 100% 0 0); }
+    to { clip-path: inset(0); }
+  }
+  @keyframes account-led {
+    50% { opacity: 0.25; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* Field error line: written by field-errors.mjs. The text names the problem, so the red frame is
+ * never the only signal. */
+.field-error { display: block; margin: 0; color: var(--color-orbit-error); font-size: 0.875rem; font-weight: 600; line-height: 1.45; text-wrap: pretty; }
+.field-error[hidden] { display: none; }

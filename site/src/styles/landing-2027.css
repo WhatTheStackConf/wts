@@ -1,10 +1,8 @@
-/* Hallmark · macrostructure: Orbit Studio · tone: technical/playful · anchor hue: cyan
- * design-system: DESIGN.md (WTS 2027 public landing variant)
- * Shared navy star sky behind header and hero; static stars stay independent of motion/WebGL.
- * Hallmark · pre-emit critique: P5 H4 E4 S5 R4 V4
- * Verified at 320/375/414/768/1440px; reduced-motion stars, newsletter controls and stable reload exercised.
- * Launch scene sits behind hero copy; deferred motion, reduced-motion and static fallback remain supported.
- * Brand exception: original multicolor logo. Real newsletter delivery/provider approval not exercised.
+/* WTS 2027 landing · "Section through the sky, from Skopje"
+ * The visitor rides a launch from Skopje; scroll is altitude. LaunchScene paints a fixed sky
+ * window behind every section. Text keeps WCAG AA at every altitude: ink only on light sky or
+ * paper glass, paper only on night glass. Without WebGL (reduced motion, saveData, failure)
+ * each section paints its own static sky band, so the page still reads as a climb.
  */
 @import "../../tokens.css";
 
@@ -15,29 +13,37 @@ body:has(.landing-2027) {
 }
 
 body:has(.landing-2027) {
-  background: var(--color-orbit-paper);
+  background: var(--alt-1);
 }
-
-
-
-
-.orbit-main,
-.orbit-footer {
-  position: relative;
-  z-index: 1;
-}
-
-
-
 
 .landing-2027 {
+  /* Shader ramp samples, ramp(x) = mix(alt[floor x], alt[ceil x], fract x) in linear light. */
+  --orbit-ramp-1-2: color-mix(in srgb-linear, var(--alt-1) 80%, var(--alt-2));
+  --orbit-ramp-2-6: color-mix(in srgb-linear, var(--alt-2) 40%, var(--alt-3));
+  --orbit-ramp-4-4: color-mix(in srgb-linear, var(--alt-4) 60%, var(--alt-5));
+  --orbit-gutter: max(1.5rem, calc((100% - 1320px) / 2));
+  --orbit-glass-day: color-mix(in oklch, var(--color-orbit-paper) 84%, transparent);
+  --orbit-glass-deep: color-mix(in oklch, var(--launch-sky-night) 78%, transparent);
+  --orbit-cover-compact: var(--orbit-header-height);
+  --orbit-nav-compact-top: 0px;
+  --orbit-brand-expanded-logo-height: 92px;
+  --orbit-brand-year-size: 26px;
+  --orbit-brand-year-gap: 0.65rem;
+  --orbit-nav-brand-gap: 24px;
+  --orbit-brand-top: calc(var(--orbit-cover-compact) + clamp(4rem, 6vw, 5rem));
+  --orbit-nav-start-top: calc(
+    var(--orbit-brand-top) +
+    var(--orbit-brand-expanded-logo-height) +
+    var(--orbit-brand-year-gap) +
+    var(--orbit-brand-year-size) +
+    var(--orbit-nav-brand-gap)
+  );
+  position: relative;
+  isolation: isolate;
   width: 100%;
   min-width: 0;
   overflow: clip;
-  position: relative;
-  isolation: isolate;
-  --launch-sky-mist: color-mix(in oklch, var(--launch-cyan) 28%, var(--color-orbit-paper));
-  background: var(--color-orbit-paper);
+  background: var(--alt-1);
   color: var(--color-orbit-ink);
   font-family: var(--font-orbit-body);
   font-size: var(--text-orbit-body);
@@ -72,29 +78,10 @@ body:has(.landing-2027) {
   transform: translateY(0);
 }
 
-
-
 .orbit-main,
-.orbit-footer {
-  width: min(100% - 3rem, 1320px);
-  margin-inline: auto;
-}
-
-.landing-2027 {
-  --orbit-cover-compact: var(--orbit-header-height);
-  --orbit-nav-compact-top: 0px;
-  --orbit-brand-expanded-logo-height: 92px;
-  --orbit-brand-year-size: 26px;
-  --orbit-brand-year-gap: 0.65rem;
-  --orbit-nav-brand-gap: 24px;
-  --orbit-brand-top: calc(var(--orbit-cover-compact) + clamp(4rem, 6vw, 5rem));
-  --orbit-nav-start-top: calc(
-    var(--orbit-brand-top) +
-    var(--orbit-brand-expanded-logo-height) +
-    var(--orbit-brand-year-gap) +
-    var(--orbit-brand-year-size) +
-    var(--orbit-nav-brand-gap)
-  );
+.orbit-footer-band {
+  position: relative;
+  z-index: 1;
 }
 
 .orbit-cover-reservation {
@@ -103,36 +90,51 @@ body:has(.landing-2027) {
   margin-inline: 0;
 }
 
-
-
 .orbit-cover-stage {
-  --orbit-starfield-height: var(--orbit-cover-expanded, calc(var(--orbit-cover-compact) + clamp(720px, calc(100svh - 90px), 830px)));
   position: relative;
   width: 100%;
-  background: var(--color-orbit-paper);
 }
 
-.orbit-cover-stage::before {
-  position: absolute;
-  z-index: 0;
-  inset: 0 0 auto;
-  height: calc(var(--orbit-cover-compact) + 1px);
-  background-color: var(--launch-sky-night);
-  background-image: var(--launch-starfield);
-  background-size: 100% var(--orbit-starfield-height);
-  background-repeat: no-repeat;
-  pointer-events: none;
-  content: "";
+/* The header is its own stacking context; keep the in-flow cover above the glass. */
+.orbit-cover-stage:not([data-scroll-ready="true"]) {
+  z-index: 3;
 }
-
-
 
 .orbit-cover-stage > .orbit-header {
   width: min(100% - 3rem, 1320px);
   margin-inline: auto;
 }
 
+/* Header glass: sits under the morphing header, outside its clip, so the blur sees the page. */
+.orbit-header-glass {
+  position: fixed;
+  z-index: 2;
+  inset: 0 0 auto;
+  height: var(--orbit-cover-compact);
+  background: var(--color-orbit-glass);
+  box-shadow: inset 0 -1px 0 var(--color-orbit-hair);
+  -webkit-backdrop-filter: blur(var(--blur-orbit-glass)) saturate(1.2);
+  backdrop-filter: blur(var(--blur-orbit-glass)) saturate(1.2);
+  pointer-events: none;
+  transition:
+    background-color var(--dur-orbit-beat) var(--ease-orbit-out),
+    box-shadow var(--dur-orbit-beat) var(--ease-orbit-out);
+}
 
+.landing-2027[data-sky="night"] .orbit-header-glass {
+  background: var(--color-orbit-glass-night);
+  box-shadow: inset 0 -1px 0 var(--color-orbit-line-on-dark);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .orbit-header-glass {
+    background: color-mix(in oklch, var(--color-orbit-paper) 94%, transparent);
+  }
+
+  .landing-2027[data-sky="night"] .orbit-header-glass {
+    background: var(--launch-sky-night);
+  }
+}
 
 .orbit-cover-stage:not([data-scroll-ready="true"]) > .orbit-header {
   width: 100%;
@@ -169,11 +171,7 @@ body:has(.landing-2027) {
   justify-content: flex-end;
   margin: 0;
   padding-inline: var(--orbit-nav-fallback-padding, max(1.5rem, calc((100vw - 1320px) / 2)));
-  background-color: var(--launch-sky-night);
-  background-image: var(--launch-starfield);
-  background-size: 100% var(--orbit-starfield-height);
 }
-
 
 @supports (animation-timeline: scroll()) and (animation-range: 0% 100%) {
   @media (prefers-reduced-motion: no-preference) {
@@ -188,10 +186,29 @@ body:has(.landing-2027) {
       margin: 0;
       padding-inline: 0;
       transform: translateX(-50%);
-      background: none;
+    }
+
+    /* Transparent while the lockup is large; glass once the morph lands in the header. */
+    .orbit-header-glass {
+      opacity: 0;
+    }
+
+    .orbit-cover-stage[data-scroll-ready="true"] + .orbit-header-glass {
+      animation: orbit-glass-in auto linear both;
+      animation-timeline: scroll(block root);
+      animation-range:
+        calc(var(--orbit-cover-expanded) - var(--orbit-cover-compact) - 5rem)
+        calc(var(--orbit-cover-expanded) - var(--orbit-cover-compact));
+    }
+
+    @keyframes orbit-glass-in {
+      to {
+        opacity: 1;
+      }
     }
   }
 }
+
 @supports (animation-timeline: scroll()) and (animation-range: 0% 100%) {
   @media (prefers-reduced-motion: no-preference) {
     .orbit-cover-stage[data-scroll-ready="true"] {
@@ -212,13 +229,6 @@ body:has(.landing-2027) {
 
     .orbit-cover-reservation {
       min-height: var(--orbit-cover-expanded, auto);
-    }
-
-    .orbit-cover-stage[data-scroll-ready="true"] > .orbit-hero > .launch-scene {
-      height: calc(var(--orbit-cover-expanded) - var(--orbit-cover-compact));
-      animation: orbit-scene-recede auto linear both;
-      animation-timeline: scroll(block root);
-      animation-range: 0px calc(var(--orbit-cover-expanded) - var(--orbit-cover-compact));
     }
 
     .orbit-cover-stage[data-scroll-ready="true"] > .orbit-header .orbit-brand {
@@ -265,12 +275,6 @@ body:has(.landing-2027) {
       animation-range: 0px calc(var(--orbit-cover-expanded) - var(--orbit-cover-compact));
     }
 
-    .orbit-cover-stage[data-scroll-ready="true"] > .orbit-hero > .orbit-hero-copy > * {
-      animation: orbit-copy-words-recede auto linear both;
-      animation-timeline: scroll(block root);
-      animation-range: 0px calc(var(--orbit-cover-expanded) - var(--orbit-cover-compact));
-    }
-
     @keyframes orbit-cover-reveal {
       from {
         clip-path: inset(0);
@@ -291,21 +295,6 @@ body:has(.landing-2027) {
       }
     }
 
-    @keyframes orbit-copy-words-recede {
-      from {
-        opacity: 1;
-      }
-
-      10% {
-        opacity: 0.92;
-      }
-
-      35%,
-      to {
-        opacity: 0;
-      }
-    }
-
     @keyframes orbit-nav-travel {
       from {
         transform: translate(-50%, 0);
@@ -319,20 +308,6 @@ body:has(.landing-2027) {
         transform: translate(calc(-50% + var(--orbit-nav-travel-x)), var(--orbit-nav-travel-y));
       }
     }
-
-
-
-    @keyframes orbit-scene-recede {
-      from {
-        transform: translateY(0) scale(1);
-      }
-
-      to {
-        transform: translateY(-0.5rem) scale(1.01);
-      }
-    }
-
-
 
     @keyframes orbit-brand-travel {
       from {
@@ -361,66 +336,32 @@ body:has(.landing-2027) {
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-.orbit-main {
-  display: block;
-}
-.orbit-about,
-.orbit-archive {
-  scroll-margin-top: var(--orbit-cover-compact);
-}
-
-
-
-  .orbit-hero {
-    position: relative;
-    isolation: isolate;
-    display: grid;
-    width: 100%;
-    min-height: clamp(720px, calc(100svh - 90px), 830px);
-    align-items: start;
-    justify-items: center;
-    margin-inline: 0;
-    overflow: clip;
-    padding: clamp(4rem, 6vw, 5rem) clamp(1rem, 5vw, 4rem) 4.75rem;
-    color: var(--launch-white);
-  }
-
-  .orbit-hero-copy {
-    position: relative;
-    z-index: 2;
-    width: min(100%, 1120px);
-    padding: 13.5rem 0 2rem;
-    text-align: center;
-  }
-
-.orbit-hero > .launch-scene {
-  position: absolute;
-  z-index: 0;
-  inset: 0 auto auto 0;
+/* Countdown: ink on the sunlit sky above the Skopje ground line. */
+.orbit-hero {
+  position: relative;
+  isolation: isolate;
+  display: grid;
   width: 100%;
-  height: 100%;
-  margin-inline-start: 0;
-  pointer-events: none;
+  min-height: clamp(720px, calc(100svh - 90px), 830px);
+  align-items: start;
+  justify-items: center;
+  margin-inline: 0;
+  overflow: clip;
+  padding: clamp(4rem, 6vw, 5rem) clamp(1rem, 5vw, 4rem) 4.75rem;
+  color: var(--color-orbit-ink);
 }
 
-.orbit-hero > .launch-scene::before {
-  background-size: 100% var(--orbit-starfield-height);
-  background-position: 0 calc(-1 * var(--orbit-cover-compact));
+.orbit-hero-copy {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 1120px);
+  padding: 12rem 0 2rem;
+  text-align: center;
 }
 
-
-
+.orbit-hero-foot {
+  display: none;
+}
 
 .orbit-pending,
 .orbit-section-mark,
@@ -432,91 +373,126 @@ body:has(.landing-2027) {
   text-transform: uppercase;
 }
 
-
 .orbit-about h2,
 .orbit-archive h2,
 .orbit-signup h2 {
   margin: 0;
   font-family: var(--font-orbit-display);
+  font-size: var(--text-orbit-section);
   font-style: normal;
   font-weight: 500;
   line-height: 0.98;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.03em;
   overflow-wrap: anywhere;
   text-wrap: balance;
 }
 
-
 .orbit-lede {
   max-width: 38rem;
   margin: 2rem auto 0;
-  color: var(--launch-white);
+  color: var(--color-orbit-ink);
   font-size: var(--text-orbit-lede);
   line-height: 1.52;
   text-wrap: pretty;
 }
 
-
 .orbit-pending {
   margin: 1.75rem 0 0;
-  color: var(--launch-white);
+  color: var(--color-orbit-ink);
   font-size: 0.6875rem;
   letter-spacing: 0.075em;
   line-height: 1.6;
 }
 
-.orbit-hero-foot {
-  position: absolute;
-  z-index: 2;
-  right: clamp(1rem, 5vw, 4rem);
-  bottom: 1rem;
-  left: clamp(1rem, 5vw, 4rem);
-  display: flex;
-  justify-content: space-between;
-  padding-top: 0.7rem;
-  border-top: 1px solid var(--color-orbit-rule);
-  color: var(--color-orbit-ink);
-  font-size: 0.6875rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+/* Content sits in full-bleed bands so the static skies can span the window. */
+.orbit-main {
+  display: block;
+  width: 100%;
 }
 
+.orbit-about,
+.orbit-archive,
+.orbit-signup {
+  padding-inline: var(--orbit-gutter);
+}
+
+.orbit-section-title,
+.orbit-archive {
+  scroll-margin-top: var(--orbit-cover-compact);
+}
+
+/* Hairline glass with two corner marks: the drawing-sheet frame of the section. */
+.orbit-panel {
+  --orbit-panel-mark: color-mix(in oklch, var(--color-orbit-ink) 72%, transparent);
+  position: relative;
+  border: 1px solid var(--color-orbit-hair-strong);
+  background: var(--orbit-glass-day);
+  -webkit-backdrop-filter: blur(var(--blur-orbit-glass));
+  backdrop-filter: blur(var(--blur-orbit-glass));
+}
+
+.orbit-panel::before,
+.orbit-panel::after {
+  position: absolute;
+  width: var(--size-orbit-mark);
+  height: var(--size-orbit-mark);
+  border: 0 solid var(--orbit-panel-mark);
+  content: "";
+  pointer-events: none;
+}
+
+.orbit-panel::before {
+  top: 7px;
+  left: 7px;
+  border-top-width: var(--width-orbit-mark);
+  border-left-width: var(--width-orbit-mark);
+}
+
+.orbit-panel::after {
+  right: 7px;
+  bottom: 7px;
+  border-right-width: var(--width-orbit-mark);
+  border-bottom-width: var(--width-orbit-mark);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .orbit-panel {
+    background: color-mix(in oklch, var(--color-orbit-paper) 94%, transparent);
+  }
+}
+
+/* Liftoff → max-Q. The liftoff station is the heading block. Its top sits more than a window
+ * above the words, so the words enter only after the skyline has left the frame (flight ≥ 1.4):
+ * the liftoff plays in an empty window and no text ever crosses the drawing. */
 .orbit-about {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.83fr);
-  gap: clamp(2.5rem, 8vw, 8rem);
-  padding-block: clamp(5rem, 10vw, 9rem);
-  border-bottom: 1px solid var(--color-orbit-rule);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.86fr);
+  align-items: start;
+  column-gap: clamp(2.5rem, 8vw, 8rem);
+  padding-block: 0 clamp(7rem, 24vh, 15rem);
 }
 
 .orbit-section-heading {
   max-width: 560px;
+  padding-top: 110vh;
 }
 
 .orbit-section-mark {
   display: block;
   margin-bottom: 1.75rem;
-  color: var(--color-orbit-accent);
-}
-
-.orbit-about h2,
-.orbit-archive h2,
-.orbit-signup h2 {
-  font-size: var(--text-orbit-section);
+  color: var(--color-orbit-ink);
 }
 
 .orbit-about-copy {
-  align-self: end;
-  max-width: 510px;
-  padding-bottom: var(--space-orbit-1);
+  max-width: 540px;
+  margin-top: 120vh;
+  padding: clamp(1.75rem, 3vw, 2.5rem) clamp(1.5rem, 3vw, 2.75rem);
 }
 
 .orbit-about-copy p,
-.orbit-archive-heading > p:last-child,
-.orbit-signup-copy > p:last-child {
+.orbit-archive-heading > p:last-child {
   margin: 0;
-  color: var(--color-orbit-muted);
+  color: var(--color-orbit-ink);
   font-size: 1.0625rem;
   line-height: 1.75;
   text-wrap: pretty;
@@ -527,18 +503,20 @@ body:has(.landing-2027) {
 }
 
 .orbit-inline-link {
-  margin-top: 1.5rem;
+  margin-top: 1.25rem;
 }
 
-
-
-
+/* MECO: one drawing sheet; the editions are its datum axis, read upward from ED. 01. */
 .orbit-archive {
+  padding-block: clamp(8rem, 28vh, 16rem) clamp(4rem, 10vh, 7rem);
+}
+
+.orbit-archive-sheet {
   display: grid;
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
-  gap: clamp(2rem, 8vw, 7rem);
-  padding-block: clamp(5rem, 10vw, 9rem);
-  border-bottom: 1px solid var(--color-orbit-rule);
+  align-items: start;
+  gap: clamp(2rem, 6vw, 6rem);
+  padding: clamp(2.25rem, 4vw, 3.5rem) clamp(1.5rem, 4vw, 3.5rem) clamp(1.5rem, 3vw, 2.5rem);
 }
 
 .orbit-archive-heading {
@@ -559,27 +537,70 @@ body:has(.landing-2027) {
 }
 
 .orbit-editions {
-  align-self: center;
-  border-top: 1px solid var(--color-orbit-rule);
+  --orbit-axis-column: 4.5rem;
+  margin-top: clamp(0rem, 4vh, 3rem);
 }
 
 .orbit-edition {
   display: grid;
-  grid-template-columns: 5.25rem minmax(0, 1fr) 2.5rem;
+  grid-template-columns: var(--orbit-axis-column) 5.25rem minmax(0, 1fr) 2.5rem;
   align-items: center;
   gap: 1rem;
   min-height: 108px;
   padding: 1.2rem 0;
-  border-bottom: 1px solid var(--color-orbit-rule);
+  border-bottom: 1px solid var(--color-orbit-hair);
   color: var(--color-orbit-ink);
   text-decoration: none;
 }
 
+.orbit-edition:last-child {
+  border-bottom: 0;
+}
 
+.orbit-edition-mark {
+  position: relative;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-block: -1.2rem;
+  padding-right: 1.4rem;
+  color: var(--color-orbit-accent);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+}
+
+.orbit-edition-mark::before {
+  position: absolute;
+  top: 0;
+  right: 0.75rem;
+  bottom: 0;
+  border-left: 1px solid var(--color-orbit-ink);
+  content: "";
+}
+
+.orbit-edition-mark::after {
+  position: absolute;
+  top: 50%;
+  right: calc(0.75rem - 4px);
+  width: 9px;
+  border-top: 1px solid var(--color-orbit-ink);
+  content: "";
+}
+
+/* The axis keeps climbing past 2026 toward the 2027 orbit. */
+.orbit-edition:first-child .orbit-edition-mark::before {
+  top: -0.5rem;
+  border-image: linear-gradient(transparent, var(--color-orbit-ink) 1.25rem) 1;
+}
 
 .orbit-edition-year {
   font-family: var(--font-orbit-display);
   font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
   letter-spacing: -0.025em;
 }
@@ -601,130 +622,232 @@ body:has(.landing-2027) {
   line-height: 1.45;
 }
 
-.orbit-signup {
+/* Edition rows: hover and focus print a dot screen behind the row and lock the axis tick. */
+.orbit-edition {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 2rem;
-  margin-block: clamp(5rem, 10vw, 9rem);
-  padding: clamp(2.25rem, 6vw, 5.25rem);
-  overflow: hidden;
-  background: var(--color-orbit-ink);
-  color: var(--color-orbit-accent-ink);
+  isolation: isolate;
 }
 
-.orbit-signup-copy {
-  position: relative;
-  z-index: 1;
-  max-width: 670px;
+.orbit-edition::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 0 var(--orbit-axis-column);
+  background: conic-gradient(from 90deg at 1px 1px, transparent 75%, color-mix(in oklch, var(--color-orbit-accent) 20%, transparent) 0) 0 0 / 3px 3px;
+  clip-path: inset(0 100% 0 0);
+  content: "";
+  pointer-events: none;
+}
+
+.orbit-edition-year {
+  transition: translate var(--dur-orbit-eighth) steps(2, end);
+}
+
+.orbit-edition:focus-visible::before {
+  clip-path: inset(0);
+}
+
+.orbit-edition:focus-visible .orbit-edition-mark::after {
+  right: calc(0.75rem - 12px);
+  width: 17px;
+  border-top: 2px solid var(--color-orbit-accent);
+}
+
+.orbit-edition:focus-visible .orbit-edition-year {
+  translate: 3px 0;
+}
+
+/* Muted text cannot hold 4.5:1 over the dots, so the description turns to ink. */
+.orbit-edition:focus-visible .orbit-edition-content > span {
+  color: var(--color-orbit-ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .orbit-edition:hover::before {
+    clip-path: inset(0);
+  }
+
+  .orbit-edition:hover .orbit-edition-mark::after {
+    right: calc(0.75rem - 12px);
+    width: 17px;
+    border-top: 2px solid var(--color-orbit-accent);
+  }
+
+  .orbit-edition:hover .orbit-edition-year {
+    translate: 3px 0;
+  }
+
+  .orbit-edition:hover .orbit-edition-content > span {
+    color: var(--color-orbit-ink);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .orbit-edition:focus-visible::before {
+    animation: ctl-line-scan calc(var(--dur-orbit-eighth) * 2) steps(8, end);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .orbit-edition:hover::before {
+      animation: ctl-line-scan calc(var(--dur-orbit-eighth) * 2) steps(8, end);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbit-edition-year {
+    transition: none;
+  }
+}
+
+/* Second burn → orbit: the call to action waits in night glass at the top of the climb.
+ * At max scroll the section bottom meets the footer top, so the content box below the climb
+ * spans exactly the window between the header and the footer, and the panel centers in it.
+ * Landing2027 publishes --orbit-footer-height. reachableTops() keeps the orbit station reachable. */
+.orbit-signup {
+  --orbit-signup-climb: clamp(10rem, 36vh, 22rem);
+  display: grid;
+  align-content: center;
+  min-height: calc(var(--orbit-signup-climb) + 100svh - var(--orbit-cover-compact) - var(--orbit-footer-height, 14rem));
+  padding-block: var(--orbit-signup-climb) 0;
+}
+
+.orbit-signup-panel {
+  --orbit-panel-mark: color-mix(in oklch, var(--color-orbit-paper) 72%, transparent);
+  max-width: 60rem;
+  padding: clamp(1.5rem, min(4.5vw, 5vh), 3.75rem) clamp(1.5rem, 4.5vw, 3.75rem) clamp(1.25rem, min(3.5vw, 4.5vh), 2.75rem);
+  border-color: var(--color-orbit-line-on-dark);
+  background: var(--orbit-glass-deep);
+  color: var(--color-orbit-paper);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .orbit-signup-panel {
+    background: var(--launch-sky-night);
+  }
 }
 
 .orbit-signup-label {
-  margin: 0 0 1.25rem;
-  color: var(--color-orbit-on-dark-muted);
+  margin: 0 0 clamp(0.75rem, 2vh, 1.25rem);
+  color: var(--launch-cyan);
 }
 
+/* Two lines, as written: balanced wrapping would push "one." onto a third line. */
 .orbit-signup h2 {
-  margin-bottom: 1.4rem;
-  font-size: clamp(2.75rem, 6vw, 5.5rem);
+  font-size: clamp(2.5rem, min(6vw, 9svh), 5.5rem);
+  text-wrap: wrap;
 }
 
-.orbit-signup-copy > p:last-child {
-  max-width: 36rem;
+.orbit-signup-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.25rem 2rem;
+  margin-top: clamp(1.25rem, 3vh, 2rem);
+  padding-top: clamp(1rem, 2.5vh, 1.5rem);
+  border-top: 1px solid var(--color-orbit-line-on-dark);
+}
+
+.orbit-signup-cta p {
+  max-width: 28rem;
+  margin: 0;
+  color: var(--color-orbit-on-dark-muted);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.orbit-signup-cta .orbit-button {
+  flex: 0 0 auto;
+}
+
+/* Orbit: the footer is night glass in every mode, so its paper text never meets daylight. */
+.orbit-footer-band {
+  border-top: 1px solid var(--color-orbit-line-on-dark);
+  background: var(--orbit-glass-deep);
+  color: var(--color-orbit-paper);
+  -webkit-backdrop-filter: blur(var(--blur-orbit-glass));
+  backdrop-filter: blur(var(--blur-orbit-glass));
+}
+
+.orbit-footer-band .orbit-footer {
+  border-top: 0;
+  color: var(--color-orbit-paper);
+}
+
+.orbit-footer-band :is(.orbit-footer-top > p, .orbit-footer-links a, .orbit-footer-bottom, .orbit-footer-bottom a) {
   color: var(--color-orbit-on-dark-muted);
 }
 
-.orbit-signup .orbit-button {
+.orbit-footer-band .orbit-footer-brand strong {
+  color: var(--launch-cyan);
+}
+
+.orbit-footer-band .orbit-footer-bottom {
+  border-top-color: var(--color-orbit-line-on-dark);
+}
+
+.orbit-footer-band :is(.orbit-footer-links, .orbit-footer-bottom) a:focus-visible {
+  color: var(--launch-cyan);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .orbit-footer-band :is(.orbit-footer-links, .orbit-footer-bottom) a:hover {
+    color: var(--color-orbit-paper);
+  }
+}
+
+/* Static skies: without the WebGL window each band paints its own altitude. */
+.landing-2027:not([data-launch="webgl"]) .orbit-about {
+  background: linear-gradient(var(--orbit-ramp-1-2), var(--orbit-ramp-2-6));
+  background: linear-gradient(in srgb-linear, var(--orbit-ramp-1-2), var(--orbit-ramp-2-6));
+}
+
+.landing-2027:not([data-launch="webgl"]) .orbit-archive {
+  background: linear-gradient(var(--orbit-ramp-2-6), var(--orbit-ramp-4-4));
+  background: linear-gradient(in srgb-linear, var(--orbit-ramp-2-6), var(--orbit-ramp-4-4));
+}
+
+.landing-2027:not([data-launch="webgl"]) .orbit-signup {
   position: relative;
-  z-index: 1;
-  margin-bottom: 0.25rem;
+  isolation: isolate;
+  background: linear-gradient(var(--orbit-ramp-4-4), var(--alt-6) 55%, var(--alt-7));
+  background: linear-gradient(in srgb-linear, var(--orbit-ramp-4-4), var(--alt-6) 55%, var(--alt-7));
 }
 
-
-.orbit-signup-orbit {
+.landing-2027:not([data-launch="webgl"]) .orbit-signup::before {
   position: absolute;
-  top: -8rem;
-  right: -5rem;
-  width: 26rem;
-  height: 26rem;
-  border: 1px solid var(--color-orbit-line-on-dark);
-  border-radius: 50%;
-}
-
-.orbit-signup-orbit::before,
-.orbit-signup-orbit::after,
-.orbit-signup-orbit span {
-  position: absolute;
-  inset: 2rem;
-  border: 1px solid var(--color-orbit-line-on-dark);
-  border-radius: 50%;
+  z-index: -1;
+  inset: 45% 0 0;
+  background-image: var(--launch-starfield);
+  background-repeat: no-repeat;
+  background-size: 100% 100vh;
   content: "";
+  pointer-events: none;
 }
 
-.orbit-signup-orbit::before {
-  inset: 4rem;
-  border-color: var(--color-orbit-line-on-dark);
+.landing-2027:not([data-launch="webgl"]) .orbit-footer-band {
+  background: var(--alt-7);
 }
-
-.orbit-signup-orbit::after {
-  inset: 6rem;
-  border-color: var(--color-orbit-line-on-dark);
-}
-
-.orbit-signup-orbit span:first-child {
-  inset: 8rem;
-  border-color: var(--color-orbit-line-on-dark);
-}
-
-.orbit-signup-orbit span:nth-child(2) {
-  inset: 10rem;
-  border-color: var(--color-orbit-line-on-dark);
-}
-
-.orbit-signup-orbit span:nth-child(3) {
-  inset: 12rem;
-  border: 0;
-  background: var(--color-orbit-amber);
-}
-
 
 @media (max-width: 850px) {
-  .orbit-cover-stage > .orbit-header,
-  .orbit-main,
-  .orbit-footer {
+  .orbit-cover-stage > .orbit-header {
     width: min(100% - 2.5rem, 1320px);
   }
 
-
   .orbit-about,
-  .orbit-archive {
-    gap: 3rem;
+  .orbit-archive-sheet {
+    column-gap: 3rem;
   }
-
 }
-
-
-
 
 @media (max-width: 767px) {
   .landing-2027 {
+    --orbit-gutter: 1rem;
     --orbit-nav-compact-top: 64px;
     --orbit-nav-fallback-padding: 1rem;
     --orbit-brand-expanded-logo-height: 56px;
-    --orbit-brand-year-size: 20px;
     --orbit-brand-top: calc(var(--orbit-cover-compact) + clamp(3rem, 10vw, 4rem));
-  }
-
-
-
-
-
-
-
-  .orbit-main,
-  .orbit-footer {
-    width: calc(100% - 2rem);
   }
 
   .orbit-cover-stage > .orbit-header {
@@ -733,10 +856,6 @@ body:has(.landing-2027) {
     gap: 0;
     padding-inline: 0.5rem;
   }
-
-
-
-
 
   .orbit-cover-stage .orbit-nav {
     width: 100%;
@@ -754,10 +873,7 @@ body:has(.landing-2027) {
     gap: 0.5rem;
   }
 
-  .orbit-cover-stage[data-scroll-ready="true"] > .orbit-header .orbit-brand {
-    top: var(--orbit-brand-top);
-  }
-
+  .orbit-cover-stage[data-scroll-ready="true"] > .orbit-header .orbit-brand,
   .orbit-cover-stage:not([data-scroll-ready="true"]) > .orbit-header .orbit-brand {
     top: var(--orbit-brand-top);
   }
@@ -777,18 +893,15 @@ body:has(.landing-2027) {
     font-size: var(--orbit-brand-year-size);
   }
 
-
   .orbit-hero-copy {
     padding-top: 10.25rem;
   }
-
 
   .orbit-lede {
     max-width: 35rem;
     margin-top: 1.4rem;
     font-size: 1.1rem;
   }
-
 
   .orbit-pending {
     max-width: 30rem;
@@ -797,16 +910,31 @@ body:has(.landing-2027) {
     font-size: 0.625rem;
   }
 
-  .orbit-hero-foot {
-    bottom: 0.75rem;
-    font-size: 0.5625rem;
-  }
-
   .orbit-about,
-  .orbit-archive {
+  .orbit-archive-sheet {
     grid-template-columns: minmax(0, 1fr);
     gap: 1.75rem;
-    padding-block: 4.25rem;
+  }
+
+  .orbit-about {
+    padding-bottom: 9rem;
+  }
+
+  .orbit-section-heading {
+    padding-top: 120vh;
+  }
+
+  .orbit-about-copy {
+    margin-top: 6vh;
+    padding: 1.75rem 1.4rem;
+  }
+
+  .orbit-archive {
+    padding-block: clamp(7rem, 22vh, 11rem) 4rem;
+  }
+
+  .orbit-archive-sheet {
+    padding: 2rem 1.25rem 1rem;
   }
 
   .orbit-section-mark {
@@ -823,12 +951,22 @@ body:has(.landing-2027) {
     font-size: 1rem;
   }
 
+  .orbit-editions {
+    --orbit-axis-column: 3.6rem;
+    margin-top: 0;
+  }
+
   .orbit-edition {
-    grid-template-columns: 4.5rem minmax(0, 1fr) 1rem;
+    grid-template-columns: var(--orbit-axis-column) 3.6rem minmax(0, 1fr) 1rem;
     gap: 0.7rem;
     min-height: 100px;
   }
 
+  .orbit-edition-mark {
+    padding-right: 1.25rem;
+    font-size: 0.625rem;
+    letter-spacing: 0.1em;
+  }
 
   .orbit-edition-year {
     font-size: 1.5rem;
@@ -843,59 +981,45 @@ body:has(.landing-2027) {
   }
 
   .orbit-signup {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: start;
-    gap: 1.8rem;
-    margin-block: 4rem;
-    padding: 2rem 1.4rem;
+    --orbit-signup-climb: clamp(8rem, 30vh, 14rem);
+  }
+
+  .orbit-signup-panel {
+    padding: 1.5rem 1.25rem 1.25rem;
   }
 
   .orbit-signup h2 {
-    max-width: 9ch;
-    font-size: clamp(2.6rem, 11vw, 4rem);
+    font-size: clamp(2rem, min(9.5vw, 6svh), 4rem);
   }
 
-  .orbit-signup-copy > p:last-child {
-    max-width: 25rem;
+  .orbit-signup-cta p {
     font-size: 0.95rem;
   }
-
-  .orbit-signup-orbit {
-    top: -6.5rem;
-    right: -11rem;
-    opacity: 0.7;
-  }
-
 }
 
-
 @media (max-width: 360px) {
-  .orbit-main,
-  .orbit-footer {
-    width: calc(100% - 1.5rem);
-  }
-
-
   .orbit-cover-stage > .orbit-header {
     padding-inline: 0.375rem;
   }
+
   .orbit-cover-stage .orbit-nav {
     gap: 0.25rem 0.375rem;
   }
-
-
 }
 
-
-
-
-
 @media (prefers-reduced-motion: reduce) {
-  .landing-2027 *,
-  .landing-2027 *::before,
-  .landing-2027 *::after {
+  .landing-2027 * {
     scroll-behavior: auto !important;
-    transition: none !important;
   }
 
+  /* No flight to wait for: the bands stack without the liftoff window. */
+  .orbit-section-heading {
+    padding-top: clamp(5rem, 14vh, 9rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) and (min-width: 768px) {
+  .orbit-about-copy {
+    margin-top: calc(clamp(5rem, 14vh, 9rem) + 10vh);
+  }
 }

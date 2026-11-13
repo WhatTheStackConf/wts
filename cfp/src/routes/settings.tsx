@@ -1,6 +1,7 @@
 import { createSignal, For, onSettled, Show } from "solid-js";
 import { getWorkspace, saveApplicant } from "~/lib/cfp-actions";
 import type { FieldIssue, Workspace } from "~/lib/cfp-model";
+import { PageBand } from "~/components/PageBand";
 import { ErrorNotice } from "~/components/ApplicantUI";
 
 const expenseOptions = ["Yes", "No", "Other"] as const;
@@ -57,14 +58,14 @@ export default function Settings() {
   };
 
   return <>
-    <header class="page-heading"><h1>Applicant settings</h1><p>These preferences apply to all your applications. You can maintain them when the CFP is closed.</p></header>
+    <PageBand size="short" title="Applicant settings" lede="These preferences apply to all your applications. You can maintain them when the CFP is closed." />
     <Show when={loading()}><div class="cfp-loading" role="status">Loading your settings…</div></Show>
     <Show when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={current().code !== "unauthenticated" ? reload : undefined} retryLabel="Reload saved settings" /><Show when={current().code === "unauthenticated"}><a href={`/auth/login?returnTo=${encodeURIComponent("/settings")}`} rel="external">Sign in to edit settings</a></Show></>}</Show>
     <Show when={workspace() && !blocksPage(error())}>
       <form class="surface form" onSubmit={save}>
         <div class="field"><label for="contact-method">Preferred contact method</label><p class="hint" id="contact-method-help">Add the contact channel you prefer the organizers to use.</p><input id="contact-method" class="control" name="preferredContactMethod" maxlength="500" aria-describedby="contact-method-help" autocomplete="off" value={contact()} onInput={(event) => setContact(event.currentTarget.value)} /></div>
-        <fieldset class="field" style={{ border: "none", padding: 0, margin: 0 }}>
-          <legend>Can your company cover travel or accommodation?</legend>
+        <fieldset class="field choice-fieldset">
+          <legend class="label-question">Can your company cover travel or accommodation?</legend>
           <p class="hint" id="company-cover-help">Choose Yes, No, or Other. You can leave this blank until you know.</p>
           <div class="choice-grid" role="radiogroup" aria-describedby="company-cover-help">
             <label class="choice"><input type="radio" name="companyCoverExpenses" value="" checked={expenses() === ""} onChange={() => setExpenses("")} /><span>Not specified</span></label>

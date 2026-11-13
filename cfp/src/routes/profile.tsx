@@ -1,6 +1,7 @@
 import { createSignal, onSettled, Show } from "solid-js";
 import { getWorkspace, saveApplicant } from "~/lib/cfp-actions";
 import type { FieldIssue, Workspace } from "~/lib/cfp-model";
+import { PageBand } from "~/components/PageBand";
 import { ErrorNotice } from "~/components/ApplicantUI";
 
 type PageError = { code: string; message: string; issues: FieldIssue[] };
@@ -61,7 +62,7 @@ export default function Profile() {
   };
 
   return <>
-    <header class="page-heading"><h1>Speaker profile</h1><p>These details are shared across your applications. Profile changes do not alter a submitted presentation.</p></header>
+    <PageBand size="short" title="Speaker profile" lede="These details are shared across your applications. Profile changes do not alter a submitted presentation." />
     <Show when={loading()}><div class="cfp-loading" role="status">Loading your profile…</div></Show>
     <Show when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={current().code !== "unauthenticated" ? reload : undefined} retryLabel="Reload saved profile" /><Show when={current().code === "unauthenticated"}><a href={`/auth/login?returnTo=${encodeURIComponent("/profile")}`} rel="external">Sign in to edit your profile</a></Show></>}</Show>
     <Show when={workspace() && !blocksPage(error())}>

@@ -18,7 +18,7 @@ interface GrantControlProps {
 }
 
 function GrantControl(props: GrantControlProps) {
-  return <div class="cfp-stack"><AdminStatus state={props.grant?.state ?? "revoked"} label={props.grant?.state ?? "not granted"} /><button class="button button-secondary button-small" type="button" disabled={props.disabled} onClick={() => props.onToggle(!active(props.grant))}>{active(props.grant) ? `Revoke ${props.role}` : `Grant ${props.role}`}</button></div>;
+  return <div class="cfp-stack"><AdminStatus state={props.grant?.state ?? "closed"} label={props.grant?.state ?? "not granted"} /><button class={active(props.grant) ? "button button-danger button-small" : "button button-secondary button-small"} type="button" disabled={props.disabled} onClick={() => props.onToggle(!active(props.grant))}>{active(props.grant) ? `Revoke ${props.role}` : `Grant ${props.role}`}</button></div>;
 }
 
 export default function AdminStaffPage() {
@@ -129,7 +129,7 @@ export default function AdminStaffPage() {
       <p>Manage roles for known WTS identities and set independent edition controls.</p>
       <Show when={workspace()}><p class="mono">Edition <strong>{workspace()?.editionId}</strong></p></Show>
     </header>
-    <nav class="row" aria-label="CFP administration"><a class="button button-secondary button-small" href="/admin">Proposals</a><a class="button button-secondary button-small" href="/admin/staff" aria-current="page">Staff and gates</a></nav>
+    <nav class="staff-subnav" aria-label="CFP administration"><a href="/admin">Proposals</a><a href="/admin/staff" aria-current="page">Staff and gates</a></nav>
     <Switch>
       <Match when={loading()}><AdminLoading label="Loading edition staff and controls…" /></Match>
       <Match when={request.error()}>{(failure) => <Switch fallback={<AdminError state={failureState(failure().code)} message={failure().message} onRetry={() => void load()} />}>
@@ -168,8 +168,8 @@ export default function AdminStaffPage() {
           <AdminSection title="Known WTS identities" description="Only local accounts appear. These edition grants do not create or change central accounts.">
             <p>Active edition administrators: {directory()!.activeAdminCount}. Revocation of the final active administrator is disabled here and remains protected by the server.</p>
             <Show when={directory()!.members.length} fallback={<p class="empty-state">No locally known WTS identities are available for this edition.</p>}>
-              <div class="overflow-x-auto admin-table-wrapper" tabindex="0" aria-label="Scrollable WTS staff directory">
-                <table class="table table-zebra min-w-[52rem] admin-table"><caption class="sr-only">Known accounts and current edition roles</caption>
+              <div class="admin-table-wrapper" tabindex="0" role="region" aria-label="Scrollable WTS staff directory">
+                <table class="table min-w-[52rem] admin-table"><caption class="sr-only">Known accounts and current edition roles</caption>
                   <thead><tr><th>WTS identity</th><th>Admin access</th><th>Reviewer access</th><th>Assignments</th><th>Saved reviews</th></tr></thead>
                   <tbody><For each={directory()!.members}>{(member) => <tr>
                     <th>{member.speakerName || "Known WTS account"}<br /><span class="mono">{member.wtsUserId}</span></th>

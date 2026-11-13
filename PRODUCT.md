@@ -1,9 +1,5 @@
 # WTS Product Context
 
-## Register
-
-product
-
 ## Product Purpose
 
 WhatTheStack is the operational and public web app for the WTS 2026 conference. The admin area helps organizers manage conference operations: users, CFP submissions, reviewers, speakers, sessions, partners, tickets, and publication state.

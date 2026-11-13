@@ -10,7 +10,7 @@ interface TurnstileApi {
       callback: (token: string) => void;
       "expired-callback": () => void;
       "error-callback": () => void;
-      theme: "dark" | "light";
+      theme: "light";
       size: "compact";
     },
   ): string;
@@ -24,11 +24,7 @@ declare global {
   }
 }
 
-interface NewsletterPopupProps {
-  appearance?: "light";
-}
-
-const NewsletterPopup = (props: NewsletterPopupProps) => {
+const NewsletterPopup = () => {
   const [isVisible, setIsVisible] = createSignal(false);
   const [email, setEmail] = createSignal("");
   const [name, setName] = createSignal("");
@@ -103,7 +99,7 @@ const NewsletterPopup = (props: NewsletterPopupProps) => {
               setError("The security check could not load. Please try again.");
             }
           },
-          theme: props.appearance === "light" ? "light" : "dark",
+          theme: "light",
           size: "compact",
         });
       } catch {
@@ -229,7 +225,6 @@ const NewsletterPopup = (props: NewsletterPopupProps) => {
     <dialog
       ref={(element) => { dialogRef = element; }}
       class="newsletter-dialog"
-      data-newsletter-appearance={props.appearance === "light" ? "light" : "dark"}
       aria-labelledby="newsletter-title"
       aria-describedby="newsletter-description"
       onClose={handleDialogClose}
@@ -255,28 +250,32 @@ const NewsletterPopup = (props: NewsletterPopupProps) => {
                 <div ref={(element) => { turnstileRef = element; }} class="newsletter-challenge" aria-label="Security check"></div>
               </Show>
               <label class="newsletter-field">
-                <span>Email address (required)</span>
-                <input class="input input-bordered"
-                  ref={(element) => { emailRef = element; }}
-                  type="email"
-                  name="email"
-                  autocomplete="email"
-                  required
-                  value={email()}
-                  onInput={(event) => setEmail(event.currentTarget.value)}
-                  disabled={loading()}
-                />
+                <span class="newsletter-label">Email address (required)</span>
+                <span class="newsletter-input">
+                  <input class="input input-bordered"
+                    ref={(element) => { emailRef = element; }}
+                    type="email"
+                    name="email"
+                    autocomplete="email"
+                    required
+                    value={email()}
+                    onInput={(event) => setEmail(event.currentTarget.value)}
+                    disabled={loading()}
+                  />
+                </span>
               </label>
               <label class="newsletter-field">
-                <span>Name <span class="newsletter-optional">(optional)</span></span>
-                <input class="input input-bordered"
-                  type="text"
-                  name="name"
-                  autocomplete="name"
-                  value={name()}
-                  onInput={(event) => setName(event.currentTarget.value)}
-                  disabled={loading()}
-                />
+                <span class="newsletter-label">Name <span class="newsletter-optional">(optional)</span></span>
+                <span class="newsletter-input">
+                  <input class="input input-bordered"
+                    type="text"
+                    name="name"
+                    autocomplete="name"
+                    value={name()}
+                    onInput={(event) => setName(event.currentTarget.value)}
+                    disabled={loading()}
+                  />
+                </span>
               </label>
               <Show when={error()}>
                 <p class="newsletter-error" role="alert">{error()}</p>

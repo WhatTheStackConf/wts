@@ -1,33 +1,24 @@
 ---
 import Base from "../layouts/Base.astro";
+import SkyBand from "../components/SkyBand.astro";
 ---
 
 <Base title="Page not found">
-	<div class="not-found">
-		<h1>404</h1>
-		<p>The page you're looking for doesn't exist.</p>
-		<a href="/">Go back home</a>
-	</div>
+	<SkyBand context="404 · Not found" variant="lost">
+		<h1 class="sky-band-title">This page isn’t here.</h1>
+		<p class="sky-band-lede">The address may be outdated, or the post may have moved.</p>
+		<nav class="lost-actions" aria-label="Not found navigation">
+			<a href="/" class="button">Blog home</a>
+			<a href="/posts" class="button button-ghost">All posts</a>
+		</nav>
+	</SkyBand>
 </Base>
 
 <style>
-	.not-found {
-		text-align: center;
-		padding: var(--spacing-24) var(--spacing-6);
-	}
-
-	.not-found h1 {
-		font-size: var(--font-size-5xl);
-		margin-bottom: var(--spacing-2);
-		color: var(--color-border);
-	}
-
-	.not-found p {
-		color: var(--color-muted);
-		margin-bottom: var(--spacing-6);
-	}
-
-	.not-found a {
-		color: var(--color-text);
+	.lost-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin-top: 2rem;
 	}
 </style>

@@ -1,5 +1,5 @@
 import type { ParentProps } from "solid-js";
-import { clientOnly } from "@solidjs/web";
+import { clientOnly, type JSX } from "@solidjs/web";
 import { PublicHeader } from "~/components/PublicHeader";
 import { PublicFooter } from "~/components/PublicFooter";
 import { PublicPageMetadata } from "~/components/PublicPageMetadata";
@@ -27,7 +27,27 @@ export function PublicPageShell(props: PublicPageShellProps) {
       <div class="support-header"><PublicHeader /></div>
       <main id="main-content" class="support-main" tabindex="-1">{props.children}</main>
       <PublicFooter />
-      <NewsletterPopup appearance="light" />
+      <NewsletterPopup />
+    </div>
+  );
+}
+
+interface SupportBandProps extends ParentProps {
+  altitude: 1 | 2;
+  label: JSX.Element;
+  variant?: "lost";
+}
+
+export function SupportBand(props: SupportBandProps) {
+  return (
+    <div class="support-band" data-altitude={props.altitude} data-variant={props.variant}>
+      <div class="support-band-inner">
+        <p class="support-band-label">
+          <span>{props.label}</span>
+          <span class="support-band-datum" aria-hidden="true">▽ ALT {props.altitude}</span>
+        </p>
+        {props.children}
+      </div>
     </div>
   );
 }

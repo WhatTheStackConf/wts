@@ -3,6 +3,8 @@ export const prerender = false;
 
 import { search } from "emdash";
 import Base from "../layouts/Base.astro";
+import Arrow from "../components/Arrow.astro";
+import SkyBand from "../components/SkyBand.astro";
 
 const query = Astro.url.searchParams.get("q")?.trim() || "";
 
@@ -13,185 +15,178 @@ const query = Astro.url.searchParams.get("q")?.trim() || "";
 const { items: results } = query
 	? await search(query, { collections: ["posts"], limit: 30 })
 	: { items: [] };
+
+const summary = !query
+	? "Search every post by title and text."
+	: results.length === 0
+		? `No results for “${query}”.`
+		: `${results.length} result${results.length === 1 ? "" : "s"} for “${query}”.`;
 ---
 
 <Base
 	title={query ? `Search: ${query}` : "Search"}
 	description="Search blog posts"
 >
-	<section class="search-page">
-		<h1 class="search-title">Search</h1>
-
-		<form method="get" action="/search" class="search-form">
-			<label for="site-search-query" class="visually-hidden"
-				>Search blog posts</label
-			>
+	<SkyBand>
+		<h1 class="sky-band-title">Search</h1>
+		<p class="sky-band-lede" role="status">{summary}</p>
+		<form method="get" action="/search" class="search-form" role="search">
+			<label for="site-search-query" class="visually-hidden">Search blog posts</label>
 			<input
 				id="site-search-query"
 				type="search"
 				name="q"
 				value={query}
-				placeholder="Search posts..."
+				placeholder="Search posts"
 				class="search-input"
 				autofocus
 			/>
-			<button type="submit" class="search-button">Search</button>
+			<button type="submit" class="button search-button">Search</button>
 		</form>
+	</SkyBand>
 
+	<div class="page-body">
 		{
-			query && (
-				<p class="search-summary">
-					{results.length === 0
-						? `No results for "${query}"`
-						: `${results.length} result${results.length === 1 ? "" : "s"} for "${query}"`}
-				</p>
-			)
-		}
-
-		{
-			results.length > 0 && (
+			results.length > 0 ? (
 				<ol class="search-results">
 					{results.map((result) => (
 						<li class="search-result">
-							<a
-								href={`/posts/${result.slug ?? result.id}`}
-								class="result-link"
-							>
+							<a href={`/posts/${result.slug ?? result.id}`} class="result-link">
 								<h2 class="result-title">{result.title ?? "Untitled"}</h2>
-								{result.snippet && (
-									<p class="result-snippet" set:html={result.snippet} />
-								)}
+								{result.snippet && <p class="result-snippet" set:html={result.snippet} />}
 							</a>
+							<span class="result-arrow">
+								<Arrow />
+							</span>
 						</li>
 					))}
 				</ol>
+			) : (
+				query && (
+					<p class="empty-note">
+						Try a shorter phrase, or <a href="/posts">browse all posts</a>.
+					</p>
+				)
 			)
 		}
-
-		{!query && <p class="search-hint">Enter a search term to find posts.</p>}
-	</section>
+	</div>
 </Base>
 
 <style>
-	.search-page {
-		max-width: var(--max-width);
-		margin: 0 auto;
-		padding: var(--spacing-8) var(--spacing-6) var(--spacing-16);
-	}
-
-	.visually-hidden {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border: 0;
-	}
-
-	.search-title {
-		font-size: var(--font-size-2xl);
-		margin-bottom: var(--spacing-6);
-	}
-
+	/* The field is the kit field and the button is the kit plate (controls.css). */
 	.search-form {
 		display: flex;
-		gap: var(--spacing-2);
-		margin-bottom: var(--spacing-8);
+		gap: 0.5rem;
+		max-width: 40rem;
+		margin-top: clamp(1.25rem, 3vw, 2rem);
 	}
 
 	.search-input {
 		flex: 1;
-		min-width: 0;
-		padding: var(--spacing-2) var(--spacing-4);
-		font-size: var(--font-size-base);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius);
-		background: var(--color-bg);
-		color: var(--color-text);
-	}
-
-	.search-input:focus {
-		border-color: var(--color-brand);
 	}
 
 	.search-button {
 		flex-shrink: 0;
-		padding: var(--spacing-2) var(--spacing-6);
-		font-size: var(--font-size-base);
-		background: var(--color-brand);
-		color: var(--color-on-brand);
-		border: none;
-		border-radius: var(--radius);
-		cursor: pointer;
-		font-weight: 500;
-	}
-
-	.search-button:hover {
-		opacity: 0.9;
-	}
-
-	.search-summary {
-		color: var(--color-muted);
-		margin-bottom: var(--spacing-6);
-	}
-
-	.search-hint {
-		color: var(--color-muted);
 	}
 
 	.search-results {
-		list-style: none;
-		padding: 0;
 		margin: 0;
-		display: flex;
-		flex-direction: column;
+		padding: 0;
+		border-bottom: 1px solid var(--color-orbit-hair);
+		list-style: none;
 	}
 
 	.search-result {
-		padding: var(--spacing-6) 0;
-		border-bottom: 1px solid var(--color-border-subtle);
+		position: relative;
+		display: grid;
+		grid-template-columns: minmax(0, 46rem) 2rem;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 1.5rem 0;
+		border-top: 1px solid var(--color-orbit-hair-strong);
 	}
 
 	.search-result:first-child {
-		padding-top: 0;
-	}
-
-	.search-result:last-child {
-		border-bottom: none;
+		border-top-color: var(--color-orbit-ink);
 	}
 
 	.result-link {
-		display: block;
-		text-decoration: none;
+		display: grid;
+		gap: 0.5rem;
 		color: inherit;
+		text-decoration: none;
+	}
+
+	.result-link::after {
+		position: absolute;
+		inset: 0;
+		content: "";
+	}
+
+	.result-link:focus-visible {
+		outline: none;
+	}
+
+	/* Kit table row: hover and focus print the 3px dot screen, press makes it 2px. */
+	.search-result:has(.result-link:focus-visible) {
+		outline: 3px solid var(--color-orbit-focus);
+		outline-offset: 4px;
+		background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--fk-row-dot) 0) 0 0 / 3px 3px;
+	}
+
+	.result-link:focus-visible .result-title {
+		color: var(--color-orbit-accent);
+	}
+
+	.search-result:has(.result-link:active) {
+		background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--fk-row-dot) 0) 0 0 / 2px 2px;
 	}
 
 	.result-title {
-		font-size: var(--font-size-xl);
-		font-weight: var(--font-weight-heading);
-		line-height: var(--leading-snug);
-		margin-bottom: var(--spacing-2);
-		transition: color var(--transition-fast);
-	}
-
-	.result-link:hover .result-title {
-		color: var(--color-brand);
+		font-size: clamp(1.25rem, 2.2vw, 1.5rem);
+		font-weight: 600;
+		line-height: 1.25;
+		letter-spacing: -0.015em;
+		transition: color var(--fk-step) var(--ease-orbit-out);
 	}
 
 	.result-snippet {
-		font-size: var(--font-size-base);
-		line-height: var(--leading-relaxed);
-		color: var(--color-text-secondary);
+		color: var(--color-orbit-muted);
+		font-size: 1rem;
+		line-height: 1.6;
 	}
 
-	/* FTS returns <mark> wrapping the matched terms */
+	/* FTS wraps the matched terms in <mark>. */
 	.result-snippet :global(mark) {
-		background: var(--color-brand-ring);
-		color: inherit;
 		padding: 0 0.1em;
-		border-radius: 2px;
+		background: color-mix(in oklch, var(--launch-cyan) 45%, transparent);
+		color: var(--color-orbit-ink);
+	}
+
+	.result-arrow {
+		color: var(--color-orbit-accent);
+		font-size: 1.125rem;
+	}
+
+	@media (hover: hover) and (pointer: fine) {
+		.search-result:hover:not(:has(.result-link:active)) {
+			background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--fk-row-dot) 0) 0 0 / 3px 3px;
+		}
+
+		.search-result:hover .result-title {
+			color: var(--color-orbit-accent);
+		}
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.search-result:has(.result-link:focus-visible) .result-arrow :global(.link-arrow) {
+			transform: translateX(3px);
+		}
+
+		@media (hover: hover) and (pointer: fine) {
+			.search-result:hover .result-arrow :global(.link-arrow) {
+				transform: translateX(3px);
+			}
+		}
 	}
 </style>

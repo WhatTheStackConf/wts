@@ -9,7 +9,7 @@ export function AdminLoading(props: { label: string }) {
 }
 
 export function AdminStatus(props: { state: string; label: string }) {
-  const colorState = () => props.state === "accepted" || props.state === "active" ? "active" : props.state === "pending" ? "pending" : props.state === "rejected" || props.state === "revoked" || props.state === "disabled_restore" || props.state === "closed" ? "closed" : "neutral";
+  const colorState = () => props.state === "accepted" || props.state === "active" ? "active" : props.state === "pending" ? "pending" : props.state === "rejected" || props.state === "revoked" ? "rejected" : props.state === "disabled_restore" || props.state === "closed" ? "closed" : "neutral";
   return <span class="cfp-status" data-state={colorState()}>{props.label}</span>;
 }
 

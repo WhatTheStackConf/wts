@@ -1,5 +1,5 @@
-<nav class="toc" aria-label="Table of contents">
-	<h2 class="toc-title">On this page</h2>
+<nav class="toc" aria-labelledby="toc-title">
+	<h2 class="toc-title" id="toc-title">On this page</h2>
 	<div class="toc-content" id="toc-content">
 		<!-- Populated by JS -->
 	</div>
@@ -12,47 +12,115 @@
 </script>
 
 <style>
+	/*
+	 * Kit section nav on a vertical rail. Hover and focus scan a 2px dot rule down the rail;
+	 * the current item carries a solid 2px accent rule and bold ink.
+	 */
 	.toc {
-		margin-bottom: var(--spacing-8);
-		padding-bottom: var(--spacing-6);
-		border-bottom: 1px solid var(--color-border-subtle);
+		padding-left: 1rem;
+		border-left: 1px solid var(--color-orbit-hair-strong);
 	}
 
 	.toc-title {
-		font-size: var(--font-size-xs);
-		font-weight: 500;
+		color: var(--color-orbit-accent);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		line-height: 1.4;
+		letter-spacing: 0.16em;
 		text-transform: uppercase;
-		letter-spacing: var(--tracking-wide);
-		color: var(--color-muted);
-		margin-bottom: var(--spacing-3);
 	}
 
 	.toc-content :global(.toc-list) {
-		list-style: none;
+		margin: 0.5rem 0 0;
 		padding: 0;
-		margin: 0;
-	}
-
-	.toc-content :global(.toc-item) {
-		margin-bottom: var(--spacing-1);
+		list-style: none;
+		scroll-target-group: auto;
 	}
 
 	.toc-content :global(.toc-item--nested) {
-		padding-left: var(--spacing-3);
+		padding-left: 0.75rem;
 	}
 
 	.toc-content :global(.toc-link) {
+		position: relative;
 		display: block;
-		font-size: var(--font-size-sm);
-		color: var(--color-muted);
+		padding: 0.375rem 0;
+		color: var(--color-orbit-muted);
+		font-size: 0.875rem;
+		line-height: 1.35;
 		text-decoration: none;
-		padding: var(--spacing-1) 0;
-		transition: color var(--transition-fast);
-		line-height: var(--leading-snug);
+		transition: color var(--fk-step) var(--ease-orbit-out);
 	}
 
-	.toc-content :global(.toc-link:hover),
-	.toc-content :global(.toc-link.active) {
-		color: var(--color-text);
+	.toc-content :global(.toc-link)::before {
+		position: absolute;
+		top: 0.375rem;
+		bottom: 0.375rem;
+		left: calc(-1rem - 1px);
+		width: 2px;
+		color: var(--color-orbit-accent);
+		background: var(--ctl-line-on);
+		clip-path: inset(0 0 100% 0);
+		content: "";
+	}
+
+	.toc-content :global(.toc-item--nested .toc-link)::before {
+		left: calc(-1.75rem - 1px);
+	}
+
+	.toc-content :global(.toc-link:focus-visible) {
+		color: var(--color-orbit-ink);
+	}
+
+	.toc-content :global(.toc-link:focus-visible)::before {
+		clip-path: inset(0);
+	}
+
+	.toc-content :global(.toc-link:is(:target-current, .target-current, [aria-current])) {
+		color: var(--color-orbit-ink);
+		font-weight: 700;
+	}
+
+	.toc-content :global(.toc-link:is(:target-current, .target-current, [aria-current], :active))::before {
+		background: var(--color-orbit-accent);
+		clip-path: inset(0);
+	}
+
+	@media (hover: hover) and (pointer: fine) {
+		.toc-content :global(.toc-link:hover) {
+			color: var(--color-orbit-ink);
+		}
+
+		.toc-content :global(.toc-link:hover)::before {
+			clip-path: inset(0);
+		}
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.toc-content :global(.toc-link:focus-visible:not(:is(:target-current, .target-current, [aria-current])))::before {
+			animation: toc-rail-scan var(--fk-step) steps(6, end);
+		}
+
+		@media (hover: hover) and (pointer: fine) {
+			.toc-content :global(.toc-link:hover:not(:is(:target-current, .target-current, [aria-current])))::before {
+				animation: toc-rail-scan var(--fk-step) steps(6, end);
+			}
+		}
+
+		@keyframes toc-rail-scan {
+			from {
+				clip-path: inset(0 0 100% 0);
+			}
+
+			to {
+				clip-path: inset(0);
+			}
+		}
+	}
+
+	@media (forced-colors: active) {
+		.toc-content :global(.toc-link)::before {
+			background: Highlight;
+		}
 	}
 </style>

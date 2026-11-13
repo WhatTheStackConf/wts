@@ -2,7 +2,7 @@
 
 The WhatTheStack blog uses EmDash 1.0.1 and Astro server rendering. Its canonical URL is `https://blog.wts.sh`.
 
-This project uses the approved WTS 2027 public theme. The reading surface has warm-ivory pages, a compact navy header, cyan links, and self-hosted WTS fonts. The project does not announce unconfirmed 2027 event details.
+This project uses the approved WTS 2027 public theme. The reading surface has warm-ivory pages, a light glass header, a sky band at altitude 2, dark-cyan links, and self-hosted WTS fonts. The project does not announce unconfirmed 2027 event details.
 
 ## Local development
 
@@ -125,8 +125,11 @@ The original seed does not contain these later cover changes. Use a site export 
 
 | File | Purpose |
 | --- | --- |
-| `blog/tokens.css` | WTS public palette, fonts, and spacing |
+| `blog/tokens.css` | WTS public palette, fonts, and spacing. A copy of `site/tokens.css`. Change the copies together. |
 | `blog/src/styles/theme.css` | Blog overrides and self-hosted font declarations |
+| `blog/src/styles/chrome.css` | Light glass header, search, and footer |
+| `blog/src/styles/controls.css` | Flight controls: buttons, links, tags, pagination, and fields |
+| `blog/src/components/SkyBand.astro` | Sky band with the page title, and the post meta strip on posts |
 | `blog/src/layouts/Base.astro` | WTS logo, navigation, and footer |
 | `blog/src/pages/index.astro` | Editorial index |
 | `blog/astro.config.mjs` | Canonical URL, server adapter, database, and media storage |

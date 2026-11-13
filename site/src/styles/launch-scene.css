@@ -1,141 +1,156 @@
-/* WTS 2027 launch scene · full-width planetary horizon */
+/* WTS 2027 launch scene: a fixed window behind the whole landing.
+ * The static sky reproduces the shader's countdown frame (launch-renderer.ts at flight 0):
+ * mix(ramp(0.6), ramp(1.9), y^1.15) above the horizon, a paper haze band over 12% of the
+ * height, and mix(surface, paper, 0.25) land below. Mixing happens in linear light, as in GLSL.
+ */
 .launch-scene {
-  --launch-horizon-cy: 122%;
-  --launch-horizon-ry: 48%;
-  position: relative;
-  isolation: isolate;
-  width: 100%;
-  min-width: 0;
-  background: var(--launch-sky-night);
-  pointer-events: none;
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    var(--launch-mask-show) 0 92%,
-    var(--color-orbit-star-mask-bright) 95%,
-    var(--color-orbit-star-mask-mid) 97%,
-    var(--color-orbit-star-mask-dim) 99%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    var(--launch-mask-show) 0 92%,
-    var(--color-orbit-star-mask-bright) 95%,
-    var(--color-orbit-star-mask-mid) 97%,
-    var(--color-orbit-star-mask-dim) 99%,
-    transparent 100%
-  );
-}
-
-.launch-scene::after {
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  background-image: url("../assets/images/launch-nebula.webp");
-  background-position: center top;
-  background-size: cover;
-  background-repeat: no-repeat;
-  opacity: 0.43;
-  content: "";
-  pointer-events: none;
-}
-
-.launch-scene::before {
-  position: absolute;
+  --launch-overscan: 16px;
+  --launch-ground-level: 24%;
+  --launch-sky-low: color-mix(in srgb-linear, var(--alt-0) 40%, var(--alt-1));
+  --launch-sky-high: color-mix(in srgb-linear, var(--alt-1) 10%, var(--alt-2));
+  --launch-land: color-mix(in srgb-linear, var(--color-orbit-surface) 75%, var(--color-orbit-paper));
+  --launch-skyline-width: min(100vw, 110vh, 1760px);
+  position: fixed;
   z-index: 0;
   inset: 0;
-  background-image: var(--launch-starfield),
-    radial-gradient(circle at 8% 18%, color-mix(in srgb, var(--color-orbit-star-sparkle) 43%, transparent) 0 .72px, transparent 1.1px),
-    radial-gradient(circle at 27% 38%, color-mix(in srgb, var(--color-orbit-star-sparkle) 34%, transparent) 0 .62px, transparent 1px),
-    radial-gradient(circle at 49% 14%, color-mix(in srgb, var(--color-orbit-star-sparkle) 45%, transparent) 0 .78px, transparent 1.12px),
-    radial-gradient(circle at 73% 31%, color-mix(in srgb, var(--color-orbit-star-sparkle) 35%, transparent) 0 .62px, transparent 1px),
-    radial-gradient(circle at 92% 11%, color-mix(in srgb, var(--color-orbit-star-sparkle) 42%, transparent) 0 .74px, transparent 1.1px);
-  background-repeat: no-repeat;
-  mask-image: linear-gradient(180deg, var(--launch-mask-show) 0 76%, transparent 100%);
-  filter: brightness(1.18);
-  content: "";
-  pointer-events: none;
-}
-
-.launch-scene__star {
-  position: absolute;
-  z-index: 1;
-  width: var(--star-size);
-  height: var(--star-size);
-  border-radius: 50%;
-  background: var(--color-orbit-twinkle);
-  opacity: var(--star-opacity);
-  box-shadow: 0 0.5px 3px 0.5px var(--color-orbit-star-shadow);
-  animation-name: launch-scene-star-twinkle;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
-  animation-play-state: paused;
-  pointer-events: none;
-}
-
-.launch-scene__star--one { top: 16%; left: 16%; --star-size: 1px; --star-opacity: 0.62; animation-duration: 6.2s; animation-delay: -1.8s; }
-.launch-scene__star--two { top: 26%; left: 38%; --star-size: 1.1px; --star-opacity: 0.72; animation-duration: 8.4s; animation-delay: -5.1s; }
-.launch-scene__star--three { top: 12%; left: 59%; --star-size: 1.2px; --star-opacity: 0.84; animation-duration: 7.1s; animation-delay: -2.7s; }
-.launch-scene__star--four { top: 34%; left: 78%; --star-size: 1px; --star-opacity: 0.58; animation-duration: 9.2s; animation-delay: -6.4s; }
-.launch-scene__star--five { top: 42%; left: 23%; --star-size: 1.3px; --star-opacity: 0.88; animation-duration: 5.6s; animation-delay: -3.3s; }
-.launch-scene__star--six { top: 21%; left: 88%; --star-size: 1.1px; --star-opacity: 0.68; animation-duration: 8.8s; animation-delay: -0.9s; }
-
-.launch-scene[data-motion="running"] .launch-scene__star {
-  animation-play-state: running;
-}
-
-@keyframes launch-scene-star-twinkle {
-  0%, 100% { opacity: calc(var(--star-opacity) * 0.78); }
-  50% { opacity: var(--star-opacity); }
-}
-.launch-scene__horizon {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
   overflow: hidden;
+  pointer-events: none;
+  contain: strict;
 }
 
-.launch-scene__horizon-ellipse {
-  cx: 50%;
-  cy: var(--launch-horizon-cy);
-  rx: 66%;
-  ry: var(--launch-horizon-ry);
+.launch-scene__frame {
+  position: absolute;
+  inset: calc(-1 * var(--launch-overscan));
 }
 
+.launch-scene__frame,
+.launch-scene__ground {
+  will-change: transform;
+}
 
+.launch-scene__sky,
+.launch-scene__canvas,
+.launch-scene__ground {
+  position: absolute;
+  inset: 0;
+}
 
-
-
-.launch-scene__lower-clouds {
-  opacity: 0.56;
+.launch-scene__sky {
+  background: linear-gradient(to top, var(--launch-land) 0 var(--launch-ground-level), var(--launch-sky-low) var(--launch-ground-level), var(--launch-sky-high));
+  background: linear-gradient(
+    to top in srgb-linear,
+    var(--launch-land) 0 24%,
+    color-mix(in srgb-linear, var(--color-orbit-paper) 55%, color-mix(in srgb-linear, var(--launch-sky-high) 19.4%, var(--launch-sky-low))) 24%,
+    color-mix(in srgb-linear, var(--color-orbit-paper) 46.4%, color-mix(in srgb-linear, var(--launch-sky-high) 22.2%, var(--launch-sky-low))) 27%,
+    color-mix(in srgb-linear, var(--color-orbit-paper) 27.5%, color-mix(in srgb-linear, var(--launch-sky-high) 25%, var(--launch-sky-low))) 30%,
+    color-mix(in srgb-linear, var(--color-orbit-paper) 8.6%, color-mix(in srgb-linear, var(--launch-sky-high) 28%, var(--launch-sky-low))) 33%,
+    color-mix(in srgb-linear, var(--launch-sky-high) 30.9%, var(--launch-sky-low)) 36%,
+    color-mix(in srgb-linear, var(--launch-sky-high) 45.1%, var(--launch-sky-low)) 50%,
+    color-mix(in srgb-linear, var(--launch-sky-high) 60.9%, var(--launch-sky-low)) 65%,
+    color-mix(in srgb-linear, var(--launch-sky-high) 77.4%, var(--launch-sky-low)) 80%,
+    var(--launch-sky-high) 100%
+  );
 }
 
 .launch-scene__canvas {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  display: block;
+  display: none;
   width: 100%;
   height: 100%;
-  pointer-events: none;
+  opacity: 0;
 }
 
+.launch-scene__canvas[data-state="warming"],
+.launch-scene__canvas[data-state="on"] {
+  display: block;
+}
 
+.launch-scene__canvas[data-state="on"] {
+  opacity: 1;
+}
 
+.launch-scene__ground {
+  color: color-mix(in oklch, var(--color-orbit-ink) 78%, transparent);
+}
+
+.launch-scene__skyline {
+  position: absolute;
+  bottom: calc(var(--launch-ground-level) - var(--launch-skyline-width) / 200);
+  left: 50%;
+  display: block;
+  width: var(--launch-skyline-width);
+  height: auto;
+  aspect-ratio: 6;
+  translate: -50% 0;
+  overflow: visible;
+}
+
+.launch-scene__ground-line {
+  position: absolute;
+  right: 0;
+  bottom: var(--launch-ground-level);
+  left: 0;
+  height: 1px;
+  translate: 0 50%;
+  background: currentColor;
+}
+
+.launch-scene__datum {
+  position: absolute;
+  top: calc(100% - var(--launch-ground-level) + 0.7rem);
+  left: max(calc(var(--launch-overscan) + 1.5rem), calc((100% - 1320px) / 2));
+  color: var(--color-orbit-ink);
+  font: 600 0.6875rem/1 var(--font-orbit-body);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 
 @media (max-width: 767px) {
   .launch-scene {
-    --launch-horizon-cy: 90%;
-    --launch-horizon-ry: 16%;
+    --launch-skyline-width: 230vw;
+  }
+
+  .launch-scene__datum {
+    left: calc(var(--launch-overscan) + 1rem);
   }
 }
 
+/* Signal glitch (LaunchScene SignalGlitch): the skyline jumps with the shader's slice rows. */
+@media (prefers-reduced-motion: no-preference) {
+  .launch-scene[data-glitch="a"] .launch-scene__skyline {
+    animation: launch-glitch-jump 120ms steps(1, end);
+  }
 
-@media (prefers-reduced-motion: reduce) {
-  .launch-scene__star {
-    animation: none !important;
+  .launch-scene[data-glitch="b"] .launch-scene__skyline {
+    animation: launch-glitch-drop 120ms steps(1, end);
+  }
+
+  @keyframes launch-glitch-jump {
+    from {
+      transform: translateX(1.5px);
+    }
+
+    40% {
+      transform: none;
+    }
+
+    55% {
+      transform: translateX(-0.5px);
+    }
+  }
+
+  @keyframes launch-glitch-drop {
+    from {
+      transform: translateX(-1.5px);
+    }
+
+    40% {
+      transform: none;
+    }
+
+    55% {
+      transform: translateX(0.5px);
+    }
   }
 }
-

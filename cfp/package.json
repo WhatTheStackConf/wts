@@ -24,7 +24,7 @@
     "build": "vp build && node ../scripts/check-server-bundle.mjs .output/server",
     "typecheck": "tsc --noEmit",
     "check": "vp check",
-    "test": "node --experimental-strip-types --test src/server/*.test.ts",
+    "test": "node --experimental-strip-types --test src/server/*.test.ts src/lib/*.test.ts",
     "test:oidc": "node --experimental-strip-types tests/cfp-oidc.acceptance.mjs",
     "browser:fixture": "node --experimental-strip-types tests/browser-fixture.mjs",
     "test:browser": "node --experimental-strip-types tests/browser-proof.mjs",

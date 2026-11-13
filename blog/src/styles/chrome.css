@@ -1,0 +1,385 @@
+/*
+ * Blog chrome: light glass header, header search, and the site footer.
+ * Mirrors the WTS 2027 supporting-page header (site/src/styles/public-header.css)
+ * and footer (site/src/styles/public-support.css .orbit-footer*).
+ */
+
+/* Header ------------------------------------------------------------------ */
+
+.site-header {
+	position: sticky;
+	top: 0;
+	z-index: 100;
+	background: var(--color-orbit-glass);
+	box-shadow: inset 0 -1px 0 var(--color-orbit-hair);
+	color: var(--color-orbit-ink);
+	-webkit-backdrop-filter: blur(var(--blur-orbit-glass)) saturate(1.2);
+	backdrop-filter: blur(var(--blur-orbit-glass)) saturate(1.2);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.site-header {
+		background: color-mix(in oklch, var(--color-orbit-glass), var(--color-orbit-paper) 70%);
+	}
+}
+
+.site-header-inner {
+	display: flex;
+	align-items: center;
+	gap: clamp(1rem, 2.4vw, 2.25rem);
+	width: var(--page-width);
+	min-height: 90px;
+	margin-inline: auto;
+}
+
+.site-brand {
+	display: inline-flex;
+	min-height: 44px;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: 0.625rem;
+	color: inherit;
+	text-decoration: none;
+}
+
+.site-brand-logo {
+	width: auto;
+	height: 46px;
+}
+
+.site-brand-name {
+	font-family: var(--font-orbit-display);
+	font-size: 1.75rem;
+	font-weight: 500;
+	line-height: 1;
+	letter-spacing: -0.025em;
+	white-space: nowrap;
+}
+
+/* The label is a static kit tag; its frame and states are in controls.css. */
+.site-brand-label {
+	margin-inline-start: 0.25rem;
+}
+
+.site-nav {
+	display: flex;
+	align-items: center;
+	gap: clamp(1rem, 2.4vw, 2rem);
+	margin-inline-start: auto;
+}
+
+.site-nav a,
+.site-admin,
+.site-footer-links a,
+.site-footer-bottom a {
+	position: relative;
+	display: inline-flex;
+	min-height: 44px;
+	align-items: center;
+	color: inherit;
+	text-decoration: none;
+	white-space: nowrap;
+	transition: color var(--fk-step) var(--ease-orbit-out);
+}
+
+.site-nav a,
+.site-admin {
+	font-size: 0.9375rem;
+	font-weight: 600;
+}
+
+/* Link rules, the current page and focus states: controls.css (kit nav link). */
+
+.site-admin {
+	padding-inline-start: clamp(1rem, 2vw, 1.5rem);
+	border-inline-start: 1px solid var(--color-orbit-hair-strong);
+	color: var(--color-orbit-muted);
+}
+
+/* Header search ----------------------------------------------------------- */
+
+.site-search-landmark {
+	position: relative;
+	display: block;
+	flex: 0 1 15rem;
+	min-width: 10rem;
+}
+
+.site-search-landmark .site-search {
+	display: block;
+	width: 100%;
+	--emdash-search-border-focus: var(--color-orbit-accent);
+}
+
+/* The field and kbd recipes are in controls.css; this places the kbd inside the field. */
+.site-search-key {
+	position: absolute;
+	top: 50%;
+	right: 0.625rem;
+	white-space: nowrap;
+	pointer-events: none;
+	translate: 0 -50%;
+}
+
+.site-search-landmark:is(:focus-within, :has(.site-search-input:not(:placeholder-shown))) .site-search-key {
+	display: none;
+}
+
+.site-search .site-search-results {
+	right: 0;
+	left: auto;
+	width: max(100%, min(28rem, 100vw - 2rem));
+	margin-top: 0.5rem;
+	color: var(--color-orbit-ink);
+}
+
+.site-search-result .emdash-live-search-result-title {
+	display: block;
+	font-size: 0.9375rem;
+	font-weight: 600;
+}
+
+.site-search-result .emdash-live-search-result-collection {
+	display: block;
+	margin-top: 0.125rem;
+	color: var(--color-orbit-accent);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+.site-search-result .emdash-live-search-result-snippet,
+.site-search-results :is(.emdash-live-search-loading, .emdash-live-search-no-results) {
+	color: var(--color-orbit-muted);
+	font-size: 0.875rem;
+}
+
+.site-search-result mark {
+	background: color-mix(in oklch, var(--launch-cyan) 45%, transparent);
+	color: inherit;
+}
+
+/* Footer ------------------------------------------------------------------ */
+
+.site-footer {
+	width: var(--page-width);
+	margin-inline: auto;
+	padding-block: 2.5rem 1.25rem;
+	border-top: 1px solid var(--color-orbit-rule);
+	color: var(--color-orbit-ink);
+}
+
+.site-footer-top {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.35fr);
+	align-items: start;
+	gap: 2rem;
+	padding-bottom: 2.75rem;
+}
+
+.site-footer-brand {
+	display: inline-flex;
+	justify-self: start;
+	align-items: center;
+	gap: 0.65rem;
+	color: inherit;
+	font-family: var(--font-orbit-display);
+	font-size: 1.125rem;
+	line-height: 1.12;
+	text-decoration: none;
+}
+
+.site-footer-brand img {
+	width: auto;
+	height: 42px;
+}
+
+.site-footer-brand strong {
+	color: var(--color-orbit-accent);
+	font-family: var(--font-orbit-body);
+	font-size: 0.8rem;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+}
+
+.site-footer-tagline {
+	max-width: 32ch;
+	color: var(--color-orbit-muted);
+	font-size: 0.9375rem;
+	line-height: 1.55;
+}
+
+.site-footer-links {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 0.7rem 1.2rem;
+}
+
+.site-footer-links a,
+.site-footer-bottom a {
+	color: var(--color-orbit-muted);
+}
+
+.site-footer-links a {
+	gap: 0.5rem;
+	font-size: 0.8125rem;
+	font-weight: 600;
+}
+
+.site-footer-widgets {
+	padding-bottom: 2rem;
+	color: var(--color-orbit-muted);
+	font-size: 0.875rem;
+}
+
+.site-footer-widgets:not(:has(.widget-area)) {
+	display: none;
+}
+
+.site-footer-widgets .widget__title {
+	margin-bottom: 0.5rem;
+	color: var(--color-orbit-accent);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+}
+
+.site-footer-bottom {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 1.5rem;
+	padding-block: 1rem 0.25rem;
+	border-top: 1px solid var(--color-orbit-rule);
+	color: var(--color-orbit-muted);
+	font-size: 0.75rem;
+}
+
+.site-footer-bottom a {
+	font-weight: 600;
+}
+
+/* The arrow inherits the link color and travels a little on hover. */
+.link-arrow {
+	display: inline-grid;
+	width: 1em;
+	height: 1em;
+	flex: 0 0 auto;
+	place-items: center;
+}
+
+.link-arrow svg {
+	display: block;
+	width: 1em;
+	height: 1em;
+}
+
+.link-arrow-outbound svg {
+	transform: rotate(-45deg);
+}
+
+/* Responsive -------------------------------------------------------------- */
+
+/* Two rows: brand (and admin) above, navigation and search below. */
+@media (max-width: 1023px) {
+	.site-header-inner {
+		display: grid;
+		grid-template-areas:
+			"brand brand admin"
+			"nav search search";
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		gap: 0.125rem 1rem;
+		min-height: 0;
+		padding-block: 0.5rem;
+	}
+
+	.site-brand {
+		grid-area: brand;
+	}
+
+	.site-admin {
+		grid-area: admin;
+		justify-self: end;
+	}
+
+	.site-nav {
+		grid-area: nav;
+		margin: 0;
+	}
+
+	.site-search-landmark {
+		grid-area: search;
+		justify-self: end;
+		width: min(100%, 18rem);
+		min-width: 0;
+	}
+}
+
+@media (max-width: 850px) {
+	.site-footer-top {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+	}
+
+	.site-footer-tagline {
+		display: none;
+	}
+}
+
+@media (max-width: 767px) {
+	.site-brand-logo {
+		height: 38px;
+	}
+
+	.site-brand-name {
+		font-size: clamp(1.1rem, 5.5vw, 1.35rem);
+	}
+
+	.site-nav {
+		gap: 0.875rem;
+	}
+
+	.site-nav a,
+	.site-admin {
+		font-size: 0.8125rem;
+	}
+
+	.site-footer {
+		padding-top: 1.75rem;
+	}
+
+	.site-footer-top {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 1.5rem;
+		padding-bottom: 1.75rem;
+	}
+
+	.site-footer-links {
+		justify-content: flex-start;
+		gap: 0.75rem 1.1rem;
+	}
+
+	.site-footer-bottom {
+		font-size: 0.6875rem;
+	}
+}
+
+/* Narrow phones: navigation and search each take a full row. */
+@media (max-width: 374px) {
+	.site-header-inner {
+		grid-template-areas:
+			"brand brand admin"
+			"nav nav nav"
+			"search search search";
+		row-gap: 0.25rem;
+		padding-bottom: 0.625rem;
+	}
+
+	.site-search-landmark {
+		justify-self: stretch;
+		width: 100%;
+	}
+}
+

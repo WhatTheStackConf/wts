@@ -1,0 +1,657 @@
+/*
+ * Flight controls: the WTS 2027 flight kit, applied to the blog's own selectors.
+ * Canonical recipes: ~/Downloads/UI_Moodboard/source/flight-kit/flight-kit.css.
+ * Shipped reference: site/src/styles/public-links.css.
+ *
+ *   - Square corners. Plates and frames cut the top-right and bottom-left corners.
+ *     Fills and frames live on pseudo-elements or background layers, never as clip-path on
+ *     the focusable element, so the 3px amber focus outline stays a full rectangle.
+ *   - Hover and focus print a 3px dot screen. Press makes it 2px.
+ *   - Motion is one stepped eighth (150 ms). Reduced motion keeps every end state.
+ */
+
+@property --fk-scan {
+	syntax: "<percentage>";
+	inherits: false;
+	initial-value: 0%;
+}
+
+:root {
+	--ctl-notch: 9px;
+	--ctl-line-rest: linear-gradient(90deg, currentColor 1px, transparent 0) 0 0 / 3px 1px;
+	--ctl-line-on: conic-gradient(currentColor 25%, transparent 0 50%, currentColor 0 75%, transparent 0) 0 0 / 2px 2px;
+	--fk-step: var(--dur-orbit-eighth, 150ms);
+	--fk-row-dot: color-mix(in oklch, var(--color-orbit-accent) 18%, transparent);
+}
+
+/*
+ * The notch polygons resolve on each host, so a host with a 6px notch gets a 6px clip that
+ * matches its 6px corner diagonals.
+ */
+:where(
+	.button,
+	.skip-link,
+	.pagination a,
+	.tag-chip > span,
+	.site-brand-label,
+	.byline-more,
+	.sidebar-widgets .widget-tags__link
+) {
+	--ctl-plate: polygon(0 0, calc(100% - var(--ctl-notch)) 0, 100% var(--ctl-notch), 100% 100%, var(--ctl-notch) 100%, 0 calc(100% - var(--ctl-notch)));
+	--ctl-plate-off: polygon(0 0, 0 0, 0 var(--ctl-notch), 0 100%, 0 100%, 0 calc(100% - var(--ctl-notch)));
+}
+
+/* One focus style: a 3px amber rectangle. Fields sit closer. */
+:where(a:any-link, button, input, textarea, select, summary, [tabindex]):focus-visible {
+	outline: 3px solid var(--color-orbit-focus);
+	outline-offset: 4px;
+}
+
+/* 1 · Plate: primary action and the skip link. ----------------------------- */
+
+.button,
+.skip-link {
+	--ctl-fill: var(--color-orbit-accent);
+	--ctl-ink: var(--color-orbit-accent-ink);
+	--ctl-fill-hover: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 24%);
+	--ctl-dot: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 60%);
+	position: relative;
+	isolation: isolate;
+	display: inline-flex;
+	min-height: 48px;
+	align-items: center;
+	justify-content: center;
+	gap: 0.65rem;
+	padding: 0.7rem 1.2rem;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--ctl-ink);
+	font: 700 0.9375rem/1.2 var(--font-orbit-body);
+	text-decoration: none;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+:is(.button, .skip-link)::before,
+:is(.button, .skip-link)::after {
+	position: absolute;
+	z-index: -1;
+	inset: 0;
+	content: "";
+	pointer-events: none;
+}
+
+:is(.button:not(.button-ghost), .skip-link)::before {
+	background: var(--ctl-fill);
+	clip-path: var(--ctl-plate);
+	transition: background-color var(--fk-step) var(--ease-orbit-out);
+}
+
+:is(.button:not(.button-ghost), .skip-link)::after {
+	background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 3px 3px;
+	clip-path: var(--ctl-plate-off);
+}
+
+:is(.button:not(.button-ghost), .skip-link):focus-visible:not(:disabled, [aria-disabled="true"])::before {
+	background: var(--ctl-fill-hover);
+}
+
+:is(.button:not(.button-ghost), .skip-link):focus-visible:not(:disabled, [aria-disabled="true"])::after {
+	clip-path: var(--ctl-plate);
+}
+
+.button:active:not(:disabled, [aria-disabled="true"]) {
+	translate: 0 1px;
+}
+
+.button:not(.button-ghost):active:not(:disabled, [aria-disabled="true"])::after {
+	background-size: 2px 2px;
+	clip-path: var(--ctl-plate);
+}
+
+.button:is(:disabled, [aria-disabled="true"]) {
+	--ctl-fill: var(--color-orbit-surface);
+	color: var(--color-orbit-muted);
+	cursor: not-allowed;
+}
+
+/* Skip link: a plate that drops in on focus. */
+.skip-link {
+	position: fixed;
+	z-index: 2000;
+	top: 0.75rem;
+	left: 0.75rem;
+	translate: 0 -200%;
+}
+
+.skip-link:focus-visible {
+	translate: 0 0;
+}
+
+/* 2 · Frame: the secondary action. ---------------------------------------- */
+
+.button.button-ghost,
+.pagination a,
+.tag-chip > span,
+.site-brand-label,
+.sidebar-widgets .widget-tags__link {
+	--ctl-line: var(--color-orbit-ink);
+	--ctl-dot: color-mix(in oklch, var(--color-orbit-accent) 30%, transparent);
+	position: relative;
+	isolation: isolate;
+	color: var(--color-orbit-ink);
+}
+
+:is(.button.button-ghost, .pagination a, .tag-chip > span, .site-brand-label, .sidebar-widgets .widget-tags__link)::before {
+	border: 1px solid var(--ctl-line);
+	background: none;
+	clip-path: var(--ctl-plate);
+	transition: none;
+}
+
+/* The two cut corners get their own 1px diagonals. */
+:is(.button.button-ghost, .pagination a, .tag-chip > span, .site-brand-label, .sidebar-widgets .widget-tags__link)::after {
+	background:
+		linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 100% 0 / var(--ctl-notch) var(--ctl-notch) no-repeat,
+		linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 0 100% / var(--ctl-notch) var(--ctl-notch) no-repeat;
+	clip-path: none;
+}
+
+:is(.pagination a, .tag-chip > span, .site-brand-label, .sidebar-widgets .widget-tags__link)::before,
+:is(.pagination a, .tag-chip > span, .site-brand-label, .sidebar-widgets .widget-tags__link)::after {
+	position: absolute;
+	z-index: -1;
+	inset: 0;
+	content: "";
+	pointer-events: none;
+}
+
+:is(.button.button-ghost, .pagination a):focus-visible:not(:disabled, [aria-disabled="true"])::before,
+.tag-chip:focus-visible > span::before,
+.site-brand:focus-visible .site-brand-label::before,
+.sidebar-widgets .widget-tags__link:focus-visible::before {
+	background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 3px 3px;
+}
+
+.button.button-ghost:is(:disabled, [aria-disabled="true"]) {
+	--ctl-line: var(--color-orbit-rule);
+	color: var(--color-orbit-muted);
+}
+
+:is(.button.button-ghost, .pagination a):active:not(:disabled, [aria-disabled="true"])::before,
+.tag-chip:active > span::before,
+.site-brand:active .site-brand-label::before,
+.sidebar-widgets .widget-tags__link:active::before {
+	background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 2px 2px;
+}
+
+:is(.pagination a, .tag-chip, .sidebar-widgets .widget-tags__link):active {
+	translate: 0 1px;
+}
+
+/* 11 · Tags. The link keeps a 44px target; the inner span is the 2rem chip. */
+.tag-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0 0.5rem;
+}
+
+.tag-chip {
+	display: inline-flex;
+	min-height: 44px;
+	align-items: center;
+	color: var(--color-orbit-ink);
+	text-decoration: none;
+}
+
+.tag-chip > span,
+.site-brand-label,
+.sidebar-widgets .widget-tags__link {
+	--ctl-notch: 6px;
+	--ctl-line: var(--color-orbit-muted);
+	display: inline-flex;
+	min-height: 2rem;
+	align-items: center;
+	padding: 0 0.65rem;
+	font: 700 0.6875rem/1 var(--font-orbit-body);
+	letter-spacing: 0.12em;
+	text-decoration: none;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.tag-chip:focus-visible > span,
+.sidebar-widgets .widget-tags__link:focus-visible {
+	--ctl-line: var(--color-orbit-accent);
+}
+
+/* The BLOG label is a static tag on the home link: a hairline frame at rest. */
+.site-brand-label {
+	--ctl-line: var(--color-orbit-hair-strong);
+}
+
+.site-brand:focus-visible .site-brand-label {
+	--ctl-line: var(--color-orbit-accent);
+}
+
+/* 14 · Pagination: framed squares with tabular figures. */
+.pagination a {
+	--ctl-notch: 6px;
+	display: inline-flex;
+	min-width: 44px;
+	min-height: 44px;
+	align-items: center;
+	justify-content: center;
+	gap: 0.65rem;
+	padding: 0 0.75rem;
+	font: 700 0.875rem/1 var(--font-orbit-body);
+	font-variant-numeric: tabular-nums;
+	text-decoration: none;
+}
+
+/* 4 · Links. ---------------------------------------------------------------- */
+
+/* Nav links: no rule at rest. Hover and focus scan in a 2px dot rule; press makes it solid. */
+:is(.site-nav a, .site-admin, .site-footer-links a, .site-footer-bottom a, .sidebar-widgets :is(.widget-categories__link, .widget-recent-posts__link, .widget-archives__link))::after {
+	position: absolute;
+	right: 0;
+	bottom: 0.5rem;
+	left: 0;
+	height: 2px;
+	background: var(--ctl-line-on);
+	clip-path: inset(0 100% 0 0);
+	content: "";
+}
+
+.site-admin::after {
+	left: clamp(1rem, 2vw, 1.5rem);
+}
+
+:is(.site-nav a, .site-admin, .site-footer-links a, .site-footer-bottom a, .sidebar-widgets :is(.widget-categories__link, .widget-recent-posts__link, .widget-archives__link)):focus-visible {
+	color: var(--color-orbit-accent);
+}
+
+:is(.site-nav a, .site-admin, .site-footer-links a, .site-footer-bottom a, .sidebar-widgets :is(.widget-categories__link, .widget-recent-posts__link, .widget-archives__link)):focus-visible::after {
+	clip-path: inset(0);
+}
+
+.sidebar-widgets :is(.widget-categories__link, .widget-recent-posts__link, .widget-archives__link) {
+	position: relative;
+	display: inline-flex;
+	min-height: 44px;
+	align-items: center;
+	color: var(--color-orbit-ink);
+	font-weight: 600;
+	text-decoration: none;
+	transition: color var(--fk-step) var(--ease-orbit-out);
+}
+
+/* The current page keeps a solid 2px rule, so it never relies on colour alone. */
+.site-nav a[aria-current] {
+	color: var(--color-orbit-accent);
+}
+
+.site-nav a[aria-current]::after,
+:is(.site-nav a, .site-admin, .site-footer-links a, .site-footer-bottom a, .sidebar-widgets :is(.widget-categories__link, .widget-recent-posts__link, .widget-archives__link)):active::after {
+	background: currentColor;
+	clip-path: inset(0);
+}
+
+/* Copy links wrap across lines, so they use text-decoration: a dotted rule at rest. */
+.inline-action,
+.prose a,
+.empty-note a {
+	color: var(--color-orbit-accent);
+	text-decoration: underline dotted 1px;
+	text-decoration-color: currentColor;
+	text-underline-offset: 0.25em;
+	transition: color var(--fk-step) var(--ease-orbit-out);
+}
+
+.prose a,
+.empty-note a {
+	font-weight: 600;
+}
+
+:is(.inline-action, .prose a, .empty-note a):focus-visible,
+.featured:has(.featured-title a:focus-visible) .inline-action {
+	color: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 30%);
+	text-decoration-thickness: 2px;
+}
+
+:is(.inline-action, .prose a, .empty-note a):active,
+.featured:has(.featured-title a:active) .inline-action {
+	text-decoration-style: solid;
+}
+
+/* Pagination links are frames, so they drop the copy-link rule. */
+.pagination a.inline-action {
+	color: var(--color-orbit-ink);
+	text-decoration: none;
+}
+
+/* The "+N" byline names a tooltip; a dotted rule shows that it has more to say. */
+.byline-more {
+	--ctl-notch: 6px;
+	text-decoration: underline dotted 1px;
+	text-underline-offset: 0.25em;
+}
+
+.byline-more:focus-visible {
+	color: var(--color-orbit-ink);
+	text-decoration-thickness: 2px;
+}
+
+/* Arrows step forward on hover and focus, only when motion is allowed. */
+.link-arrow {
+	transition: transform var(--fk-step) steps(2, end);
+}
+
+/* 5 · Fields. The frame is drawn with background layers, so no wrapper is needed.
+ * Header glass and the sky band are not solid colours, so the notch is cut out of the
+ * fill and stays transparent instead of being painted with --fk-ground. */
+.site-search-landmark .site-search .site-search-input,
+.search-form .search-input,
+.sidebar-widgets .widget-search__input {
+	--field-line: var(--color-orbit-muted);
+	--field-w: 1px;
+	--field-fill: color-mix(in oklch, var(--color-orbit-paper), white 55%);
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+	min-height: 3rem;
+	padding: 0.7rem 0.85rem;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+	color: var(--color-orbit-ink);
+	caret-color: var(--color-orbit-accent);
+	font: 400 max(1rem, 1em)/1.4 var(--font-orbit-body);
+	appearance: none;
+	background:
+		repeating-linear-gradient(90deg, var(--color-orbit-accent) 0 2px, transparent 0 3px) left 2px bottom 3px / calc(var(--fk-scan) - 4px) 2px no-repeat,
+		linear-gradient(var(--field-line) 0 0) left top / var(--field-w) 100% no-repeat,
+		linear-gradient(var(--field-line) 0 0) left bottom / 100% var(--field-w) no-repeat,
+		linear-gradient(var(--field-line) 0 0) left top / calc(100% - var(--ctl-notch)) var(--field-w) no-repeat,
+		linear-gradient(var(--field-line) 0 0) right bottom / var(--field-w) calc(100% - var(--ctl-notch)) no-repeat,
+		linear-gradient(to bottom left, transparent calc(50% - var(--field-w) / 2), var(--field-line) 0 calc(50% + var(--field-w) / 2), var(--field-fill) 0) right top / var(--ctl-notch) var(--ctl-notch) no-repeat,
+		linear-gradient(var(--field-fill) 0 0) left top / calc(100% - var(--ctl-notch)) 100% no-repeat,
+		linear-gradient(var(--field-fill) 0 0) right bottom / var(--ctl-notch) calc(100% - var(--ctl-notch)) no-repeat;
+}
+
+:is(.site-search-landmark .site-search .site-search-input, .search-form .search-input, .sidebar-widgets .widget-search__input)::placeholder {
+	color: var(--color-orbit-muted);
+	opacity: 1;
+}
+
+:is(.site-search-landmark .site-search .site-search-input, .search-form .search-input, .sidebar-widgets .widget-search__input):focus-visible {
+	--field-line: var(--color-orbit-accent);
+	--field-w: 2px;
+	--fk-scan: 100%;
+	outline: 3px solid var(--color-orbit-focus);
+	outline-offset: 2px;
+}
+
+/* Doubled, as in the kit, so the error line wins over hover and focus. */
+:is(.site-search-landmark .site-search .site-search-input, .search-form .search-input, .sidebar-widgets .widget-search__input):is(.site-search-landmark .site-search .site-search-input, .search-form .search-input, .sidebar-widgets .widget-search__input):is(:user-invalid, [aria-invalid="true"]) {
+	--field-line: var(--color-orbit-error);
+	--field-w: 2px;
+}
+
+:is(.site-search-landmark .site-search .site-search-input, .search-form .search-input, .sidebar-widgets .widget-search__input):disabled {
+	--field-line: var(--color-orbit-rule);
+	--field-fill: var(--color-orbit-surface);
+	color: var(--color-orbit-muted);
+	cursor: not-allowed;
+}
+
+/* The header field leaves room for the kbd hint while the hint is shown (see chrome.css). */
+.site-search-landmark .site-search .site-search-input {
+	padding-right: 3.75rem;
+}
+
+@media (max-width: 1100px), (pointer: coarse) {
+	.site-search-landmark .site-search .site-search-input {
+		padding-right: 0.85rem;
+	}
+
+	.site-search-landmark .site-search-key {
+		display: none;
+	}
+}
+
+/* The native clear button is a muted cross that turns accent on hover. */
+:is(.site-search-landmark .site-search .site-search-input, .search-form .search-input, .sidebar-widgets .widget-search__input)::-webkit-search-cancel-button {
+	width: 12px;
+	height: 12px;
+	margin-inline-start: 0.5rem;
+	background: var(--color-orbit-muted);
+	cursor: pointer;
+	appearance: none;
+	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M1 1l10 10M11 1L1 11' stroke='black' stroke-width='2'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+:is(.site-search-landmark .site-search .site-search-input, .search-form .search-input, .sidebar-widgets .widget-search__input)::-webkit-search-cancel-button:hover {
+	background: var(--color-orbit-accent);
+}
+
+/* 17 · Tooltip and kbd. ------------------------------------------------------ */
+
+.site-search-key {
+	display: inline-grid;
+	min-width: 1.6em;
+	min-height: 1.6em;
+	place-items: center;
+	padding: 0 0.35em;
+	border: 1px solid var(--color-orbit-muted);
+	border-bottom-width: 2px;
+	color: var(--color-orbit-ink);
+	font: 700 0.75rem/1 var(--font-orbit-body);
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0;
+}
+
+.byline-more[data-tooltip]:is(:hover, :focus-visible)::after {
+	position: absolute;
+	z-index: 10;
+	bottom: calc(100% + 6px);
+	left: 50%;
+	width: max-content;
+	max-width: 18rem;
+	padding: 0.45rem 0.7rem;
+	background: var(--color-orbit-ink);
+	color: var(--color-orbit-paper);
+	font: 600 0.8125rem/1.35 var(--font-orbit-body);
+	letter-spacing: 0;
+	text-transform: none;
+	white-space: normal;
+	content: attr(data-tooltip);
+	clip-path: var(--ctl-plate);
+	pointer-events: none;
+	translate: -50% 0;
+}
+
+/* 16 · Menu: the live-search results are a glass panel with corner marks. --------- */
+
+.site-search .site-search-results {
+	padding: 0.4rem;
+	border: 1px solid var(--color-orbit-hair-strong);
+	border-radius: 0;
+	background:
+		linear-gradient(var(--color-orbit-ink) 0 0) left top / 14px 1.5px no-repeat border-box,
+		linear-gradient(var(--color-orbit-ink) 0 0) left top / 1.5px 14px no-repeat border-box,
+		linear-gradient(var(--color-orbit-ink) 0 0) right bottom / 14px 1.5px no-repeat border-box,
+		linear-gradient(var(--color-orbit-ink) 0 0) right bottom / 1.5px 14px no-repeat border-box,
+		color-mix(in oklch, var(--color-orbit-paper) 94%, transparent);
+	box-shadow: none;
+	-webkit-backdrop-filter: blur(var(--blur-orbit-glass));
+	backdrop-filter: blur(var(--blur-orbit-glass));
+}
+
+.site-search .site-search-results .site-search-result {
+	display: block;
+	min-height: 44px;
+	padding: 0.75rem;
+	border-bottom: 1px solid var(--color-orbit-hair);
+	color: var(--color-orbit-ink);
+	text-decoration: none;
+}
+
+.site-search .site-search-results .site-search-result:last-child {
+	border-bottom: 0;
+}
+
+/* Hover, keyboard focus and the arrow-key selection print the dot row. */
+.site-search .site-search-results .site-search-result:is(:focus-visible, .focused) {
+	background: conic-gradient(from 90deg at 1px 1px, transparent 75%, color-mix(in oklch, var(--color-orbit-accent) 22%, transparent) 0) 0 0 / 3px 3px;
+}
+
+.site-search .site-search-results .site-search-result:focus-visible {
+	outline: 3px solid var(--color-orbit-focus);
+	outline-offset: -3px;
+}
+
+.site-search .site-search-results .site-search-result:active {
+	background: conic-gradient(from 90deg at 1px 1px, transparent 75%, color-mix(in oklch, var(--color-orbit-accent) 22%, transparent) 0) 0 0 / 2px 2px;
+}
+
+/* Hover --------------------------------------------------------------------- */
+
+@media (hover: hover) and (pointer: fine) {
+	:is(.button:not(.button-ghost), .skip-link):hover:not(:disabled, [aria-disabled="true"])::before {
+		background: var(--ctl-fill-hover);
+	}
+
+	:is(.button:not(.button-ghost), .skip-link):hover:not(:disabled, [aria-disabled="true"])::after {
+		clip-path: var(--ctl-plate);
+	}
+
+	:is(.button.button-ghost, .pagination a):hover:not(:disabled, [aria-disabled="true"])::before,
+	.tag-chip:hover > span::before,
+	.site-brand:hover .site-brand-label::before,
+	.sidebar-widgets .widget-tags__link:hover::before {
+		background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 3px 3px;
+	}
+
+	:is(.button.button-ghost, .pagination a):active:not(:disabled, [aria-disabled="true"])::before,
+	.tag-chip:active > span::before,
+	.site-brand:active .site-brand-label::before,
+	.sidebar-widgets .widget-tags__link:active::before {
+		background-size: 2px 2px;
+	}
+
+	.tag-chip:hover > span,
+	.site-brand:hover .site-brand-label,
+	.sidebar-widgets .widget-tags__link:hover {
+		--ctl-line: var(--color-orbit-accent);
+	}
+
+	:is(.site-nav a, .site-admin, .site-footer-links a, .site-footer-bottom a, .sidebar-widgets :is(.widget-categories__link, .widget-recent-posts__link, .widget-archives__link)):hover {
+		color: var(--color-orbit-accent);
+	}
+
+	:is(.site-nav a, .site-admin, .site-footer-links a, .site-footer-bottom a, .sidebar-widgets :is(.widget-categories__link, .widget-recent-posts__link, .widget-archives__link)):hover:not(:active, [aria-current])::after {
+		background: var(--ctl-line-on);
+		clip-path: inset(0);
+	}
+
+	:is(.inline-action, .prose a, .empty-note a):hover,
+	.featured:hover .inline-action {
+		color: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 30%);
+		text-decoration-thickness: 2px;
+	}
+
+	.pagination a.inline-action:hover {
+		color: var(--color-orbit-ink);
+	}
+
+	.byline-more:hover {
+		color: var(--color-orbit-ink);
+		text-decoration-thickness: 2px;
+	}
+
+	:is(.site-search-landmark .site-search .site-search-input, .search-form .search-input, .sidebar-widgets .widget-search__input):hover:enabled {
+		--field-line: var(--color-orbit-accent);
+	}
+
+	.site-search .site-search-results .site-search-result:hover:not(:active) {
+		background: conic-gradient(from 90deg at 1px 1px, transparent 75%, color-mix(in oklch, var(--color-orbit-accent) 22%, transparent) 0) 0 0 / 3px 3px;
+	}
+}
+
+/* Motion: stepped scans on the eighth grid. Reduced motion keeps the end states. -------- */
+
+@media (prefers-reduced-motion: no-preference) {
+	:is(.button:not(.button-ghost), .skip-link):focus-visible:not(:disabled, [aria-disabled="true"])::after {
+		animation: ctl-plate-scan var(--fk-step) steps(5, end);
+	}
+
+	:is(.site-nav a, .site-admin, .site-footer-links a, .site-footer-bottom a, .sidebar-widgets :is(.widget-categories__link, .widget-recent-posts__link, .widget-archives__link)):focus-visible:not([aria-current])::after {
+		animation: ctl-line-scan var(--fk-step) steps(6, end);
+	}
+
+	:is(.site-search-landmark .site-search .site-search-input, .search-form .search-input, .sidebar-widgets .widget-search__input) {
+		transition: --fk-scan calc(var(--fk-step) * 2) steps(10, end);
+	}
+
+	:is(.inline-action, .pagination a, .site-footer-links a):focus-visible .link-arrow,
+	.featured:has(.featured-title a:focus-visible) .inline-action .link-arrow {
+		transform: translateX(3px);
+	}
+
+	:is(.inline-action, .pagination a, .site-footer-links a):focus-visible .link-arrow-outbound {
+		transform: translate(3px, -3px);
+	}
+
+	@media (hover: hover) and (pointer: fine) {
+		:is(.button:not(.button-ghost), .skip-link):hover:not(:disabled, [aria-disabled="true"])::after {
+			animation: ctl-plate-scan var(--fk-step) steps(5, end);
+		}
+
+		:is(.site-nav a, .site-admin, .site-footer-links a, .site-footer-bottom a, .sidebar-widgets :is(.widget-categories__link, .widget-recent-posts__link, .widget-archives__link)):hover:not(:active, [aria-current])::after {
+			animation: ctl-line-scan var(--fk-step) steps(6, end);
+		}
+
+		:is(.inline-action, .pagination a, .site-footer-links a):hover .link-arrow,
+		.featured:hover .inline-action .link-arrow {
+			transform: translateX(3px);
+		}
+
+		:is(.inline-action, .pagination a, .site-footer-links a):hover .link-arrow-outbound {
+			transform: translate(3px, -3px);
+		}
+	}
+
+	@keyframes ctl-plate-scan {
+		from {
+			clip-path: var(--ctl-plate-off);
+		}
+
+		to {
+			clip-path: var(--ctl-plate);
+		}
+	}
+
+	@keyframes ctl-line-scan {
+		from {
+			clip-path: inset(0 100% 0 0);
+		}
+
+		to {
+			clip-path: inset(0);
+		}
+	}
+}
+
+/* Forced colours: the dot screens disappear, so frames and rules fall back to system colours. */
+@media (forced-colors: active) {
+	:is(.button:not(.button-ghost), .skip-link)::before {
+		border: 1px solid ButtonText;
+	}
+
+	:is(.site-nav a, .site-admin, .site-footer-links a, .site-footer-bottom a)::after {
+		background: LinkText;
+	}
+}
