@@ -181,7 +181,7 @@ Use [EmDash site transfer](https://docs.emdashcms.com/guides/site-transfer/) for
 
 ### Current Coolify deployment
 
-The blog deployed on 2026-09-30. The existing WTS application and local account remain unchanged.
+The blog deployed on 2026-09-30. The current release deployed on 2026-11-13. The existing WTS application and local account remain unchanged.
 
 | Setting | Value |
 | --- | --- |
@@ -190,8 +190,10 @@ The blog deployed on 2026-09-30. The existing WTS application and local account 
 | Project / environment | WTS / production |
 | Server | `hetzner-one` |
 | Service UUID | `ejzjdlbdeatc5po2ndzncgqb` |
-| Image | `wts-blog:20261015-124439` |
-| Server source | `/opt/wts-blog/releases/20261015-124439` |
+| Image | `wts-blog:20261113-bdd3a27` |
+| Server source | `/opt/wts-blog/releases/20261113-bdd3a27` |
+| Previous image (rollback) | `wts-blog:security-20261025-node24.22.1` |
+| Sessions | `SESSIONS_DIRECTORY=/app/data/sessions` |
 | Persistent volume | `ejzjdlbdeatc5po2ndzncgqb_blog-data` |
 | Volume mount | `/app/data` |
 | Proxy network | `coolify` |
@@ -199,7 +201,7 @@ The blog deployed on 2026-09-30. The existing WTS application and local account 
 
 The production database contains both original posts and their publication dates. The upload directory contains the original image. The initial copy excludes local users, passkeys, sessions, and tokens. Production requires its own admin account.
 
-Coolify builds from the server source directory. A stop can remove an unused image, so the Compose service includes a build context. Keep the server source directory. The local project does not deploy changes automatically.
+The server builds each release image from a source directory under `/opt/wts-blog/releases/`. The Compose service uses that local image with `pull_policy: never` and has no build context. Keep the current and previous images on the server. The local project does not deploy changes automatically.
 
 The Compose file publishes no host port. Traefik routes HTTPS to container port 4321. The host uses Traefik 2.10, so the setup restriction uses `ipwhitelist`.
 
@@ -237,11 +239,13 @@ coolify service restart ejzjdlbdeatc5po2ndzncgqb
 
 For a new release:
 
-1. Copy the complete workspace source to a new directory under `/opt/wts-blog/releases/`.
-2. Set `build.context` to that workspace directory in Coolify's Compose configuration.
-3. Set `build.dockerfile` to `blog/Dockerfile`.
-4. Set the image tag for that release.
+1. Copy the committed workspace source to a new directory under `/opt/wts-blog/releases/`, for example with `git archive HEAD | ssh root@<server> "tar -x -C <directory>"`.
+2. In that directory, build the image with `docker build -f blog/Dockerfile -t wts-blog:<release> .`.
+3. Back up the database with SQLite's backup API. See [Backups](#backups).
+4. Change only the `image` value in the stored Compose file with `PATCH /api/v1/services/ejzjdlbdeatc5po2ndzncgqb`. Send `docker_compose_raw` as base64.
 5. Restart the service with the command above.
+
+The `coolify` CLI has no command that changes a service's Compose file. Coolify writes the server Compose file again from its stored copy at each restart, so do not edit only the server file.
 
 On 2026-10-15, the restart removed the old container but did not start the new one. `coolify service start` did not start it either. If the service shows `exited` after a restart, use this command on the server:
 
@@ -251,6 +255,8 @@ cd /data/coolify/services/ejzjdlbdeatc5po2ndzncgqb && docker compose up -d --no-
 
 Build the release image on the server before the restart, so this command does not need a build.
 
+To roll back, set the previous image in the stored Compose file and restart the service.
+
 Keep the existing volume and production encryption key. Do not replace the database with the initial copy after editors create content.
 
 ### Backups
@@ -259,9 +265,11 @@ The database and uploads survive container replacement. Automatic backups are no
 
 Use SQLite's backup API or stop the service before you copy its database. Do not copy only `data.db` while the server runs because SQLite can have active WAL data.
 
-The server release directory contains the credential-free initial database copy. It is not a backup of later editorial changes.
+The `20260930-202250` release directory contains the credential-free initial database copy. It is not a backup of later editorial changes.
 
 The cover update created `/app/data/backups/covers-before-2026-10-01T08-40-21.035Z.db` with mode `0600`. This database backup contains the state before the cover update, not the new cover media.
+
+The 2026-11-13 release created `/app/data/backups/before-release-20261113-bdd3a27.db` with mode `0600` through the SQLite backup API.
 
 ## EmDash references
 
