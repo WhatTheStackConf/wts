@@ -39,9 +39,17 @@ overrides:
   '@mapbox/node-pre-gyp>tar': 7.5.16
   'brace-expansion@>=5.0.0 <5.0.6': 5.0.6
   prosemirror-model: 1.25.11
+  '@modelcontextprotocol/sdk@<1.32.0': 1.32.2
+  'fflate@<0.7.5': 0.7.5
+  'postcss-selector-parser@<6.1.5': 6.1.6
+  'seroval@<1.6.10': 1.8.1
+  'seroval-plugins@<1.6.10': 1.8.0
+  'shell-quote@<1.11.0': 1.12.0
+  'zod@>=4.0.0 <4.6.6': 4.6.7
+  vite@*: 'catalog:'
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@0.3.0
-  vite-plus: 0.3.0
+  vite: npm:@voidzero-dev/vite-plus-core@1.6.0
+  vite-plus: 1.6.0
 peerDependencyRules:
   allowAny:
     - vite

@@ -34,5 +34,12 @@ export default defineConfig({
     },
   },
   resolve: { alias: { "~": fileURLToPath(new URL("./src", import.meta.url)) } },
-  test: { environment: "node", include: ["src/lib/**/*.test.{ts,tsx}"] },
+  test: {
+    // Vitest v4 compatibility: preserve mock call history.
+    // Remove after tests no longer rely on calls from setup or earlier tests.
+    // https://viteplus.dev/guide/vitest-v5#remove-unneeded-compatibility-settings
+    clearMocks: false,
+    environment: "node",
+    include: ["src/lib/**/*.test.{ts,tsx}"],
+  },
 });

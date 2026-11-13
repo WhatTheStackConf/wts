@@ -70,7 +70,7 @@
     "@mdx-js/mdx": "^3.1.1",
     "@mmote/niimblue-node": "1.2.0",
     "@mmote/niimbluelib": "0.0.1-alpha.43-node",
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@solidjs/meta": "^1.0.0-next.2",
     "@solidjs/router": "^2.0.0-next.18",
     "@solidjs/web": "^2.0.0-rc.3",
@@ -90,13 +90,13 @@
     "prosemirror-state": "^1.4.4",
     "prosemirror-view": "^1.42.3",
     "qrcode": "^1.5.4",
-    "sanitize-html": "^2.17.7",
-    "satori": "^0.33.4",
+    "sanitize-html": "^2.18.2",
+    "satori": "^0.33.5",
     "satori-html": "^0.3.2",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "solid-js": "^2.0.0-rc.3",
     "spark-md5": "^3.0.2",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "engines": {
     "node": ">=24.15.0"
