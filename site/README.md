@@ -205,7 +205,7 @@ The apex `https://wts.sh` still serves the unchanged 2026 PocketBase application
 | Coolify application | `raiqiz9pmqbgytsvwozqdzke`, named `wts-site-2027-preview` |
 | Project and environment | WTS, production |
 | Server | `fss8sk4` |
-| Source branch | `design/wts-2027-light-cyberpunk` |
+| Source branch | `security/wts2027-runtime-20261025` |
 | Deployed commit | `aebcbc4b321916b01d3a8160a822b32d43d5390a` (2026-10-16, deployment `0btrqz2hwav5sogcg66wns8l`) |
 | Dockerfile and build context | `/site/Dockerfile`, repository root |
 | `SITE_ORIGIN` and `PUBLIC_SITE_URL` | `https://2027.wts.sh` |

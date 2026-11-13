@@ -213,7 +213,7 @@ podman build -f auth/Dockerfile -t localhost/wts-auth:local .
 ### Git-backed production releases
 
 Production uses the existing Coolify application `mmchmqhj0n8rr7captzpxc3m`.
-Its source is `https://github.com/WhatTheStackConf/wts.git`, on branch `design/wts-2027-light-cyberpunk`.
+Its source is `https://github.com/WhatTheStackConf/wts.git`, on branch `security/wts2027-runtime-20261025`.
 The build context is `/`, and the Dockerfile location is `/auth/Dockerfile`.
 Each release pins `git_commit_sha` to an approved commit. Automatic deployment remains disabled.
 The inline Dockerfile is empty. Releases do not require generated Dockerfile content or a dashboard sign-in.

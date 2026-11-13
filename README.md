@@ -275,7 +275,7 @@ On 2026-10-03, Coolify deployed commit `cd2b730705a485af1d178cf4114e61bc34e8efd5
 On 2026-10-16, Coolify deployed commit `aebcbc4b321916b01d3a8160a822b32d43d5390a` in deployment `jqmuwv19oqfd3cqfwj69is4j`.
 The online backup `20261016T114947Z` was created before that release.
 The application is `wts-cfp-2027`, resource `bqqm98rkzhgbzkqvvg3sooxi`.
-It builds `/cfp/Dockerfile` from the repository root on `design/wts-2027-light-cyberpunk`.
+It builds `/cfp/Dockerfile` from the repository root on `security/wts2027-runtime-20261025`.
 Automatic deployment remains disabled.
 Edition `2027` starts closed.
 
