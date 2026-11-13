@@ -59,3 +59,4 @@ site/.backups/
 cfp/.data/
 cfp/.backups/
 cfp/acceptance/artifacts/
+.vitest/

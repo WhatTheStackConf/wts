@@ -11,7 +11,8 @@ RUN pnpm --filter @wts/blog... install --frozen-lockfile
 FROM dependencies AS build
 # EmDash embeds these paths in the server bundle when Astro builds it.
 ENV DATABASE_PATH=/app/data/data.db \
-    UPLOADS_DIRECTORY=/app/data/uploads
+    UPLOADS_DIRECTORY=/app/data/uploads \
+    SESSIONS_DIRECTORY=/app/data/sessions
 COPY blog/astro.config.mjs blog/tsconfig.json blog/emdash-env.d.ts blog/tokens.css ./blog/
 COPY blog/src ./blog/src
 COPY blog/public ./blog/public
@@ -25,11 +26,12 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=4321 \
     DATABASE_PATH=/app/data/data.db \
-    UPLOADS_DIRECTORY=/app/data/uploads
+    UPLOADS_DIRECTORY=/app/data/uploads \
+    SESSIONS_DIRECTORY=/app/data/sessions
 COPY --from=build --chown=node:node /production/package.json ./package.json
 COPY --from=build --chown=node:node /production/node_modules ./node_modules
 COPY --from=build --chown=node:node /production/dist ./dist
-RUN mkdir -p /app/data/uploads \
+RUN mkdir -p /app/data/uploads /app/data/sessions \
     && chown -R node:node /app/data
 USER node
 EXPOSE 4321

@@ -21,6 +21,7 @@ The workspace disables automatic peer installation and cross-app peer resolution
 The site keeps its Vite Plus dependency without overriding the blog's Vite dependency.
 
 Each app has its own build, runtime configuration, deployment, and database ownership.
+The CFP, site, and auth production images pin Node.js `24.22.1` for the October 2026 security release.
 The workspace does not merge databases or change the 2026 site's PocketBase authentication.
 Local databases, uploads, environment files, and private verification artifacts stay outside Git.
 The imported blog excludes the original local directory's accounts and data.

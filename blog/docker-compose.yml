@@ -39,6 +39,7 @@ services:
       PORT: "4321"
       DATABASE_PATH: /app/data/data.db
       UPLOADS_DIRECTORY: /app/data/uploads
+      SESSIONS_DIRECTORY: /app/data/sessions
       EMDASH_SITE_URL: https://blog.wts.sh
       EMDASH_ENCRYPTION_KEY: ${EMDASH_ENCRYPTION_KEY:?Set EMDASH_ENCRYPTION_KEY in the runtime environment}
     volumes:
