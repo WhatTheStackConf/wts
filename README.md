@@ -52,6 +52,18 @@ The CFP, site, auth, and blog Dockerfiles pin Node.js 24.22.1 in every Node stag
 The container builds use `pnpm deploy` to package each app with its production dependencies.
 Do not change production deployment settings without a separate approved deployment.
 
+### Continuous integration
+
+The 2026 conference application and the 2027 apps deploy from different branches, so each line has its own workflow.
+
+| Workflow | Runs for | Checks |
+| --- | --- | --- |
+| `.github/workflows/verification.yml` | `master` | The 2026 conference application, check-in, and workspace browser tests |
+| `.github/workflows/verification-2027.yml` | `security/wts2027-runtime-20261025` | Site, CFP, auth, and blog: typecheck, check, tests, builds, auth acceptance, Docker images, and the dependency audit |
+
+`node scripts/audit-2027.mjs` fails when a high or critical advisory reaches a 2027 app.
+Advisories that reach only the root 2026 application do not stop the 2027 line.
+
 ## Independent 2027 site
 
 `site/` uses server-owned SQLite and central OIDC without PocketBase.
