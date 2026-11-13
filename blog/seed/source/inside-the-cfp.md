@@ -6,8 +6,6 @@ excerpt: "The transparent angle, continued. How our scoring works, who sits on t
 author: Darko from WhatTheStack
 ---
 
-## Inside the CfP: How We Pick Talks at WhatTheStack
-
 We promised the transparent angle, so here we go. This one is about our Call for Papers (or proposals, or presentations... it gets confusing). The whole thing, warts and all - how the scoring works, who sits on the committee, how invited speakers get picked, and a few things worth knowing if you're thinking of applying.
 
 Fair warning: this is a longer one. If you've ever wondered what actually happens between "submit" and "you're in", this is it. Plus a few tips and tricks to help things along ;)

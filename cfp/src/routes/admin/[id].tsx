@@ -160,7 +160,7 @@ export default function AdminProposalPage() {
               </label>
             <Show when={eligibleReviewers().length === 0}><p class="empty-state">No other known WTS identity has an active reviewer grant.</p></Show>
               <button class="button" type="submit" disabled={busy()}>Assign reviewer</button>
-              <button class="button button-secondary" type="button" disabled={busy() || !reviewerId() || !proposal()!.assignments.some((assignment) => assignment.reviewerId === reviewerId() && assignment.state === "active")} onClick={() => void updateAssignment(false)}>Revoke assignment</button>
+              <button class="button button-danger" type="button" disabled={busy() || !reviewerId() || !proposal()!.assignments.some((assignment) => assignment.reviewerId === reviewerId() && assignment.state === "active")} onClick={() => void updateAssignment(false)}>Revoke assignment</button>
             </form>
             <ul class="cfp-list"><For each={proposal()!.assignments}>{(assignment) => <li class="list-item"><span>{assignment.reviewerId} · revision {assignment.revision}</span><AdminStatus state={assignment.state} label={assignment.state} /></li>}</For></ul>
             <Show when={proposal()!.assignments.length === 0}><p class="empty-state">No reviewer assignments exist for this proposal.</p></Show>

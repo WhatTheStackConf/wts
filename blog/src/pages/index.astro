@@ -5,8 +5,10 @@ import {
 	getSiteSettings,
 } from "emdash";
 import Base from "../layouts/Base.astro";
+import Arrow from "../components/Arrow.astro";
 import FeaturedPost from "../components/FeaturedPost.astro";
 import PostCard from "../components/PostCard.astro";
+import SkyBand from "../components/SkyBand.astro";
 import { applyCacheHints } from "../utils/cache-hints";
 import { getReadingTime } from "../utils/reading-time";
 import { resolveBlogSiteIdentity } from "../utils/site-identity";
@@ -51,17 +53,17 @@ const gridPostsWithTags = gridPosts.map((post) => ({
 ---
 
 <Base title={siteTitle} description={siteTagline}>
-	<div class="home-content">
-		<header class="home-heading">
-			<h1 class="home-title">Blog</h1>
-			<p>{siteTagline}</p>
-		</header>
+	<SkyBand>
+		<h1 class="sky-band-title">Blog</h1>
+		<p class="sky-band-lede">{siteTagline}</p>
+	</SkyBand>
+	<div class="page-body">
 		{
 			posts.length === 0 ? (
-				<section class="empty-state">
+				<section class="empty-state hair-panel" data-marks>
 					<h2>No posts yet</h2>
 					<p>Create your first post in the admin panel.</p>
-					<a href="/_emdash/admin/content/posts/new" class="btn">
+					<a href="/_emdash/admin/content/posts/new" class="button">
 						Create a post
 					</a>
 				</section>
@@ -82,15 +84,16 @@ const gridPostsWithTags = gridPosts.map((post) => ({
 					)}
 					{gridPostsWithTags.length > 0 && (
 						<section class="posts-section" aria-labelledby="latest-heading">
-							<header class="section-header">
-								<h2 class="section-title" id="latest-heading">Latest</h2>
+							<header class="section-head">
+								<h2 id="latest-heading">Latest</h2>
 								{hasMorePosts && (
-									<a href="/posts" class="section-link">
+									<a href="/posts" class="inline-action">
 										View all
+										<Arrow />
 									</a>
 								)}
 							</header>
-							<div class="posts-grid">
+							<div class="card-grid">
 								{gridPostsWithTags.map(({ post, tags, bylines }) => (
 									<PostCard
 										title={post.data.title ?? "Untitled"}
@@ -114,129 +117,22 @@ const gridPostsWithTags = gridPosts.map((post) => ({
 </Base>
 
 <style>
-	.home-content {
-		max-width: var(--wide-width);
-		margin: 0 auto;
-		padding: var(--spacing-12) var(--spacing-6);
-	}
-
-	.home-heading {
-		margin-bottom: var(--spacing-12);
-		padding-bottom: var(--spacing-6);
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.home-title {
-		min-width: 0;
-		overflow-wrap: anywhere;
-		font-size: clamp(2rem, 4vw, 3rem);
-		line-height: var(--leading-tight);
-	}
-
-	.home-heading p {
-		max-width: 65ch;
-		margin-top: var(--spacing-2);
-		color: var(--color-text-secondary);
-	}
-
-	.section-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: baseline;
-		margin-bottom: var(--spacing-8);
-		padding-bottom: var(--spacing-4);
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.section-title {
-		font-size: var(--font-size-sm);
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: var(--tracking-wide);
-		color: var(--color-text-secondary);
-	}
-
-	.section-link {
-		min-height: 44px;
-		display: inline-flex;
-		align-items: center;
-		font-size: var(--font-size-sm);
-		color: var(--color-brand);
-		text-decoration: underline;
-		text-underline-offset: 0.2em;
-		transition: color var(--transition-fast);
-	}
-
-	.section-link:hover {
-		color: var(--color-brand-hover);
-	}
-
-	.posts-grid {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: var(--spacing-12) var(--spacing-8);
+	.posts-section {
+		margin-top: clamp(3rem, 7vw, 5rem);
 	}
 
 	.empty-state {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: var(--spacing-3);
-		padding-block: var(--spacing-12);
+		display: grid;
+		justify-items: start;
+		gap: 0.75rem;
+		padding: clamp(1.5rem, 4vw, 3rem);
 	}
 
 	.empty-state h2 {
-		font-size: var(--font-size-2xl);
-		font-weight: var(--font-weight-heading);
+		font-size: clamp(1.5rem, 3vw, 2rem);
 	}
 
 	.empty-state p {
-		color: var(--color-text-secondary);
-	}
-
-	.btn {
-		display: inline-flex;
-		min-height: 44px;
-		align-items: center;
-		margin-top: var(--spacing-2);
-		padding: var(--spacing-3) var(--spacing-5);
-		background: var(--color-brand);
-		color: var(--color-on-brand);
-		text-decoration: none;
-		border-radius: var(--radius);
-		font-size: var(--font-size-sm);
-		font-weight: 600;
-		transition: background var(--transition-fast);
-	}
-
-	.btn:hover {
-		background: var(--color-brand-hover);
-		color: var(--color-on-brand);
-	}
-
-	@media (max-width: 900px) {
-		.home-content {
-			padding: var(--spacing-8) var(--spacing-4) var(--spacing-12);
-		}
-
-		.posts-grid {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-			gap: var(--spacing-8) var(--spacing-6);
-		}
-	}
-
-	@media (max-width: 600px) {
-		.home-content {
-			padding-inline: var(--spacing-4);
-		}
-
-		.home-heading {
-			margin-bottom: var(--spacing-8);
-		}
-
-		.posts-grid {
-			grid-template-columns: minmax(0, 1fr);
-			gap: var(--spacing-8);
-		}
+		color: var(--color-orbit-muted);
 	}
 </style>

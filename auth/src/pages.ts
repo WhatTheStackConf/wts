@@ -126,8 +126,8 @@ function verifyEmailPage(state: StateOf<"verify-email">): PageContent {
 }
 
 function consentPage(state: StateOf<"consent">): PageContent {
-  return { title: "Allow app access?", html: `<h1>Allow app access?</h1><p class="intro"><strong>${escape(state.client.name)}</strong> requests access to your WTS identity.</p>
-        <section class="consent-details" aria-labelledby="consent-details-title"><h2 id="consent-details-title">Information shared</h2><ul class="scope-list">${state.scopes.map((scope) => `<li>${escape(scopeDescription(scope))}</li>`).join("")}</ul>
+  return { title: "Allow app access?", html: `<h1>Allow app access?</h1>
+        <section class="consent-details" aria-labelledby="consent-details-title"><p class="consent-client"><strong>${escape(state.client.name)}</strong> requests access to your WTS identity.</p><h2 id="consent-details-title">Information shared</h2><ul class="scope-list">${state.scopes.map((scope) => `<li>${escape(scopeDescription(scope))}</li>`).join("")}</ul>
         <p class="field-help">You will return to <span class="destination">${escape(state.client.redirectUri)}</span>.</p>
         <p class="field-help">This shares identity information. It does not grant app permissions.</p></section>
         ${form("consent", "/api/auth/oauth2/consent", state, `<div class="consent-actions"><button class="button" type="submit" name="accept" value="true">Allow access</button><button class="button button-secondary" type="submit" name="accept" value="false">Deny access</button></div>`)}
@@ -172,10 +172,10 @@ export function renderPage(state: PageState): string {
   const page = content(state);
   const notice = state.notice === null ? "" : `<p class="page-notice notice-${state.notice.kind}" data-page-notice role="${state.notice.kind === "error" ? "alert" : "status"}">${escape(state.notice.message)}</p>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow">
-    <title>${escape(page.title)} | WTS account</title><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/account.css"><script src="/assets/account.js" defer></script></head>
+    <title>${escape(page.title)} | WTS account</title><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/account.css"><script src="/assets/account.js" defer></script><script type="module" src="/assets/field-errors.mjs"></script></head>
     <body><a class="skip-link" href="#main">Skip to content</a><header class="support-header"><div class="header-inner">
-      <a class="brand" href="https://wts.sh/" aria-label="WhatTheStack home"><img src="/assets/logo.svg" width="36" height="46" alt=""><span><span class="brand-name">WhatTheStack</span><span class="brand-year">WTS account</span></span></a>
-      <nav aria-label="Account navigation"><a href="https://wts.sh/">WTS website</a><a href="${state.kind === "account" ? "/account" : escape(pageLink("/sign-in", state))}">${state.kind === "account" ? "Your account" : "Sign in"}</a></nav>
+      <a class="brand" href="https://wts.sh/" aria-label="WhatTheStack 2027 home"><img src="/assets/logo.svg" width="28" height="36" alt=""><span class="brand-name">WhatTheStack</span><span class="brand-year">2027</span></a>
+      <nav aria-label="Account navigation"><a href="https://wts.sh/">WTS website</a><a href="${state.kind === "account" ? "/account" : escape(pageLink("/sign-in", state))}"${state.kind === "account" || state.kind === "sign-in" ? ' aria-current="page"' : ""}>${state.kind === "account" ? "Your account" : "Sign in"}</a></nav>
     </div></header><main id="main" class="account-main" tabindex="-1">${notice}${page.html}
       <noscript><p class="page-notice">Enable JavaScript to complete account actions. You can still use the existing <a href="https://wts.sh/login">WTS login</a>.</p></noscript>
     </main><footer class="account-footer"><a href="https://wts.sh/">WhatTheStack</a><p>Your identity is shared. App permissions stay with each app.</p></footer></body></html>`;

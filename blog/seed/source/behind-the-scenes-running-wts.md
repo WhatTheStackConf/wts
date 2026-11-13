@@ -6,8 +6,6 @@ excerpt: "We're pulling back the curtain on what actually goes into organizing a
 author: Darko from WhatTheStack
 ---
 
-## Behind the Scenes: What It Takes to Run WhatTheStack
-
 Running a developer conference is a lot more than booking a venue and setting up a projector. We've learned this the hard way - twice. This year, we'll hopfully find out whether we've learned it properly, or we might need a refresher 😎
 
 With 800+ attendees, 4 stages, 30+ speakers, and a full week of pre-event activities, WhatTheStack has grown into something we're genuinely proud of. But none of it happens by accident (well, most of it anyway), and the process isn't that smooth under the hood.

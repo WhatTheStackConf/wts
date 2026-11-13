@@ -1,5 +1,7 @@
 ---
-import type { ContentBylineCredit, EditProxy } from "emdash";
+import type { ContentBylineCredit, EditProxy, TaxonomyTerm } from "emdash";
+import BylineAvatar from "./BylineAvatar.astro";
+import SkyBand from "./SkyBand.astro";
 
 interface Props {
 	title: string;
@@ -9,94 +11,153 @@ interface Props {
 	publishedTime: string | null;
 	publishDate: string | null;
 	readingTime: number;
+	tags?: TaxonomyTerm[];
 	edit: EditProxy;
 }
 
-const { title, excerpt, bylines = [], publishedTime, publishDate, readingTime, edit } =
-	Astro.props;
+const {
+	title,
+	excerpt,
+	bylines = [],
+	publishedTime,
+	publishDate,
+	readingTime,
+	tags = [],
+	edit,
+} = Astro.props;
 ---
 
-<header class="article-header">
-	<div class="article-meta">
-		{
-			bylines.length > 0 && (
-				<>
-					<span class="article-meta-byline">
-						{bylines.map((credit, i) => (
-							<>
-								{i > 0 && ", "}
-								{credit.byline.displayName}
-							</>
-						))}
-					</span>
-					<span class="meta-dot" />
-				</>
-			)
-		}
-		{
-			publishDate && (
-				<>
-					<time datetime={publishedTime}>{publishDate}</time>
-					<span class="meta-dot" />
-				</>
-			)
-		}
-		<span>{readingTime} min read</span>
-	</div>
-	<h1 class="article-title" {...edit.title}>{title}</h1>
+<SkyBand variant="article">
+	<h1 class="sky-band-title" {...edit.title}>{title}</h1>
 	{
 		excerpt && (
-			<p class="article-excerpt" {...edit.excerpt}>
+			<p class="sky-band-lede" {...edit.excerpt}>
 				{excerpt}
 			</p>
 		)
 	}
-</header>
+	<dl class="title-block">
+		{
+			bylines.length > 0 && (
+				<div class="title-block-cell title-block-byline">
+					<dt class="meta-label">{bylines.length === 1 ? "Author" : "Authors"}</dt>
+					{bylines.map((credit) => (
+						<dd class="title-block-value byline">
+							<BylineAvatar byline={credit.byline} class="byline-avatar" />
+							<span>
+								{credit.byline.displayName}
+								{credit.roleLabel && <span class="byline-role">{credit.roleLabel}</span>}
+							</span>
+						</dd>
+					))}
+				</div>
+			)
+		}
+		{
+			publishDate && (
+				<div class="title-block-cell">
+					<dt class="meta-label">Published</dt>
+					<dd class="title-block-value">
+						<time datetime={publishedTime}>{publishDate}</time>
+					</dd>
+				</div>
+			)
+		}
+		<div class="title-block-cell">
+			<dt class="meta-label">Reading time</dt>
+			<dd class="title-block-value">{readingTime} min</dd>
+		</div>
+		{
+			tags.length > 0 && (
+				<div class="title-block-cell title-block-tags">
+					<dt class="meta-label">Tags</dt>
+					<dd class="tag-list">
+						{tags.map((t) => (
+							<a href={`/tag/${t.slug}`} class="tag-chip">
+								<span>{t.label}</span>
+							</a>
+						))}
+					</dd>
+				</div>
+			)
+		}
+	</dl>
+</SkyBand>
 
 <style>
-	.article-header {
-		margin-bottom: var(--spacing-10);
-	}
-
-	.article-header .article-meta {
-		display: none;
-		align-items: center;
+	/* Title block: the drawing sheet's register of who, when, and how long. */
+	.title-block {
+		display: flex;
 		flex-wrap: wrap;
-		column-gap: var(--spacing-3);
-		row-gap: var(--spacing-1);
-		font-size: var(--font-size-sm);
-		color: var(--color-muted);
-		margin-bottom: var(--spacing-4);
+		max-width: 64rem;
+		margin-top: clamp(1.5rem, 3vw, 2.25rem);
+		border-top: 1px solid var(--color-orbit-hair-strong);
 	}
 
-	.article-meta-byline {
+	.title-block-cell {
+		display: grid;
+		align-content: start;
+		gap: 0.25rem;
+		padding: 0.75rem clamp(1rem, 2.5vw, 2rem) 0;
+		border-left: 1px solid var(--color-orbit-hair);
+	}
+
+	.title-block-cell:first-child {
+		padding-left: 0;
+		border-left: 0;
+	}
+
+	.title-block-value {
+		color: var(--color-orbit-ink);
+		font-size: 0.9375rem;
 		font-weight: 500;
-		color: var(--color-text-secondary);
+		font-variant-numeric: tabular-nums;
 	}
 
-	.article-title {
-		font-size: clamp(2rem, 5vw, var(--font-size-5xl));
-		font-weight: var(--font-weight-display);
-		line-height: var(--leading-tight);
-		letter-spacing: var(--tracking-tight);
-		margin-bottom: var(--spacing-4);
+	.tag-list {
+		margin-top: -0.5rem;
 	}
 
-	.article-excerpt {
-		font-size: var(--font-size-xl);
-		line-height: var(--leading-relaxed);
-		color: var(--color-text-secondary);
+	.byline {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 
-	@media (max-width: 1100px) {
-		.article-header .article-meta {
-			display: flex;
+	.byline-avatar {
+		width: var(--avatar-size-lg);
+		height: var(--avatar-size-lg);
+		border: 1px solid var(--color-orbit-hair-strong);
+		object-fit: cover;
+	}
+
+	.byline-role {
+		display: block;
+		color: var(--color-orbit-muted);
+		font-size: 0.8125rem;
+		font-weight: 400;
+	}
+
+	@media (max-width: 599px) {
+		.title-block-cell {
+			padding-inline: 1rem;
 		}
-	}
 
-	@media (max-width: 600px) {
-		.article-title {
-			font-size: var(--font-size-3xl);
+		.title-block-byline {
+			flex-basis: 100%;
+			padding-inline: 0;
+			padding-bottom: 0.5rem;
+		}
+
+		.title-block-byline + .title-block-cell {
+			padding-left: 0;
+			border-left: 0;
+		}
+
+		.title-block-tags {
+			flex-basis: 100%;
+			padding-left: 0;
+			border-left: 0;
 		}
 	}
 </style>

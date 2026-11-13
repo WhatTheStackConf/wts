@@ -1,5 +1,7 @@
-/* Hallmark · macrostructure: editorial feature + archive · tone: WTS 2027 reading · anchor hue: cyan
- * pre-emit critique: P5 H4 E3 S5 R5 V3 · visual verification pending
+/*
+ * WTS 2027 "Orbit, light" theme for the blog.
+ * Maps the public tokens (../../tokens.css) onto the template defaults and holds
+ * the shared primitives: corner marks, hairline panels, meta labels, tags, prose.
  */
 @import "../../tokens.css";
 
@@ -11,7 +13,6 @@
 	font-display: swap;
 	unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
-
 
 @font-face {
 	font-family: "Space Grotesk";
@@ -38,374 +39,404 @@
 	--color-text-secondary: var(--color-orbit-muted);
 	--color-muted: var(--color-orbit-muted);
 	--color-border: var(--color-orbit-rule);
-	--color-border-subtle: var(--color-orbit-rule);
+	--color-border-subtle: var(--color-orbit-hair);
 	--color-surface: var(--color-orbit-surface);
 	--color-brand: var(--color-orbit-accent);
 	--color-brand-hover: var(--color-orbit-ink);
 	--color-on-brand: var(--color-orbit-accent-ink);
 	--color-brand-ring: color-mix(in oklch, var(--color-orbit-focus) 32%, transparent);
+	--emdash-search-bg: var(--color-orbit-paper);
+	--emdash-search-border: var(--color-orbit-hair-strong);
 	--font-body: var(--font-orbit-body);
 	--font-heading: var(--font-orbit-body);
 	--font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
-	--nav-height: 90px;
+	--radius: 0;
+	--radius-lg: 0;
 	--wide-width: 1320px;
-	--content-width: 680px;
-	--gutter-width: 200px;
-	--meta-col-width: 180px;
+	--content-width: 46rem;
 	--transition-fast: var(--dur-orbit-fast) var(--ease-orbit-out);
 	--transition-base: 200ms var(--ease-orbit-out);
+
+	/* Page frame. Base.astro measures the header and overwrites --header-height. */
+	--page-width: min(100% - 3rem, 1320px);
+	--header-height: 90px;
+
+	/* Corner marks: 14px ink brackets drawn as background layers. */
+	--mark-color: color-mix(in oklch, var(--color-orbit-ink) 70%, transparent);
+	--mark: linear-gradient(var(--mark-color) 0 0);
+	--mark-tl: var(--mark) left top / var(--size-orbit-mark) var(--width-orbit-mark) no-repeat, var(--mark) left top / var(--width-orbit-mark) var(--size-orbit-mark) no-repeat;
+	--mark-tr: var(--mark) right top / var(--size-orbit-mark) var(--width-orbit-mark) no-repeat, var(--mark) right top / var(--width-orbit-mark) var(--size-orbit-mark) no-repeat;
+	--mark-bl: var(--mark) left bottom / var(--size-orbit-mark) var(--width-orbit-mark) no-repeat, var(--mark) left bottom / var(--width-orbit-mark) var(--size-orbit-mark) no-repeat;
+	--mark-br: var(--mark) right bottom / var(--size-orbit-mark) var(--width-orbit-mark) no-repeat, var(--mark) right bottom / var(--width-orbit-mark) var(--size-orbit-mark) no-repeat;
 }
 
 html {
 	overflow-x: clip;
 	scroll-behavior: smooth;
+	scroll-padding-top: calc(var(--header-height) + 1rem);
 	scrollbar-color: var(--color-orbit-muted) var(--color-orbit-paper);
 }
 
 body {
+	display: flex;
+	flex-direction: column;
 	overflow-x: clip;
 	background: var(--color-orbit-paper);
+	color: var(--color-orbit-ink);
 	font-size-adjust: from-font;
 }
 
+main {
+	flex: 1;
+	min-width: 0;
+	padding-bottom: clamp(3rem, 8vw, 6rem);
+}
+
+main:has(> .sky-band[data-variant="lost"]) {
+	padding-bottom: 0;
+}
+
+main:focus {
+	outline: none;
+}
+
 ::selection {
-	background: var(--color-orbit-accent);
-	color: var(--color-orbit-accent-ink);
-}
-
-:where(a:any-link, button, input, textarea, select, [tabindex="-1"]):focus-visible {
-	outline: 3px solid var(--color-orbit-focus);
-	outline-offset: 3px;
-}
-
-.skip-link {
-	position: fixed;
-	z-index: 2000;
-	top: 0.75rem;
-	left: 0.75rem;
-	transform: translateY(-160%);
-	padding: 0.75rem 1rem;
-	background: var(--color-orbit-paper);
+	background: color-mix(in oklch, var(--launch-cyan) 45%, transparent);
 	color: var(--color-orbit-ink);
-	border: 2px solid var(--color-orbit-focus);
-	font-weight: 600;
 }
+
+/* Focus, the skip link and every control state live in controls.css. */
 
 .visually-hidden {
 	position: absolute;
 	width: 1px;
 	height: 1px;
-	padding: 0;
 	margin: -1px;
+	padding: 0;
 	overflow: hidden;
 	clip: rect(0, 0, 0, 0);
 	white-space: nowrap;
 	border: 0;
 }
 
+/* Shared primitives ------------------------------------------------------- */
 
-.skip-link:focus-visible {
-	transform: translateY(0);
+/* Hairline panel: radius 0, one border, no shadow. Corner marks are opt-in. */
+.hair-panel {
+	position: relative;
+	border: 1px solid var(--color-orbit-hair-strong);
+	background: var(--color-orbit-paper);
 }
 
-body .site-header {
-	position: sticky;
-	top: 0;
-	z-index: 100;
-	border: 0;
-	border-bottom: 1px solid var(--color-orbit-line-on-dark);
-	background: var(--launch-night-deep);
-	color: var(--color-orbit-paper);
-	backdrop-filter: none;
+.hair-panel[data-marks]::after {
+	position: absolute;
+	z-index: 1;
+	inset: 0.625rem;
+	background: var(--mark-tl), var(--mark-br);
+	pointer-events: none;
+	content: "";
 }
 
-body .nav {
-	width: min(100% - 3rem, 1320px);
-	max-width: 1320px;
-	min-height: 90px;
-	height: auto;
-	gap: 1.5rem;
-	padding: 0.75rem 0;
-}
-
-body .site-title,
-body .site-title:hover,
-body .footer-logo,
-body .footer-logo:hover {
-	display: inline-flex;
-	min-width: 0;
-	align-items: center;
-	gap: 0.625rem;
-	color: var(--color-orbit-paper);
-	text-decoration: none;
-}
-
-body .site-logo-img {
-	width: auto;
-	height: 46px;
-	margin: 0;
-}
-
-body .brand-copy {
-	display: grid;
-	gap: 0.22rem;
-	line-height: 1;
-}
-
-body .brand-name {
-	font-family: var(--font-orbit-display);
-	font-size: clamp(1.15rem, 2vw, 1.5rem);
-	font-weight: 400;
-	letter-spacing: -0.025em;
-	white-space: nowrap;
-}
-
-body .brand-details {
-	display: flex;
-	gap: 0.55rem;
-	color: var(--launch-cyan, oklch(78% 0.11 205));
-	font-size: 0.7rem;
-	font-weight: 700;
-	letter-spacing: 0.13em;
+/* Uppercase, tracked metadata: labels, dates, reading time. */
+.meta-label {
+	color: var(--color-orbit-muted);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	line-height: 1.4;
+	letter-spacing: 0.14em;
 	text-transform: uppercase;
 }
 
-body .nav-right {
-	gap: clamp(0.75rem, 2vw, 1.75rem);
-}
-
-body .nav-links {
+/*
+ * Meta items with a hairline separator before each one. The row starts 1.5rem
+ * early and clips that strip, so the separator that opens a wrapped line is hidden.
+ */
+.meta-row {
+	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: clamp(0.5rem, 1.5vw, 1.25rem);
-	font-size: 0.875rem;
+	row-gap: 0.25rem;
+	margin-inline-start: -1.5rem;
+	clip-path: inset(-3rem -1rem -1rem 1.5rem);
+	font-variant-numeric: tabular-nums;
 }
 
-body .nav-links a,
-body .nav-admin {
-	display: inline-flex;
-	min-height: 44px;
-	align-items: center;
-	color: var(--color-orbit-paper);
-	text-decoration: underline;
-	text-decoration-color: transparent;
-	text-underline-offset: 0.25em;
+.meta-row > * {
+	margin-inline-start: 0.75rem;
+	padding-inline-start: 0.75rem;
+	background: linear-gradient(var(--color-orbit-hair-strong) 0 0) left center / 1px 0.8em no-repeat;
 }
 
-body .nav-links a:hover,
-body .nav-admin:hover {
-	color: var(--launch-cyan);
-	text-decoration-color: currentColor;
+time {
+	font-variant-numeric: tabular-nums;
 }
 
-body .nav-admin {
-	margin-inline-start: 0;
+/* Content below the band, aligned with the header and band. */
+.page-body {
+	width: var(--page-width);
+	margin: clamp(2rem, 5vw, 3.5rem) auto 0;
 }
 
-body .footer-logo {
-	min-height: 44px;
-}
-
-body .footer-links a {
-	display: inline-flex;
-	min-height: 44px;
-	align-items: center;
-}
-
-body :is(button, input, select, textarea) {
-	min-height: 44px;
-	font: inherit;
-}
-
-
-body .site-search-landmark {
-	display: block;
-	width: 200px;
-	flex: 0 1 200px;
-}
-
-body .search-label {
-	display: block;
-}
-
-body .site-search {
-	display: block;
-	width: 100%;
-	flex: 0 1 200px;
-}
-
-body .site-search-input {
-	width: 100%;
-	min-height: 44px;
-	padding: 0.5rem 0.75rem;
-	border: 1px solid var(--color-orbit-line-on-dark);
-	border-radius: 2px;
-	background: var(--color-orbit-paper);
-	color: var(--color-orbit-ink);
-	font: inherit;
-}
-
-body .site-search-input::placeholder {
-	color: var(--color-orbit-muted);
-	opacity: 1;
-}
-
-body .site-search-input:focus,
-body .site-search-input:focus-visible {
-	border-color: var(--color-orbit-focus) !important;
-	box-shadow: 0 0 0 2px var(--color-orbit-focus);
-	outline: 2px solid var(--color-orbit-focus);
-	outline-offset: 2px;
-}
-
-body .site-search-results {
-	max-width: min(28rem, calc(100vw - 2rem));
-	border-color: var(--color-orbit-rule);
-	border-radius: 2px;
-	background: var(--color-orbit-paper);
-	color: var(--color-orbit-ink);
-	box-shadow: 0 8px 24px rgb(14 23 38 / 16%);
-}
-
-body .site-search-result {
-	min-height: 44px;
-	color: var(--color-orbit-ink);
-}
-
-body .site-search-result:hover,
-body .site-search-result:focus-visible,
-body .site-search-result.focused {
-	background: var(--color-orbit-surface);
-	outline: 2px solid var(--color-orbit-focus);
-	outline-offset: -2px;
-}
-
-body .site-search-result .emdash-live-search-result-collection,
-body .site-search-result .emdash-live-search-result-snippet,
-body .site-search-results .emdash-live-search-no-results {
-	color: var(--color-orbit-muted);
-}
-
-body main {
-	min-width: 0;
-	background: var(--color-orbit-paper);
-}
-
-body .site-footer {
-	border-top: 1px solid var(--color-orbit-rule);
-	background: var(--color-orbit-paper);
-}
-
-body .footer-logo {
-	align-items: center;
-}
-
-body .footer-logo-img {
-	width: auto;
-	height: 32px;
-}
-
-body .footer-logo .brand-name {
-	font-size: 1.1rem;
-	color: var(--color-orbit-ink);
-}
-
-body .footer-logo .brand-details {
-	font-size: 0.6rem;
-	color: var(--color-orbit-ink);
-}
-
-body .footer-links a,
-body .footer-copyright a {
-	color: var(--color-orbit-ink);
-	text-decoration: underline;
-	text-underline-offset: 0.2em;
-}
-
-body .footer-heading,
-body .footer-copyright,
-body .footer-tagline,
-body .footer-widgets-section .widget__title {
-	color: var(--color-orbit-muted);
-}
-
-body :where(a:any-link):not(.site-title):not(.footer-logo):not(.card-link):not(.featured-title-link):not(.featured-image-link):not(.featured-tag):not(.card-tag):not(.btn):not(.nav-links a):not(.nav-admin) {
-	text-decoration: underline;
-	text-underline-offset: 0.2em;
+.card-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: clamp(1rem, 2vw, 1.5rem);
 }
 
 @media (max-width: 900px) {
-	:root {
-		--nav-height: 116px;
-	}
-
-	body .nav {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		align-items: center;
-		gap: 0.5rem 0.75rem;
-		width: 100%;
-		padding: 0.75rem 1rem;
-	}
-
-	body .site-title {
-		grid-column: 1;
-		grid-row: 1;
-	}
-
-	body .nav-right {
-		grid-column: 1 / -1;
-		grid-row: 2;
-		display: flex;
-		flex-direction: column;
-		align-items: stretch;
-		gap: 0.25rem;
-		margin-inline-start: 0;
-	}
-
-	body .nav-links {
-		justify-content: space-between;
-		flex-wrap: wrap;
-		gap: 0.25rem 0.75rem;
-	}
-
-	body .nav-links a {
-		font-size: 0.8125rem;
-	}
-
-	body .site-search-landmark {
-		width: 100%;
-		max-width: none;
-		flex-basis: auto;
-	}
-
-	body .site-search {
-		width: 100%;
-		max-width: none;
-		flex-basis: auto;
-	}
-
-	body .site-search-input {
-		width: 100% !important;
-	}
-
-	body .nav-admin {
-		grid-column: 2;
-		grid-row: 1;
-		justify-self: end;
+	.card-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 }
 
-@media (max-width: 360px) {
-	body .nav {
-		padding-inline: 0.75rem;
+@media (max-width: 599px) {
+	.card-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+/* Section heading: a tracked label on a hairline, with an optional link. */
+.section-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: clamp(1.25rem, 3vw, 2rem);
+	padding-top: 0.75rem;
+	border-top: 1px solid var(--color-orbit-ink);
+}
+
+.section-head h2 {
+	color: var(--color-orbit-ink);
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+}
+
+/* Inline action with arrow, such as "View all" and pagination. */
+.inline-action {
+	display: inline-flex;
+	min-height: 44px;
+	align-items: center;
+	gap: 0.5rem;
+	color: var(--color-orbit-accent);
+	font-size: 0.875rem;
+	font-weight: 700;
+}
+
+.pagination {
+	display: flex;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-top: clamp(2rem, 5vw, 3rem);
+	padding-top: 0.5rem;
+	border-top: 1px solid var(--color-orbit-hair);
+}
+
+.pagination:not(:has(a)) {
+	display: none;
+}
+
+.pagination a:only-child[rel="next"] {
+	margin-inline-start: auto;
+}
+
+.empty-note {
+	max-width: 46ch;
+	padding-block: clamp(2rem, 5vw, 3rem);
+	color: var(--color-orbit-muted);
+	font-size: 1.0625rem;
+}
+
+/* Prose: posts and pages ---------------------------------------------------- */
+
+.prose {
+	max-width: 70ch;
+	color: var(--color-orbit-ink);
+	font-size: 1.125rem;
+	line-height: 1.7;
+}
+
+.prose :where(p, ul, ol, blockquote, pre, figure, .emdash-table-wrapper, table) {
+	margin-block: 0 1.25em;
+}
+
+.prose :where(p, li) {
+	text-wrap: pretty;
+}
+
+.prose :where(h2, h3, h4) {
+	color: var(--color-orbit-ink);
+	font-family: var(--font-orbit-body);
+	font-weight: 600;
+	letter-spacing: -0.015em;
+	text-wrap: balance;
+}
+
+.prose h2 {
+	margin: 2.25em 0 0.75em;
+	padding-top: 0.875em;
+	border-top: 1px solid var(--color-orbit-hair);
+	font-size: clamp(1.4rem, 2.4vw, 1.75rem);
+	line-height: 1.2;
+}
+
+.prose h3 {
+	margin: 1.75em 0 0.5em;
+	font-size: clamp(1.2rem, 1.8vw, 1.3125rem);
+	line-height: 1.3;
+}
+
+.prose h4 {
+	margin: 1.5em 0 0.5em;
+	font-size: 1.0625rem;
+}
+
+.prose > :first-child {
+	margin-top: 0;
+	padding-top: 0;
+	border-top: 0;
+}
+
+.prose :where(h2, h3, h4):focus {
+	outline: none;
+}
+
+.prose :where(ul, ol) {
+	padding-left: 1.4em;
+}
+
+.prose li {
+	margin-block: 0.4em;
+}
+
+.prose li::marker {
+	color: var(--color-orbit-muted);
+}
+
+.prose strong {
+	font-weight: 700;
+}
+
+.prose blockquote {
+	padding: 0.25em 0 0.25em 1.25em;
+	border-left: 1px solid var(--color-orbit-ink);
+	color: var(--color-orbit-muted);
+	font-size: 1.1875rem;
+}
+
+.prose code {
+	padding: 0.1em 0.35em;
+	background: var(--color-orbit-surface);
+	font-family: var(--font-mono);
+	font-size: 0.875em;
+}
+
+.prose pre {
+	padding: 1.25rem;
+	overflow-x: auto;
+	border: 1px solid var(--color-orbit-hair-strong);
+	background: var(--color-orbit-surface);
+	font-family: var(--font-mono);
+	font-size: 0.875rem;
+	line-height: 1.6;
+}
+
+.prose pre code {
+	padding: 0;
+	background: none;
+}
+
+.prose hr {
+	margin: 2.5em 0;
+	border: 0;
+	border-top: 1px solid var(--color-orbit-hair-strong);
+}
+
+.prose img {
+	border: 1px solid var(--color-orbit-hair-strong);
+}
+
+.prose figcaption {
+	margin-top: 0.5rem;
+	color: var(--color-orbit-muted);
+	font-size: 0.8125rem;
+}
+
+/* Tables: hairline rules, tracked header labels, tabular figures. */
+.prose .emdash-table-wrapper {
+	overflow-x: auto;
+	border-block: 1px solid var(--color-orbit-ink);
+}
+
+.prose table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9375rem;
+	font-variant-numeric: tabular-nums;
+	line-height: 1.5;
+}
+
+.prose .emdash-table-wrapper table {
+	margin: 0;
+}
+
+.prose :is(th, td),
+.prose .emdash-table-wrapper .emdash-table :is(th, td) {
+	padding: 0.625rem 0.75rem;
+	border: 0;
+	border-bottom: 1px solid var(--color-orbit-hair);
+	text-align: left;
+	vertical-align: top;
+}
+
+.prose .emdash-table-wrapper .emdash-table tr:last-child > td,
+.prose tr:last-child > td {
+	border-bottom: 0;
+}
+
+.prose th,
+.prose .emdash-table-wrapper .emdash-table th {
+	color: var(--color-orbit-ink);
+	font-size: 0.6875rem;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	background: transparent;
+}
+
+.prose .emdash-table-wrapper .emdash-table tbody tr:nth-child(even) {
+	background: transparent;
+}
+
+/* Kit table row: the hovered row prints the 3px dot screen. */
+.prose .emdash-table-wrapper .emdash-table tbody tr:hover {
+	background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--fk-row-dot) 0) 0 0 / 3px 3px;
+}
+
+/* Responsive -------------------------------------------------------------- */
+
+@media (max-width: 1023px) {
+	:root {
+		--header-height: 112px;
+	}
+}
+
+@media (max-width: 767px) {
+	:root {
+		--page-width: calc(100% - 2rem);
+		--header-height: 110px;
 	}
 
-	body .site-logo-img {
-		height: 40px;
+	.prose {
+		font-size: 1.0625rem;
 	}
+}
 
-	body .brand-name {
-		font-size: 1.12rem;
+@media (max-width: 374px) {
+	:root {
+		--header-height: 162px;
 	}
 }
 

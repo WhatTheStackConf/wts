@@ -1,0 +1,51 @@
+---
+import type { ComponentProps } from "astro/types";
+import Arrow from "./Arrow.astro";
+import PostCard from "./PostCard.astro";
+import SkyBand from "./SkyBand.astro";
+
+interface Props {
+	/** "Tag" or "Category": the band context and the empty-state wording. */
+	kind: "Tag" | "Category";
+	label: string;
+	/** Archive path without a cursor, such as /tag/astro. */
+	basePath: string;
+	cards: ComponentProps<typeof PostCard>[];
+	cursor?: string;
+	nextCursor?: string;
+}
+
+const { kind, label, basePath, cards, cursor, nextCursor } = Astro.props;
+const countLabel = `${cards.length} ${cards.length === 1 ? "post" : "posts"}${cursor ? " on this page" : ""}`;
+const emptyLabel = kind === "Tag" ? "No posts with this tag yet." : "No posts in this category yet.";
+---
+
+<SkyBand context={kind}>
+	<h1 class="sky-band-title">{label}</h1>
+	<p class="sky-band-lede">{countLabel}</p>
+</SkyBand>
+
+<div class="page-body">
+	{
+		cards.length === 0 ? (
+			<p class="empty-note">{emptyLabel}</p>
+		) : (
+			<div class="card-grid">
+				{cards.map((card) => (
+					<PostCard {...card} />
+				))}
+			</div>
+		)
+	}
+	<nav class="pagination" aria-label="Pagination">
+		{cursor && <a href={basePath} class="inline-action">First page</a>}
+		{
+			nextCursor && (
+				<a href={`${basePath}?cursor=${encodeURIComponent(nextCursor)}`} class="inline-action" rel="next">
+					Next page
+					<Arrow />
+				</a>
+			)
+		}
+	</nav>
+</div>

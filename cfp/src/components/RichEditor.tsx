@@ -2,7 +2,7 @@ import { createSignal, onCleanup, onSettled } from "solid-js";
 import { baseKeymap, toggleMark } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
 import { history, redo, undo } from "prosemirror-history";
-import { liftListItem, wrapInList } from "prosemirror-schema-list";
+import { liftListItem, splitListItem, wrapInList } from "prosemirror-schema-list";
 import { DOMParser, DOMSerializer, Schema, type MarkType, type ResolvedPos } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
@@ -48,7 +48,7 @@ export function RichEditor(props: RichEditorProps) {
     return EditorState.create({
       schema,
       doc: DOMParser.fromSchema(schema).parse(container),
-      plugins: [history(), keymap({ "Mod-z": undo, "Mod-y": redo, "Mod-b": toggleMark(schema.marks.strong), "Mod-i": toggleMark(schema.marks.em), "Shift-Ctrl-8": wrapInList(schema.nodes.bullet_list) }), keymap(baseKeymap)],
+      plugins: [history(), keymap({ Enter: splitListItem(schema.nodes.list_item), "Mod-z": undo, "Mod-y": redo, "Mod-b": toggleMark(schema.marks.strong), "Mod-i": toggleMark(schema.marks.em), "Shift-Ctrl-8": wrapInList(schema.nodes.bullet_list) }), keymap(baseKeymap)],
     });
   };
 

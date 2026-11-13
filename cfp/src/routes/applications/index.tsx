@@ -2,6 +2,7 @@ import { createSignal, For, onSettled, Show, Switch, Match } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { getWorkspace, startDraft } from "~/lib/cfp-actions";
 import type { FieldIssue, Workspace } from "~/lib/cfp-model";
+import { PageBand } from "~/components/PageBand";
 import { ErrorNotice } from "~/components/ApplicantUI";
 
 export default function Applications() {
@@ -44,7 +45,7 @@ export default function Applications() {
   };
 
   return <>
-    <header class="page-heading"><h1>Your applications</h1><p>Review your saved applications and continue active drafts.</p></header>
+    <PageBand title="Your applications" lede="Review your saved applications and continue active drafts." />
     <Switch>
       <Match when={loading()}><div class="cfp-loading" role="status">Loading your applicant dashboard…</div></Match>
       <Match when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={() => void load()} /><Show when={current().code === "unauthenticated"}><a class="button" href="/auth/login?returnTo=%2Fapplications" rel="external">Sign in to continue</a></Show></>}</Match>

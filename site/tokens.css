@@ -167,4 +167,28 @@
   --color-orbit-star-mask-dim: oklch(0% 0 0 / 16%);
   --color-orbit-star-mask-mid: oklch(0% 0 0 / 50%);
   --color-orbit-star-mask-bright: oklch(0% 0 0 / 84%);
+
+  /* Altitude ramp: ground paper to orbit night. CSS bands and the launch shader read the same values. */
+  --alt-0: var(--color-orbit-paper);
+  --alt-1: oklch(95% 0.025 85);
+  --alt-2: oklch(91% 0.035 210);
+  --alt-3: oklch(80% 0.06 215);
+  --alt-4: oklch(68% 0.09 218);
+  --alt-5: var(--launch-sky-horizon);
+  --alt-6: var(--launch-sky-upper);
+  --alt-7: var(--launch-sky-night);
+
+  /* Motion clock: 100 BPM. */
+  --dur-orbit-beat: 600ms;
+  --dur-orbit-eighth: 150ms;
+  --dur-orbit-bar: 2400ms;
+
+  /* Hairlines, marks, glass. */
+  --color-orbit-hair: color-mix(in oklch, var(--color-orbit-ink) 14%, transparent);
+  --color-orbit-hair-strong: color-mix(in oklch, var(--color-orbit-ink) 30%, transparent);
+  --color-orbit-glass: color-mix(in oklch, var(--color-orbit-paper) 64%, transparent);
+  --color-orbit-glass-night: color-mix(in oklch, var(--launch-sky-night) 62%, transparent);
+  --size-orbit-mark: 14px;
+  --width-orbit-mark: 1.5px;
+  --blur-orbit-glass: 12px;
 }

@@ -4,6 +4,7 @@ import { getDraft, saveDraft, submitDraft } from "~/lib/cfp-actions";
 import type { ActionResult } from "~/lib/account-model";
 import type { DraftView, Presentation, SubmissionReceipt } from "~/lib/cfp-model";
 import { ErrorNotice, PresentationSummary, SettingsSummary, SpeakerSummary } from "~/components/ApplicantUI";
+import { PageBand } from "~/components/PageBand";
 import { RichEditor } from "~/components/RichEditor";
 
 const steps = ["Intro", "Personal", "Proposal", "Experience", "Expenses", "Confirm"] as const;
@@ -256,8 +257,24 @@ export default function Apply() {
     return () => window.removeEventListener("beforeunload", preventDataLoss);
   });
 
+  const bandTitle = () => {
+    const current = view();
+    if (!current || blocksPage(error())) return "Application draft";
+    if (receipt()) return "Submission received";
+    if (current.draft.state.kind !== "active") return "Application draft";
+    return current.draft.purpose.kind === "edit" ? "Edit pending application" : "New talk application";
+  };
+  const bandLede = () => {
+    const current = view();
+    if (!current || blocksPage(error())) return undefined;
+    if (receipt()) return "Your submission receipt is saved with this draft.";
+    if (current.draft.state.kind !== "active") return undefined;
+    return "Complete each step and save before you continue. Your presentation stays separate from your reusable speaker profile.";
+  };
+
   return <>
-    <a class="inline-link" href="/applications">Back to applications</a>
+    <PageBand size="short" title={bandTitle()} lede={bandLede()} />
+    <div class="page-crumbs"><a class="inline-link" href="/applications">Back to applications</a></div>
     <Show when={loading()}><div class="cfp-loading" role="status">Loading saved draft…</div></Show>
     <Show when={error()}>{(current) => <>
       <ErrorNotice message={current().message} issues={current().issues} onRetry={RELOADABLE_ERRORS.has(current().code) ? reload : undefined} retryLabel="Reload saved draft" />
@@ -266,7 +283,6 @@ export default function Apply() {
     </>}</Show>
     <Show when={view() && !blocksPage(error())}>
       <Show when={receipt()}>
-        <header class="page-heading"><h1>Submission received</h1><p>Your submission receipt is saved with this draft.</p></header>
         <section class="surface cfp-stack" aria-labelledby="receipt-title">
           <h2 id="receipt-title">Submission receipt</h2>
           <dl class="read-only-summary"><div><dt>Application</dt><dd><a href={`/applications/${receipt()!.applicationId}`}>{receipt()!.applicationId}</a></dd></div><div><dt>Operation</dt><dd>{receipt()!.operation}</dd></div><div><dt>Application revision</dt><dd>{receipt()!.applicationRevision}</dd></div><div><dt>Committed</dt><dd>{new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(receipt()!.committedAt)}</dd></div></dl>
@@ -274,7 +290,6 @@ export default function Apply() {
         </section>
       </Show>
       <Show when={view()!.draft.state.kind === "active"}>
-        <header class="page-heading"><h1>{view()!.draft.purpose.kind === "edit" ? "Edit pending application" : "New talk application"}</h1><p>Complete each step and save before you continue. Your presentation stays separate from your reusable speaker profile.</p></header>
         <ol class="cfp-progress" aria-label="Application progress">
           <For each={steps}>{(label, index) => <li class={step() > index() + 1 ? "is-complete" : undefined} aria-current={step() === index() + 1 ? "step" : undefined}><span class="progress-step">{index() + 1}</span><span>{label}</span></li>}</For>
         </ol>
@@ -323,7 +338,7 @@ export default function Apply() {
           <Match when={step() === 4}>
             <form class="surface form" onSubmit={goNext}>
               <div><h2>Experience</h2><p class="muted">First-time speakers are welcome. Previous speaking experience is optional.</p></div>
-              <div class="field"><label for="previous-presentation">Have you presented this topic before?</label><textarea id="previous-presentation" class="control" name="previousPresentation" maxlength="50000" value={presentation().previousPresentation} onInput={(event) => updatePresentation("previousPresentation", event.currentTarget.value)} /></div>
+              <div class="field"><label class="label-question" for="previous-presentation">Have you presented this topic before?</label><textarea id="previous-presentation" class="control" name="previousPresentation" maxlength="50000" value={presentation().previousPresentation} onInput={(event) => updatePresentation("previousPresentation", event.currentTarget.value)} /></div>
               <section class="confirm-section"><h3>Previous talks in your speaker profile</h3><p>{previousTalks().trim() || <span class="muted">Not provided</span>}</p><a class="inline-link" href="/profile" onClick={(event) => void saveAndOpen(event, "/profile")}>Edit speaker profile</a></section>
               <DraftFormActions busy={busy()} locked={draftLocked()} next="Next: Expenses" nextWhileSaving="Saving…" onBack={goBack} onSave={() => void persist()} />
             </form>
@@ -332,7 +347,7 @@ export default function Apply() {
             <form class="surface form" onSubmit={goNext}>
               <div><h2>Expenses</h2><p class="muted">Tell the organizers whether your company can cover travel or accommodation.</p></div>
               <Show when={view()!.settings.value.companyCoverExpenses === null} fallback={<section class="confirm-section"><h3>Saved applicant settings</h3><SettingsSummary settings={view()!.settings.value} editHref="/settings" /></section>}>
-                <fieldset class="field" style={{ border: "none", padding: 0, margin: 0 }}><legend>Can your company cover travel or accommodation? <span class="required">Required</span></legend><p class="hint" id="expenses-help">Choose one option before you review your application.</p><div class="choice-grid" role="radiogroup" aria-describedby="expenses-help"><For each={["Yes", "No", "Other"] as const}>{(option, index) => <label class="choice"><input type="radio" name="companyCoverExpenses" value={option} required={index() === 0} checked={expense() === option} onChange={() => { setExpense(option); markDirty(); }} /><span>{option}</span></label>}</For></div></fieldset>
+                <fieldset class="field choice-fieldset"><legend class="label-question">Can your company cover travel or accommodation? <span class="required">Required</span></legend><p class="hint" id="expenses-help">Choose one option before you review your application.</p><div class="choice-grid" role="radiogroup" aria-describedby="expenses-help"><For each={["Yes", "No", "Other"] as const}>{(option, index) => <label class="choice"><input type="radio" name="companyCoverExpenses" value={option} required={index() === 0} checked={expense() === option} onChange={() => { setExpense(option); markDirty(); }} /><span>{option}</span></label>}</For></div></fieldset>
               </Show>
               <div class="field"><label for="organizer-notes">Notes for organizers</label><p class="hint" id="organizer-notes-help">Private to the organizers. Add a visa invitation request or availability constraints if relevant.</p><textarea id="organizer-notes" class="control" name="organizerNotes" maxlength="50000" aria-describedby="organizer-notes-help" value={presentation().organizerNotes} onInput={(event) => updatePresentation("organizerNotes", event.currentTarget.value)} /></div>
               <div class="field"><label for="additional-info">Additional information</label><textarea id="additional-info" class="control" name="additionalInfo" maxlength="50000" value={presentation().additionalInfo} onInput={(event) => updatePresentation("additionalInfo", event.currentTarget.value)} /></div>

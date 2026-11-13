@@ -69,14 +69,17 @@ The `/` landing page is the approved, unchanged public design. Retained legal pa
 
 ## Supporting Public Pages — WTS 2027
 
-- Use the compact, non-morphing navy header with the original logo, full WhatTheStack wordmark, and 2027 identity. Provide Home, The gathering, Past editions, Get updates, and a small Sign in/Profile entry.
+- Use the compact, non-morphing light glass header with the original logo, full WhatTheStack wordmark, and 2027 identity. Provide Home, The gathering, Past editions, Get updates, and a small Sign in/Profile entry. Navy appears only at orbit on the landing. The `data-sky="night"` header variant exists for that case only.
 
 - The public header uses the same `PublicHeader` component on the landing and supporting pages. Supporting pages place the compact header inside a full-width sticky `.support-header` wrapper. Keep the header visible during scrolling without adding a hero transition.
 
 - Use the shared `--orbit-header-height`: 90px on desktop and 116px below 768px. Keep landing-only geometry scoped to `.orbit-cover-stage`. Production navigation retains route stylesheets, so verify landing-to-legal navigation as well as direct page loads.
-- Extend the navy background across the content width without viewport-width calculations. Keep the native scrollbar separate, with a visible muted thumb over the light page background.
+- The header glass blurs the page behind it. If the browser has no `backdrop-filter`, the header uses a paper-tinted solid fill. Keep the native scrollbar separate, with a visible muted thumb over the light page background.
 - Keep the logo and navigation centered in the 1320px header content area.
-- Reading surfaces use warm-ivory public tokens, ink text, and Space Grotesk for body text and every heading level. Footer layout comes from `public-support.css` on both the landing and supporting pages.
+- Reading surfaces use warm-ivory public tokens, ink text, and Space Grotesk for body text and prose headings. Footer layout comes from `public-support.css` on both the landing and supporting pages.
+- A supporting page can open with an altitude band (`.support-band`). The band has a sky gradient, a label row, a StarzoomShavian title, and an optional lede. The 404 page uses the `lost` band variant.
+- All supporting surfaces have square corners: panels, fields, buttons, the newsletter dialog, and prose images. Prose images get a hairline frame.
+- Primary buttons use the `--color-orbit-accent` fill with `--color-orbit-accent-ink` text. On fine-pointer hover, the fill mixes 22% toward `--color-orbit-ink`. Do not use bright cyan as a button fill on light surfaces.
 - Keep DaisyUI form controls. Public inputs, textareas, and selects use the lighter paper fill and muted-ink borders, not the card fill and divider color.
 - Keep the amber keyboard-focus outline and 48px minimum field height. Disabled fields use the card fill and muted text.
 - Do not add the launch planet, supporting-page hero, scroll-morphing brand, animated code background, conference/ticket menus, or ticket-sales calls to action to supporting pages.
@@ -85,6 +88,24 @@ The `/` landing page is the approved, unchanged public design. Retained legal pa
 - Retired public routes return the shared 404 page: `/agenda`, `/speakers`, `/sessions`, `/sponsors`, `/timeline`, `/missions`, and `/qa`. Speaker details, speaker promo pages, and session details also return 404.
 - Keep feedback invitations, the protected speaker guide, mission redemption, and private operational routes. MC question queues use `/mc?session=<slug>`.
 - Remove navigation and admin preview links to retired pages. Keep the historical edition link at `https://2026.wts.sh`.
+
+## Flight controls — WTS 2027
+
+All 2027 apps (site, auth, blog, cfp) use one control language. The reference recipes are in `flight-kit.css`, with a specimen page. Each app copies the recipes onto its own class names: `site/src/styles/public-links.css`, `auth/public/account.css`, `blog/src/styles/controls.css`, and `cfp/src/styles/app.css`. Change these copies together.
+
+- Primary actions are notched plates. The top-right and bottom-left corners have a 9px cut. Small items such as tags and pagination use a 6px cut.
+- Secondary actions, icon buttons, tags, and pagination are 1px notched frames. A pressed tool (`aria-pressed="true"`) and the current page become plates.
+- Danger actions, such as revoke and reject, use the error-red plate.
+- Draw fills and frames on `::before`, `::after`, or background layers. Declare `--ctl-plate` on each control. Never put `clip-path` on a focusable element, because it clips the focus outline.
+- Hover and focus print a 3px dot screen. Press makes it 2px. The dots always move away from the text color, so a state never lowers text contrast.
+- Focus is one 3px amber rectangle (`--color-orbit-focus`).
+- Links in copy keep a dotted underline at rest. Nav links show a 2px dot rule on hover and focus, and a solid rule on the current page.
+- Fields have the same notched frame: muted ink at rest, accent on hover, and 2px accent on focus with a dot rule that scans along the bottom. `:user-invalid` shows a 2px error frame.
+- A field that fails validation also shows one short error line directly below it. The line names the problem, for example "Enter a full email address, such as name@example.com.". The `field-errors` script writes the line on submit or after the user leaves a changed field. It sets `aria-invalid` and adds the line to `aria-describedby`, and it clears both when the value becomes valid. Each app has a copy: `site/src/lib/field-errors.ts`, `cfp/src/lib/field-errors.ts`, and `auth/public/field-errors.mjs`.
+- Browsers force their own autofill colors and remove the frame layers. Redraw an autofilled field with inset shadows: a 2px accent ring over the field fill.
+- Short field labels name a value and are tracked uppercase. A label that asks a full question uses sentence case at body size (`label-question` in cfp, `.fk-label.is-question` in the kit).
+- Status chips and notices show a status square, and their text names the state. Green is active or accepted, amber is pending or stale, and red is rejected or revoked. An empty square means closed, not granted, or draft. Mix status colors `in oklab`, because `oklch` mixes of red drift to purple.
+- Motion is stepped on the 150 ms eighth. Reduced motion keeps every end state with no scan, turn, or slide.
 
 ## Exports
 
@@ -259,29 +280,47 @@ For a future shadcn consumer only. Keep this scoped; never apply it to the curre
 ## CFP applicant app
 
 The independent `cfp/` app uses the 2027 supporting-page palette on every route, including authenticated applicant routes.
-Its compact header uses navy with the original WTS logo.
+Its compact header uses light glass with the original WTS logo, the WhatTheStack wordmark, and a `CALL FOR PAPERS` label.
 Pages and form fields use warm ivory with dark ink.
-Primary actions use cyan with dark ink.
-Keep Space Grotesk, DaisyUI controls, and the amber keyboard-focus outline.
-The semantic theme in `cfp/src/styles/app.css` owns the app's colors.
+Primary actions obey the supporting-page primary button rule.
+Keep Space Grotesk for body text, DaisyUI controls, and the amber keyboard-focus outline.
+The semantic theme in `cfp/src/styles/app.css` owns the app's colors. All DaisyUI radii are 0.
+The CFP tokens are a copy of `site/tokens.css`, because the CFP Docker build cannot import site files. If you change a shared token, change both files.
 The existing root operational screens retain their dark theme.
 
 ### Auth and CFP task layouts
 
 The independent auth and CFP apps retain the public supporting-page identity.
-Starzoom Shavian appears in the compact wordmark only.
-Headings, forms, navigation, and staff controls use Space Grotesk.
 Both apps serve their fonts locally.
 
-Auth uses a narrow form column without an outer card.
+Auth uses an ALT 0 layout: a narrow form column with no band and no outer card.
+The page title uses StarzoomShavian. Forms and controls use Space Grotesk.
 Rules separate identity, shared profile, security, and consent details.
 Password, recovery, and consent controls retain their existing behavior.
 The auth stylesheet is `auth/public/account.css`.
 
-The CFP landing shows the live submission status beside the next applicant action.
+CFP applicant pages open with the `PageBand` component (`cfp/src/components/PageBand.tsx`).
+The index, applications list, and 404 use the tall band. Detail and form pages use the short band.
+The band shows still streaks, corner marks, a label row, and a StarzoomShavian title.
+The CFP landing shows the live submission status beside the next applicant action, as glass over the lower band.
 The CFP header collapses navigation below 1024 pixels.
 Its menu exposes the current page and closes after a route change.
-Speaker profile fields form two groups: speaker details and links with speaking experience.
+Speaker profile fields form two groups: speaker details and links with speaking experience. A labeled rule separates the groups.
+Staff routes use the paper ground, a StarzoomShavian title, hairline panels, and underline tabs.
 Staff filters use a compact grid.
-Wide staff tables scroll within their own container, not the page.
+Staff tables have hairline rules and uppercase headers, with no zebra stripes.
+Wide staff tables scroll within their own named region, not the page.
 Empty states, retry controls, and server-enforced permissions remain part of each workflow.
+
+## Blog
+
+The independent `blog/` app uses the ALT 2 supporting-page identity.
+`blog/tokens.css` is a copy of `site/tokens.css`. Keep the two files identical below the header comment.
+The header uses light glass with the logo, the StarzoomShavian wordmark, and a `BLOG` label. Navigation, live search, and the Ctrl/⌘K shortcut stay in the header.
+The `SkyBand` component (`blog/src/components/SkyBand.astro`) opens the home, posts, category, tag, search, page, and 404 routes.
+On a post, the band holds the title, excerpt, and a meta strip with author, date, reading time, and tags. The cover sits below the band in a hairline frame.
+Cards and the featured post use hairline panels with square corners. Corner marks show on hover and keyboard focus.
+The posts index is a list of rows with a date column.
+The table of contents uses a left hairline with an accent marker on the current item. It keeps `aria-current` in sync.
+Prose uses Space Grotesk headings, a line length of about 70 characters, accent links, and hairline tables.
+The footer uses the site footer layout with the blog's own links.

@@ -1,3 +1,32 @@
+/* Flight controls · one interaction language for every WTS 2027 action.
+ * Filled actions are notched plates: the fill lives on ::before, so the focus outline stays a
+ * plain rectangle. Hover and keyboard focus scan a dot screen across the plate in one eighth
+ * (150 ms, stepped). The dots always move away from the text colour, so hover never lowers
+ * contrast. Text links carry a dotted rule that scans into a 2px dot line.
+ * The dot screen echoes the dithered sky. No glow, no gradient text. */
+
+:is(.landing-2027, .supporting-shell, .newsletter-dialog) {
+  --ctl-notch: 9px;
+  --ctl-plate: polygon(0 0, calc(100% - var(--ctl-notch)) 0, 100% var(--ctl-notch), 100% 100%, var(--ctl-notch) 100%, 0 calc(100% - var(--ctl-notch)));
+  --ctl-plate-off: polygon(0 0, 0 0, 0 var(--ctl-notch), 0 100%, 0 100%, 0 calc(100% - var(--ctl-notch)));
+  --ctl-line-rest: linear-gradient(90deg, currentColor 1px, transparent 0) 0 0 / 3px 1px;
+  --ctl-line-on: conic-gradient(currentColor 25%, transparent 0 50%, currentColor 0 75%, transparent 0) 0 0 / 2px 2px;
+}
+
+/* Filled actions. */
+.orbit-nav-cta,
+.orbit-button,
+.newsletter-submit,
+.supporting-shell .support-main .btn-primary,
+.support-main .support-actions a:first-child {
+  --ctl-fill: var(--color-orbit-accent);
+  --ctl-ink: var(--color-orbit-accent-ink);
+  --ctl-fill-hover: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 24%);
+  --ctl-dot: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 60%);
+  position: relative;
+  isolation: isolate;
+}
+
 .orbit-nav-cta,
 .orbit-button {
   display: inline-flex;
@@ -5,25 +34,121 @@
   align-items: center;
   justify-content: center;
   gap: 0.65rem;
-  padding: 0.7rem 1rem;
-  border: 1px solid var(--launch-cyan);
-  border-radius: 2px;
-  background: var(--launch-cyan);
+  padding: 0.7rem 1.2rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
-  color: var(--launch-night-floor);
+  color: var(--ctl-ink);
   font: 700 0.9375rem/1.2 var(--font-orbit-body);
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
-  transition: background-color var(--dur-orbit-fast) var(--ease-orbit-out), border-color var(--dur-orbit-fast) var(--ease-orbit-out), transform 100ms ease-out;
+}
+
+/* Bright plates on night glass print dark dots. */
+.orbit-signup-panel .orbit-button {
+  --ctl-fill: var(--launch-cyan);
+  --ctl-ink: var(--launch-night-floor);
+  --ctl-fill-hover: color-mix(in oklch, var(--launch-cyan), white 16%);
+  --ctl-dot: color-mix(in oklch, var(--launch-cyan), white 60%);
 }
 
 .orbit-button-light {
-  border-color: var(--color-orbit-paper);
-  background: var(--color-orbit-paper);
-  color: var(--color-orbit-ink);
+  --ctl-fill: var(--color-orbit-paper);
+  --ctl-ink: var(--color-orbit-ink);
+  --ctl-fill-hover: color-mix(in oklch, var(--color-orbit-paper), white 40%);
+  --ctl-dot: white;
 }
 
+:is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary, .support-main .support-actions a:first-child)::before,
+:is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary, .support-main .support-actions a:first-child)::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+}
+
+:is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary, .support-main .support-actions a:first-child)::before {
+  background: var(--ctl-fill);
+  clip-path: var(--ctl-plate);
+  transition: background-color var(--dur-orbit-eighth) var(--ease-orbit-out);
+}
+
+:is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary, .support-main .support-actions a:first-child)::after {
+  background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 3px 3px;
+  clip-path: var(--ctl-plate-off);
+}
+
+:is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary, .support-main .support-actions a:first-child):focus-visible:not(:disabled)::before {
+  background: var(--ctl-fill-hover);
+}
+
+:is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary, .support-main .support-actions a:first-child):focus-visible:not(:disabled)::after {
+  clip-path: var(--ctl-plate);
+}
+
+:is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary, .support-main .support-actions a:first-child):active:not(:disabled) {
+  translate: 0 1px;
+}
+
+:is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary, .support-main .support-actions a:first-child):active:not(:disabled)::after {
+  background-size: 2px 2px;
+  clip-path: var(--ctl-plate);
+}
+
+:is(.orbit-nav-cta, .orbit-button):disabled {
+  --ctl-fill: var(--color-orbit-surface);
+  color: var(--color-orbit-muted);
+  cursor: not-allowed;
+}
+
+/* Secondary actions: the same notched outline as a hairline frame. Hover prints dots inside it. */
+.supporting-shell .support-main .btn-outline,
+.support-main .support-actions a + a,
+.newsletter-close {
+  --ctl-line: var(--color-orbit-ink);
+  --ctl-dot: color-mix(in oklch, var(--color-orbit-accent) 30%, transparent);
+  position: relative;
+  isolation: isolate;
+  border-color: transparent !important;
+}
+
+.supporting-shell .support-main .btn-outline {
+  --ctl-line: var(--color-orbit-accent);
+}
+
+:is(.supporting-shell .support-main .btn-outline, .support-main .support-actions a + a, .newsletter-close)::before,
+:is(.supporting-shell .support-main .btn-outline, .support-main .support-actions a + a, .newsletter-close)::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+}
+
+:is(.supporting-shell .support-main .btn-outline, .support-main .support-actions a + a, .newsletter-close)::before {
+  border: 1px solid var(--ctl-line);
+  clip-path: var(--ctl-plate);
+}
+
+/* The two cut corners get their own 1px diagonals. */
+:is(.supporting-shell .support-main .btn-outline, .support-main .support-actions a + a, .newsletter-close)::after {
+  background:
+    linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 100% 0 / var(--ctl-notch) var(--ctl-notch) no-repeat,
+    linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 0 100% / var(--ctl-notch) var(--ctl-notch) no-repeat;
+}
+
+:is(.supporting-shell .support-main .btn-outline, .support-main .support-actions a + a, .newsletter-close):focus-visible:not(:disabled)::before {
+  background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 3px 3px;
+}
+
+:is(.supporting-shell .support-main .btn-outline, .support-main .support-actions a + a, .newsletter-close):active:not(:disabled)::before {
+  background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 2px 2px;
+}
+
+/* Text links. */
 .orbit-inline-link {
   position: relative;
   display: inline-flex;
@@ -50,7 +175,7 @@
   flex: 0 0 auto;
   place-items: center;
   color: inherit;
-  transition: transform var(--dur-orbit-fast) var(--ease-orbit-out);
+  transition: transform var(--dur-orbit-eighth) steps(2, end);
 }
 
 :is(.orbit-action-arrow, .orbit-inline-arrow, .orbit-edition-arrow, .orbit-footer-arrow) svg {
@@ -68,7 +193,7 @@
 .orbit-footer-bottom a {
   position: relative;
   text-decoration: none;
-  transition: color var(--dur-orbit-fast) var(--ease-orbit-out);
+  transition: color var(--dur-orbit-eighth) var(--ease-orbit-out);
 }
 
 .orbit-nav a {
@@ -90,6 +215,7 @@
   width: fit-content;
 }
 
+/* Nav and footer links: no rule at rest. */
 .orbit-nav > a::after,
 .orbit-footer-links a::after,
 .orbit-footer-bottom a::after,
@@ -97,19 +223,21 @@
 .orbit-edition-content strong::after {
   position: absolute;
   right: 0;
-  bottom: 0.45rem;
+  bottom: 0.5rem;
   left: 0;
-  height: 1px;
-  background: currentColor;
+  height: 2px;
+  background: var(--ctl-line-on);
   content: "";
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform var(--dur-orbit-fast) var(--ease-orbit-out);
+  clip-path: inset(0 100% 0 0);
 }
 
+/* Links inside copy keep a dotted rule at rest, so they read as links without colour alone. */
 .orbit-inline-link-label::after,
 .orbit-edition-content strong::after {
-  bottom: -0.15em;
+  bottom: -0.25em;
+  height: 1px;
+  background: var(--ctl-line-rest);
+  clip-path: inset(0);
 }
 
 :is(.landing-2027, .supporting-shell) :focus-visible {
@@ -117,31 +245,35 @@
   outline-offset: 4px;
 }
 
-.orbit-nav > a:focus-visible {
-  color: var(--launch-cyan);
-}
-
 :is(.orbit-footer-links, .orbit-footer-bottom) a:focus-visible,
 .orbit-edition:focus-visible {
   color: var(--color-orbit-accent);
+}
+
+.orbit-footer-band :is(.orbit-footer-links, .orbit-footer-bottom) a:focus-visible {
+  color: var(--launch-cyan);
 }
 
 .orbit-nav > a:focus-visible::after,
 :is(.orbit-footer-links, .orbit-footer-bottom) a:focus-visible::after,
 .orbit-inline-link:focus-visible .orbit-inline-link-label::after,
 .orbit-edition:focus-visible .orbit-edition-content strong::after {
-  transform: scaleX(1);
-}
-
-.orbit-nav-cta:focus-visible,
-.orbit-button:not(.orbit-button-light):focus-visible {
-  border-color: color-mix(in oklch, var(--launch-cyan), white 14%);
-  background: color-mix(in oklch, var(--launch-cyan), white 14%);
+  height: 2px;
+  background: var(--ctl-line-on);
+  clip-path: inset(0);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .orbit-nav > a:hover {
-    color: var(--launch-cyan);
+  :is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary, .support-main .support-actions a:first-child):hover:not(:disabled)::before {
+    background: var(--ctl-fill-hover);
+  }
+
+  :is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary, .support-main .support-actions a:first-child):hover:not(:disabled)::after {
+    clip-path: var(--ctl-plate);
+  }
+
+  :is(.supporting-shell .support-main .btn-outline, .support-main .support-actions a + a, .newsletter-close):hover:not(:disabled)::before {
+    background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 3px 3px;
   }
 
   :is(.orbit-footer-links, .orbit-footer-bottom) a:hover,
@@ -149,46 +281,95 @@
     color: var(--color-orbit-accent);
   }
 
+  .orbit-footer-band :is(.orbit-footer-links, .orbit-footer-bottom) a:hover {
+    color: var(--launch-cyan);
+  }
+
   .orbit-nav > a:hover::after,
   :is(.orbit-footer-links, .orbit-footer-bottom) a:hover::after,
   .orbit-inline-link:hover .orbit-inline-link-label::after,
   .orbit-edition:hover .orbit-edition-content strong::after {
-    transform: scaleX(1);
+    height: 2px;
+    background: var(--ctl-line-on);
+    clip-path: inset(0);
   }
-
-  .orbit-nav-cta:hover:not(:disabled),
-  .orbit-button:not(.orbit-button-light):hover:not(:disabled) {
-    border-color: color-mix(in oklch, var(--launch-cyan), white 14%);
-    background: color-mix(in oklch, var(--launch-cyan), white 14%);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  :is(.orbit-nav-cta, .orbit-button, .orbit-inline-link, .orbit-edition, .orbit-footer-links a):focus-visible > :is(.orbit-action-arrow, .orbit-inline-arrow, .orbit-edition-arrow, .orbit-footer-arrow) {
-    transform: translateX(2px);
-  }
-
-  @media (hover: hover) and (pointer: fine) {
-    :is(.orbit-nav-cta, .orbit-button, .orbit-inline-link, .orbit-edition, .orbit-footer-links a):hover:not(:disabled) > :is(.orbit-action-arrow, .orbit-inline-arrow, .orbit-edition-arrow, .orbit-footer-arrow) {
-      transform: translateX(2px);
-    }
-  }
-}
-
-:is(.orbit-nav-cta, .orbit-button):active:not(:disabled) {
-  box-shadow: inset 0 0 0 1px currentColor;
-  transform: translateY(1px);
-}
-
-:is(.orbit-nav-cta, .orbit-button):disabled {
-  border-color: var(--color-orbit-rule);
-  background: var(--color-orbit-surface);
-  color: var(--color-orbit-muted);
-  cursor: not-allowed;
 }
 
 .orbit-inline-link:active .orbit-inline-link-label::after,
 .orbit-edition:active .orbit-edition-content strong::after,
-:is(.orbit-footer-links, .orbit-footer-bottom) a:active::after {
-  transform: scaleX(1);
+:is(.orbit-nav, .orbit-footer-links, .orbit-footer-bottom) a:active::after {
+  height: 2px;
+  background: currentColor;
+  clip-path: inset(0);
+}
+
+/* Motion: the plate and the rules scan in on the eighth grid; arrows step forward. */
+@media (prefers-reduced-motion: no-preference) {
+  :is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary, .support-main .support-actions a:first-child):focus-visible:not(:disabled)::after {
+    animation: ctl-plate-scan var(--dur-orbit-eighth) steps(5, end);
+  }
+
+  .orbit-nav > a:focus-visible::after,
+  :is(.orbit-footer-links, .orbit-footer-bottom) a:focus-visible::after,
+  .orbit-inline-link:focus-visible .orbit-inline-link-label::after,
+  .orbit-edition:focus-visible .orbit-edition-content strong::after {
+    animation: ctl-line-scan var(--dur-orbit-eighth) steps(6, end);
+  }
+
+  :is(.orbit-nav-cta, .orbit-button, .orbit-inline-link, .orbit-edition, .orbit-footer-links a):focus-visible > :is(.orbit-action-arrow, .orbit-inline-arrow, .orbit-edition-arrow, .orbit-footer-arrow) {
+    transform: translateX(3px);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    :is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary, .support-main .support-actions a:first-child):hover:not(:disabled)::after {
+      animation: ctl-plate-scan var(--dur-orbit-eighth) steps(5, end);
+    }
+
+    .orbit-nav > a:hover::after,
+    :is(.orbit-footer-links, .orbit-footer-bottom) a:hover::after,
+    .orbit-inline-link:hover .orbit-inline-link-label::after,
+    .orbit-edition:hover .orbit-edition-content strong::after {
+      animation: ctl-line-scan var(--dur-orbit-eighth) steps(6, end);
+    }
+
+    :is(.orbit-nav-cta, .orbit-button, .orbit-inline-link, .orbit-edition, .orbit-footer-links a):hover:not(:disabled) > :is(.orbit-action-arrow, .orbit-inline-arrow, .orbit-edition-arrow, .orbit-footer-arrow) {
+      transform: translateX(3px);
+    }
+  }
+
+  @keyframes ctl-plate-scan {
+    from {
+      clip-path: var(--ctl-plate-off);
+    }
+
+    to {
+      clip-path: var(--ctl-plate);
+    }
+  }
+
+  @keyframes ctl-line-scan {
+    from {
+      clip-path: inset(0 100% 0 0);
+    }
+
+    to {
+      clip-path: inset(0);
+    }
+  }
+}
+
+/* Field error line: written by ~/lib/field-errors.ts under a field that fails validation.
+ * The text names the problem, so the red frame is never the only signal. */
+.field-error {
+  display: block;
+  margin-top: 0.375rem;
+  color: var(--color-orbit-error);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+.field-error[hidden] {
+  display: none;
 }

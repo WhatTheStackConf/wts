@@ -2,6 +2,7 @@ import { createSignal, onSettled, Show } from "solid-js";
 import { useNavigate, useParams } from "@solidjs/router";
 import { getApplication, startDraft } from "~/lib/cfp-actions";
 import type { FieldIssue, ApplicationView } from "~/lib/cfp-model";
+import { PageBand } from "~/components/PageBand";
 import { ErrorNotice, PresentationSummary, Section, SettingsSummary, SpeakerSummary } from "~/components/ApplicantUI";
 
 type PageError = { code: string; message: string; issues: FieldIssue[] };
@@ -49,12 +50,18 @@ export default function ApplicationDetails() {
     setBusy(false);
   };
 
+  const submittedLede = () => {
+    const current = view();
+    if (!current || blocksPage(error())) return undefined;
+    return `Submitted ${new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(current.application.submittedAt)} · application revision ${current.application.revision}`;
+  };
+
   return <>
-    <div class="row row-between"><a class="inline-link" href="/applications">Back to applications</a><Show when={view()}>{(current) => <span class="cfp-status" data-state={current().application.status}>{current().application.status}</span>}</Show></div>
+    <PageBand size="short" title={view() && !blocksPage(error()) ? view()!.application.presentation.title || "Untitled talk" : "Application"} lede={submittedLede()} />
+    <div class="row row-between page-crumbs"><a class="inline-link" href="/applications">Back to applications</a><Show when={view()}>{(current) => <span class="cfp-status" data-state={current().application.status}>{current().application.status}</span>}</Show></div>
     <Show when={loading()}><div class="cfp-loading" role="status">Loading application…</div></Show>
     <Show when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={() => void load()} /><Show when={current().code === "unauthenticated"}><a class="button" href={`/auth/login?returnTo=${encodeURIComponent(`/applications/${params.id ?? ""}`)}`} rel="external">Sign in to continue</a></Show><Show when={current().code === "finalized"}><a class="inline-link" href={`/applications/${params.id ?? ""}`}>Open this application to create a Reuse draft.</a></Show></>}</Show>
     <Show when={view() && !blocksPage(error())}>
-      <header class="page-heading"><h1>{view()!.application.presentation.title || "Untitled talk"}</h1><p>Submitted {new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(view()!.application.submittedAt)} · application revision {view()!.application.revision}</p></header>
       <section class="surface cfp-stack">
         <div class="surface-title"><div><h2>Application actions</h2><p>{view()!.application.status === "pending" ? "Edit creates a private draft. Your submitted application stays unchanged until confirmation." : "This application is finalized. Reuse copies its presentation into a new independent draft."}</p></div></div>
         <div class="row">

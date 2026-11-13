@@ -1,0 +1,156 @@
+---
+/**
+ * ALT 2 sky band: the blog's fixed altitude in the WTS 2027 altitude ramp.
+ * The band slides under the glass header, carries the label row and the page
+ * title, and fades from low sky (--alt-2) to paper (--alt-0).
+ * Slot content uses .sky-band-title and .sky-band-lede.
+ */
+interface Props {
+	/** Context after "WTS Blog", such as "Tag" or "404 · Not found". */
+	context?: string;
+	/** "article" fits a post title and title block; "lost" is the 404 horizon. */
+	variant?: "page" | "article" | "lost";
+}
+
+const { context, variant = "page" } = Astro.props;
+---
+
+<div class="sky-band" data-variant={variant}>
+	<div class="sky-band-inner">
+		<p class="sky-band-label">
+			<span>WTS Blog{context && ` · ${context}`}</span>
+			<span class="sky-band-datum" aria-hidden="true">▽ ALT 2</span>
+		</p>
+		<slot />
+	</div>
+</div>
+
+<style>
+	.sky-band {
+		position: relative;
+		isolation: isolate;
+		display: flex;
+		min-height: calc(var(--header-height) + clamp(14rem, 22vw, 19rem));
+		align-items: flex-end;
+		margin-top: calc(-1 * var(--header-height));
+		padding-top: var(--header-height);
+		overflow: hidden;
+		border-bottom: 1px solid var(--color-orbit-hair);
+		background: linear-gradient(180deg, var(--alt-2), var(--alt-0));
+	}
+
+	/* Drawing-sheet frame: two marks at the top corners, clear of the header. */
+	.sky-band::after {
+		position: absolute;
+		inset: calc(var(--header-height) + 0.75rem) 0.75rem 0.75rem;
+		background: var(--mark-tl), var(--mark-tr);
+		pointer-events: none;
+		content: "";
+	}
+
+	.sky-band-inner {
+		width: var(--page-width);
+		margin-inline: auto;
+		padding-block: 2.5rem clamp(2rem, 4vw, 2.75rem);
+	}
+
+	.sky-band-label {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		gap: 0.5rem 1.5rem;
+		color: var(--color-orbit-accent);
+		font-size: 0.75rem;
+		font-weight: 600;
+		line-height: 1.4;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+	}
+
+	.sky-band-datum {
+		color: var(--color-orbit-muted);
+		font-variant-numeric: tabular-nums;
+		letter-spacing: 0.14em;
+	}
+
+	.sky-band :global(.sky-band-title) {
+		max-width: 18ch;
+		margin: 0.75rem 0 0;
+		overflow-wrap: break-word;
+		color: var(--color-orbit-ink);
+		font-family: var(--font-orbit-display);
+		font-size: clamp(2.5rem, 5.4vw, 4.75rem);
+		font-weight: 400;
+		line-height: 1;
+		letter-spacing: -0.02em;
+		text-wrap: balance;
+	}
+
+	.sky-band :global(.sky-band-lede) {
+		max-width: 60ch;
+		margin: 1rem 0 0;
+		color: var(--color-orbit-muted);
+		font-size: clamp(1.0625rem, 1.4vw, 1.1875rem);
+		line-height: 1.55;
+		text-wrap: pretty;
+	}
+
+	/* Post: a longer title, then the excerpt and the title block. */
+	.sky-band[data-variant="article"] :global(.sky-band-title) {
+		max-width: 22ch;
+		font-size: clamp(2.25rem, 4.6vw, 4rem);
+		line-height: 1.04;
+	}
+
+	.sky-band[data-variant="article"] :global(.sky-band-lede) {
+		font-size: clamp(1.125rem, 1.6vw, 1.3125rem);
+	}
+
+	/* 404: a taller sky over a horizon arc with a cyan rim, all four marks. */
+	.sky-band[data-variant="lost"] {
+		min-height: max(36rem, min(100svh, 50rem));
+		align-items: flex-start;
+		background:
+			radial-gradient(ellipse 70% 45% at 50% 100%, color-mix(in oklch, var(--alt-3) 55%, transparent), transparent 70%),
+			linear-gradient(180deg, var(--alt-2), var(--alt-0) 78%);
+	}
+
+	.sky-band[data-variant="lost"]::before {
+		position: absolute;
+		z-index: -1;
+		bottom: 0;
+		left: 50%;
+		width: max(140%, 62rem);
+		aspect-ratio: 3;
+		border-top: 2px solid var(--launch-cyan);
+		border-radius: 50%;
+		background: radial-gradient(ellipse 60% 40% at 50% 0, var(--color-orbit-paper), var(--alt-0) 70%);
+		box-shadow: 0 -10px 36px -12px color-mix(in oklch, var(--launch-cyan) 55%, transparent);
+		content: "";
+		translate: -50% 76%;
+	}
+
+	.sky-band[data-variant="lost"]::after {
+		background: var(--mark-tl), var(--mark-tr), var(--mark-bl), var(--mark-br);
+	}
+
+	.sky-band[data-variant="lost"] .sky-band-inner {
+		padding-top: clamp(3rem, 9vw, 7rem);
+	}
+
+	.sky-band[data-variant="lost"] :global(.sky-band-title) {
+		max-width: 11ch;
+		font-size: clamp(3rem, 7vw, 5.75rem);
+		line-height: 0.98;
+	}
+
+	@media (max-width: 767px) {
+		.sky-band::after {
+			inset-inline: 0.5rem;
+		}
+
+		.sky-band[data-variant="lost"] {
+			min-height: 34rem;
+		}
+	}
+</style>

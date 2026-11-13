@@ -13,7 +13,7 @@ COPY auth/migrations ./auth/migrations
 COPY auth/public ./auth/public
 COPY auth/scripts/provision-runtime.mjs ./auth/scripts/provision-runtime.mjs
 COPY public/favicon.svg ./auth/public/favicon.svg
-COPY public/fonts/space-grotesk-latin.woff2 public/fonts/space-grotesk-latin-ext.woff2 ./auth/public/fonts/
+COPY public/fonts/space-grotesk-latin.woff2 public/fonts/space-grotesk-latin-ext.woff2 public/fonts/starzoom-shavian.regular.woff2 ./auth/public/fonts/
 COPY src/assets/images/LogoSolo.svg ./auth/public/logo.svg
 RUN pnpm --filter @wts/auth build
 RUN pnpm --filter @wts/auth deploy --prod /prod/auth

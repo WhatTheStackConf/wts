@@ -48,6 +48,7 @@ The imported blog excludes the original local directory's accounts and data.
 Existing root commands such as `pnpm dev`, `pnpm build`, and `pnpm test` still target the preserved conference application.
 Use the repository root as the Docker build context for each app.
 Select `Dockerfile`, `site/Dockerfile`, `cfp/Dockerfile`, `auth/Dockerfile`, or `blog/Dockerfile` for the app you want to build.
+The CFP, site, auth, and blog Dockerfiles pin Node.js 24.22.1 in every Node stage.
 The container builds use `pnpm deploy` to package each app with its production dependencies.
 Do not change production deployment settings without a separate approved deployment.
 
@@ -284,6 +285,8 @@ It never registers a production client or reads production data.
 ### CFP production deployment
 
 On 2026-10-03, Coolify deployed commit `cd2b730705a485af1d178cf4114e61bc34e8efd5` to `https://cfp.wts.sh`.
+On 2026-10-16, Coolify deployed commit `aebcbc4b321916b01d3a8160a822b32d43d5390a` in deployment `jqmuwv19oqfd3cqfwj69is4j`.
+The online backup `20261016T114947Z` was created before that release.
 The application is `wts-cfp-2027`, resource `bqqm98rkzhgbzkqvvg3sooxi`.
 It builds `/cfp/Dockerfile` from the repository root on `security/wts2027-runtime-20261025`.
 Automatic deployment remains disabled.

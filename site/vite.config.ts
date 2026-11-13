@@ -40,6 +40,6 @@ export default defineConfig({
     // https://viteplus.dev/guide/vitest-v5#remove-unneeded-compatibility-settings
     clearMocks: false,
     environment: "node",
-    include: ["src/lib/**/*.test.{ts,tsx}"],
+    include: ["src/lib/**/*.test.{ts,tsx}", "src/components/**/*.test.{ts,tsx}"],
   },
 });

@@ -2,7 +2,7 @@
 
 The WhatTheStack blog uses EmDash 1.0.1 and Astro server rendering. Its canonical URL is `https://blog.wts.sh`.
 
-This project uses the approved WTS 2027 public theme. The reading surface has warm-ivory pages, a compact navy header, cyan links, and self-hosted WTS fonts. The project does not announce unconfirmed 2027 event details.
+This project uses the approved WTS 2027 public theme. The reading surface has warm-ivory pages, a light glass header, a sky band at altitude 2, dark-cyan links, and self-hosted WTS fonts. The project does not announce unconfirmed 2027 event details.
 
 ## Local development
 
@@ -125,8 +125,11 @@ The original seed does not contain these later cover changes. Use a site export 
 
 | File | Purpose |
 | --- | --- |
-| `blog/tokens.css` | WTS public palette, fonts, and spacing |
+| `blog/tokens.css` | WTS public palette, fonts, and spacing. A copy of `site/tokens.css`. Change the copies together. |
 | `blog/src/styles/theme.css` | Blog overrides and self-hosted font declarations |
+| `blog/src/styles/chrome.css` | Light glass header, search, and footer |
+| `blog/src/styles/controls.css` | Flight controls: buttons, links, tags, pagination, and fields |
+| `blog/src/components/SkyBand.astro` | Sky band with the page title, and the post meta strip on posts |
 | `blog/src/layouts/Base.astro` | WTS logo, navigation, and footer |
 | `blog/src/pages/index.astro` | Editorial index |
 | `blog/astro.config.mjs` | Canonical URL, server adapter, database, and media storage |
@@ -138,7 +141,8 @@ The original logo comes from the WTS project. The header and footer logos show *
 Run `pnpm --filter @wts/blog typecheck` to check Astro and TypeScript.
 Run `pnpm --filter @wts/blog build` to build the standalone Node server in `blog/dist/`.
 
-`blog/Dockerfile` uses Node 24 and pnpm 11.24.0.
+`blog/Dockerfile` pins Node.js 24.22.1 in both Node stages and uses pnpm 11.24.0.
+The root lockfile selects `@astrojs/node` 11.1.7 for the Host-header validation security fix.
 It installs only the blog dependency graph from the root lockfile with a frozen install.
 The build uses the `@wts/blog` filter.
 `pnpm deploy --prod` copies portable production dependencies and `dist/` into the runtime image.

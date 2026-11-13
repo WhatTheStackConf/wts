@@ -1,8 +1,9 @@
-import { createEffect, createSignal, Show, type ParentProps } from "solid-js";
+import { createEffect, createSignal, onSettled, Show, type ParentProps } from "solid-js";
 import { useLocation } from "@solidjs/router";
 import { Title } from "@solidjs/meta";
 import { getNavigation } from "~/lib/staff-actions";
 import { Router } from "~/router";
+import { watchFieldErrors } from "~/lib/field-errors";
 import type { VerifiedCfpAccount } from "~/lib/account-model";
 import type { StaffAccess } from "~/lib/staff-model";
 import "~/styles/app.css";
@@ -22,6 +23,7 @@ type IdentityState = "checking" | "anonymous" | "verified" | "unavailable";
 
 const pageTitle = (pathname: string) => PAGE_TITLES[pathname] ?? PAGE_TITLES[`/${pathname.split("/")[1]}`] ?? "Page not found";
 const ariaCurrent = (current: boolean) => current ? "page" : undefined;
+const isStaffPath = (pathname: string) => /^\/(admin|reviewer)(\/|$)/.test(pathname);
 
 interface HeaderIdentityProps {
   account: VerifiedCfpAccount | null | undefined;
@@ -41,6 +43,7 @@ function HeaderIdentity(props: HeaderIdentityProps) {
 
 function ApplicantShell(props: ParentProps) {
   const location = useLocation();
+  onSettled(() => watchFieldErrors());
   const [navigationOpen, setNavigationOpen] = createSignal(false);
   const [account, setAccount] = createSignal<VerifiedCfpAccount | null>();
   const [staffAccess, setStaffAccess] = createSignal<StaffAccess | null>(null);
@@ -69,12 +72,12 @@ function ApplicantShell(props: ParentProps) {
     <a class="skip-link" href="#main">Skip to main content</a>
     <header class="site-header">
       <a class="brand" href="/" aria-label="WhatTheStack Call for Papers home" aria-current={ariaCurrent(location.pathname === "/")}>
-        <img src="/logo.svg" alt="" width="42" height="42" />
-        <span><strong>WhatTheStack</strong><small>Call for Papers</small></span>
+        <img src="/logo.svg" alt="" width="36" height="46" />
+        <span class="brand-lockup"><strong class="brand-name">WhatTheStack</strong><small class="brand-label">Call for Papers</small></span>
       </a>
       <button class="nav-toggle" type="button" aria-expanded={navigationOpen() ? "true" : "false"} aria-controls="primary-nav" onClick={() => setNavigationOpen((open) => !open)}>
-        <span>{navigationOpen() ? "Close menu" : "Menu"}</span>
-        <span class="nav-toggle-mark" aria-hidden="true">{navigationOpen() ? "−" : "+"}</span>
+        <span>{navigationOpen() ? <>Close<span class="nav-toggle-extra"> menu</span></> : "Menu"}</span>
+        <span class="nav-toggle-mark" aria-hidden="true" />
       </button>
       <nav id="primary-nav" class="primary-nav" data-open={navigationOpen() ? "true" : undefined} aria-label="Main navigation">
         <a href="/applications" aria-current={ariaCurrent(location.pathname.startsWith("/applications") || location.pathname.startsWith("/apply/"))}>Applications</a>
@@ -84,9 +87,9 @@ function ApplicantShell(props: ParentProps) {
       </nav>
       <HeaderIdentity account={account()} identityState={identityState()} pathname={location.pathname} />
     </header>
-    <main id="main" class="page-main">{props.children}</main>
+    <main id="main" class="page-main" data-surface={isStaffPath(location.pathname) ? "staff" : "applicant"}>{props.children}</main>
     <footer class="site-footer">
-      <span>WhatTheStack · Call for Papers</span>
+      <span class="site-footer-brand"><strong>WhatTheStack</strong> Call for Papers</span>
       <Show when={account()}><span class="account-id">Your WTS user ID <code>{account()?.wtsUserId}</code></span></Show>
       <a href="https://wts.sh" rel="external">Conference site</a>
     </footer>

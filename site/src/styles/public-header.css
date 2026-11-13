@@ -1,3 +1,26 @@
+:is(.support-header, .orbit-header) {
+  --orbit-header-glass: var(--color-orbit-glass);
+  --orbit-header-line: var(--color-orbit-hair);
+  --orbit-header-ink: var(--color-orbit-ink);
+  --orbit-header-action: var(--color-orbit-accent);
+  --orbit-header-action-ink: var(--color-orbit-accent-ink);
+  --orbit-header-action-hover: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 24%);
+  --orbit-header-action-dot: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 60%);
+  --orbit-header-link-hover: var(--color-orbit-accent);
+}
+
+[data-sky="night"] :is(.support-header, .orbit-header),
+.support-header[data-sky="night"] {
+  --orbit-header-glass: var(--color-orbit-glass-night);
+  --orbit-header-line: var(--color-orbit-line-on-dark);
+  --orbit-header-ink: var(--color-orbit-paper);
+  --orbit-header-action: var(--launch-cyan);
+  --orbit-header-action-ink: var(--launch-night-floor);
+  --orbit-header-action-hover: color-mix(in oklch, var(--launch-cyan), white 14%);
+  --orbit-header-action-dot: color-mix(in oklch, var(--launch-cyan), white 60%);
+  --orbit-header-link-hover: var(--launch-cyan);
+}
+
 html:has(:is(.landing-2027, .supporting-shell)) {
   --orbit-header-height: 90px;
 }
@@ -12,7 +35,8 @@ html:has(:is(.landing-2027, .supporting-shell)) {
   width: min(100% - 3rem, 1320px);
   min-height: var(--orbit-header-height);
   margin-inline: auto;
-  color: var(--launch-white);
+  color: var(--orbit-header-ink);
+  transition: color var(--dur-orbit-beat) var(--ease-orbit-out);
 }
 
 .orbit-brand {
@@ -57,7 +81,7 @@ html:has(:is(.landing-2027, .supporting-shell)) {
   left: 50%;
   display: none;
   transform: translateX(-50%);
-  color: var(--launch-cyan);
+  color: var(--orbit-header-action);
   font-size: var(--text-orbit-small);
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -69,6 +93,51 @@ html:has(:is(.landing-2027, .supporting-shell)) {
   align-items: center;
   gap: clamp(1rem, 3vw, 2.75rem);
   margin-inline-start: auto;
+}
+
+.support-header {
+  background: var(--orbit-header-glass);
+  box-shadow: inset 0 -1px 0 var(--orbit-header-line);
+  -webkit-backdrop-filter: blur(var(--blur-orbit-glass)) saturate(1.2);
+  backdrop-filter: blur(var(--blur-orbit-glass)) saturate(1.2);
+  transition:
+    background-color var(--dur-orbit-beat) var(--ease-orbit-out),
+    box-shadow var(--dur-orbit-beat) var(--ease-orbit-out);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .support-header {
+    background: color-mix(in oklch, var(--orbit-header-glass), var(--color-orbit-paper) 70%);
+  }
+
+  [data-sky="night"] .support-header,
+  .support-header[data-sky="night"] {
+    background: var(--launch-sky-night);
+  }
+}
+
+.orbit-header .orbit-nav-cta {
+  --ctl-fill: var(--orbit-header-action);
+  --ctl-ink: var(--orbit-header-action-ink);
+  --ctl-fill-hover: var(--orbit-header-action-hover);
+  --ctl-dot: var(--orbit-header-action-dot);
+}
+
+.orbit-header .orbit-nav > a:focus-visible {
+  color: var(--orbit-header-link-hover);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .orbit-header .orbit-nav > a:hover {
+    color: var(--orbit-header-link-hover);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbit-header,
+  .support-header {
+    transition: none;
+  }
 }
 
 
