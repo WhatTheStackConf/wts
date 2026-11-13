@@ -320,7 +320,8 @@ test("daily generation and dispatch require a current edition admin and exact co
   assert.equal(status(root).eligibleDailyRecipientCount, 1);
   executeStaffCommand(secondAdmin, { kind: "set-grant", requestId: randomUUID(), wtsUserId: admin.wtsUserId, role: "admin", expectedRevision: 1, active: false });
   sink.mode = "accept";
-  assert.equal((await runMailTick(now + 60_000, root)).suspended, 1);
+  // The first retry is due 60 s after the failed attempt, and that attempt ran after `now`.
+  assert.equal((await runMailTick(now + 120_000, root)).suspended, 1);
   assert.equal(sink.messages.length, 0);
   assert.equal(status(root).eligibleDailyRecipientCount, 0);
   const id = mailIdentity(`daily:2027:2027-02-04:${admin.wtsUserId}`).jobId;

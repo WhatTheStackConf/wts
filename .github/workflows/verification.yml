@@ -1,7 +1,10 @@
+# Verification for the 2026 root app on master.
+# The 2027 apps use verification-2027.yml.
 name: Verification
 
 on:
   pull_request:
+    branches: [master]
   push:
     branches: [master]
   workflow_dispatch:
