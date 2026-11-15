@@ -32,6 +32,7 @@
 	.button,
 	.skip-link,
 	.pagination a,
+	.site-menu-toggle,
 	.tag-chip > span,
 	.site-brand-label,
 	.byline-more,
@@ -136,7 +137,8 @@
 .pagination a,
 .tag-chip > span,
 .site-brand-label,
-.sidebar-widgets .widget-tags__link {
+.sidebar-widgets .widget-tags__link,
+.site-menu-toggle {
 	--ctl-line: var(--color-orbit-ink);
 	--ctl-dot: color-mix(in oklch, var(--color-orbit-accent) 30%, transparent);
 	position: relative;
@@ -144,7 +146,7 @@
 	color: var(--color-orbit-ink);
 }
 
-:is(.button.button-ghost, .pagination a, .tag-chip > span, .site-brand-label, .sidebar-widgets .widget-tags__link)::before {
+:is(.button.button-ghost, .pagination a, .tag-chip > span, .site-brand-label, .sidebar-widgets .widget-tags__link, .site-menu-toggle)::before {
 	border: 1px solid var(--ctl-line);
 	background: none;
 	clip-path: var(--ctl-plate);
@@ -152,15 +154,15 @@
 }
 
 /* The two cut corners get their own 1px diagonals. */
-:is(.button.button-ghost, .pagination a, .tag-chip > span, .site-brand-label, .sidebar-widgets .widget-tags__link)::after {
+:is(.button.button-ghost, .pagination a, .tag-chip > span, .site-brand-label, .sidebar-widgets .widget-tags__link, .site-menu-toggle)::after {
 	background:
 		linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 100% 0 / var(--ctl-notch) var(--ctl-notch) no-repeat,
 		linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 0 100% / var(--ctl-notch) var(--ctl-notch) no-repeat;
 	clip-path: none;
 }
 
-:is(.pagination a, .tag-chip > span, .site-brand-label, .sidebar-widgets .widget-tags__link)::before,
-:is(.pagination a, .tag-chip > span, .site-brand-label, .sidebar-widgets .widget-tags__link)::after {
+:is(.pagination a, .tag-chip > span, .site-brand-label, .sidebar-widgets .widget-tags__link, .site-menu-toggle)::before,
+:is(.pagination a, .tag-chip > span, .site-brand-label, .sidebar-widgets .widget-tags__link, .site-menu-toggle)::after {
 	position: absolute;
 	z-index: -1;
 	inset: 0;
@@ -168,7 +170,7 @@
 	pointer-events: none;
 }
 
-:is(.button.button-ghost, .pagination a):focus-visible:not(:disabled, [aria-disabled="true"])::before,
+:is(.button.button-ghost, .pagination a, .site-menu-toggle):focus-visible:not(:disabled, [aria-disabled="true"])::before,
 .tag-chip:focus-visible > span::before,
 .site-brand:focus-visible .site-brand-label::before,
 .sidebar-widgets .widget-tags__link:focus-visible::before {
@@ -180,7 +182,12 @@
 	color: var(--color-orbit-muted);
 }
 
-:is(.button.button-ghost, .pagination a):active:not(:disabled, [aria-disabled="true"])::before,
+/* An open Menu panel holds the dot screen, so the state is not shown by the icon alone. */
+.site-menu-toggle[aria-expanded="true"]::before {
+	background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 3px 3px;
+}
+
+:is(.button.button-ghost, .pagination a, .site-menu-toggle):active:not(:disabled, [aria-disabled="true"])::before,
 .tag-chip:active > span::before,
 .site-brand:active .site-brand-label::before,
 .sidebar-widgets .widget-tags__link:active::before {
@@ -528,14 +535,14 @@
 		clip-path: var(--ctl-plate);
 	}
 
-	:is(.button.button-ghost, .pagination a):hover:not(:disabled, [aria-disabled="true"])::before,
+	:is(.button.button-ghost, .pagination a, .site-menu-toggle):hover:not(:disabled, [aria-disabled="true"])::before,
 	.tag-chip:hover > span::before,
 	.site-brand:hover .site-brand-label::before,
 	.sidebar-widgets .widget-tags__link:hover::before {
 		background: conic-gradient(from 90deg at 1px 1px, transparent 75%, var(--ctl-dot) 0) 0 0 / 3px 3px;
 	}
 
-	:is(.button.button-ghost, .pagination a):active:not(:disabled, [aria-disabled="true"])::before,
+	:is(.button.button-ghost, .pagination a, .site-menu-toggle):active:not(:disabled, [aria-disabled="true"])::before,
 	.tag-chip:active > span::before,
 	.site-brand:active .site-brand-label::before,
 	.sidebar-widgets .widget-tags__link:active::before {

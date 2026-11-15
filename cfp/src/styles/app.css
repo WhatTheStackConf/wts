@@ -415,7 +415,7 @@ a.skip-link:focus-visible {
 
 /* Nav links (header and footer): no rule at rest. Hover and focus scan in a 2px dot rule,
  * press makes it solid. The current page keeps a solid accent rule and bold ink. */
-.primary-nav a,
+.primary-nav > a,
 .site-footer a {
   position: relative;
   display: inline-flex;
@@ -428,11 +428,11 @@ a.skip-link:focus-visible {
   white-space: nowrap;
 }
 
-.primary-nav a {
+.primary-nav > a {
   padding-inline: 0.875rem;
 }
 
-.primary-nav a::after,
+.primary-nav > a::after,
 .site-footer a::after {
   position: absolute;
   right: 0;
@@ -444,29 +444,29 @@ a.skip-link:focus-visible {
   content: "";
 }
 
-.primary-nav a::after {
+.primary-nav > a::after {
   right: 0.875rem;
   left: 0.875rem;
 }
 
-:is(.primary-nav, .site-footer) a:is(:hover, :focus-visible) {
+:is(.primary-nav > a, .site-footer a):is(:hover, :focus-visible) {
   color: var(--color-orbit-accent);
 }
 
-:is(.primary-nav, .site-footer) a:is(:hover, :focus-visible)::after {
+:is(.primary-nav > a, .site-footer a):is(:hover, :focus-visible)::after {
   clip-path: inset(0);
 }
 
-:is(.primary-nav, .site-footer) a:active::after {
+:is(.primary-nav > a, .site-footer a):active::after {
   background: currentColor;
   clip-path: inset(0);
 }
 
-.primary-nav a[aria-current="page"] {
+.primary-nav > a[aria-current="page"] {
   font-weight: 700;
 }
 
-.primary-nav a[aria-current="page"]::after {
+.primary-nav > a[aria-current="page"]::after {
   background: var(--color-orbit-accent);
   clip-path: inset(0);
 }
@@ -528,6 +528,11 @@ a.skip-link:focus-visible {
   font-size: 0.875rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The identity copy inside the menu panel serves phones only (see responsive). */
+.menu-identity {
+  display: none;
 }
 
 /* ------------------------------------------------------------------ main */
@@ -1864,6 +1869,17 @@ textarea.control {
   width: fit-content;
 }
 
+/* The row checkbox gets a 44px label target. Negative margins keep the row height unchanged. */
+.table-select {
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  margin: -12px;
+  place-items: center;
+  vertical-align: top;
+  cursor: pointer;
+}
+
 /* Disclosure: the datum mark beside the label turns open in two steps. */
 .page-main details {
   border-bottom: 1px solid var(--color-orbit-hair);
@@ -2102,23 +2118,23 @@ details > summary:is(:hover, :focus-visible) {
     display: grid;
   }
 
-  .primary-nav a {
+  .primary-nav > a {
     min-width: 0;
     min-height: 44px;
     gap: 0.6rem;
     padding-inline: 0.75rem;
   }
 
-  .primary-nav a::after {
+  .primary-nav > a::after {
     display: none;
   }
 
-  .primary-nav a:is(:hover, :focus-visible) {
+  .primary-nav > a:is(:hover, :focus-visible) {
     background: conic-gradient(from 90deg at 1px 1px, transparent 75%, color-mix(in oklch, var(--color-orbit-accent) 22%, transparent) 0) 0 0 / 3px 3px;
     color: var(--color-orbit-ink);
   }
 
-  .primary-nav a[aria-current="page"]::before {
+  .primary-nav > a[aria-current="page"]::before {
     width: 7px;
     height: 7px;
     flex: none;
@@ -2144,29 +2160,264 @@ details > summary:is(:hover, :focus-visible) {
 }
 
 @media (max-width: 47.999rem) {
+  /* Phones: one header row, at most 64px. The brand stays on the left and the notched Menu toggle on
+   * the right. The links and the identity action move into a glass panel under the header. */
+  :root {
+    --cfp-header-height: 64px;
+  }
+
+  /* The glass moves to a layer behind the row. A backdrop filter on the header itself would stop
+   * the panel's own glass from blurring the page. */
+  .site-header {
+    display: flex;
+    height: var(--cfp-header-height);
+    isolation: isolate;
+    gap: 0.5rem;
+    padding: 0 0.5rem 0 max(0.75rem, env(safe-area-inset-left));
+    background: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .site-header::before {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    background: var(--color-orbit-glass);
+    box-shadow: inset 0 -1px 0 var(--color-orbit-hair);
+    content: "";
+    -webkit-backdrop-filter: blur(var(--blur-orbit-glass)) saturate(1.2);
+    backdrop-filter: blur(var(--blur-orbit-glass)) saturate(1.2);
+  }
+
+  .site-header > :is(.header-auth, .header-status, .account-menu) {
+    display: none;
+  }
+
+  .brand {
+    gap: 0.625rem;
+  }
+
   .brand img {
-    height: 40px;
+    height: 34px;
   }
 
   .brand-lockup {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.375rem;
+    gap: 0.25rem;
   }
 
   .brand-name {
-    font-size: 1.25rem;
-  }
-
-  .nav-toggle {
-    gap: 0.5rem;
-    padding-inline: 0.75rem;
+    font-size: clamp(1.1rem, 5.5vw, 1.35rem);
   }
 
   .brand-label {
     padding: 0;
     border-left: 0;
-    font-size: 0.625rem;
+    font-size: 0.6875rem;
+  }
+
+  .nav-toggle {
+    --ctl-dot: color-mix(in oklch, var(--color-orbit-accent) 30%, transparent);
+    min-width: 48px;
+    height: 48px;
+    min-height: 0;
+    flex: none;
+    gap: 0.625rem;
+    margin-left: auto;
+    padding: 0 0.875rem;
+    font-size: 0.75rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    touch-action: manipulation;
+  }
+
+  /* Two hairlines that cross into an X when the panel is open. */
+  .nav-toggle-mark {
+    width: 16px;
+    height: 10px;
+  }
+
+  .nav-toggle-mark::before,
+  .nav-toggle-mark::after {
+    top: 0;
+    right: 0;
+    left: 0;
+    width: auto;
+    translate: none;
+    rotate: 0deg;
+    transition: none;
+  }
+
+  .nav-toggle-mark::after {
+    top: auto;
+    bottom: 0;
+    left: 6px;
+  }
+
+  .nav-toggle[aria-expanded="true"] .nav-toggle-mark::before {
+    top: calc(50% - 0.75px);
+    rotate: 45deg;
+  }
+
+  .nav-toggle[aria-expanded="true"] .nav-toggle-mark::after {
+    bottom: calc(50% - 0.75px);
+    left: 0;
+    rotate: -45deg;
+  }
+
+  /* The panel: paper glass at full width under the header, 52px counted rows, two bottom corner
+   * marks, and the identity action as a full-width plate at the end. */
+  .primary-nav {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: 0;
+    max-height: calc(100dvh - var(--cfp-header-height));
+    overflow-y: auto;
+    padding: 0.25rem 1rem 1.75rem;
+    border: 0;
+    background: color-mix(in oklch, var(--color-orbit-paper) 92%, transparent);
+    box-shadow: inset 0 -1px 0 var(--color-orbit-hair);
+    counter-reset: cfp-menu;
+    gap: 0;
+    grid-template-columns: minmax(0, 1fr);
+    overscroll-behavior: contain;
+    -webkit-backdrop-filter: blur(var(--blur-orbit-glass));
+    backdrop-filter: blur(var(--blur-orbit-glass));
+  }
+
+  .primary-nav::before,
+  .primary-nav::after {
+    top: auto;
+    bottom: 0.5rem;
+    width: var(--size-orbit-mark);
+    height: var(--size-orbit-mark);
+    border-color: color-mix(in oklch, var(--color-orbit-ink) 72%, transparent);
+    pointer-events: none;
+  }
+
+  .primary-nav::before {
+    left: 0.5rem;
+    border-width: 0 0 var(--width-orbit-mark) var(--width-orbit-mark);
+  }
+
+  .primary-nav::after {
+    right: 0.5rem;
+    border-width: 0 var(--width-orbit-mark) var(--width-orbit-mark) 0;
+  }
+
+  .primary-nav > a {
+    min-height: 52px;
+    gap: 1rem;
+    padding-inline: 0.25rem;
+    border-bottom: 1px solid var(--color-orbit-hair);
+    font-size: 1rem;
+    line-height: 1.25;
+    counter-increment: cfp-menu;
+  }
+
+  .primary-nav > a::before,
+  .primary-nav > a[aria-current="page"]::before {
+    width: auto;
+    height: auto;
+    min-width: 1.5rem;
+    background: none;
+    color: var(--color-orbit-muted);
+    content: counter(cfp-menu, decimal-leading-zero);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+  }
+
+  /* The current page: bold ink, an accent counter, and an accent square at the row end. */
+  .primary-nav > a[aria-current="page"]::before {
+    color: var(--color-orbit-accent);
+  }
+
+  .primary-nav > a[aria-current="page"]::after {
+    position: static;
+    display: block;
+    width: 7px;
+    height: 7px;
+    flex: none;
+    margin-left: auto;
+    margin-right: 0.25rem;
+  }
+
+  .primary-nav > a:active {
+    color: var(--color-orbit-accent);
+  }
+
+  .menu-identity {
+    display: grid;
+    padding-top: 1rem;
+  }
+
+  .menu-identity .header-auth {
+    width: 100%;
+    min-height: 52px;
+    font-size: 0.875rem;
+  }
+
+  .menu-identity .header-status {
+    justify-self: start;
+  }
+
+  /* One full-width column. The tablet rule's space-between would shrink the track to the email. */
+  .menu-identity .account-menu {
+    display: grid;
+    justify-content: stretch;
+    gap: 0.5rem;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .menu-identity .account-email {
+    max-width: 100%;
+  }
+
+  .menu-identity .account-menu :is(form, .button) {
+    width: 100%;
+  }
+
+  /* Sign out ends the panel as a full-width frame, so it shows its line at rest. */
+  .menu-identity .account-menu .button {
+    --ctl-line: var(--color-orbit-ink);
+    min-height: 52px;
+  }
+
+  /* Six application steps read as two aligned columns, never three ragged ones. */
+  .cfp-progress {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem 1rem;
+  }
+
+  .confirm-section .surface-title {
+    align-items: flex-start;
+  }
+
+  .site-footer-brand {
+    flex-wrap: wrap;
+    row-gap: 0.25rem;
+  }
+
+  /* Long staff headings, such as "CFP administration", fit 320px without a mid-word break. */
+  .page-heading h1 {
+    font-size: clamp(1.75rem, 8.4vw, 2.25rem);
+    overflow-wrap: break-word;
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .site-header::before {
+      background: color-mix(in oklab, var(--color-orbit-paper) 92%, var(--alt-3));
+    }
+
+    .primary-nav {
+      background: var(--color-orbit-paper);
+    }
   }
 
   .page-band-inner {
@@ -2229,7 +2480,7 @@ details > summary:is(:hover, :focus-visible) {
 
 @media (max-width: 22.5rem) {
   .site-header {
-    padding-inline: 0.75rem;
+    padding-left: 0.625rem;
   }
 
   .brand {
@@ -2237,19 +2488,17 @@ details > summary:is(:hover, :focus-visible) {
   }
 
   .brand img {
-    height: 36px;
+    height: 32px;
   }
+}
 
-  .brand-name {
-    font-size: 1.2rem;
-  }
-
+/* Below 360px the toggle keeps its accessible name "Menu" but shows only the mark. */
+@media (max-width: 22.499rem) {
   .nav-toggle {
-    padding-inline: 0.625rem;
+    padding: 0;
   }
 
-  /* "Close menu" keeps its accessible name, but shows "Close" beside the wordmark. */
-  .nav-toggle-extra {
+  .nav-toggle-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -2257,7 +2506,9 @@ details > summary:is(:hover, :focus-visible) {
     clip-path: inset(50%);
     white-space: nowrap;
   }
+}
 
+@media (max-width: 22.5rem) {
   .page-main {
     --cfp-content-width: calc(100% - 1.5rem);
   }
@@ -2270,7 +2521,7 @@ details > summary:is(:hover, :focus-visible) {
     animation: fk-plate-scan var(--fk-step) steps(5, end);
   }
 
-  :is(.primary-nav, .site-footer, .staff-subnav) a:not([aria-current="page"]):is(:hover, :focus-visible)::after {
+  :is(.primary-nav > a, .site-footer a, .staff-subnav a):not([aria-current="page"]):is(:hover, :focus-visible)::after {
     animation: fk-line-scan var(--fk-step) steps(6, end);
   }
 
@@ -2296,6 +2547,42 @@ details > summary:is(:hover, :focus-visible) {
   @keyframes fk-busy {
     from { background-position: -25% 0, 0 0; }
     to { background-position: 125% 0, 0 0; }
+  }
+}
+
+/* Phones: the menu panel prints in from its top edge on one stepped eighth. The fill mode is
+ * backwards, so no clip-path stays on the panel after the wipe. */
+@media (max-width: 47.999rem) and (prefers-reduced-motion: no-preference) {
+  .primary-nav[data-open="true"] {
+    animation: cfp-menu-open var(--fk-step) steps(4, end) backwards;
+  }
+
+  .primary-nav[data-open="true"] > * {
+    animation: cfp-menu-row calc(var(--fk-step) * 2) steps(3, end) backwards;
+  }
+
+  .primary-nav[data-open="true"] > :nth-child(2) {
+    animation-delay: calc(var(--fk-step) * 0.5);
+  }
+
+  .primary-nav[data-open="true"] > :nth-child(3) {
+    animation-delay: var(--fk-step);
+  }
+
+  .primary-nav[data-open="true"] > :nth-child(n + 4) {
+    animation-delay: calc(var(--fk-step) * 1.5);
+  }
+
+  @keyframes cfp-menu-open {
+    from { clip-path: inset(0 0 100% 0); }
+    to { clip-path: inset(0); }
+  }
+
+  @keyframes cfp-menu-row {
+    from {
+      opacity: 0;
+      translate: -0.5rem 0;
+    }
   }
 }
 
@@ -2343,7 +2630,7 @@ details > summary:is(:hover, :focus-visible) {
     clip-path: polygon(0 0, 100% 0, 50% 100%);
   }
 
-  .primary-nav a[aria-current="page"],
+  .primary-nav > a[aria-current="page"],
   .staff-subnav a[aria-current="page"] {
     text-decoration: underline;
   }

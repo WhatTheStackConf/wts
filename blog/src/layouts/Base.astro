@@ -130,18 +130,46 @@ const isLoggedIn = !!Astro.locals.user;
 						))
 					}
 				</nav>
-				<search class="site-search-landmark" aria-label="Site search">
-					<span id="site-search-label" class="visually-hidden">Search blog content</span>
-					<LiveSearch
-						placeholder="Search posts"
-						class="site-search"
-						inputClass="site-search-input"
-						resultsClass="site-search-results"
-						resultClass="site-search-result"
-						collections={["posts", "pages"]}
-					/>
-					<kbd class="site-search-key" aria-hidden="true">Ctrl K</kbd>
-				</search>
+				<button
+					class="site-menu-toggle"
+					type="button"
+					aria-expanded="false"
+					aria-controls="site-menu"
+				>
+					<span class="site-menu-toggle-label">Menu</span>
+					<span class="site-menu-toggle-mark" aria-hidden="true"></span>
+				</button>
+				{/* Phones: this wrapper is the Menu panel, with search on top. At 768px and wider it is display: contents. */}
+				<div id="site-menu" class="site-menu" tabindex="-1">
+					<search class="site-search-landmark" aria-label="Site search">
+						<span id="site-search-label" class="visually-hidden">Search blog content</span>
+						<LiveSearch
+							placeholder="Search posts"
+							class="site-search"
+							inputClass="site-search-input"
+							resultsClass="site-search-results"
+							resultClass="site-search-result"
+							collections={["posts", "pages"]}
+						/>
+						<kbd class="site-search-key" aria-hidden="true">Ctrl K</kbd>
+					</search>
+					<nav class="site-menu-nav" aria-label="Site navigation">
+						{
+							menuItems.map((item) => (
+								<a href={item.url} target={item.target} rel={item.rel} aria-current={item.current}>
+									{item.label}
+								</a>
+							))
+						}
+						{
+							isLoggedIn && (
+								<a href="/_emdash/admin" class="site-menu-admin">
+									Admin
+								</a>
+							)
+						}
+					</nav>
+				</div>
 				{
 					isLoggedIn && (
 						<a href="/_emdash/admin" class="site-admin">
@@ -275,13 +303,106 @@ const isLoggedIn = !!Astro.locals.user;
 				}).observe(header);
 			}
 
-			// ⌘K / Ctrl+K to focus search
-			document.addEventListener("keydown", (e) => {
-				if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-					e.preventDefault();
-					searchInput?.focus();
-				}
-			});
+			// A prose table or code block that is wider than the column scrolls inside a named region.
+			// While it scrolls it joins the tab order, so keyboard users can scroll it too.
+			function setupScrollRegions() {
+				const scrollers = document.querySelectorAll<HTMLElement>(".prose :is(.emdash-table-wrapper, pre)");
+				if (scrollers.length === 0) return;
+				let tables = 0;
+				let blocks = 0;
+				const names = new Map<HTMLElement, string>();
+				scrollers.forEach((el) => {
+					const caption = el.querySelector("caption")?.textContent?.trim();
+					const name = el.matches("pre") ? `Code example ${++blocks}` : caption || `Table ${++tables}`;
+					names.set(el, name);
+				});
+				const sync = (el: HTMLElement) => {
+					if (el.scrollWidth > el.clientWidth + 1) {
+						el.setAttribute("role", "region");
+						el.setAttribute("aria-label", names.get(el) ?? "Scrollable content");
+						el.tabIndex = 0;
+					} else {
+						el.removeAttribute("role");
+						el.removeAttribute("aria-label");
+						el.removeAttribute("tabindex");
+					}
+				};
+				// The inner table or code can grow without the wrapper resizing, for example after a font swap.
+				const resize = new ResizeObserver((entries) =>
+					entries.forEach((entry) => {
+						const el = (entry.target as HTMLElement).closest<HTMLElement>(".emdash-table-wrapper, pre");
+						if (el) sync(el);
+					}),
+				);
+				scrollers.forEach((el) => {
+					resize.observe(el);
+					if (el.firstElementChild) resize.observe(el.firstElementChild);
+				});
+			}
+
+			// Phones: the Menu toggle opens a panel with the live search on top and the links below.
+			function setupMenu(toggle: HTMLButtonElement, menu: HTMLElement) {
+				const phone = window.matchMedia("(max-width: 767px)");
+				const menuOpen = () => menu.hasAttribute("data-open");
+
+				const closeMenu = (refocus: boolean) => {
+					if (!menuOpen()) return;
+					menu.removeAttribute("data-open");
+					toggle.setAttribute("aria-expanded", "false");
+					if (refocus) toggle.focus();
+				};
+
+				// Keyboard opening and Ctrl/⌘K focus the search field, the first item in the panel.
+				// A tap focuses the panel itself, so the touch keyboard does not cover the links.
+				const openMenu = (focusSearch: boolean) => {
+					menu.setAttribute("data-open", "");
+					toggle.setAttribute("aria-expanded", "true");
+					requestAnimationFrame(() => (focusSearch ? searchInput : menu)?.focus({ preventScroll: true }));
+				};
+
+				toggle.addEventListener("click", (event) => {
+					if (menuOpen()) closeMenu(false);
+					else openMenu(event.detail === 0);
+				});
+
+				menu.addEventListener("click", (event) => {
+					if (phone.matches && (event.target as Element).closest("a")) closeMenu(false);
+				});
+
+				// Tabbing past the last link closes the panel, so it never covers the focused page content.
+				menu.addEventListener("focusout", (event) => {
+					const next = event.relatedTarget as Node | null;
+					if (next && !menu.contains(next) && !toggle.contains(next)) closeMenu(false);
+				});
+
+				document.addEventListener("pointerdown", (event) => {
+					const target = event.target as Node;
+					if (menuOpen() && !menu.contains(target) && !toggle.contains(target)) closeMenu(false);
+				});
+
+				phone.addEventListener("change", (event) => {
+					if (!event.matches) closeMenu(false);
+				});
+
+				document.addEventListener("keydown", (e) => {
+					if (e.key === "Escape" && menuOpen()) {
+						e.preventDefault();
+						closeMenu(true);
+						return;
+					}
+					// ⌘K / Ctrl+K focuses search. On phones it opens the panel first.
+					if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+						e.preventDefault();
+						if (phone.matches && !menuOpen()) openMenu(true);
+						else searchInput?.focus();
+					}
+				});
+			}
+
+			setupScrollRegions();
+			const menuToggle = document.querySelector<HTMLButtonElement>(".site-menu-toggle");
+			const menuPanel = document.querySelector<HTMLElement>("#site-menu");
+			if (menuToggle && menuPanel) setupMenu(menuToggle, menuPanel);
 		</script>
 		<EmDashBodyEnd page={pageCtx} />
 	</body>
