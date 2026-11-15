@@ -1,24 +1,10 @@
 import { type JSX } from "@solidjs/web";
 import { createUniqueId } from "solid-js";
+import { FLOOR, GROUND, box, hLine, level, line, n, steps, vLine } from "~/components/landing/skyline-geometry";
+import { FutureDefs, FutureFar, FutureNear } from "~/components/landing/skyline-future";
 
 type Layer = "fill" | "hatch" | "concrete" | "line";
 type Shape = readonly [Layer, string];
-
-const GROUND = 388;
-const FLOOR = 16;
-
-const n = (value: number) => Math.round(value * 10) / 10;
-const box = (x: number, y: number, w: number, h: number) => `M${n(x)} ${n(y)}h${n(w)}v${n(h)}h${n(-w)}Z`;
-const hLine = (x1: number, x2: number, y: number) => `M${n(x1)} ${n(y)}H${n(x2)}`;
-const vLine = (x: number, y1: number, y2: number) => `M${n(x)} ${n(y1)}V${n(y2)}`;
-const line = (x1: number, y1: number, x2: number, y2: number) => `M${n(x1)} ${n(y1)}L${n(x2)} ${n(y2)}`;
-const level = (floor: number) => GROUND - floor * FLOOR;
-
-function steps(from: number, to: number, step: number): number[] {
-  const out: number[] = [];
-  for (let value = from; value <= to + 0.001; value += step) out.push(value);
-  return out;
-}
 
 type Block = { x: number; w: number; floors: number; bay: number; spandrel: number; pilotis?: number };
 
@@ -240,6 +226,7 @@ export function SkopjeSkyline(props: ArtProps = {}): JSX.Element {
   const id = createUniqueId();
   const near = `skyline-hatch-${id}`;
   const far = `skyline-hatch-far-${id}`;
+  const dots = `skyline-dots-${id}`;
   return (
     <svg
       class={props.class ? `skopje-skyline ${props.class}` : "skopje-skyline"}
@@ -251,8 +238,15 @@ export function SkopjeSkyline(props: ArtProps = {}): JSX.Element {
       aria-hidden="true"
     >
       <HatchDefs near={near} far={far} />
-      <g opacity={FAR_OPACITY}>{row(FAR_ROW, `url(#${far})`)}</g>
+      <defs>
+        <FutureDefs dots={dots} />
+      </defs>
+      <g opacity={FAR_OPACITY}>
+        {row(FAR_ROW, `url(#${far})`)}
+        <FutureFar />
+      </g>
       {row(NEAR_ROW, `url(#${near})`)}
+      <FutureNear dots={dots} />
       <path d={hLine(VIEW_X, VIEW_X + WIDTH, GROUND)} vector-effect="non-scaling-stroke" />
     </svg>
   );

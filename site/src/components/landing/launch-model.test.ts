@@ -4,6 +4,7 @@ import {
   flightFromScroll,
   reachableTops,
   launchState,
+  COUNTDOWN_GROUND_LEVEL,
   type LaunchState,
 } from "~/components/landing/launch-model";
 
@@ -19,9 +20,11 @@ const NUMERIC_FIELDS = [
   "streaksEdge",
   "shake",
   "stars",
+  "lowClouds",
+  "nebula",
 ] as const satisfies readonly (keyof LaunchState)[];
 
-const UNIT_FIELDS = ["ground", "cloudRush", "cloudFloor", "streaks", "streaksEdge", "stars"] as const;
+const UNIT_FIELDS = ["ground", "cloudRush", "cloudFloor", "streaks", "streaksEdge", "stars", "lowClouds", "nebula"] as const;
 
 function samples(from: number, to: number, count = 40): number[] {
   return Array.from({ length: count + 1 }, (_, index) => from + ((to - from) * index) / count);
@@ -104,6 +107,31 @@ describe("launchState stations", () => {
   });
 });
 
+describe("launchState ground level", () => {
+  it("keeps the default countdown horizon at 0.24", () => {
+    expect(launchState(0).horizon).toBeCloseTo(0.24, 6);
+    expect(launchState(0, COUNTDOWN_GROUND_LEVEL)).toEqual(launchState(0));
+  });
+
+  it("puts the countdown horizon at a lower ground level", () => {
+    expect(launchState(0, 0.08).horizon).toBeCloseTo(0.08, 6);
+    expect(launchState(1, 0.08).horizon).toBeCloseTo(0.08, 6);
+  });
+
+  it("uses the default horizon once the ground has dropped away", () => {
+    for (const flight of samples(1.8, 5, 64)) {
+      expect(launchState(flight, 0.08).horizon).toBeCloseTo(launchState(flight).horizon, 6);
+    }
+  });
+
+  it("treats an invalid or higher ground level as the default", () => {
+    for (const level of [NaN, Infinity, -Infinity, 0.5]) {
+      expect(launchState(0, level).horizon).toBeCloseTo(0.24, 6);
+    }
+    expect(launchState(0, -1).horizon).toBeCloseTo(0, 6);
+  });
+});
+
 describe("launchState invariants", () => {
   it("returns finite outputs in range for any input", () => {
     const inputs = [NaN, Infinity, -Infinity, -100, -0.5, ...samples(0, 5, 200), 5.5, 1e9];
@@ -125,6 +153,30 @@ describe("launchState invariants", () => {
     expect(launchState(Infinity)).toEqual(launchState(5));
     expect(launchState(NaN).flight).toBe(0);
     expect(launchState(Infinity).flight).toBe(5);
+  });
+
+  it("never brings the countdown clouds back after max-Q", () => {
+    expect(launchState(0).lowClouds).toBe(1);
+    expect(launchState(1).lowClouds).toBe(1);
+    let previous = Infinity;
+    for (const flight of samples(0, 5, 500)) {
+      const { lowClouds } = launchState(flight);
+      expect(lowClouds).toBeLessThanOrEqual(previous);
+      previous = lowClouds;
+    }
+    expect(maxOf(2.15, 5, (state) => state.lowClouds)).toBe(0);
+  });
+
+  it("brings the nebula in as the cloud rush fades and holds it through orbit", () => {
+    expect(maxOf(0, 2.9, (state) => state.nebula)).toBe(0);
+    let previous = -Infinity;
+    for (const flight of samples(0, 5, 500)) {
+      const { nebula } = launchState(flight);
+      expect(nebula).toBeGreaterThanOrEqual(previous);
+      previous = nebula;
+    }
+    expect(launchState(3.6).nebula).toBe(1);
+    expect(launchState(5).nebula).toBe(1);
   });
 
   it("never lowers the altitude as flight grows", () => {

@@ -426,17 +426,11 @@ time {
 @media (max-width: 767px) {
 	:root {
 		--page-width: calc(100% - 2rem);
-		--header-height: 110px;
+		--header-height: 64px;
 	}
 
 	.prose {
 		font-size: 1.0625rem;
-	}
-}
-
-@media (max-width: 374px) {
-	:root {
-		--header-height: 162px;
 	}
 }
 

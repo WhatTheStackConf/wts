@@ -226,7 +226,7 @@ export default function AdminWorkspacePage() {
                   <caption class="sr-only">CFP proposals, review evidence, and decisions</caption>
                   <thead><tr><th><span class="sr-only">Select</span></th><th>Proposal</th><th>Applicant</th><th>Status</th><th>Normalized score</th><th>Reviews current / stale / total</th><th>Expenses</th><th>Submitted</th></tr></thead>
                   <tbody><For each={workspace()!.proposals}>{(row) => <tr>
-                    <td><input type="checkbox" class="checkbox" aria-label={`Select ${row.title || "Untitled talk"}`} checked={selected().some((item) => item.applicationId === row.applicationId)} disabled={Boolean(pendingDecision()) || (!selected().some((item) => item.applicationId === row.applicationId) && selected().length >= 100)} onChange={(event) => toggle(row, event.currentTarget.checked)} /></td>
+                    <td><label class="table-select"><input type="checkbox" class="checkbox" aria-label={`Select ${row.title || "Untitled talk"}`} checked={selected().some((item) => item.applicationId === row.applicationId)} disabled={Boolean(pendingDecision()) || (!selected().some((item) => item.applicationId === row.applicationId) && selected().length >= 100)} onChange={(event) => toggle(row, event.currentTarget.checked)} /></label></td>
                     <th><a href={`/admin/${row.applicationId}`}>{row.title || "Untitled talk"}</a><p class="mono">{row.applicationId}</p></th>
                     <td>{row.applicantName}<br /><span class="mono">{row.applicantId}</span></td>
                     <td><AdminStatus state={row.status} label={row.status} /></td>

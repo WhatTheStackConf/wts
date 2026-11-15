@@ -22,6 +22,10 @@ export interface LaunchState {
   streaksEdge: number;
   shake: number;
   stars: number;
+  /** Countdown cloud planes (DOM). They leave at max-Q and never come back. */
+  lowClouds: number;
+  /** High nebula veils (DOM) above the planet. They take over from the cloud rush and stay to orbit. */
+  nebula: number;
   night: boolean;
 }
 
@@ -61,7 +65,7 @@ const CHANNELS: Record<ChannelName, Channel> = {
     ],
   },
   horizon: {
-    base: 0.24,
+    base: 0.24, // COUNTDOWN_GROUND_LEVEL
     min: -1,
     max: 1,
     terms: [
@@ -113,6 +117,8 @@ const CHANNELS: Record<ChannelName, Channel> = {
     ],
   },
   stars: { base: 0, min: 0, max: 1, terms: [{ gain: 1, rise: [4.45, 4.9] }] },
+  lowClouds: { base: 1, min: 0, max: 1, terms: [{ gain: -1, rise: [1.6, 2.15] }] },
+  nebula: { base: 0, min: 0, max: 1, terms: [{ gain: 1, rise: [2.9, 3.6] }] },
 };
 
 const CHANNEL_NAMES = Object.keys(CHANNELS) as ChannelName[];
@@ -146,10 +152,20 @@ function toFlight(value: number): number {
   return Number.isNaN(value) ? 0 : clamp(value, 0, LAST_FLIGHT);
 }
 
-export function launchState(flight: number): LaunchState {
+/** The countdown horizon, as a fraction of the window height from the bottom. */
+export const COUNTDOWN_GROUND_LEVEL = 0.24;
+
+/**
+ * A short window can put the ground lower, so the skyline clears the hero text.
+ * The offset follows the ground channel, so it is gone once the ground has dropped away.
+ */
+export function launchState(flight: number, groundLevel = COUNTDOWN_GROUND_LEVEL): LaunchState {
   const safe = toFlight(flight);
   const station = LAUNCH_STATIONS[Math.floor(safe)].id;
-  return { flight: safe, station, ...readChannels(safe), night: safe >= NIGHT_FROM };
+  const channels = readChannels(safe);
+  const level = Number.isFinite(groundLevel) ? clamp(groundLevel, 0, COUNTDOWN_GROUND_LEVEL) : COUNTDOWN_GROUND_LEVEL;
+  channels.horizon += (level - COUNTDOWN_GROUND_LEVEL) * channels.ground;
+  return { flight: safe, station, ...channels, night: safe >= NIGHT_FROM };
 }
 
 function finiteOr(value: number, fallback: number): number {

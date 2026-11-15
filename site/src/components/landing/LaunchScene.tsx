@@ -3,6 +3,7 @@ import {
   LAUNCH_STATIONS,
   flightFromScroll,
   reachableTops,
+  COUNTDOWN_GROUND_LEVEL,
   launchState,
   type LaunchState,
 } from "~/components/landing/launch-model";
@@ -29,6 +30,8 @@ interface LaunchSceneProps {
 
 interface SceneParts {
   frame: HTMLElement;
+  clouds: HTMLElement;
+  nebula: HTMLElement;
   ground: HTMLElement;
 }
 
@@ -39,7 +42,6 @@ interface FlightHooks {
 }
 
 const STATION_ORDER = LAUNCH_STATIONS.map((station) => station.id);
-const COUNTDOWN = launchState(0);
 // Prototype lag: close 12% of the gap per 30 fps frame, independent of the display rate.
 const LAG_PER_FRAME = 0.12;
 const LAG_FRAME_MS = 1000 / 30;
@@ -78,18 +80,39 @@ function shakeTransform(amplitude: number, seconds: number): string {
   return `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) rotate(${turn.toFixed(3)}deg)`;
 }
 
-function placeParts(parts: SceneParts, state: LaunchState) {
+function fadeLayer(element: HTMLElement, amount: number) {
+  element.style.opacity = amount < 1 ? String(amount) : "";
+  element.style.visibility = amount > 0 ? "" : "hidden";
+}
+
+/** The CSS ground line (--launch-ground-level) as a fraction of the frame height, as the shader needs it. */
+function readGroundLevel(frame: HTMLElement): number {
+  const line = frame.querySelector<HTMLElement>(".launch-scene__ground-line");
+  const height = frame.offsetHeight;
+  if (!line || height <= 0) return COUNTDOWN_GROUND_LEVEL;
+  return Number.parseFloat(getComputedStyle(line).bottom) / height;
+}
+
+function placeParts(parts: SceneParts, state: LaunchState, groundLevel: number) {
   // The skyline rides the shader horizon until the ground has left the window.
-  const drop = (COUNTDOWN.horizon - state.horizon) * 100;
+  const drop = (groundLevel - state.horizon) * 100;
   parts.ground.style.visibility = state.ground > 0 ? "" : "hidden";
   parts.ground.style.transform = drop ? `translate3d(0, ${drop.toFixed(3)}%, 0)` : "";
+  // Each cloud plane sinks at its own rate (launch-scene.css). They leave for good at max-Q.
+  parts.clouds.style.setProperty("--launch-drop", drop.toFixed(3));
+  fadeLayer(parts.clouds, state.lowClouds);
+  fadeLayer(parts.nebula, state.nebula);
 }
 
 function resetParts(parts: SceneParts) {
-  for (const element of [parts.frame, parts.ground]) {
+  for (const element of [parts.frame, parts.clouds, parts.ground]) {
     element.style.transform = "";
     element.style.visibility = "";
   }
+  parts.clouds.style.removeProperty("--launch-drop");
+  parts.clouds.style.opacity = "";
+  // The static scene stays at the countdown, where the nebula is not visible.
+  fadeLayer(parts.nebula, 0);
 }
 
 class LaunchFlight {
@@ -101,6 +124,7 @@ class LaunchFlight {
   private lastTime = 0;
   private ignitionAt = Number.NEGATIVE_INFINITY;
   private station: LaunchState["station"] | undefined;
+  private groundLevel = COUNTDOWN_GROUND_LEVEL;
 
   constructor(
     private readonly parts: SceneParts,
@@ -114,7 +138,7 @@ class LaunchFlight {
       return;
     }
     this.flight = target;
-    this.publishNight(launchState(target).night);
+    this.publishNight(launchState(target, this.groundLevel).night);
   }
 
   start() {
@@ -122,7 +146,13 @@ class LaunchFlight {
     this.running = true;
     this.flight = this.target;
     this.lastTime = 0;
-    this.apply(launchState(this.flight), 0);
+    this.apply(launchState(this.flight, this.groundLevel), 0);
+    this.wake();
+  }
+
+  setGroundLevel(level: number) {
+    if (level === this.groundLevel) return;
+    this.groundLevel = level;
     this.wake();
   }
 
@@ -149,7 +179,7 @@ class LaunchFlight {
     const elapsed = this.lastTime ? Math.min(now - this.lastTime, MAX_STEP_MS) : 0;
     this.flight = easeToward(this.flight, this.target, elapsed);
     if (previous < 1 && this.flight >= 1) this.ignitionAt = now;
-    const state = launchState(this.flight);
+    const state = launchState(this.flight, this.groundLevel);
     const shake = state.shake + Math.max(0, 1 - (now - this.ignitionAt) / BAR_MS) * IGNITION_PX;
     this.apply(state, shake, now);
     const moving = this.flight !== this.target || shake > 0.01;
@@ -159,7 +189,7 @@ class LaunchFlight {
 
   private apply(state: LaunchState, shake: number, now = 0) {
     this.hooks.draw(state);
-    placeParts(this.parts, state);
+    placeParts(this.parts, state, this.groundLevel);
     this.parts.frame.style.transform = shakeTransform(shake, now / 1000);
     this.publishNight(state.night);
     if (this.station !== undefined && state.station !== this.station) this.hooks.station();
@@ -281,6 +311,8 @@ export default function LaunchScene(props: LaunchSceneProps) {
   const [pageLoaded, setPageLoaded] = createSignal(false);
   let hostElement: HTMLDivElement | undefined;
   let frameElement: HTMLDivElement | undefined;
+  let cloudsElement: HTMLDivElement | undefined;
+  let nebulaElement: HTMLDivElement | undefined;
   let groundElement: HTMLDivElement | undefined;
   let canvasElement: HTMLCanvasElement | undefined;
   let renderer: RendererHandle | undefined;
@@ -387,16 +419,20 @@ export default function LaunchScene(props: LaunchSceneProps) {
 
   const setHostRef = (element: HTMLDivElement) => { hostElement = element; };
   const setFrameRef = (element: HTMLDivElement) => { frameElement = element; };
+  const setCloudsRef = (element: HTMLDivElement) => { cloudsElement = element; };
+  const setNebulaRef = (element: HTMLDivElement) => { nebulaElement = element; };
   const setGroundRef = (element: HTMLDivElement) => { groundElement = element; };
   const setCanvasRef = (element: HTMLCanvasElement) => { canvasElement = element; };
 
-  const watchScroll = (root: ParentNode, track: LaunchFlight) => {
+  const watchScroll = (root: ParentNode, track: LaunchFlight, frame: HTMLElement) => {
     let tops = stationTops(root);
     const onScroll = () => track.aim(flightFromScroll(window.scrollY, window.innerHeight, tops));
     const remeasure = () => {
       tops = stationTops(root);
+      track.setGroundLevel(readGroundLevel(frame));
       onScroll();
     };
+    track.setGroundLevel(readGroundLevel(frame));
     const layoutObserver = new ResizeObserver(remeasure);
     if (root instanceof Element) layoutObserver.observe(root);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -432,13 +468,13 @@ export default function LaunchScene(props: LaunchSceneProps) {
   };
 
   onSettled(() => {
-    if (!hostElement || !frameElement || !groundElement || typeof window === "undefined") return;
+    if (!hostElement || !frameElement || !cloudsElement || !nebulaElement || !groundElement || typeof window === "undefined") return;
     const onLoad = () => setPageLoaded(true);
     setPageLoaded(document.readyState === "complete");
     if (document.readyState !== "complete") window.addEventListener("load", onLoad, { once: true });
 
     flight = new LaunchFlight(
-      { frame: frameElement, ground: groundElement },
+      { frame: frameElement, clouds: cloudsElement, nebula: nebulaElement, ground: groundElement },
       {
         draw: (state) => renderer?.setState(state),
         night: (night) => props.onNightChange?.(night),
@@ -447,7 +483,7 @@ export default function LaunchScene(props: LaunchSceneProps) {
     );
     glitch = new SignalGlitch(hostElement, () => renderer);
     const stopPermissions = watchPermissions();
-    const stopScroll = watchScroll(hostElement.parentElement ?? document, flight);
+    const stopScroll = watchScroll(hostElement.parentElement ?? document, flight, frameElement);
 
     return () => {
       disposed = true;
@@ -475,7 +511,17 @@ export default function LaunchScene(props: LaunchSceneProps) {
       <div ref={setFrameRef} class="launch-scene__frame">
         <div class="launch-scene__sky" />
         <canvas ref={setCanvasRef} class="launch-scene__canvas" data-state={canvasState()} />
+        <div ref={setCloudsRef} class="launch-scene__clouds">
+          <span class="launch-scene__cloud launch-scene__cloud--cirrus" />
+          <span class="launch-scene__cloud launch-scene__cloud--far" />
+          <span class="launch-scene__cloud launch-scene__cloud--near" />
+        </div>
+        <div ref={setNebulaRef} class="launch-scene__nebula">
+          <span class="launch-scene__veil launch-scene__veil--far" />
+          <span class="launch-scene__veil launch-scene__veil--near" />
+        </div>
         <div ref={setGroundRef} class="launch-scene__ground">
+          <span class="launch-scene__cloud launch-scene__cloud--bank" />
           <SkopjeSkyline class="launch-scene__skyline" />
           <span class="launch-scene__ground-line" />
           <span class="launch-scene__datum">Skopje {LAUNCH_STATIONS[0].datum}</span>

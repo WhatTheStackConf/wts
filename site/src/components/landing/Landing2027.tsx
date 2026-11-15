@@ -56,6 +56,9 @@ const openNewsletter = () => {
 };
 
 
+// Room right of the compact brand for the phone Menu toggle with its label (about 100px) and a gap.
+const MENU_TOGGLE_ROOM = 120;
+
 function orbitTravel(header: HTMLElement, brand: HTMLAnchorElement, mark: HTMLImageElement, nav: HTMLElement): [string, string][] {
   const brandStyle = window.getComputedStyle(brand);
   const headerRect = header.getBoundingClientRect();
@@ -74,19 +77,18 @@ function orbitTravel(header: HTMLElement, brand: HTMLAnchorElement, mark: HTMLIm
   const startCenterY = headerRect.top + brandTop + brandHeight / 2;
   const isMobileHeader = window.matchMedia("(max-width: 767px)").matches;
   const targetLeft = headerRect.left + headerPaddingLeft;
-  const targetCenterY = headerRect.top + (isMobileHeader ? header.offsetHeight / 4 : headerRect.height / 2);
+  const targetCenterY = headerRect.top + headerRect.height / 2;
   const compactNavLeft = isMobileHeader ? navStartLeft : headerRect.right - headerPaddingRight - navWidth;
   const availableWidth = Math.max(
     0,
-    (isMobileHeader ? headerRect.width - headerPaddingLeft - headerPaddingRight : compactNavLeft - targetLeft - 12),
+    (isMobileHeader ? headerRect.width - headerPaddingLeft - headerPaddingRight - MENU_TOGGLE_ROOM : compactNavLeft - targetLeft - 12),
   );
   const scale = Math.min(compactLogoHeight / expandedLogoHeight, availableWidth / brandWidth);
   const shrinkOffset = (brandWidth * (1 - scale)) / 2;
 
   const navStartTop = Number.parseFloat(window.getComputedStyle(nav).top);
-  const navCompactTop = isMobileHeader
-    ? Number.parseFloat(headerStyle.getPropertyValue("--orbit-nav-compact-top"))
-    : (header.offsetHeight - navHeight) / 2;
+  // On phones the nav holds only Get updates. It stays in the hero and leaves with the cover.
+  const navCompactTop = isMobileHeader ? navStartTop : (header.offsetHeight - navHeight) / 2;
   return [
     ["--orbit-brand-travel-x", `${targetLeft - startLeft - shrinkOffset}px`],
     ["--orbit-brand-travel-y", `${targetCenterY - startCenterY}px`],

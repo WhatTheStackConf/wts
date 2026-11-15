@@ -68,6 +68,136 @@
   opacity: 1;
 }
 
+/* Countdown clouds: ordered-dither masks (site/scripts/generate-cloud-masks.py) filled with paper.
+ * They print with the same Bayer dot screen as the shader. Larger dots read as nearer clouds.
+ * LaunchScene sets --launch-drop (percent of the window) as the horizon falls. Each plane sinks
+ * by its own --cloud-sink, so the planes separate during the climb.
+ */
+.launch-scene__clouds {
+  position: absolute;
+  inset: 0;
+}
+
+.launch-scene__cloud {
+  position: absolute;
+  display: block;
+  translate: 0 calc(var(--launch-drop, 0) * var(--cloud-sink, 0) * 1vh);
+}
+
+.launch-scene__cloud::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: var(--color-orbit-paper);
+  opacity: var(--cloud-opacity, 1);
+  mask: var(--cloud-mask) 0 0 / auto var(--cloud-repeat, no-repeat);
+  image-rendering: pixelated;
+}
+
+.launch-scene__cloud--cirrus {
+  --cloud-mask: url("../assets/images/clouds/sky-cirrus.png");
+  --cloud-repeat: repeat-x;
+  --cloud-sink: 0.3;
+  --cloud-opacity: 0.6;
+  top: 2%;
+  right: 0;
+  left: 0;
+  height: 300px;
+}
+
+.launch-scene__cloud--far {
+  --cloud-mask: url("../assets/images/clouds/sky-cumulus-b.png");
+  --cloud-sink: 0.55;
+  --cloud-opacity: 0.85;
+  top: 13%;
+  left: calc(50% + 21rem);
+  width: 420px;
+  height: 198px;
+}
+
+.launch-scene__cloud--near {
+  --cloud-mask: url("../assets/images/clouds/sky-cumulus-a.png");
+  --cloud-sink: 0.9;
+  --cloud-opacity: 0.9;
+  top: 33%;
+  left: calc(50% - 25rem - 540px);
+  width: 540px;
+  height: 240px;
+}
+
+/* The bank sits on the horizon behind the skyline and rides the ground layer. */
+.launch-scene__cloud--bank {
+  --cloud-mask: url("../assets/images/clouds/sky-bank.png");
+  --cloud-repeat: repeat-x;
+  --cloud-opacity: 0.9;
+  right: 0;
+  bottom: var(--launch-ground-level);
+  left: 0;
+  height: 200px;
+}
+
+.launch-scene__cloud--cirrus::before,
+.launch-scene__cloud--bank::before {
+  right: calc(-1 * var(--cloud-tile));
+}
+
+.launch-scene__cloud--cirrus,
+.launch-scene__cloud--bank {
+  --cloud-tile: 1600px;
+}
+
+/* High nebula veils from MECO to orbit (LaunchScene fades them with the nebula channel).
+ * Larger dots read as closer. The gradient keeps them in the top of the window, above the planet.
+ */
+.launch-scene__nebula {
+  position: absolute;
+  inset: 0;
+}
+
+.launch-scene:not([data-mode="webgl"]) .launch-scene__nebula {
+  display: none;
+}
+
+.launch-scene__veil {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  mask: linear-gradient(#000 0 38%, transparent 58%);
+}
+
+.launch-scene__veil::before {
+  position: absolute;
+  inset: 0 calc(-1 * var(--cloud-tile)) 0 0;
+  content: "";
+  background: var(--veil-fill, var(--color-orbit-paper));
+  opacity: var(--cloud-opacity);
+  mask: var(--cloud-mask) 0 0 / auto repeat-x;
+  image-rendering: pixelated;
+  transition: opacity var(--dur-orbit-beat) linear;
+}
+
+.launch-scene__veil--far {
+  --cloud-mask: url("../assets/images/clouds/sky-nebula-far.png");
+  --cloud-tile: 1800px;
+  --cloud-opacity: 0.5;
+}
+
+.launch-scene__veil--near {
+  --cloud-mask: url("../assets/images/clouds/sky-nebula-near.png");
+  --cloud-tile: 2400px;
+  --cloud-opacity: 0.6;
+  --veil-fill: color-mix(in oklab, var(--color-orbit-paper) 82%, var(--launch-cyan));
+}
+
+/* Paper dots stand out much more on the night sky, so the veils print lighter there. */
+.landing-2027[data-sky="night"] .launch-scene__veil--far {
+  --cloud-opacity: 0.28;
+}
+
+.landing-2027[data-sky="night"] .launch-scene__veil--near {
+  --cloud-opacity: 0.34;
+}
+
 .launch-scene__ground {
   color: color-mix(in oklch, var(--color-orbit-ink) 78%, transparent);
 }
@@ -107,12 +237,221 @@
 }
 
 @media (max-width: 767px) {
+  /* Short phones: the ground drops below 24%, so the skyline top clears the hero text.
+   * Percentages resolve against the frame height (the window plus the overscan).
+   * LaunchScene reads the result from the ground line and gives it to the shader as the countdown horizon.
+   * --launch-hero-end is the bottom of the hero text from the window top, plus a margin.
+   * 0.145 x the skyline width is the drawn height above the ground (the telecom mast at viewBox y 40).
+   * The 3rem floor keeps the Skopje datum on screen.
+   */
   .launch-scene {
     --launch-skyline-width: 230vw;
+    --launch-hero-end: 520px;
+    --launch-ground-level: clamp(
+      3rem,
+      100% - var(--launch-overscan) - var(--launch-hero-end) - 1.5rem - var(--launch-skyline-width) * 0.145,
+      24%
+    );
+  }
+
+  /* The ground level is no longer a fixed stop, so the static sky uses two layers:
+   * the land and the paper haze band ride the ground level, and the sky ramp under them stays fixed.
+   * Sky stops are y^1.15 of the shader ramp. Haze alpha is 0.55 x (1 - smoothstep) over 12% of the height.
+   */
+  .launch-scene__sky {
+    background:
+      linear-gradient(
+        to top,
+        var(--launch-land) 0 var(--launch-ground-level),
+        color-mix(in srgb, var(--color-orbit-paper) 55%, transparent) var(--launch-ground-level),
+        color-mix(in srgb, var(--color-orbit-paper) 46.4%, transparent) calc(var(--launch-ground-level) + 3%),
+        color-mix(in srgb, var(--color-orbit-paper) 27.5%, transparent) calc(var(--launch-ground-level) + 6%),
+        color-mix(in srgb, var(--color-orbit-paper) 8.6%, transparent) calc(var(--launch-ground-level) + 9%),
+        transparent calc(var(--launch-ground-level) + 12%)
+      ),
+      linear-gradient(
+        to top in srgb-linear,
+        var(--launch-sky-low) 0%,
+        color-mix(in srgb-linear, var(--launch-sky-high) 3.9%, var(--launch-sky-low)) 6%,
+        color-mix(in srgb-linear, var(--launch-sky-high) 8.7%, var(--launch-sky-low)) 12%,
+        color-mix(in srgb-linear, var(--launch-sky-high) 13.9%, var(--launch-sky-low)) 18%,
+        color-mix(in srgb-linear, var(--launch-sky-high) 19.4%, var(--launch-sky-low)) 24%,
+        color-mix(in srgb-linear, var(--launch-sky-high) 25%, var(--launch-sky-low)) 30%,
+        color-mix(in srgb-linear, var(--launch-sky-high) 30.9%, var(--launch-sky-low)) 36%,
+        color-mix(in srgb-linear, var(--launch-sky-high) 45.1%, var(--launch-sky-low)) 50%,
+        color-mix(in srgb-linear, var(--launch-sky-high) 60.9%, var(--launch-sky-low)) 65%,
+        color-mix(in srgb-linear, var(--launch-sky-high) 77.4%, var(--launch-sky-low)) 80%,
+        var(--launch-sky-high) 100%
+      );
   }
 
   .launch-scene__datum {
     left: calc(var(--launch-overscan) + 1rem);
+  }
+
+  /* The hero copy fills the narrow window, so only the cirrus and the bank stay behind it. */
+  .launch-scene__cloud--far,
+  .launch-scene__cloud--near {
+    display: none;
+  }
+
+  /* A narrow window shows a small part of the near veil, so its large dots print lighter. */
+  .launch-scene__veil--near {
+    --cloud-opacity: 0.45;
+  }
+
+  .landing-2027[data-sky="night"] .launch-scene__veil--near {
+    --cloud-opacity: 0.28;
+  }
+}
+
+/* From 390px the hero lede wraps to three lines, so the hero text ends higher. */
+@media (min-width: 390px) and (max-width: 767px) {
+  .launch-scene {
+    --launch-hero-end: 480px;
+  }
+}
+
+/* Short phones lift the hero lockup by 40px (landing-2027.css), so the hero text ends 40px higher. */
+@media (max-width: 767px) and (max-height: 700px) {
+  .launch-scene {
+    --launch-hero-end: 480px;
+  }
+}
+
+@media (min-width: 390px) and (max-width: 767px) and (max-height: 700px) {
+  .launch-scene {
+    --launch-hero-end: 440px;
+  }
+}
+
+/* Cloud drift on the bar clock. Nearer planes move faster. */
+@media (prefers-reduced-motion: no-preference) {
+  .launch-scene__cloud--cirrus::before {
+    animation: launch-cloud-tile calc(var(--dur-orbit-bar) * 64) linear infinite;
+  }
+
+  .launch-scene__cloud--bank::before {
+    animation: launch-cloud-tile calc(var(--dur-orbit-bar) * 160) linear infinite;
+  }
+
+  .launch-scene__veil--far::before {
+    animation: launch-cloud-tile calc(var(--dur-orbit-bar) * 192) linear infinite;
+  }
+
+  .launch-scene__veil--near::before {
+    animation: launch-cloud-tile calc(var(--dur-orbit-bar) * 96) linear infinite;
+  }
+
+  .launch-scene__cloud--far::before {
+    animation: launch-cloud-sway calc(var(--dur-orbit-bar) * 24) ease-in-out infinite alternate;
+  }
+
+  .launch-scene__cloud--near::before {
+    animation: launch-cloud-sway calc(var(--dur-orbit-bar) * 16) ease-in-out infinite alternate-reverse;
+  }
+
+  @keyframes launch-cloud-tile {
+    to {
+      transform: translateX(calc(-1 * var(--cloud-tile)));
+    }
+  }
+
+  @keyframes launch-cloud-sway {
+    from {
+      transform: translateX(-1.5rem);
+    }
+
+    to {
+      transform: translateX(1.5rem);
+    }
+  }
+}
+
+/* City future layer (skyline-future.tsx), on the bar clock.
+ * The maglev arrives, waits one bar at the station, and leaves. The air taxis cross on long lanes.
+ * The mast beacons blink once every two beats. Without motion, the train waits at the station.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .skopje-skyline .skyline-train {
+    animation: skyline-train calc(var(--dur-orbit-bar) * 12) infinite;
+  }
+
+  .skopje-skyline .skyline-craft--near {
+    animation: skyline-craft-west calc(var(--dur-orbit-bar) * 12) linear infinite;
+    animation-delay: calc(var(--dur-orbit-bar) * -3);
+  }
+
+  .skopje-skyline .skyline-craft--far {
+    animation: skyline-craft-east calc(var(--dur-orbit-bar) * 16) linear infinite;
+    animation-delay: calc(var(--dur-orbit-bar) * -6);
+  }
+
+  .skopje-skyline .skyline-craft--high {
+    animation: skyline-craft-east calc(var(--dur-orbit-bar) * 20) linear infinite;
+    animation-delay: calc(var(--dur-orbit-bar) * -14);
+  }
+
+  .skopje-skyline .skyline-beacon {
+    animation: skyline-beacon calc(var(--dur-orbit-beat) * 2) steps(1, end) infinite;
+  }
+
+  .skopje-skyline .skyline-beacon--b {
+    animation-delay: calc(-1 * var(--dur-orbit-beat));
+  }
+
+  @keyframes skyline-train {
+    from {
+      transform: translateX(-3600px);
+      animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    30% {
+      transform: none;
+      animation-timing-function: linear;
+    }
+
+    40% {
+      transform: none;
+      animation-timing-function: cubic-bezier(0.7, 0, 0.84, 0);
+    }
+
+    70%,
+    to {
+      transform: translateX(2900px);
+    }
+  }
+
+  @keyframes skyline-craft-west {
+    from {
+      transform: translate(2300px, 12px);
+    }
+
+    60%,
+    to {
+      transform: translate(-2600px, -10px);
+    }
+  }
+
+  @keyframes skyline-craft-east {
+    from {
+      transform: translate(-2600px, 10px);
+    }
+
+    65%,
+    to {
+      transform: translate(2600px, -12px);
+    }
+  }
+
+  @keyframes skyline-beacon {
+    from {
+      opacity: 1;
+    }
+
+    25% {
+      opacity: 0.2;
+    }
   }
 }
 

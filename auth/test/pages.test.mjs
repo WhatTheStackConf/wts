@@ -28,6 +28,20 @@ test('every page state renders the light glass header with the wordmark and 2027
   }
 });
 
+test('the phone header renders the Menu toggle for the account navigation panel', () => {
+  for (const state of states) {
+    const html = renderPage(state);
+    const toggle = html.match(/<button [^>]*class="menu-toggle"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    assert.ok(toggle, state.kind);
+    assert.match(toggle, /type="button"/, state.kind);
+    assert.match(toggle, /aria-expanded="false"/, state.kind);
+    assert.match(toggle, /aria-controls="account-menu"/, state.kind);
+    assert.match(toggle, /<span class="menu-toggle-label">Menu<\/span>/, state.kind);
+    assert.match(html, /<nav id="account-menu" class="account-nav" aria-label="Account navigation">/, state.kind);
+    assert.match(html, /<script type="module" src="\/assets\/menu\.mjs"><\/script>/, state.kind);
+  }
+});
+
 test('consent puts the escaped client request inside the single panel and keeps both actions', () => {
   const html = renderPage(states[7]);
   assert.match(html, /<section class="consent-details"[^>]*><p class="consent-client"><strong>CFP &lt;app&gt;<\/strong> requests access/);
