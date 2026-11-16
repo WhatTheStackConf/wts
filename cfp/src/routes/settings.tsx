@@ -58,7 +58,7 @@ export default function Settings() {
   };
 
   return <>
-    <PageBand size="short" title="Applicant settings" lede="These preferences apply to all your applications. You can maintain them when the CFP is closed." />
+    <PageBand size="short" title="Applicant settings" lede="These settings apply to all your proposals. You can change them when submissions are closed." />
     <Show when={loading()}><div class="cfp-loading" role="status">Loading your settings…</div></Show>
     <Show when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={current().code !== "unauthenticated" ? reload : undefined} retryLabel="Reload saved settings" /><Show when={current().code === "unauthenticated"}><a href={`/auth/login?returnTo=${encodeURIComponent("/settings")}`} rel="external">Sign in to edit settings</a></Show></>}</Show>
     <Show when={workspace() && !blocksPage(error())}>
@@ -72,7 +72,7 @@ export default function Settings() {
             <For each={expenseOptions}>{(option) => <label class="choice"><input type="radio" name="companyCoverExpenses" value={option} checked={expenses() === option} onChange={() => setExpenses(option)} /><span>{option}</span></label>}</For>
           </div>
         </fieldset>
-        <div class="form-actions"><a class="button button-secondary" href="/applications">Back to applications</a><button class="button" type="submit" disabled={busy()}>{busy() ? "Saving settings…" : "Save settings"}</button></div>
+        <div class="form-actions"><a class="button button-secondary" href="/applications">Back to your proposals</a><button class="button" type="submit" disabled={busy()}>{busy() ? "Saving settings…" : "Save settings"}</button></div>
         <Show when={saved()}><p role="status" class="muted">Your applicant settings are saved.</p></Show>
       </form>
     </Show>

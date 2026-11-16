@@ -53,32 +53,33 @@ export default function ApplicationDetails() {
   const submittedLede = () => {
     const current = view();
     if (!current || blocksPage(error())) return undefined;
-    return `Submitted ${new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(current.application.submittedAt)} · application revision ${current.application.revision}`;
+    const status = { pending: "Pending: the organizers have not decided yet.", accepted: "Accepted.", rejected: "Not selected this time." }[current.application.status] ?? current.application.status;
+    return `Submitted ${new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(current.application.submittedAt)}. ${status}`;
   };
 
   return <>
-    <PageBand size="short" title={view() && !blocksPage(error()) ? view()!.application.presentation.title || "Untitled talk" : "Application"} lede={submittedLede()} />
-    <div class="row row-between page-crumbs"><a class="inline-link" href="/applications">Back to applications</a><Show when={view()}>{(current) => <span class="cfp-status" data-state={current().application.status}>{current().application.status}</span>}</Show></div>
+    <PageBand size="short" title={view() && !blocksPage(error()) ? view()!.application.presentation.title || "Untitled talk" : "Proposal"} lede={submittedLede()} />
+    <div class="row row-between page-crumbs"><a class="inline-link" href="/applications">Back to your proposals</a><Show when={view()}>{(current) => <span class="cfp-status" data-state={current().application.status}>{({ pending: "Pending", accepted: "Accepted", rejected: "Not selected" } as Record<string, string>)[current().application.status] ?? current().application.status}</span>}</Show></div>
     <Show when={loading()}><div class="cfp-loading" role="status">Loading application…</div></Show>
     <Show when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={() => void load()} /><Show when={current().code === "unauthenticated"}><a class="button" href={`/auth/login?returnTo=${encodeURIComponent(`/applications/${params.id ?? ""}`)}`} rel="external">Sign in to continue</a></Show><Show when={current().code === "finalized"}><a class="inline-link" href={`/applications/${params.id ?? ""}`}>Open this application to create a Reuse draft.</a></Show></>}</Show>
     <Show when={view() && !blocksPage(error())}>
       <section class="surface cfp-stack">
-        <div class="surface-title"><div><h2>Application actions</h2><p>{view()!.application.status === "pending" ? "Edit creates a private draft. Your submitted application stays unchanged until confirmation." : "This application is finalized. Reuse copies its presentation into a new independent draft."}</p></div></div>
+        <div class="surface-title"><div><h2>What you can do</h2><p>{view()!.application.status === "pending" ? "Edits stay in a private draft. Your submitted proposal does not change until you submit the edits." : "This application is finalized. Reuse copies its presentation into a new independent draft."}</p></div></div>
         <div class="row">
           <Show when={view()!.application.status === "pending"}>
-            <button type="button" class="button" disabled={!view()!.cfpOpen || busy()} onClick={() => void begin({ kind: "edit", applicationId: view()!.application.id, expectedRevision: view()!.application.revision })}>Edit pending application</button>
+            <button type="button" class="button" disabled={!view()!.cfpOpen || busy()} onClick={() => void begin({ kind: "edit", applicationId: view()!.application.id, expectedRevision: view()!.application.revision })}>Edit proposal</button>
           </Show>
           <Show when={view()!.application.status !== "pending"}>
-            <button type="button" class="button" disabled={!view()!.cfpOpen || busy()} onClick={() => void begin({ kind: "reuse", applicationId: view()!.application.id })}>Reuse as a new application</button>
+            <button type="button" class="button" disabled={!view()!.cfpOpen || busy()} onClick={() => void begin({ kind: "reuse", applicationId: view()!.application.id })}>Reuse in a new proposal</button>
           </Show>
-          <Show when={!view()!.cfpOpen}><span class="cfp-status" data-state="closed">CFP closed</span></Show>
+          <Show when={!view()!.cfpOpen}><span class="cfp-status" data-state="closed">Submissions closed</span></Show>
         </div>
-        <Show when={!view()!.cfpOpen}><p class="muted">You can read this application, but you cannot create or save a draft while the CFP is closed.</p></Show>
+        <Show when={!view()!.cfpOpen}><p class="muted">Submissions are closed. You can read this proposal, but you cannot edit it.</p></Show>
       </section>
-      <article class="surface cfp-stack" aria-label="Submitted application details">
+      <article class="surface cfp-stack" aria-label="Your proposal details">
         <Section title="Speaker profile"><SpeakerSummary speaker={view()!.speaker.value} email={view()!.email} /></Section>
-        <Section title="Applicant settings"><SettingsSummary settings={view()!.settings.value} /></Section>
-        <Section title="Presentation"><PresentationSummary presentation={view()!.application.presentation} /></Section>
+        <Section title="Settings"><SettingsSummary settings={view()!.settings.value} /></Section>
+        <Section title="Talk"><PresentationSummary presentation={view()!.application.presentation} /></Section>
       </article>
     </Show>
   </>;

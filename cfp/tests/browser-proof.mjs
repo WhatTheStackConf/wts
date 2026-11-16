@@ -112,13 +112,13 @@ try {
     }
     await targetPage.locator('#organizer-notes').fill(`Synthetic private note ${suffix}.`);
     await targetPage.locator('#additional-info').fill(`Synthetic additional information ${suffix}.`);
-    await button(targetPage, 'Review application').click();
+    await button(targetPage, 'Review proposal').click();
     for (const value of [`Synthetic previous presentation ${suffix}.`, `Synthetic private note ${suffix}.`, `Synthetic additional information ${suffix}.`]) await text(targetPage, value).waitFor();
   }
-  async function receipt(targetPage, name = 'Submit application') {
+  async function receipt(targetPage, name = 'Submit proposal') {
     await button(targetPage, name).click();
-    await targetPage.getByRole('heading', { name: 'Submission received', exact: true }).waitFor();
-    return new URL(await targetPage.getByRole('link', { name: 'View submitted application', exact: true }).getAttribute('href'), origin).pathname;
+    await targetPage.getByRole('heading', { name: name === 'Submit proposal' ? 'Your talk is in.' : 'Your changes are in.', exact: true }).waitFor();
+    return new URL(await targetPage.getByRole('link', { name: 'View your proposal', exact: true }).getAttribute('href'), origin).pathname;
   }
   const staffContexts = [];
   async function staffPage(email, password, returnTo = '/applications') {
@@ -141,6 +141,8 @@ try {
   }
   async function criterion(staff, prefix, value) {
     for (const name of ['relevance', 'originality', 'depth', 'clarity', 'takeaways', 'engagement']) {
+      const radio = staff.locator(`#${prefix}-${name}-${value}`);
+      if (await radio.count()) { await radio.check(); continue; }
       const control = staff.locator(`#${prefix}-${name}`);
       if (await control.evaluate((element) => element.tagName) === 'SELECT') await control.selectOption(String(value));
       else await control.fill(String(value));
@@ -158,7 +160,7 @@ try {
   let reuseDraft;
   await check('first application saves reusable speaker data and every presentation field', async () => {
     await signIn(page);
-    await button(page, 'New application').click();
+    await button(page, 'New proposal').click();
     await button(page, 'Continue').click();
     await page.locator('#app-name').fill('Synthetic saved CFP speaker');
     await page.locator('#app-bio').fill('Synthetic reusable speaker biography.');
@@ -174,7 +176,7 @@ try {
   await check('second application after process replacement needs only blank presentation fields', async () => {
     await command({ command: 'restart' }, (value) => value.restarted);
     await page.goto(`${origin}/applications`);
-    await button(page, 'New application').click();
+    await button(page, 'New proposal').click();
     await text(page, 'Synthetic saved CFP speaker').waitFor();
     await button(page, 'Continue').click();
     assert.equal(await page.locator('#app-name').count(), 0);
@@ -208,7 +210,7 @@ try {
   });
   await check('pending edits stay private and stale or cross-origin writes fail', async () => {
     await page.goto(`${origin}${firstApplication}`);
-    await button(page, 'Edit pending application').click();
+    await button(page, 'Edit proposal').click();
     await button(page, 'Continue').waitFor();
     const editPath = new URL(page.url()).pathname;
     await button(page, 'Continue').click();
@@ -241,8 +243,8 @@ try {
     assert.equal(await page.locator('#proposal-title').inputValue(), 'Synthetic edited presentation');
     await button(page, 'Next: Experience').click();
     await button(page, 'Next: Expenses').click();
-    await button(page, 'Review application').click();
-    assert.equal(await receipt(page, 'Save changes'), firstApplication);
+    await button(page, 'Review proposal').click();
+    assert.equal(await receipt(page, 'Submit changes'), firstApplication);
     await page.goto(`${origin}${firstApplication}`);
     await page.getByRole('heading', { name: 'Synthetic edited presentation', exact: true }).waitFor();
   });
@@ -293,7 +295,7 @@ try {
       const assignment = staffMutation(administrator.page, 'set-assignments');
       await button(administrator.page, 'Assign reviewer').click();
       assignmentRequest = await assignment;
-      await administrator.page.getByText(`${id} · revision 1`, { exact: true }).waitFor();
+      await administrator.page.getByRole('listitem').filter({ hasText: id }).filter({ hasText: 'Assigned' }).waitFor();
     }
     const responses = [];
     const capture = (response) => {
@@ -339,7 +341,7 @@ try {
     const capture = staffMutation(reviewer.page, 'save-review');
     await button(reviewer.page, 'Save review').click();
     savedReviewRequest = await capture;
-    await text(reviewer.page, 'Saved review revision 1.').waitFor();
+    await text(reviewer.page, 'Review saved.').waitFor();
     const stale = await rpc(reviewer.context, savedReviewRequest, (value) => { value.requestId = randomUUID(); value.notes = 'Rejected stale review.'; });
     assert.match(await stale.text(), /conflict/);
     assert.equal(stale.headers()['cache-control'], 'private, no-store');
@@ -351,12 +353,12 @@ try {
     await criterion(secondReviewer.page, 'score', 5);
     await secondReviewer.page.getByLabel('Private notes').fill('Private reviewer two sentinel.');
     await button(secondReviewer.page, 'Save review').click();
-    await text(secondReviewer.page, 'Saved review revision 1.').waitFor();
+    await text(secondReviewer.page, 'Review saved.').waitFor();
     await reviewer.page.goto(`${origin}/reviewer`);
     await reviewer.page.getByRole('heading', { name: 'Your criterion weights', exact: true }).waitFor();
     await criterion(reviewer.page, 'weight', 1);
     await button(reviewer.page, 'Save my weights').click();
-    await text(reviewer.page, 'Saved weight vote revision 1.').waitFor();
+    await text(reviewer.page, 'Weights saved.').waitFor();
     await administrator.page.goto(`${origin}/admin`);
     const row = administrator.page.getByRole('row').filter({ hasText: 'Synthetic edited presentation' });
     await row.waitFor();
@@ -364,24 +366,24 @@ try {
     await administrator.page.goto(`${origin}/admin/${firstApplication.split('/').at(-1)}`);
     await text(administrator.page, 'Private reviewer one sentinel.').waitFor();
     await text(administrator.page, 'Private reviewer two sentinel.').waitFor();
-    assert.equal(await administrator.page.locator('#score-relevance').count(), 0);
+    assert.equal(await administrator.page.locator('input[name="score-relevance"]').count(), 0);
   });
   await check('Review next clears the previous proposal and saves to the new assigned proposal', async () => {
     await administrator.page.goto(`${origin}/admin/${secondApplication.split('/').at(-1)}`);
     await administrator.page.getByLabel('Reviewer with an active edition grant').selectOption('syntheticuser02');
     await button(administrator.page, 'Assign reviewer').click();
-    await administrator.page.getByText('syntheticuser02 · revision 1', { exact: true }).waitFor();
+    await administrator.page.getByRole('listitem').filter({ hasText: 'syntheticuser02' }).filter({ hasText: 'Assigned' }).waitFor();
     await reviewer.page.goto(`${origin}/reviewer/${firstApplication.split('/').at(-1)}`);
     await reviewer.page.getByRole('heading', { name: 'Your review', exact: true }).waitFor();
-    await button(reviewer.page, 'Review next proposal').click();
+    await button(reviewer.page, 'Skip to next proposal').click();
     await reviewer.page.waitForURL(`${origin}/reviewer/${secondApplication.split('/').at(-1)}`);
     await reviewer.page.getByRole('heading', { name: 'Synthetic second presentation', exact: true }).waitFor();
     assert.equal(await reviewer.page.getByLabel('Private notes').inputValue(), '');
-    assert.equal(await reviewer.page.locator('#score-relevance').inputValue(), '');
+    assert.equal(await reviewer.page.locator('input[name="score-relevance"]:checked').count(), 0);
     await criterion(reviewer.page, 'score', 2);
     await reviewer.page.getByLabel('Private notes').fill('Private second-proposal review sentinel.');
     await button(reviewer.page, 'Save review').click();
-    await text(reviewer.page, 'Saved review revision 1.').waitFor();
+    await text(reviewer.page, 'Review saved.').waitFor();
     const stored = await command({ command: 'staff-inspect' }, (value) => value.staff);
     const own = stored.reviews.filter((review) => review.reviewer_id === 'syntheticuser02');
     assert.deepEqual(own.map((review) => review.application_id).sort(), [firstApplication.split('/').at(-1), secondApplication.split('/').at(-1)].sort());
@@ -395,7 +397,7 @@ try {
     await reviewer.page.goto(`${origin}/reviewer/${firstApplication.split('/').at(-1)}`);
     await reviewer.page.getByLabel('Private notes').fill('Private reviewer one after intake closure.');
     await button(reviewer.page, 'Save review').click();
-    await text(reviewer.page, 'Saved review revision 2.').waitFor();
+    await text(reviewer.page, 'Review saved.').waitFor();
     await administrator.page.locator('input[name="cfpOpen"]').check();
     await button(administrator.page, 'Save CFP gate').click();
     await text(administrator.page, 'CFP intake opened.').waitFor();
@@ -410,19 +412,19 @@ try {
   });
   await check('confirmed presentation edits preserve evaluated content and exclude stale review scores', async () => {
     await page.goto(`${origin}${firstApplication}`);
-    await button(page, 'Edit pending application').click();
+    await button(page, 'Edit proposal').click();
     await button(page, 'Continue').click();
     await page.getByRole('textbox', { name: 'Abstract', exact: true }).fill('Synthetic changed abstract for current review.');
     await button(page, 'Next: Experience').click();
     await button(page, 'Next: Expenses').click();
-    await button(page, 'Review application').click();
-    assert.equal(await receipt(page, 'Save changes'), firstApplication);
+    await button(page, 'Review proposal').click();
+    assert.equal(await receipt(page, 'Submit changes'), firstApplication);
     await reviewer.page.goto(`${origin}/reviewer/${firstApplication.split('/').at(-1)}`);
     await reviewer.page.getByRole('heading', { name: 'Presentation evaluated by this review', exact: true }).waitFor();
     assert.match(await reviewer.page.locator('main').innerText(), /Synthetic abstract one/);
     assert.match(await reviewer.page.locator('main').innerText(), /Synthetic changed abstract for current review/);
     await button(reviewer.page, 'Save review').click();
-    await text(reviewer.page, 'Saved review revision 3.').waitFor();
+    await text(reviewer.page, 'Review saved.').waitFor();
     await administrator.page.goto(`${origin}/admin`);
     const row = administrator.page.getByRole('row').filter({ hasText: 'Synthetic edited presentation' });
     await row.waitFor();
@@ -434,26 +436,28 @@ try {
     await secondReviewer.page.getByRole('heading', { name: 'Your criterion weights', exact: true }).waitFor();
     await criterion(secondReviewer.page, 'weight', 2);
     await button(secondReviewer.page, 'Save my weights').click();
-    await text(secondReviewer.page, 'Saved weight vote revision 1.').waitFor();
+    await text(secondReviewer.page, 'Weights saved.').waitFor();
     await button(administrator.page, 'Accept selected').click();
+    await button(administrator.page, 'Confirm accept').click();
     await administrator.page.getByRole('alert').first().waitFor();
     const stale = await command({ command: 'inspect' }, (value) => value.applications);
     assert.deepEqual(stale.applications.map((application) => application.status), ['pending', 'pending']);
     await administrator.page.goto(`${origin}/admin`);
     for (const title of ['Synthetic edited presentation', 'Synthetic second presentation']) await administrator.page.getByRole('checkbox', { name: `Select ${title}`, exact: true }).check();
     await button(administrator.page, 'Accept selected').click();
+    await button(administrator.page, 'Confirm accept').click();
     await administrator.page.getByRole('checkbox', { name: 'Select Synthetic edited presentation', exact: true }).waitFor({ state: 'detached' });
     const decided = await command({ command: 'inspect' }, (value) => value.applications);
     assert.deepEqual(decided.applications.map((application) => application.status), ['accepted', 'accepted']);
     await page.goto(`${origin}${firstApplication}`);
-    await text(page, 'accepted').waitFor();
+    await text(page, 'Accepted').waitFor();
     await reviewer.page.goto(`${origin}/reviewer/${firstApplication.split('/').at(-1)}`);
     await reviewer.page.getByRole('alert').first().waitFor();
     assert.equal(await button(reviewer.page, 'Save review').count(), 0);
-    await administrator.page.getByRole('combobox', { name: 'Status', exact: true }).selectOption('accepted');
-    await button(administrator.page, 'Apply filters').click();
+    await administrator.page.getByRole('group', { name: 'Status', exact: true }).getByRole('button', { name: /^Accepted/ }).click();
     for (const title of ['Synthetic edited presentation', 'Synthetic second presentation']) await administrator.page.getByRole('checkbox', { name: `Select ${title}`, exact: true }).check();
     await button(administrator.page, 'Reopen selected to pending').click();
+    await button(administrator.page, 'Confirm move').click();
     await administrator.page.getByRole('checkbox', { name: 'Select Synthetic edited presentation', exact: true }).waitFor({ state: 'detached' });
     const reopened = await command({ command: 'inspect' }, (value) => value.applications);
     assert.deepEqual(reopened.applications.map((application) => application.status), ['pending', 'pending']);
@@ -491,7 +495,7 @@ try {
     const seeded = await command({ command: 'seed-bulk' }, (value) => value.seededBulk);
     await administrator.page.goto(`${origin}/admin`);
     await administrator.page.getByLabel('Search title or applicant').fill('Synthetic pagination proposal');
-    await button(administrator.page, 'Apply filters').click();
+    await button(administrator.page, 'Search').click();
     await administrator.page.getByRole('checkbox', { name: /Select Synthetic pagination proposal/ }).first().waitFor();
     const firstPage = administrator.page.getByRole('checkbox', { name: /Select Synthetic pagination proposal/ });
     assert.equal(await firstPage.count(), 50);
@@ -501,6 +505,7 @@ try {
     await administrator.page.waitForFunction(() => document.querySelectorAll('input[aria-label^="Select Synthetic pagination proposal"]').length === 1);
     await lastPage.first().check();
     await button(administrator.page, 'Accept selected').click();
+    await button(administrator.page, 'Confirm accept').click();
     await lastPage.first().waitFor({ state: 'detached' });
     const stored = await command({ command: 'inspect' }, (value) => value.applications);
     const decided = stored.applications.filter((application) => seeded.ids.includes(application.application_id));
@@ -528,14 +533,14 @@ try {
   });
   await check('finalized edit recovery opens the target and Reuse copies an independent draft', async () => {
     await page.goto(`${origin}${secondApplication}`);
-    await button(page, 'Edit pending application').click();
+    await button(page, 'Edit proposal').click();
     await button(page, 'Continue').click();
     await command({ command: 'finalize', applicationId: secondApplication.split('/').at(-1) }, (value) => value.finalized);
     await button(page, 'Save draft').click();
-    const recovery = page.getByRole('link', { name: 'Open the application to create a Reuse draft.', exact: true });
+    const recovery = page.getByRole('link', { name: 'Open the proposal to reuse it in a new draft.', exact: true });
     assert.equal(await recovery.getAttribute('href'), secondApplication);
     await recovery.click();
-    await button(page, 'Reuse as a new application').click();
+    await button(page, 'Reuse in a new proposal').click();
     await button(page, 'Continue').waitFor();
     reuseDraft = new URL(page.url()).pathname;
     await button(page, 'Continue').click();
@@ -561,10 +566,10 @@ try {
     const otherContext = await browser.newContext({ ignoreHTTPSErrors: true });
     const other = await otherContext.newPage();
     await signIn(other, 'second@acceptance.localhost', 'Synthetic second password 04!');
-    await text(other, 'Your submitted applications will appear here.').waitFor();
+    await text(other, 'Your submitted proposals show here.').waitFor();
     await other.goto(`${origin}${firstApplication}`);
     await other.getByRole('alert').waitFor();
-    assert.equal(await other.getByRole('article', { name: 'Submitted application details', exact: true }).count(), 0);
+    assert.equal(await other.getByRole('article', { name: 'Your proposal details', exact: true }).count(), 0);
     assert.doesNotMatch(await other.locator('body').innerText(), /Synthetic updated CFP speaker|Synthetic edited presentation|Synthetic private note/);
     await button(page, 'Sign out').click();
     await page.waitForURL(`${origin}/`);
@@ -591,7 +596,7 @@ try {
     assert.equal(await administrator.page.getByRole('checkbox', { name: /Select Synthetic/ }).count(), 0);
     await page.goto(`${origin}${firstApplication}`);
     await page.getByRole('link', { name: 'Sign in to continue', exact: true }).waitFor();
-    assert.equal(await page.getByRole('article', { name: 'Submitted application details', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('article', { name: 'Your proposal details', exact: true }).count(), 0);
     await flowPage.locator('#email').fill(importedEmail);
     await flowPage.locator('#current-password').fill(importedPassword);
     await button(flowPage, 'Sign in').click();
@@ -604,7 +609,7 @@ try {
     await unfinished.close();
     await signIn(page, importedEmail, importedPassword, firstApplication);
     await page.getByRole('heading', { name: 'Synthetic edited presentation', exact: true }).waitFor();
-    await text(page, 'CFP closed').waitFor();
+    await text(page, 'Submissions closed').waitFor();
   });
   await check('private headers, host-only cookies, browser storage, and responsive rendering', async () => {
     assert.ok(rpcHeaders.length > 0);
@@ -635,7 +640,7 @@ try {
     assert.equal(await page.locator('#profile-name').count(), 0);
     await page.goto(`${origin}${firstApplication}`);
     await page.getByRole('alert').waitFor();
-    assert.equal(await page.getByRole('article', { name: 'Submitted application details', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('article', { name: 'Your proposal details', exact: true }).count(), 0);
     assert.doesNotMatch(await page.locator('main').innerText(), /Synthetic updated CFP speaker|Synthetic edited presentation|Synthetic private note/);
     const ready = await context.request.get(`${origin}/readyz`);
     assert.equal(ready.status(), 200);

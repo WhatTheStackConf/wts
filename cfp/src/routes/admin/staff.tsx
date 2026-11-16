@@ -139,7 +139,7 @@ export default function AdminStaffPage() {
       <Match when={workspace() && directory()}>
         <div class="cfp-stack">
           <Show when={request.savedMessage()}><p class="alert" role="status">{request.savedMessage()}</p></Show>
-          <AdminSection title="Edition gates" description="CFP intake and review access use separate revision-checked controls.">
+          <AdminSection title="Edition gates" description="Submissions and reviews open and close separately.">
             <form onSubmit={saveCfpGate} class="cfp-stack">
               <fieldset><legend>CFP application intake · revision {workspace()!.cfpGate.revision}</legend>
                 <label class="label cursor-pointer justify-start gap-3"><input class="toggle" type="checkbox" name="cfpOpen" checked={cfpOpen()} onChange={(event) => setCfpOpen(event.currentTarget.checked)} /><span>{cfpOpen() ? "Open" : "Closed"}</span></label>

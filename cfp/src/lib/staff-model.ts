@@ -4,6 +4,15 @@ import type { MailStatus } from "./mail-model.ts";
 
 export const CRITERIA = ["relevance", "originality", "depth", "clarity", "takeaways", "engagement"] as const;
 export const CRITERION_LABELS = { relevance: "Relevance", originality: "Originality", depth: "Depth", clarity: "Clarity", takeaways: "Takeaways", engagement: "Engagement" } as const;
+/* Wording from the "Inside the CfP" blog post, so speakers and reviewers read the same definitions. */
+export const CRITERION_HINTS = {
+  relevance: "How well it fits the conference and what the audience deals with day to day.",
+  originality: "A fresh take, not one we have seen fifty times.",
+  depth: "Deep enough to be useful, and still fits the slot.",
+  clarity: "You can follow the proposal without guessing what the talk is about.",
+  takeaways: "It is clear what the audience walks away with.",
+  engagement: "Would you, honestly, want to sit through it?",
+} as const;
 export type Criterion = typeof CRITERIA[number];
 export type CriterionValues<T> = { [K in Criterion]: T };
 export type Score = 1 | 2 | 3 | 4 | 5;

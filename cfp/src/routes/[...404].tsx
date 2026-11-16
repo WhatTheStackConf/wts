@@ -10,7 +10,7 @@ export default function NotFound() {
     <PageBand title="This page is not here." lede="The address may be outdated, or this page may have moved." />
     <section class="not-found" aria-label="Page not found">
       <p class="mono">404 · NOT FOUND</p>
-      <div class="row"><a class="button" href="/">Go to CFP home</a><a class="button button-secondary" href="/applications">Applicant dashboard</a></div>
+      <div class="row"><a class="button" href="/">Go to CFP home</a><a class="button button-secondary" href="/applications">Your proposals</a></div>
     </section>
   </>;
 }

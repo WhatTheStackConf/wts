@@ -2,8 +2,8 @@ import { createSignal, For, onSettled, Show, Switch, Match } from "solid-js";
 import { useParams } from "@solidjs/router";
 import { executeStaffCommand, getAdminProposal, getStaffDirectory } from "~/lib/staff-actions";
 import { CRITERIA, CRITERION_LABELS } from "~/lib/staff-model";
-import type { AdminProposal, StaffDirectory } from "~/lib/staff-model";
-import { AdminError, AdminLoading, AdminSection, AdminStatus, useAdminRequest } from "~/components/admin/AdminUI";
+import type { AdminProposal, DecideProposalsCommand, StaffDirectory } from "~/lib/staff-model";
+import { AdminError, AdminLoading, AdminSection, AdminStatus, STATUS_LABELS, reviewSummary, useAdminRequest } from "~/components/admin/AdminUI";
 
 const PROTECTED_FAILURES = ["forbidden", "unauthenticated", "unavailable"];
 const failureState = (code: string) => code === "conflict" ? "stale" : "unavailable";
@@ -22,21 +22,32 @@ function assignmentCommand(data: AdminProposal, reviewerId: string, active: bool
   };
 }
 
-interface SelectionEvidenceProps {
+const DECISIONS = [["accepted", "Accept"], ["rejected", "Reject"], ["pending", "Move back to pending"]] as const;
+
+interface DecisionPanelProps {
   proposal: AdminProposal;
+  busy: boolean;
+  onDecide: (status: "accepted" | "rejected" | "pending") => void;
 }
 
-function SelectionEvidence(props: SelectionEvidenceProps) {
-  return <AdminSection title="Selection evidence" description="Every decision witness includes application, presentation, review assessment, and aggregate weighting revisions.">
+function DecisionPanel(props: DecisionPanelProps) {
+  const status = () => props.proposal.application.status;
+  const score = () => props.proposal.ranking.averageWeightedScore;
+  return <section class="surface cfp-stack decision-panel" aria-labelledby="decision-title">
+    <div class="surface-title"><div><h2 id="decision-title">Decision</h2><p>The score uses reviews of the current version only.</p></div><AdminStatus state={status()} label={STATUS_LABELS[status()] ?? status()} /></div>
+    <dl class="decision-facts">
+      <div><dt>Score</dt><dd class="numeric">{score() === null ? "Not scored" : score()!.toFixed(2)}</dd></div>
+      <div><dt>Reviews</dt><dd>{reviewSummary(props.proposal.ranking)}</dd></div>
+    </dl>
     <div class="row">
-      <AdminStatus state={props.proposal.application.status} label={`Status: ${props.proposal.application.status}`} />
-      <span>Normalized score: {props.proposal.ranking.averageWeightedScore?.toFixed(2) ?? "Not scored"}</span>
-      <span>Reviews current / stale / total: {props.proposal.ranking.currentReviewCount} / {props.proposal.ranking.staleReviewCount} / {props.proposal.ranking.totalReviewCount}</span>
-      <span>Assessment revision: {props.proposal.assessmentRevision}</span>
-      <span>Weighting revision: {props.proposal.weighting.revision}</span>
+      <For each={DECISIONS.filter(([value]) => value !== status() && (value !== "pending" || status() !== "pending"))}>{([value, label]) =>
+        <button type="button" class={value === "accepted" ? "button" : value === "rejected" ? "button button-danger" : "button button-secondary"} disabled={props.busy} onClick={() => props.onDecide(value)}>{label}</button>}</For>
     </div>
-    <dl class="read-only-summary"><For each={CRITERIA}>{(criterion) => <div><dt>{CRITERION_LABELS[criterion]}</dt><dd>{props.proposal.weighting.averages[criterion]}</dd></div>}</For></dl>
-  </AdminSection>;
+    <details class="committee-weights"><summary>Committee weights</summary>
+      <p class="hint">The average weight the committee gave each criterion, from 1 to 6.</p>
+      <dl class="read-only-summary"><For each={CRITERIA}>{(criterion) => <div><dt>{CRITERION_LABELS[criterion]}</dt><dd>{props.proposal.weighting.averages[criterion]}</dd></div>}</For></dl>
+    </details>
+  </section>;
 }
 
 interface ApplicantContactProps {
@@ -45,15 +56,17 @@ interface ApplicantContactProps {
 }
 
 function ApplicantContact(props: ApplicantContactProps) {
-  return <AdminSection title="Applicant and recorded contact">
+  return <AdminSection title="Speaker">
     <dl class="read-only-summary">
-      <div><dt>WTS user ID</dt><dd>{props.proposal.applicant.wtsUserId}</dd></div>
-      <div><dt>Current profile name</dt><dd>{props.proposal.speaker.value.fullName}</dd></div>
-      <div><dt>Recorded contact</dt><dd>{props.recordedContact}</dd></div>
-      <div><dt>Current profile revision</dt><dd>{props.proposal.speaker.revision}</dd></div>
-      <div class="wide"><dt>Current speaker profile</dt><dd><strong>{props.proposal.speaker.value.affiliation || "No affiliation recorded"}</strong><p>{props.proposal.speaker.value.bio || "Bio not provided"}</p><p>Social handles: {props.proposal.speaker.value.socialHandles.join(", ") || "Not recorded"}</p><p>Previous talks: {props.proposal.speaker.value.previousTalks || "Not recorded"}</p></dd></div>
-      <div><dt>Current preferred contact method</dt><dd>{props.proposal.settings.value.preferredContactMethod || "Not recorded"}</dd></div>
-      <div><dt>Current expense coverage</dt><dd>{props.proposal.settings.value.companyCoverExpenses ?? "Not recorded"}</dd></div>
+      <div><dt>Name</dt><dd>{props.proposal.speaker.value.fullName}</dd></div>
+      <div><dt>Affiliation</dt><dd>{props.proposal.speaker.value.affiliation || "Not provided"}</dd></div>
+      <div><dt>Email at submission</dt><dd>{props.recordedContact}</dd></div>
+      <div><dt>Preferred contact method</dt><dd>{props.proposal.settings.value.preferredContactMethod || "Not provided"}</dd></div>
+      <div><dt>Company covers travel</dt><dd>{props.proposal.settings.value.companyCoverExpenses ?? "Not provided"}</dd></div>
+      <div><dt>WTS user ID</dt><dd class="mono">{props.proposal.applicant.wtsUserId}</dd></div>
+      <div class="wide"><dt>Bio</dt><dd>{props.proposal.speaker.value.bio || "Not provided"}</dd></div>
+      <div class="wide"><dt>Social links</dt><dd>{props.proposal.speaker.value.socialHandles.join(", ") || "Not provided"}</dd></div>
+      <div class="wide"><dt>Previous talks</dt><dd>{props.proposal.speaker.value.previousTalks || "Not provided"}</dd></div>
     </dl>
   </AdminSection>;
 }
@@ -108,14 +121,44 @@ export default function AdminProposalPage() {
     setBusy(false);
   };
 
+  const decide = async (status: "accepted" | "rejected" | "pending") => {
+    const data = proposal();
+    if (!data || busy()) return;
+    const command: DecideProposalsCommand = {
+      kind: "decide-proposals",
+      requestId: crypto.randomUUID(),
+      expectedWeightingRevision: data.weighting.revision,
+      status,
+      targets: [{
+        applicationId: data.application.id,
+        expectedApplicationRevision: data.application.revision,
+        expectedPresentationRevision: data.presentationRevision,
+        expectedAssessmentRevision: data.assessmentRevision,
+      }] as DecideProposalsCommand["targets"],
+    };
+    setBusy(true);
+    const result = await request.run(() => executeStaffCommand(command));
+    if (result?.ok) {
+      if (await load()) request.saved(`Decision saved: ${STATUS_LABELS[status]}.`);
+    } else if (result && PROTECTED_FAILURES.includes(result.error.code)) {
+      setProposal(undefined);
+      setDirectory(undefined);
+    }
+    setBusy(false);
+  };
+  const reviewerName = (id: string) => {
+    const name = directory()?.members.find((member) => member.wtsUserId === id)?.speakerName;
+    return name ? `${name} (${id})` : id;
+  };
+
   const eligibleReviewers = () => directory()!.members.filter((member) => member.reviewerGrant?.state === "active" && member.wtsUserId !== proposal()!.applicant.wtsUserId);
   const recordedContact = () => {
     const contact = proposal()!.applicant.contact;
-    if (contact.kind === "unavailable") return "Unavailable for this historical submission";
-    return `${contact.email} · recorded ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(contact.recordedAt)}`;
+    if (contact.kind === "unavailable") return "Not recorded for this older submission";
+    return contact.email;
   };
   const presentation = (value: AdminProposal["application"]["presentation"]) => <dl class="read-only-summary">
-    <div class="wide"><dt>Title</dt><dd>{value.title || "Not provided"}</dd></div>
+    <Show when={value.title !== proposal()!.application.presentation.title}><div class="wide"><dt>Title</dt><dd>{value.title || "Not provided"}</dd></div></Show>
     <div class="wide"><dt>Abstract</dt><dd><div class="rich-html" innerHTML={value.abstract || "<p>Not provided</p>"} /></dd></div>
     <div class="wide"><dt>Key takeaways</dt><dd><div class="rich-html" innerHTML={value.keyTakeaways || "<p>Not provided</p>"} /></dd></div>
     <div class="wide"><dt>Technical requirements</dt><dd>{value.technicalRequirements || "Not provided"}</dd></div>
@@ -125,9 +168,9 @@ export default function AdminProposalPage() {
   </dl>;
 
   return <>
-    <nav aria-label="Breadcrumb"><a class="inline-link" href="/admin">Back to CFP proposals</a></nav>
+    <nav aria-label="Breadcrumb"><a class="inline-link" href="/admin">Back to talk proposals</a></nav>
     <Switch>
-      <Match when={loading()}><AdminLoading label="Loading committed proposal and committee context…" /></Match>
+      <Match when={loading()}><AdminLoading label="Loading the proposal and its reviews…" /></Match>
       <Match when={request.error()}>{(failure) => <Switch fallback={<AdminError state={failureState(failure().code)} message={failure().message} onRetry={() => void load()} />}>
         <Match when={failure().code === "unauthenticated"}><AdminError state="unauthenticated" message={failure().message} /></Match>
         <Match when={failure().code === "forbidden"}><AdminError state="denied" message="Your edition administrator access is not active. Protected CFP details are hidden." /></Match>
@@ -136,44 +179,41 @@ export default function AdminProposalPage() {
       <Match when={proposal() && directory()}>
         <header class="page-heading">
           <h1>{proposal()!.application.presentation.title || "Untitled talk"}</h1>
-          <p>Edition {proposal()!.editionId} · application revision {proposal()!.application.revision} · presentation revision {proposal()!.presentationRevision}</p>
-          <AdminStatus state={proposal()!.application.status} label={proposal()!.application.status} />
+          <p>By {proposal()!.speaker.value.fullName || "an unnamed speaker"}</p>
         </header>
         <Show when={request.savedMessage()}><p class="alert" role="status">{request.savedMessage()}</p></Show>
         <Show when={request.error()}>{(failure) => <AdminError state={failureState(failure().code)} message={failure().message} onRetry={() => void load()} />}</Show>
-        <section class="cfp-stack" aria-label="Committed CFP proposal details">
-          <SelectionEvidence proposal={proposal()!} />
+        <section class="cfp-stack" aria-label="Talk proposal details">
+          <DecisionPanel proposal={proposal()!} busy={busy()} onDecide={(status) => void decide(status)} />
 
-          <AdminSection title="Committed presentation" description="This is the submitted version, not an applicant draft.">
+          <AdminSection title="The proposal" description="The submitted version. Drafts the speaker has not submitted are not shown.">
             {presentation(proposal()!.application.presentation)}
           </AdminSection>
 
           <ApplicantContact proposal={proposal()!} recordedContact={recordedContact()} />
 
-          <AdminSection title="Reviewer assignments" description="Assignments apply only to this edition and proposal.">
+          <AdminSection title="Reviewers" description="Reviewers see only the proposals assigned to them.">
             <form class="row" onSubmit={(event) => { event.preventDefault(); void updateAssignment(true); }}>
               <label>Reviewer with an active edition grant
                 <select class="control" name="reviewerId" required value={reviewerId()} onChange={(event) => setReviewerId(event.currentTarget.value)}>
                   <option value="">Choose reviewer</option>
-                  <For each={eligibleReviewers()}>{(member) => <option value={member.wtsUserId}>{member.speakerName || "WTS user"} · {member.wtsUserId}</option>}</For>
+                  <For each={eligibleReviewers()}>{(member) => <option value={member.wtsUserId}>{reviewerName(member.wtsUserId)}</option>}</For>
                 </select>
               </label>
-            <Show when={eligibleReviewers().length === 0}><p class="empty-state">No other known WTS identity has an active reviewer grant.</p></Show>
+            <Show when={eligibleReviewers().length === 0}><p class="empty-state">No reviewers are available. Grant the reviewer role in Staff and gates.</p></Show>
               <button class="button" type="submit" disabled={busy()}>Assign reviewer</button>
               <button class="button button-danger" type="button" disabled={busy() || !reviewerId() || !proposal()!.assignments.some((assignment) => assignment.reviewerId === reviewerId() && assignment.state === "active")} onClick={() => void updateAssignment(false)}>Revoke assignment</button>
             </form>
-            <ul class="cfp-list"><For each={proposal()!.assignments}>{(assignment) => <li class="list-item"><span>{assignment.reviewerId} · revision {assignment.revision}</span><AdminStatus state={assignment.state} label={assignment.state} /></li>}</For></ul>
-            <Show when={proposal()!.assignments.length === 0}><p class="empty-state">No reviewer assignments exist for this proposal.</p></Show>
+            <ul class="cfp-list"><For each={proposal()!.assignments}>{(assignment) => <li class="list-item"><span>{reviewerName(assignment.reviewerId)}</span><AdminStatus state={assignment.state} label={assignment.state === "active" ? "Assigned" : "Removed"} /></li>}</For></ul>
+            <Show when={proposal()!.assignments.length === 0}><p class="empty-state">No reviewers are assigned yet.</p></Show>
           </AdminSection>
 
-          <AdminSection title="Committee reviews" description="Private reviewer notes and scores are visible to edition admins. Individual weight votes are not included.">
+          <AdminSection title="Committee reviews" description="Only admins see reviewer notes and scores.">
             <Show when={proposal()!.reviews.length} fallback={<p class="empty-state">No committee reviews have been recorded.</p>}>
               <ul class="cfp-list"><For each={proposal()!.reviews}>{(review) => <li class="list-item"><article class="cfp-stack">
-                <h3>Reviewer {review.value.reviewerId}</h3>
-                <AdminStatus state={review.freshness} label={`${review.freshness} review`} />
-                <p>Reviewed presentation revision {review.value.presentationRevision} · review revision {review.value.revision}</p>
-                <dl class="read-only-summary"><For each={Object.entries(review.value.scores)}>{([criterion, score]) => <div><dt>{criterion}</dt><dd>{score} / 5</dd></div>}</For></dl>
-                <p>Suspected AI flag: {review.value.suspectedAi ? "Yes" : "No"}</p>
+                <div class="surface-title"><h3>{reviewerName(review.value.reviewerId)}</h3><AdminStatus state={review.freshness === "current" ? "active" : "pending"} label={review.freshness === "current" ? "Current version" : "Older version"} /></div>
+                <dl class="read-only-summary"><For each={CRITERIA}>{(criterion) => <div><dt>{CRITERION_LABELS[criterion]}</dt><dd>{review.value.scores[criterion]} / 5</dd></div>}</For></dl>
+                <Show when={review.value.suspectedAi}><p><strong>Flagged as possibly machine-written.</strong></p></Show>
                 <div><h4>Review notes</h4><p class="preserve-lines">{review.value.notes || "No notes recorded."}</p></div>
                 <details><summary>Presentation evaluated by this review</summary>{presentation(review.evaluatedPresentation)}</details>
               </article></li>}</For></ul>
@@ -183,10 +223,9 @@ export default function AdminProposalPage() {
           <AdminSection title="Decision history">
             <Show when={proposal()!.decisions.length} fallback={<p class="empty-state">No decisions have been recorded.</p>}>
               <ol class="cfp-list"><For each={proposal()!.decisions}>{(decision) => <li class="list-item"><div>
-                <h3>{decision.previousStatus} → {decision.status}</h3>
-                <p>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(decision.decidedAt)} · {decision.decidedBy}</p>
-                <p>Application {decision.applicationRevisionBefore} → {decision.applicationRevisionAfter} · presentation {decision.presentationRevision} · assessment {decision.assessmentRevision} · weighting {decision.weighting.revision}</p>
-                <p>Recorded normalized score {decision.ranking.averageWeightedScore === null ? "Not scored" : decision.ranking.averageWeightedScore.toFixed(2)} · current/stale/total reviews {decision.ranking.currentReviewCount}/{decision.ranking.staleReviewCount}/{decision.ranking.totalReviewCount}</p>
+                <h3>{STATUS_LABELS[decision.previousStatus] ?? decision.previousStatus} → {STATUS_LABELS[decision.status] ?? decision.status}</h3>
+                <p>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(decision.decidedAt)} · {reviewerName(decision.decidedBy)}</p>
+                <p>Score at the time: {decision.ranking.averageWeightedScore === null ? "Not scored" : decision.ranking.averageWeightedScore.toFixed(2)} · {reviewSummary(decision.ranking)}</p>
               </div></li>}</For></ol>
             </Show>
           </AdminSection>
