@@ -13,7 +13,7 @@ export default function Home() {
     void getCfpStatus().then(setStatus).catch(() => setStatusUnavailable(true));
   });
   return <>
-    <PageBand overlap title="Call for Papers" lede="Submit a software-development talk proposal. Your speaker profile and applicant settings stay available across your applications." />
+    <PageBand overlap title="Call for Papers" lede="Submit a talk proposal. Your speaker profile and applicant settings stay available across your applications." />
     <section class="surface cfp-home-status" aria-labelledby="status-heading">
       <div class="cfp-home-state">
         <h2 id="status-heading" class="panel-label">Submission status</h2>

@@ -8,11 +8,13 @@ export function PublicFooter() {
   return (
     <footer class="orbit-footer">
       <div class="orbit-footer-top">
-        <a class="orbit-footer-brand" href="/" aria-label={`${publicEditionName} home`}>
-          <img src={logoUrl} alt="" width="34" height="43" />
-          <span>WhatTheStack<br /><strong>2027</strong></span>
-        </a>
-        <p>All things software.<br />All things code.</p>
+        <div class="orbit-footer-id">
+          <a class="orbit-footer-brand" href="/" aria-label={`${publicEditionName} home`}>
+            <img src={logoUrl} alt="" width="34" height="43" />
+            <span>WhatTheStack<br /><strong>2027</strong></span>
+          </a>
+          <p class="orbit-footer-tagline">The tech side of product.</p>
+        </div>
         <nav class="orbit-footer-links" aria-label="Community">
           <a href="https://blog.wts.sh" target="_blank" rel="noopener noreferrer">
             Blog
@@ -33,7 +35,7 @@ export function PublicFooter() {
         </nav>
       </div>
       <div class="orbit-footer-bottom">
-        <span>© 2026 WhatTheStack · CodePub LLC</span>
+        <span>© {new Date().getFullYear()} WhatTheStack · CodePub LLC</span>
         <nav aria-label="Legal">
           <For each={publicLegalLinks}>
             {(link) => <a href={link.href}>{link.label}</a>}

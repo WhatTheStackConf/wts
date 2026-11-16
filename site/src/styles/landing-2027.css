@@ -775,7 +775,7 @@ body:has(.landing-2027) {
   color: var(--color-orbit-paper);
 }
 
-.orbit-footer-band :is(.orbit-footer-top > p, .orbit-footer-links a, .orbit-footer-bottom, .orbit-footer-bottom a) {
+.orbit-footer-band :is(.orbit-footer-tagline, .orbit-footer-links a, .orbit-footer-bottom, .orbit-footer-bottom a) {
   color: var(--color-orbit-on-dark-muted);
 }
 
