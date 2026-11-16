@@ -33,8 +33,8 @@ function formatConferenceDate(options: Intl.DateTimeFormatOptions): string {
 
 export const conferenceLongDate = formatConferenceDate({ month: "long", day: "numeric", year: "numeric" });
 export const conferenceShortDate = formatConferenceDate({ month: "long", day: "numeric" });
-export const conferenceDefaultDescription = "All things software, all things code. A community for people who build software.";
-export const conferenceDefaultOgSubtitle = "All things software. All things code.";
+export const conferenceDefaultDescription = "The tech side of product. A community for people who build products.";
+export const conferenceDefaultOgSubtitle = "The tech side of product.";
 
 export function conferenceTicketPrice(kind: "regular" | "student"): string {
   const ticket = conferenceGuide.tickets[kind];

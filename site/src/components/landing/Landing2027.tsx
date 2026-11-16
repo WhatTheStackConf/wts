@@ -19,21 +19,21 @@ const pastEditions = [
     href: "https://2026.wts.sh",
     ariaLabel: "Visit the 2026 WhatTheStack edition site",
     label: "Edition site",
-    description: "The talks, speakers, and communities from 2026.",
+    description: "Our biggest one yet.",
   },
   {
     year: "2025",
     href: "https://2025.wts.sh",
     ariaLabel: "Visit the 2025 WhatTheStack edition archive",
     label: "Edition archive",
-    description: "A look back at WTS 2025.",
+    description: "The second edition.",
   },
   {
     year: "2024",
     href: "https://2024.wts.sh",
     ariaLabel: "Visit the 2024 WhatTheStack edition archive",
     label: "Edition archive",
-    description: "Where WhatTheStack started.",
+    description: "The first one.",
   },
 ] as const;
 
@@ -172,11 +172,11 @@ export const Landing2027 = () => {
       <LaunchScene onNightChange={setNight} onModeChange={setLaunchMode} />
       <Link rel="icon" href="/favicon.svg" />
       <PublicPageMetadata
-        title={`${publicEditionName} — All things software. All things code.`}
-        description="WhatTheStack 2027 is a tech conference for software professionals. The web, AI, infrastructure, and the decisions behind the software we build."
+        title={`${publicEditionName} — The tech side of product`}
+        description="WhatTheStack 2027 is a tech conference for people who build products: deciding what to build, designing it, engineering it, checking it, and shipping it."
         ogTitle={publicEditionName}
-        ogDescription="A tech conference for people who build software. Talks and workshops, with the hallway conversations in between."
-        ogSubtitle="All things software. All things code."
+        ogDescription="A tech conference for people who build products. From what to build to how it ships."
+        ogSubtitle="The tech side of product."
         canonicalUrl="https://wts.sh/"
       />
 
@@ -192,13 +192,13 @@ export const Landing2027 = () => {
           <section class="orbit-hero" aria-label={publicEditionName} data-launch-station="countdown">
             <div class="orbit-hero-copy" ref={(element) => { heroCopy = element; }}>
               <p class="orbit-lede">
-                A tech conference for people who build software. Talks and
-                workshops, with the hallway conversations in between.
+                A tech conference for people who build products. From what to
+                build to how it ships.
               </p>
 
               <p class="orbit-pending">We're working on WTS 2027. Dates and details to follow.</p>
             </div>
-            <div class="orbit-hero-foot" aria-hidden="true"><span>All things software. All things code.</span><span>WTS / 2027</span></div>
+            <div class="orbit-hero-foot" aria-hidden="true"><span>The tech side of product.</span><span>WTS / 2027</span></div>
           </section>
         </div>
         <div class="orbit-header-glass" aria-hidden="true" />
@@ -209,20 +209,18 @@ export const Landing2027 = () => {
           <div class="orbit-section-heading" data-launch-station="liftoff">
             <div class="orbit-section-title" id="about" data-hud>
               <span class="orbit-section-mark" aria-hidden="true" data-hud-line="type">WTS—</span>
-              <h2 id="about-title" data-hud-line="flicker" style={{ "--hud-i": "1" }}>What's happening in your stack?</h2>
+              <h2 id="about-title" data-hud-line="flicker" style={{ "--hud-i": "1" }}>What's in your stack now?</h2>
             </div>
           </div>
           <div class="orbit-about-copy orbit-panel" data-launch-station="max-q" data-hud>
             <p data-hud-line>
-              The web, AI, infrastructure, DevOps, and everything else that goes
-              into building software. WTS brings software professionals together
-              to share what they're working on and learn from people who've had
-              to solve similar problems.
+              Product, design, engineering, quality and operations: the full path
+              from an idea to something people use. WTS brings together the people
+              who walk that path every day.
             </p>
             <p data-hud-line style={{ "--hud-i": "1" }}>
-              We talk about how software works, but also why we build it the way
-              we do and what people need from it. Product decisions belong in
-              that conversation too. It usually carries on over coffee.
+              We look for real experience and technical craft, whatever shape it
+              takes. And we still save time for the hallway.
             </p>
             <button class="orbit-inline-link" type="button" onClick={openNewsletter} data-hud-line style={{ "--hud-i": "2" }}>
               <span class="orbit-inline-link-label">Get WTS 2027 updates</span>
@@ -235,8 +233,8 @@ export const Landing2027 = () => {
           <div class="orbit-archive-sheet orbit-panel" data-hud>
             <div class="orbit-archive-heading">
               <p class="orbit-archive-label" data-hud-line="type">Past editions</p>
-              <h2 id="archive-title" data-hud-line="flicker" style={{ "--hud-i": "1" }}>We've met<br />before.</h2>
-              <p data-hud-line style={{ "--hud-i": "2" }}>Have a look at the talks, speakers, and communities that made the first three editions.</p>
+              <h2 id="archive-title" data-hud-line="flicker" style={{ "--hud-i": "1" }}>The story<br />so far.</h2>
+              <p data-hud-line style={{ "--hud-i": "2" }}>Three editions, built by the community. The talks and the speakers from each one.</p>
             </div>
             <div class="orbit-editions">
               <For each={editionAxis}>

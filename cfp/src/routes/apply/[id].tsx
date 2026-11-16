@@ -304,7 +304,7 @@ export default function Apply() {
         }>
         <Switch>
           <Match when={step() === 1}>
-            <section class="surface cfp-stack"><h2>Introduction</h2><p class="muted">Submit a software-development talk proposal. Review the saved applicant information before you continue.</p>
+            <section class="surface cfp-stack"><h2>Introduction</h2><p class="muted">Submit a talk proposal. Review the saved applicant information before you continue.</p>
               <Show when={!needsProfile()} fallback={<p class="muted">Complete your reusable speaker profile before you enter a proposal.</p>}>
                 <section class="confirm-section"><h3>Saved speaker profile</h3><SpeakerSummary speaker={view()!.speaker.value} email={view()!.email} editHref="/profile" /></section>
                 <section class="confirm-section"><h3>Saved applicant settings</h3><SettingsSummary settings={view()!.settings.value} editHref="/settings" /></section>

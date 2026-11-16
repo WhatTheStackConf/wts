@@ -32,7 +32,6 @@ You may, at your sole discretion, elect to provide certain personal data to our 
 
 ### Third-Party Services
 We use the following third-party services:
-- **Hi.events (hi.events):** For ticket sales and registration, via a self-hosted instance.
 - **Stripe:** For payment processing.
 
 ### Your Rights

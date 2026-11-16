@@ -1,6 +1,6 @@
 # WhatTheStack 2027
 
-WhatTheStack is a community for people who build software. The initial 2027 public site shares evergreen information, confirmed announcements as they become available, legal information, and ways to receive occasional community updates. Conference date, location, time zone, venue, programme, speakers, partners, and ticket prices have not been announced.
+WhatTheStack is a community for people who build products: the tech side of product, from what to build to how it ships. The initial 2027 public site shares evergreen information, confirmed announcements as they become available, legal information, and ways to receive occasional community updates. Conference date, location, time zone, venue, programme, speakers, partners, and ticket prices have not been announced.
 
 ## Public information
 

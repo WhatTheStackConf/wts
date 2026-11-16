@@ -6,16 +6,14 @@ slug: terms
 # Terms and Conditions
 
 ### 1. Introduction
-Welcome to the “WhatTheStack?” Conference organized by DeveD, Base42 and Angular Macedonia. The ticket sales for this conference are facilitated by Hi.events (hi.events) via a self-hosted instance and Stripe. By purchasing a ticket and participating in the conference, you agree to comply with and be bound by the following terms and conditions.
+Welcome to the “WhatTheStack?” Conference organized by Base42 and CodePub. Ticket payments for this conference are processed by Stripe. By purchasing a ticket and participating in the conference, you agree to comply with and be bound by the following terms and conditions.
 
 ### 2. Organizer Information
 The “WhatTheStack?” Conference is organized by:
-- DeveD
 - Base42
-- Angular Macedonia
+- CodePub
 
-Sales are facilitated by:
-- A self-hosted instance of hi.events (https://hi.events)
+Payments are processed by:
 - Stripe
 
 The legal entity behind the conference is **CodePub LLC**, registered in the United States, with address:
@@ -23,13 +21,13 @@ The legal entity behind the conference is **CodePub LLC**, registered in the Uni
 
 ### 3. Ticket Purchase
 #### 3.1 General
-Tickets for the conference can be purchased online through Hi.eventt (hi.events) and Stripe. All ticket sales are final, and no refunds will be issued.
+Tickets for the conference can be purchased online, with payments processed by Stripe. All ticket sales are final, and no refunds will be issued.
 #### 3.2 Payment
-All payments are processed securely through our HiEvents instance and Stripe. By purchasing a ticket, you agree to their respective terms of service and privacy policies.
+All payments are processed securely through Stripe. By purchasing a ticket, you agree to Stripe's terms of service and privacy policy.
 #### 3.3 Confirmation
 Upon successful payment, you will receive a confirmation email with your ticket. Please ensure that your email address is accurate during the registration process.
 #### 3.4 Re-assigning tickets
-Tickets can be re-assigned to another person by contacting the organizers at what@wts.sh. Alternatively, you can re-assign your ticket to another person by changing the email address and contact details on via our HiEvents instance, using the ticket link.
+Tickets can be re-assigned to another person by contacting the organizers at what@wts.sh.
 
 ### 4. Cancellations and Refunds
 #### 4.1 Organizer Cancellation

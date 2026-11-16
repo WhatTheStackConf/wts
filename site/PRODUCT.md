@@ -47,9 +47,9 @@ Success means three things. Visitors understand WTS. They believe that 2027 is a
 ## Brand Commitments
 
 - Name: WhatTheStack. Short form: WTS.
-- Organizers: DeveD, Base42, and Angular Macedonia.
+- Organizers: Base42 and CodePub (CodePub LLC is the legal entity). DeveD and Angular Macedonia no longer co-organize, as of 2026-11-16.
 - Keep the original WTS logo artwork until a 2027 logo exists.
-- Tagline in use: "All things software. All things code."
+- Tagline in use: "The tech side of product." It replaced "All things software. All things code." on 2026-11-16.
 - WTS is a Skopje conference. The site can show Skopje.
 
 ## Evidence on Hand
@@ -63,7 +63,7 @@ Success means three things. Visitors understand WTS. They believe that 2027 is a
 ## Product Principles
 
 - Truth before excitement. Show only confirmed facts. Let the experience carry the energy.
-- The community leads. WTS is people who build software, not a brand selling tickets.
+- The community leads. WTS is people who build products, not a brand selling tickets.
 - Content never waits. Motion and effects must not delay reading, navigation, or signup.
 - One action matters most before announcements: get updates.
 
