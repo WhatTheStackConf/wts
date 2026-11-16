@@ -259,52 +259,58 @@ export default function Apply() {
 
   const bandTitle = () => {
     const current = view();
-    if (!current || blocksPage(error())) return "Application draft";
-    if (receipt()) return "Submission received";
-    if (current.draft.state.kind !== "active") return "Application draft";
-    return current.draft.purpose.kind === "edit" ? "Edit pending application" : "New talk application";
+    if (!current || blocksPage(error())) return "Proposal draft";
+    if (receipt()) return receipt()!.operation === "created" ? "Your talk is in." : "Your changes are in.";
+    if (current.draft.state.kind !== "active") return "Proposal draft";
+    return current.draft.purpose.kind === "edit" ? "Edit your proposal" : "New talk proposal";
   };
   const bandLede = () => {
     const current = view();
     if (!current || blocksPage(error())) return undefined;
-    if (receipt()) return "Your submission receipt is saved with this draft.";
+    if (receipt()) return "Thank you. We also email you a confirmation.";
     if (current.draft.state.kind !== "active") return undefined;
-    return "Complete each step and save before you continue. Your presentation stays separate from your reusable speaker profile.";
+    return "Your draft saves each time you go to the next step. Your speaker profile is saved separately, so you only fill it in once.";
   };
 
   return <>
     <PageBand size="short" title={bandTitle()} lede={bandLede()} />
-    <div class="page-crumbs"><a class="inline-link" href="/applications">Back to applications</a></div>
+    <div class="page-crumbs"><a class="inline-link" href="/applications">Back to your proposals</a></div>
     <Show when={loading()}><div class="cfp-loading" role="status">Loading saved draft…</div></Show>
     <Show when={error()}>{(current) => <>
       <ErrorNotice message={current().message} issues={current().issues} onRetry={RELOADABLE_ERRORS.has(current().code) ? reload : undefined} retryLabel="Reload saved draft" />
       <Show when={current().code === "unauthenticated"}><a class="inline-link" href={`/auth/login?returnTo=${encodeURIComponent(`/apply/${params.id ?? ""}`)}`} rel="external">Sign in to continue</a></Show>
-      <Show when={current().code === "finalized" && editTargetId()}><a class="inline-link" href={`/applications/${editTargetId()}`}>Open the application to create a Reuse draft.</a></Show>
+      <Show when={current().code === "finalized" && editTargetId()}><a class="inline-link" href={`/applications/${editTargetId()}`}>Open the proposal to reuse it in a new draft.</a></Show>
     </>}</Show>
     <Show when={view() && !blocksPage(error())}>
       <Show when={receipt()}>
-        <section class="surface cfp-stack" aria-labelledby="receipt-title">
-          <h2 id="receipt-title">Submission receipt</h2>
-          <dl class="read-only-summary"><div><dt>Application</dt><dd><a href={`/applications/${receipt()!.applicationId}`}>{receipt()!.applicationId}</a></dd></div><div><dt>Operation</dt><dd>{receipt()!.operation}</dd></div><div><dt>Application revision</dt><dd>{receipt()!.applicationRevision}</dd></div><div><dt>Committed</dt><dd>{new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(receipt()!.committedAt)}</dd></div></dl>
-          <div class="row"><a class="button" href={`/applications/${receipt()!.applicationId}`}>View submitted application</a><a class="button button-secondary" href="/applications">Return to applications</a></div>
+        <section class="surface cfp-stack receipt" aria-labelledby="receipt-title">
+          <p class="receipt-talk">{presentation().title || "Untitled talk"}</p>
+          <h2 id="receipt-title">What happens next</h2>
+          <ol class="receipt-steps">
+            <li><span>Reviewers score your proposal against six criteria. They do not see your name.</span></li>
+            <li><span>The organizers decide after the reviews. Your proposal shows <strong>Pending</strong> until then.</span></li>
+            <li><span>You can edit your proposal while it is pending. Edits stay in a private draft until you submit them again.</span></li>
+          </ol>
+          <p class="hint">Submitted {new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(receipt()!.committedAt)}.</p>
+          <div class="row"><a class="button" href={`/applications/${receipt()!.applicationId}`}>View your proposal</a><a class="button button-secondary" href="/applications">All your proposals</a></div>
         </section>
       </Show>
       <Show when={view()!.draft.state.kind === "active"}>
-        <ol class="cfp-progress" aria-label="Application progress">
+        <ol class="cfp-progress" aria-label="Proposal progress">
           <For each={steps}>{(label, index) => <li class={step() > index() + 1 ? "is-complete" : undefined} aria-current={step() === index() + 1 ? "step" : undefined}><span class="progress-step">{index() + 1}</span><span>{label}</span></li>}</For>
         </ol>
         <Show when={saved()}><p class="alert" role="status" aria-live="polite">Draft saved to your account.</p></Show>
-        <Show when={!view()!.cfpOpen}><div class="alert" role="status">The CFP is closed. You can read this draft, but the server blocks draft saves and submissions. <a href="/profile">Edit profile</a> and <a href="/settings">edit settings</a> remain available.</div></Show>
+        <Show when={!view()!.cfpOpen}><div class="alert" role="status">Submissions are closed. You can read this draft, but you cannot save or submit it. You can still <a href="/profile">edit your profile</a> and <a href="/settings">settings</a>.</div></Show>
         <Show when={view()!.cfpOpen} fallback={
           <section class="surface cfp-stack" aria-label="Saved draft details">
             <section class="confirm-section"><h2>Speaker profile</h2><SpeakerSummary speaker={view()!.speaker.value} email={view()!.email} editHref="/profile" /></section>
             <section class="confirm-section"><h2>Applicant settings</h2><SettingsSummary settings={view()!.settings.value} editHref="/settings" /></section>
-            <Show when={savedPresentation()}><section class="confirm-section"><h2>Presentation</h2><PresentationSummary presentation={savedPresentation()!} /></section></Show>
+            <Show when={savedPresentation()}><section class="confirm-section"><h2>Talk</h2><PresentationSummary presentation={savedPresentation()!} /></section></Show>
           </section>
         }>
         <Switch>
           <Match when={step() === 1}>
-            <section class="surface cfp-stack"><h2>Introduction</h2><p class="muted">Submit a talk proposal. Review the saved applicant information before you continue.</p>
+            <section class="surface cfp-stack"><h2>Introduction</h2><p class="muted">Check your saved speaker details, then describe your talk.</p>
               <Show when={!needsProfile()} fallback={<p class="muted">Complete your reusable speaker profile before you enter a proposal.</p>}>
                 <section class="confirm-section"><h3>Saved speaker profile</h3><SpeakerSummary speaker={view()!.speaker.value} email={view()!.email} editHref="/profile" /></section>
                 <section class="confirm-section"><h3>Saved applicant settings</h3><SettingsSummary settings={view()!.settings.value} editHref="/settings" /></section>
@@ -314,7 +320,7 @@ export default function Apply() {
           </Match>
           <Match when={step() === 2}>
             <form class="surface form" onSubmit={goNext}>
-              <div><h2>Personal</h2><p class="muted">These details are reusable across your applications. Changes update your speaker profile.</p></div>
+              <div><h2>Personal</h2><p class="muted">We reuse these details for all your proposals. Changes here update your speaker profile.</p></div>
               <div class="field"><label for="app-email">Account email</label><input id="app-email" class="control" type="email" value={view()!.email} disabled autocomplete="email" /></div>
               <div class="field"><label for="app-name">Full name <span class="required">Required</span></label><input id="app-name" class="control" name="fullName" autocomplete="name" maxlength="200" required value={name()} onInput={(event) => setField(setName, event.currentTarget.value)} /></div>
               <div class="field"><label for="app-affiliation">Affiliation</label><input id="app-affiliation" class="control" name="affiliation" autocomplete="organization-title" maxlength="500" value={affiliation()} onInput={(event) => setField(setAffiliation, event.currentTarget.value)} /></div>
@@ -338,7 +344,7 @@ export default function Apply() {
           <Match when={step() === 4}>
             <form class="surface form" onSubmit={goNext}>
               <div><h2>Experience</h2><p class="muted">First-time speakers are welcome. Previous speaking experience is optional.</p></div>
-              <div class="field"><label class="label-question" for="previous-presentation">Have you presented this topic before?</label><textarea id="previous-presentation" class="control" name="previousPresentation" maxlength="50000" value={presentation().previousPresentation} onInput={(event) => updatePresentation("previousPresentation", event.currentTarget.value)} /></div>
+              <div class="field"><label class="label-question" for="previous-presentation">Have you given this talk before?</label><textarea id="previous-presentation" class="control" name="previousPresentation" maxlength="50000" value={presentation().previousPresentation} onInput={(event) => updatePresentation("previousPresentation", event.currentTarget.value)} /></div>
               <section class="confirm-section"><h3>Previous talks in your speaker profile</h3><p>{previousTalks().trim() || <span class="muted">Not provided</span>}</p><a class="inline-link" href="/profile" onClick={(event) => void saveAndOpen(event, "/profile")}>Edit speaker profile</a></section>
               <DraftFormActions busy={busy()} locked={draftLocked()} next="Next: Expenses" nextWhileSaving="Saving…" onBack={goBack} onSave={() => void persist()} />
             </form>
@@ -347,20 +353,20 @@ export default function Apply() {
             <form class="surface form" onSubmit={goNext}>
               <div><h2>Expenses</h2><p class="muted">Tell the organizers whether your company can cover travel or accommodation.</p></div>
               <Show when={view()!.settings.value.companyCoverExpenses === null} fallback={<section class="confirm-section"><h3>Saved applicant settings</h3><SettingsSummary settings={view()!.settings.value} editHref="/settings" /></section>}>
-                <fieldset class="field choice-fieldset"><legend class="label-question">Can your company cover travel or accommodation? <span class="required">Required</span></legend><p class="hint" id="expenses-help">Choose one option before you review your application.</p><div class="choice-grid" role="radiogroup" aria-describedby="expenses-help"><For each={["Yes", "No", "Other"] as const}>{(option, index) => <label class="choice"><input type="radio" name="companyCoverExpenses" value={option} required={index() === 0} checked={expense() === option} onChange={() => { setExpense(option); markDirty(); }} /><span>{option}</span></label>}</For></div></fieldset>
+                <fieldset class="field choice-fieldset"><legend class="label-question">Can your company cover travel or accommodation? <span class="required">Required</span></legend><p class="hint" id="expenses-help">Your answer does not change how reviewers score your talk.</p><div class="choice-grid" role="radiogroup" aria-describedby="expenses-help"><For each={["Yes", "No", "Other"] as const}>{(option, index) => <label class="choice"><input type="radio" name="companyCoverExpenses" value={option} required={index() === 0} checked={expense() === option} onChange={() => { setExpense(option); markDirty(); }} /><span>{option}</span></label>}</For></div></fieldset>
               </Show>
               <div class="field"><label for="organizer-notes">Notes for organizers</label><p class="hint" id="organizer-notes-help">Private to the organizers. Add a visa invitation request or availability constraints if relevant.</p><textarea id="organizer-notes" class="control" name="organizerNotes" maxlength="50000" aria-describedby="organizer-notes-help" value={presentation().organizerNotes} onInput={(event) => updatePresentation("organizerNotes", event.currentTarget.value)} /></div>
               <div class="field"><label for="additional-info">Additional information</label><textarea id="additional-info" class="control" name="additionalInfo" maxlength="50000" value={presentation().additionalInfo} onInput={(event) => updatePresentation("additionalInfo", event.currentTarget.value)} /></div>
-              <DraftFormActions busy={busy()} locked={draftLocked()} next="Review application" onBack={goBack} onSave={() => void persist()} />
+              <DraftFormActions busy={busy()} locked={draftLocked()} next="Review proposal" onBack={goBack} onSave={() => void persist()} />
             </form>
           </Match>
           <Match when={step() === 6}>
             <section class="surface cfp-stack">
-              <div><h2>Confirm</h2><p class="muted">Review every profile, setting, and presentation field before you submit.</p></div>
+              <div><h2>Confirm</h2><p class="muted">Check everything once more. You can still edit after you submit, while your proposal is pending.</p></div>
               <section class="confirm-section"><div class="surface-title"><h3>Speaker profile</h3><a class="inline-link" href="/profile">Edit profile</a></div><SpeakerSummary speaker={view()!.speaker.value} email={view()!.email} /></section>
               <section class="confirm-section"><div class="surface-title"><h3>Applicant settings</h3><a class="inline-link" href="/settings">Edit settings</a></div><SettingsSummary settings={view()!.settings.value} /></section>
-              <section class="confirm-section"><div class="surface-title"><h3>Presentation</h3><button class="button button-quiet button-small" type="button" onClick={() => setStep(3)}>Edit presentation</button></div><PresentationSummary presentation={presentation()} /></section>
-              <div class="form-actions"><button type="button" class="button button-secondary" onClick={goBack}>Back</button><button type="button" class="button" disabled={draftLocked()} onClick={() => void submit()}>{busy() ? "Submitting…" : view()!.draft.purpose.kind === "edit" ? "Save changes" : "Submit application"}</button></div>
+              <section class="confirm-section"><div class="surface-title"><h3>Talk</h3><button class="inline-link link-button" type="button" onClick={() => setStep(3)}>Edit talk</button></div><PresentationSummary presentation={presentation()} /></section>
+              <div class="form-actions"><button type="button" class="button button-secondary" onClick={goBack}>Back</button><button type="button" class="button" disabled={draftLocked()} onClick={() => void submit()}>{busy() ? "Submitting…" : view()!.draft.purpose.kind === "edit" ? "Submit changes" : "Submit proposal"}</button></div>
             </section>
           </Match>
         </Switch>

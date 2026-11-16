@@ -45,27 +45,27 @@ export default function Applications() {
   };
 
   return <>
-    <PageBand title="Your applications" lede="Review your saved applications and continue active drafts." />
+    <PageBand title="Your proposals" lede="Continue a draft or check the status of what you submitted." />
     <Switch>
       <Match when={loading()}><div class="cfp-loading" role="status">Loading your applicant dashboard…</div></Match>
       <Match when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={() => void load()} /><Show when={current().code === "unauthenticated"}><a class="button" href="/auth/login?returnTo=%2Fapplications" rel="external">Sign in to continue</a></Show></>}</Match>
       <Match when={workspace()}>
         <section class="surface cfp-stack" aria-labelledby="application-actions-title">
-          <div class="surface-title"><div><h2 id="application-actions-title">Start an application</h2><p>{cfpOpen() ? "Create a blank presentation draft or resume saved work." : "The CFP is closed. You can still read your applications and update your profile or settings."}</p></div>
+          <div class="surface-title"><div><h2 id="application-actions-title">Start a proposal</h2><p>{cfpOpen() ? "Start a new talk proposal. Your speaker profile fills in for you." : "The CFP is closed. You can still read your applications and update your profile or settings."}</p></div>
             <span class="cfp-status" data-state={cfpOpen() ? "active" : "closed"}>{cfpOpen() ? "Open" : "Closed"}</span>
           </div>
-          <Show when={cfpOpen()}><button type="button" class="button" disabled={busy()} onClick={() => void begin({ kind: "new" })}>{busy() ? "Creating draft…" : "New application"}</button></Show>
+          <Show when={cfpOpen()}><button type="button" class="button" disabled={busy()} onClick={() => void begin({ kind: "new" })}>{busy() ? "Creating draft…" : "New proposal"}</button></Show>
           <div class="row"><a href="/profile">Edit speaker profile</a><a href="/settings">Edit applicant settings</a></div>
         </section>
         <section class="surface cfp-stack" aria-labelledby="draft-list-title">
-          <div class="surface-title"><div><h2 id="draft-list-title">Active drafts</h2><p>Your draft values save before each step changes.</p></div></div>
+          <div class="surface-title"><div><h2 id="draft-list-title">Active drafts</h2><p>Drafts save each time you go to the next step.</p></div></div>
           <Show when={workspace()!.drafts.length} fallback={<p class="empty-state">You have no active drafts.</p>}>
-            <ul class="cfp-list"><For each={workspace()!.drafts}>{(draft) => <li class="list-item"><div><h3>{draft.title || "Untitled application"}</h3><p class="mono">Updated {new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(draft.updatedAt)}</p></div><a class="button button-secondary button-small" href={`/apply/${draft.id}`}>Continue draft</a></li>}</For></ul>
+            <ul class="cfp-list"><For each={workspace()!.drafts}>{(draft) => <li class="list-item"><div><h3>{draft.title || "Untitled talk"}</h3><p class="mono">Updated {new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(draft.updatedAt)}</p></div><a class="button button-secondary button-small" href={`/apply/${draft.id}`}>Continue draft</a></li>}</For></ul>
           </Show>
         </section>
         <section class="surface cfp-stack" aria-labelledby="application-list-title">
-          <div class="surface-title"><div><h2 id="application-list-title">Submitted applications</h2><p>Each submission has its own presentation and review status.</p></div></div>
-          <Show when={workspace()!.applications.length} fallback={<p class="empty-state">Your submitted applications will appear here.</p>}>
+          <div class="surface-title"><div><h2 id="application-list-title">Submitted proposals</h2><p>Each proposal has its own status.</p></div></div>
+          <Show when={workspace()!.applications.length} fallback={<p class="empty-state">Your submitted proposals show here.</p>}>
             <ul class="cfp-list"><For each={workspace()!.applications}>{(application) => <li class="list-item"><div><h3>{application.title || "Untitled talk"}</h3><p class="mono">Submitted {new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(application.submittedAt)} · revision {application.revision}</p></div><div class="row"><span class="cfp-status" data-state={application.status}>{application.status}</span><a class="button button-secondary button-small" href={`/applications/${application.id}`}>View application</a></div></li>}</For></ul>
           </Show>
         </section>

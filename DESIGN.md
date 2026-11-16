@@ -312,6 +312,17 @@ Staff tables have hairline rules and uppercase headers, with no zebra stripes.
 Wide staff tables scroll within their own named region, not the page.
 Empty states, retry controls, and server-enforced permissions remain part of each workflow.
 
+### CFP flow rules
+
+- Call the thing a speaker sends a "talk proposal", or "proposal" for short, in all three roles.
+- Do not show revision, operation, assessment, or witness numbers in visible copy. Keep them in requests only.
+- Give each screen one primary action.
+- Admin: the proposal list opens with status tabs. Gate state is one quiet row. Mail shows only as an alert when it fails.
+- Admin: the proposal page starts with a Decision panel. Bulk decisions ask once and list the titles.
+- Reviewer: score on a 1 to 5 scale of 48px cells, with anchors at 1, 3, and 5. "Save and next" is the primary action.
+- The criterion definitions live in `CRITERION_HINTS` in `cfp/src/lib/staff-model.ts`. The CFP home page and the reviewer form use the same text.
+- On phones, admin table rows become stacked cards with labels.
+
 ## Blog
 
 The independent `blog/` app uses the ALT 2 supporting-page identity.

@@ -4,6 +4,13 @@ import type { JSX } from "@solidjs/web";
 
 export type AdminFailureState = "unauthenticated" | "denied" | "not-found" | "stale" | "last-admin" | "unavailable";
 
+export const STATUS_LABELS: Record<string, string> = { pending: "Pending", accepted: "Accepted", rejected: "Rejected" };
+export function reviewSummary(ranking: { currentReviewCount: number; staleReviewCount: number }) {
+  if (!ranking.currentReviewCount && !ranking.staleReviewCount) return "None yet";
+  const current = `${ranking.currentReviewCount} ${ranking.currentReviewCount === 1 ? "review" : "reviews"}`;
+  return ranking.staleReviewCount ? `${current} · ${ranking.staleReviewCount} of an older version` : current;
+}
+
 export function AdminLoading(props: { label: string }) {
   return <div class="cfp-loading" role="status" aria-live="polite">{props.label}</div>;
 }
@@ -25,7 +32,7 @@ export function AdminError(props: { state: AdminFailureState; message?: string; 
     unauthenticated: { title: "Sign-in required", body: "Sign in with a verified WTS identity to access CFP administration." },
     denied: { title: "Access denied", body: "Your current edition staff role does not permit this view. Protected CFP details are hidden." },
     "not-found": { title: "Not found", body: "This CFP resource is not available in the active edition." },
-    stale: { title: "State changed", body: "The revision witness is stale. Reload the current edition data before you retry." },
+    stale: { title: "Something changed", body: "Someone changed this data after you loaded it. Reload to see the current data, then try again." },
     "last-admin": { title: "Final administrator retained", body: "This edition must keep one active administrator. Add another administrator before you revoke this grant." },
     unavailable: { title: "CFP service unavailable", body: "The request could not be verified. Your saved CFP data remains unchanged." },
   };

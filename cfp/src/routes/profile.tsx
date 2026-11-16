@@ -62,7 +62,7 @@ export default function Profile() {
   };
 
   return <>
-    <PageBand size="short" title="Speaker profile" lede="These details are shared across your applications. Profile changes do not alter a submitted presentation." />
+    <PageBand size="short" title="Speaker profile" lede="We reuse these details for all your proposals. Changes here do not change a proposal you already submitted." />
     <Show when={loading()}><div class="cfp-loading" role="status">Loading your profile…</div></Show>
     <Show when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={current().code !== "unauthenticated" ? reload : undefined} retryLabel="Reload saved profile" /><Show when={current().code === "unauthenticated"}><a href={`/auth/login?returnTo=${encodeURIComponent("/profile")}`} rel="external">Sign in to edit your profile</a></Show></>}</Show>
     <Show when={workspace() && !blocksPage(error())}>
@@ -77,9 +77,9 @@ export default function Profile() {
         <fieldset class="form-section">
           <legend>Links and experience</legend>
         <div class="field"><label for="profile-social">Social links</label><p class="hint" id="profile-social-help">Enter one link per line.</p><textarea id="profile-social" class="control" name="socialHandles" maxlength="15000" aria-describedby="profile-social-help" value={socialHandles()} onInput={(event) => setSocialHandles(event.currentTarget.value)} /></div>
-        <div class="field"><label for="profile-talks">Previous talks</label><p class="hint" id="profile-talks-help">Add talk links or speaker-profile details. This information is reused in each application.</p><textarea id="profile-talks" class="control" name="previousTalks" maxlength="50000" aria-describedby="profile-talks-help" value={previousTalks()} onInput={(event) => setPreviousTalks(event.currentTarget.value)} /></div>
+        <div class="field"><label for="profile-talks">Previous talks</label><p class="hint" id="profile-talks-help">Add links to talks you gave before. We reuse this for each proposal.</p><textarea id="profile-talks" class="control" name="previousTalks" maxlength="50000" aria-describedby="profile-talks-help" value={previousTalks()} onInput={(event) => setPreviousTalks(event.currentTarget.value)} /></div>
         </fieldset>
-        <div class="form-actions"><a class="button button-secondary" href="/applications">Back to applications</a><button class="button" type="submit" disabled={busy()}>{busy() ? "Saving profile…" : "Save profile"}</button></div>
+        <div class="form-actions"><a class="button button-secondary" href="/applications">Back to your proposals</a><button class="button" type="submit" disabled={busy()}>{busy() ? "Saving profile…" : "Save profile"}</button></div>
         <Show when={saved()}><p role="status" class="muted">Your speaker profile is saved.</p></Show>
       </form>
     </Show>

@@ -44,10 +44,10 @@ export function PresentationSummary(props: { presentation: Presentation; editHre
       <div class="wide"><dt>Abstract</dt><dd><div class="rich-html" innerHTML={props.presentation.abstract || "<p>Not provided</p>"} /></dd></div>
       <div class="wide"><dt>Key takeaways</dt><dd><div class="rich-html" innerHTML={props.presentation.keyTakeaways || "<p>Not provided</p>"} /></dd></div>
       <Value label="Technical requirements" value={props.presentation.technicalRequirements} wide />
-      <Value label="Previous presentation of this topic" value={props.presentation.previousPresentation} wide />
+      <Value label="Given this talk before" value={props.presentation.previousPresentation} wide />
       <Value label="Notes for organizers" value={props.presentation.organizerNotes} wide />
       <Value label="Additional information" value={props.presentation.additionalInfo} wide />
     </dl>
-    <Show when={props.editHref}><a class="inline-link" href={props.editHref!}>Edit presentation</a></Show>
+    <Show when={props.editHref}><a class="inline-link" href={props.editHref!}>Edit talk</a></Show>
   </div>;
 }
