@@ -53,7 +53,7 @@ export default function McpConferenceGuidePage() {
       description="Connect an MCP client to the anonymous WhatTheStack Conference Guide for validated logistics and the current Published programme."
       ogSubtitle="Public Conference Guide for MCP clients"
     >
-      <SupportBand altitude={2} label="WTS 2027 · MCP">
+      <SupportBand altitude={1} label="WTS 2027 · MCP">
         <h1 class="support-band-title">Conference Guide for MCP clients</h1>
         <p class="support-band-lede">
           Connect without an account or token. The Guide gives compatible clients a narrow,

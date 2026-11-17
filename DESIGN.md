@@ -325,7 +325,8 @@ Empty states, retry controls, and server-enforced permissions remain part of eac
 
 ## Blog
 
-The independent `blog/` app uses the ALT 2 supporting-page identity.
+The independent `blog/` app uses the ALT 1 supporting-page identity, the same haze as the site's legal pages. Reading pages (legal, MCP, blog) use ALT 1. The 404 pages keep the ALT 2 horizon.
+On a post, the band title, the meta strip, the cover, and the table of contents share the page's left edge. Do not center the article grid under a left-aligned band.
 `blog/tokens.css` is a copy of `site/tokens.css`. Keep the two files identical below the header comment.
 The header uses light glass with the logo, the StarzoomShavian wordmark, and a `BLOG` label. Navigation, live search, and the Ctrl/⌘K shortcut stay in the header.
 The `SkyBand` component (`blog/src/components/SkyBand.astro`) opens the home, posts, category, tag, search, page, and 404 routes.

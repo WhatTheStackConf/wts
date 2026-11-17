@@ -1,8 +1,9 @@
 ---
 /**
- * ALT 2 sky band: the blog's fixed altitude in the WTS 2027 altitude ramp.
- * The band slides under the glass header, carries the label row and the page
- * title, and fades from low sky (--alt-2) to paper (--alt-0).
+ * ALT 1 sky band: the blog reads like the site's legal pages, so it uses the
+ * same haze altitude. The band slides under the glass header, carries the label
+ * row and the page title, and fades from haze (--alt-1) to paper (--alt-0).
+ * The 404 keeps the ALT 2 horizon.
  * Slot content uses .sky-band-title and .sky-band-lede.
  */
 interface Props {
@@ -19,7 +20,7 @@ const { context, variant = "page" } = Astro.props;
 	<div class="sky-band-inner">
 		<p class="sky-band-label">
 			<span>WTS Blog{context && ` · ${context}`}</span>
-			<span class="sky-band-datum" aria-hidden="true">▽ ALT 2</span>
+			<span class="sky-band-datum" aria-hidden="true">▽ ALT {variant === "lost" ? 2 : 1}</span>
 		</p>
 		<slot />
 	</div>
@@ -36,7 +37,7 @@ const { context, variant = "page" } = Astro.props;
 		padding-top: var(--header-height);
 		overflow: hidden;
 		border-bottom: 1px solid var(--color-orbit-hair);
-		background: linear-gradient(180deg, var(--alt-2), var(--alt-0));
+		background: linear-gradient(180deg, var(--alt-1), var(--alt-0));
 	}
 
 	/* Drawing-sheet frame: two marks at the top corners, clear of the header. */

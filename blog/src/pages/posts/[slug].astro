@@ -102,14 +102,15 @@ const publishDate = publishedTime?.slice(0, 10) ?? null;
 </Base>
 
 <style>
-	/* Cover across both columns, then the table of contents beside the reading column. */
+	/* Cover across both columns, then the table of contents beside the reading column.
+	 * The grid starts on the page edge, so the band title, the cover and the text share one left edge. */
 	.article-grid {
 		display: grid;
 		grid-template-areas:
 			"cover cover"
 			"toc content";
 		grid-template-columns: 13rem minmax(0, 46rem);
-		justify-content: center;
+		justify-content: start;
 		gap: clamp(2rem, 4vw, 3rem) clamp(2.5rem, 5vw, 5rem);
 		width: var(--page-width);
 		margin: clamp(2rem, 4vw, 3rem) auto 0;
