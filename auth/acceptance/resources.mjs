@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SMTPServer } from 'smtp-server';
+import { mailText } from './mail-text.mjs';
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -139,7 +140,7 @@ export async function smtp(scope) {
       return until(() => {
         for (const message of messages.slice(after)) {
           if (!message.recipients.includes(recipient)) continue;
-          const decoded = message.raw.replace(/=\r?\n/g, '').replace(/=([\da-f]{2})/gi, (_, hex) => String.fromCharCode(Number.parseInt(hex, 16)));
+          const decoded = mailText(message.raw);
           const candidates = decoded.match(/https?:\/\/[^\s<>"']+/g) ?? [];
           for (const candidate of candidates) {
             let url;
