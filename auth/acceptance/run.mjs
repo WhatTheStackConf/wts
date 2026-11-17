@@ -459,7 +459,10 @@ try {
     await form.locator('[name="name"]').fill('Synthetic signup');
     await form.locator('[name="email"]').fill(signupEmail);
     await form.locator('[name="password"]').fill(signupPassword);
+    // Sign-up sends the mail inside its database transaction. Wait for the response, as a browser does, so the account is committed.
+    const signedUp = signupPage.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/auth/sign-up/email');
     await form.getByRole('button', { name: 'Create account', exact: true }).click();
+    await signedUp;
     const verification = await mail.link({ recipient: signupEmail, after, issuer: env.AUTH_PUBLIC_URL, pathname: 'verify-email' });
     const unverified = await api(signupContext, '/api/auth/sign-in/email', { method: 'POST', body: { email: signupEmail, password: signupPassword } });
     expect(unverified.status === 403, 'An unverified account could sign in for app identity.');
@@ -486,7 +489,9 @@ try {
     await recoveredPage.goto(`${env.AUTH_PUBLIC_URL}/recovery`);
     const recovery = recoveredPage.locator('form[data-account-action="recovery"]');
     await recovery.locator('[name="email"]').fill(importedEmail);
+    const requested = recoveredPage.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/auth/request-password-reset');
     await recovery.getByRole('button', { name: 'Send reset link', exact: true }).click();
+    await requested;
     const reset = await mail.link({ recipient: importedEmail, after, issuer: env.AUTH_PUBLIC_URL, pathname: 'reset-password' });
     const oversized = await api(recoveredContext, '/api/auth/reset-password', { method: 'POST', body: { token: new URL(reset).searchParams.get('token'), newPassword: '雪'.repeat(25) } });
     expect(oversized.status === 400, 'The reset endpoint accepted a new password longer than 72 UTF-8 bytes.');
