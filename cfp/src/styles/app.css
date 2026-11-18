@@ -2388,11 +2388,15 @@ details > summary:is(:hover, :focus-visible) {
     min-height: 52px;
   }
 
-  /* Six application steps read as two aligned columns, never three ragged ones. */
+  /* Four application steps read as two aligned columns. A long label wraps beside its number. */
   .cfp-progress {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem 1rem;
+  }
+
+  .cfp-progress li {
+    white-space: normal;
   }
 
   .confirm-section .surface-title {
@@ -2709,6 +2713,25 @@ details > summary:is(:hover, :focus-visible) {
   background: none;
   cursor: pointer;
   font: inherit;
+  color: var(--color-orbit-accent);
+  font-weight: 600;
+  text-decoration: underline dotted 1px;
+  text-underline-offset: 0.25em;
+}
+
+/* A button that acts as a text link looks like the copy links above. */
+.link-button:is(:hover, :focus-visible) {
+  color: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 30%);
+  text-decoration-thickness: 2px;
+}
+
+.link-button:active {
+  text-decoration-style: solid;
+}
+
+.link-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* Admin: gate state as one quiet row, mail only when broken. */
@@ -3073,4 +3096,17 @@ details > summary:is(:hover, :focus-visible) {
     font-size: 0.625rem;
     letter-spacing: 0.04em;
   }
+}
+
+/* Speaker flow (2026-11-17): four steps, profile reused. The "Speaking as" row sits above the talk fields. */
+.page-main .speaking-as {
+  margin: 0;
+  padding-block: 0.75rem;
+  border-block: 1px solid var(--color-orbit-hair);
+  color: var(--color-orbit-muted);
+}
+
+.page-main .speaking-as strong {
+  color: var(--color-orbit-ink);
+  font-weight: 600;
 }

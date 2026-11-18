@@ -1,80 +1,9 @@
-import { createSignal, For, onSettled, Show } from "solid-js";
-import { getWorkspace, saveApplicant } from "~/lib/cfp-actions";
-import type { FieldIssue, Workspace } from "~/lib/cfp-model";
-import { PageBand } from "~/components/PageBand";
-import { ErrorNotice } from "~/components/ApplicantUI";
+import { onSettled } from "solid-js";
+import { useNavigate } from "@solidjs/router";
 
-const expenseOptions = ["Yes", "No", "Other"] as const;
-
-type PageError = { code: string; message: string; issues: FieldIssue[] };
-const blocksPage = (error: PageError | undefined) => error?.code === "unauthenticated" || error?.code === "unavailable";
-
+// Settings moved into the speaker profile. Keep the old address working for bookmarks and login returns.
 export default function Settings() {
-  const [workspace, setWorkspace] = createSignal<Workspace>();
-  const [contact, setContact] = createSignal("");
-  const [expenses, setExpenses] = createSignal<"Yes" | "No" | "Other" | "">("");
-  const [error, setError] = createSignal<PageError>();
-  const [saved, setSaved] = createSignal(false);
-  const [busy, setBusy] = createSignal(false);
-  const [loading, setLoading] = createSignal(true);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const result = await getWorkspace();
-      if (result.ok) {
-        setWorkspace(result.value);
-        setContact(result.value.settings.value.preferredContactMethod);
-        setExpenses(result.value.settings.value.companyCoverExpenses ?? "");
-        setError(undefined);
-      } else setError({ code: result.error.code, message: result.error.message, issues: result.error.issues });
-    } catch {
-      setError({ code: "unavailable", message: "Your settings could not load. Try again later.", issues: [] });
-    }
-    setLoading(false);
-  };
-  onSettled(() => { void load().catch(() => { setError({ code: "unavailable", message: "Your settings could not load. Try again later.", issues: [] }); setLoading(false); }); });
-  const reload = () => {
-    if (workspace() && !window.confirm("Discard the changes on this page and load the latest saved settings?")) return;
-    void load();
-  };
-  const save = async (event: SubmitEvent) => {
-    event.preventDefault();
-    const current = workspace();
-    if (!current || busy()) return;
-    setBusy(true);
-    setSaved(false);
-    try {
-      const result = await saveApplicant({ settings: { expectedRevision: current.settings.revision, changes: { preferredContactMethod: contact().trim(), companyCoverExpenses: expenses() || null } } });
-      if (result.ok) {
-        setWorkspace({ ...current, settings: result.value.settings });
-        setSaved(true);
-        setError(undefined);
-      } else setError({ code: result.error.code, message: result.error.message, issues: result.error.issues });
-    } catch {
-      setError({ code: "unavailable", message: "The settings save failed. Your values remain on this page. Try again.", issues: [] });
-    }
-    setBusy(false);
-  };
-
-  return <>
-    <PageBand size="short" title="Applicant settings" lede="These settings apply to all your proposals. You can change them when submissions are closed." />
-    <Show when={loading()}><div class="cfp-loading" role="status">Loading your settings…</div></Show>
-    <Show when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={current().code !== "unauthenticated" ? reload : undefined} retryLabel="Reload saved settings" /><Show when={current().code === "unauthenticated"}><a href={`/auth/login?returnTo=${encodeURIComponent("/settings")}`} rel="external">Sign in to edit settings</a></Show></>}</Show>
-    <Show when={workspace() && !blocksPage(error())}>
-      <form class="surface form" onSubmit={save}>
-        <div class="field"><label for="contact-method">Preferred contact method</label><p class="hint" id="contact-method-help">Add the contact channel you prefer the organizers to use.</p><input id="contact-method" class="control" name="preferredContactMethod" maxlength="500" aria-describedby="contact-method-help" autocomplete="off" value={contact()} onInput={(event) => setContact(event.currentTarget.value)} /></div>
-        <fieldset class="field choice-fieldset">
-          <legend class="label-question">Can your company cover travel or accommodation?</legend>
-          <p class="hint" id="company-cover-help">Choose Yes, No, or Other. You can leave this blank until you know.</p>
-          <div class="choice-grid" role="radiogroup" aria-describedby="company-cover-help">
-            <label class="choice"><input type="radio" name="companyCoverExpenses" value="" checked={expenses() === ""} onChange={() => setExpenses("")} /><span>Not specified</span></label>
-            <For each={expenseOptions}>{(option) => <label class="choice"><input type="radio" name="companyCoverExpenses" value={option} checked={expenses() === option} onChange={() => setExpenses(option)} /><span>{option}</span></label>}</For>
-          </div>
-        </fieldset>
-        <div class="form-actions"><a class="button button-secondary" href="/applications">Back to your proposals</a><button class="button" type="submit" disabled={busy()}>{busy() ? "Saving settings…" : "Save settings"}</button></div>
-        <Show when={saved()}><p role="status" class="muted">Your applicant settings are saved.</p></Show>
-      </form>
-    </Show>
-  </>;
+  const navigate = useNavigate();
+  onSettled(() => navigate("/profile", { replace: true }));
+  return <p class="cfp-loading" role="status">Settings moved to <a href="/profile">your profile</a>.</p>;
 }
