@@ -7,10 +7,21 @@ import { fileURLToPath } from "node:url";
 export const APPS_2027 = ["auth", "blog", "cfp", "site"];
 const SEVERE = new Set(["high", "critical"]);
 
-export function blockingAdvisories(report, apps = APPS_2027) {
+// Accept an advisory only when no patched release exists. Each entry expires, and then the advisory blocks again.
+// Remove an entry as soon as a fix ships.
+export const EXCEPTIONS = [
+  {
+    id: "GHSA-fc5q-39xc-vjpf",
+    expires: "2026-12-18",
+    reason: "picomatch <=4.0.7 ReDoS. No patched release on 2026-11-18. Reaches only the blog through astro>unstorage. Only the unstorage fs driver calls anymatch, with ignore patterns from config. The blog uses fs-lite.",
+  },
+];
+
+export function blockingAdvisories(report, { apps = APPS_2027, exceptions = EXCEPTIONS, today = new Date().toISOString().slice(0, 10) } = {}) {
+  const accepted = new Set(exceptions.filter((entry) => today < entry.expires).map((entry) => entry.id));
   const blocking = [];
   for (const advisory of Object.values(report.advisories ?? {})) {
-    if (!SEVERE.has(advisory.severity)) continue;
+    if (!SEVERE.has(advisory.severity) || accepted.has(advisory.github_advisory_id)) continue;
     const paths = (advisory.findings ?? []).flatMap((finding) => finding.paths ?? []);
     const reached = paths.filter((path) => apps.includes(path.split(">")[0]));
     if (reached.length > 0) {
@@ -30,6 +41,7 @@ function readAudit() {
 }
 
 function main() {
+  for (const entry of EXCEPTIONS) console.log(`Accepted until ${entry.expires}: ${entry.id}. ${entry.reason}`);
   const blocking = blockingAdvisories(readAudit());
   for (const item of blocking) {
     console.error(`${item.severity} ${item.id} ${item.module}\n  ${item.paths.slice(0, 5).join("\n  ")}`);

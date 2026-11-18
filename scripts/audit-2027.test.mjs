@@ -11,7 +11,7 @@ test("a high or critical advisory that reaches a 2027 app blocks", () => {
     1: advisory("GHSA-high", "high", "site>@solidjs/web>seroval"),
     2: advisory("GHSA-critical", "critical", "blog>emdash>dompurify"),
   } };
-  assert.deepEqual(blockingAdvisories(report).map((item) => item.id), ["GHSA-high", "GHSA-critical"]);
+  assert.deepEqual(blockingAdvisories(report, { exceptions: [] }).map((item) => item.id), ["GHSA-high", "GHSA-critical"]);
 });
 
 test("advisories that reach only the root 2026 app do not block", () => {
@@ -34,4 +34,21 @@ test("a blocking advisory lists only the 2027 paths", () => {
 
 test("a report with no advisories does not block", () => {
   assert.deepEqual(blockingAdvisories({}), []);
+});
+
+const exception = { id: "GHSA-unfixed", expires: "2026-12-18", reason: "No patched release." };
+
+test("an advisory with a current exception does not block", () => {
+  const report = { advisories: { 1: advisory("GHSA-unfixed", "high", "blog>astro>picomatch") } };
+  assert.deepEqual(blockingAdvisories(report, { exceptions: [exception], today: "2026-11-18" }), []);
+});
+
+test("an advisory blocks again on the day its exception expires", () => {
+  const report = { advisories: { 1: advisory("GHSA-unfixed", "high", "blog>astro>picomatch") } };
+  assert.deepEqual(blockingAdvisories(report, { exceptions: [exception], today: "2026-12-18" }).map((item) => item.id), ["GHSA-unfixed"]);
+});
+
+test("an exception covers only its own advisory", () => {
+  const report = { advisories: { 1: advisory("GHSA-other", "high", "cfp>pkg") } };
+  assert.deepEqual(blockingAdvisories(report, { exceptions: [exception], today: "2026-11-18" }).map((item) => item.id), ["GHSA-other"]);
 });
