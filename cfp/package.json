@@ -16,6 +16,7 @@
     "src/server/cfp-mail.ts",
     "src/lib/staff-model.ts",
     "src/lib/mail-model.ts",
+    "src/lib/mail-copy.ts",
     "src/lib/account-model.ts",
     "src/lib/cfp-model.ts"
   ],

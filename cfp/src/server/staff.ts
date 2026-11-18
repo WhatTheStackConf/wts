@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { VerifiedCfpAccount } from "../lib/account-model.ts";
 import { applicantSettingsSchema, editionIdSchema, idSchema, presentationSchema, speakerProfileSchema, type Application } from "../lib/cfp-model.ts";
 import { CRITERIA, StaffError, adminQuerySchema, criterionWeightVoteSchema, editionReviewPolicySchema, editionStaffGrantSchema, nextReviewQuerySchema, ownReviewSchema, proposalAssignmentSchema, proposalDecisionSchema, proposalReviewSchema, reviewerPresentationSchema, staffCommandResultSchemas, staffCommandSchema, wtsUserIdSchema, type AdminProposal, type AdminProposalSummary, type AdminQuery, type AdminWorkspace, type ChangeActor, type CriterionWeightVote, type EditionStaffGrant, type EditionReviewPolicy, type ProposalAssignment, type ProposalDecision, type ProposalReview, type RankingSummary, type ReviewerProposal, type ReviewerWorkspace, type StaffAccess, type StaffCommand, type StaffCommandResults, type StaffDirectory, type StaffMutationReceipt, type StaffRole, type WeightingSummary } from "../lib/staff-model.ts";
-import { getMailStatus } from "./cfp-mail.ts";
+import { decisionMailFor, decisionMailSummary, enqueueDecisionEmails, getMailStatus } from "./cfp-mail.ts";
 import { openCfpDatabase } from "./storage.ts";
 
 type Row = Record<string, SQLOutputValue>;
@@ -115,7 +115,7 @@ function profile(db: DatabaseSync, user: string): Pick<AdminProposal, "speaker" 
 }
 function adminProposal(db: DatabaseSync, edition: string, id: string): AdminProposal {
   const row = applicationRow(db, edition, id); const presentationRevision = n(row.current_presentation_revision); const weights = weighting(db, edition); const current = version(db, edition, id, presentationRevision);
-  return { editionId: edition, application: application(row), presentationRevision, assessmentRevision: n(row.assessment_revision), applicant: { wtsUserId: s(row.wts_user_id), contact: current.submission_email === null ? { kind: "unavailable" } : { kind: "submitted", email: s(current.submission_email), recordedAt: n(current.submitted_at) } }, ...profile(db, s(row.wts_user_id)), reviews: db.prepare("SELECT * FROM proposal_reviews WHERE edition_id=? AND application_id=? ORDER BY reviewer_id").all(edition, id).map((raw) => { const value = review(raw); return { value, freshness: value.presentationRevision === presentationRevision ? "current" : "stale", evaluatedPresentation: presentationSchema.parse(json(version(db, edition, id, value.presentationRevision).presentation_json)) }; }), assignments: db.prepare("SELECT * FROM proposal_assignments WHERE edition_id=? AND application_id=? ORDER BY reviewer_id").all(edition, id).map(assignment), decisions: db.prepare("SELECT decision_json FROM proposal_decisions WHERE edition_id=? AND application_id=? ORDER BY decided_at,decision_id").all(edition, id).map((raw) => proposalDecisionSchema.parse(json(raw.decision_json))), weighting: weights, ranking: ranking(db, edition, id, presentationRevision, weights) };
+  return { decisionMail: decisionMailFor(db, edition, id), editionId: edition, application: application(row), presentationRevision, assessmentRevision: n(row.assessment_revision), applicant: { wtsUserId: s(row.wts_user_id), contact: current.submission_email === null ? { kind: "unavailable" } : { kind: "submitted", email: s(current.submission_email), recordedAt: n(current.submitted_at) } }, ...profile(db, s(row.wts_user_id)), reviews: db.prepare("SELECT * FROM proposal_reviews WHERE edition_id=? AND application_id=? ORDER BY reviewer_id").all(edition, id).map((raw) => { const value = review(raw); return { value, freshness: value.presentationRevision === presentationRevision ? "current" : "stale", evaluatedPresentation: presentationSchema.parse(json(version(db, edition, id, value.presentationRevision).presentation_json)) }; }), assignments: db.prepare("SELECT * FROM proposal_assignments WHERE edition_id=? AND application_id=? ORDER BY reviewer_id").all(edition, id).map(assignment), decisions: db.prepare("SELECT decision_json FROM proposal_decisions WHERE edition_id=? AND application_id=? ORDER BY decided_at,decision_id").all(edition, id).map((raw) => proposalDecisionSchema.parse(json(raw.decision_json))), weighting: weights, ranking: ranking(db, edition, id, presentationRevision, weights) };
 }
 export function getAdminProposal(account: VerifiedCfpAccount, applicationId: string): AdminProposal { const id = parse(idSchema, applicationId); return withDatabase(false, (db, edition) => { requireRole(db, edition, account.wtsUserId, "admin"); return adminProposal(db, edition, id); }); }
 export function getAdminWorkspace(account: VerifiedCfpAccount, query?: AdminQuery): AdminWorkspace {
@@ -145,7 +145,7 @@ export function getAdminWorkspace(account: VerifiedCfpAccount, query?: AdminQuer
       return difference || a.submittedAt - b.submittedAt || a.applicationId.localeCompare(b.applicationId);
     });
     const page = input.page ?? 1; const pageSize = input.pageSize ?? 50; const pr = policyRow(db, edition); const gate = db.prepare("SELECT cfp_open FROM editions WHERE edition_id=?").get(edition);
-    return { editionId: edition, cfpGate: { open: gate?.cfp_open === 1, revision: n(pr.cfp_gate_revision) }, reviewPolicy: policy(pr), weighting: weights, counts, proposals: filtered.slice((page - 1) * pageSize, page * pageSize), total: filtered.length, page, pageSize, mail: getMailStatus(db, edition) };
+    return { decisionMail: decisionMailSummary(db, edition), editionId: edition, cfpGate: { open: gate?.cfp_open === 1, revision: n(pr.cfp_gate_revision) }, reviewPolicy: policy(pr), weighting: weights, counts, proposals: filtered.slice((page - 1) * pageSize, page * pageSize), total: filtered.length, page, pageSize, mail: getMailStatus(db, edition) };
   });
 }
 export function getStaffDirectory(account: VerifiedCfpAccount): StaffDirectory {
@@ -254,6 +254,7 @@ const mutations: { [K in StaffCommand["kind"]]: (context: MutationContext, comma
   "set-review-policy": setReviewPolicy,
   "set-cfp-gate": setCfpGate,
   "decide-proposals": decideProposals,
+  "send-decision-emails": ({ db, edition, now }) => enqueueDecisionEmails(db, edition, now),
 };
 function mutate(db: DatabaseSync, edition: string, user: string, command: StaffCommand, now: number): StaffCommandResults[StaffCommand["kind"]] {
   const actor: ChangeActor = { kind: "staff", wtsUserId: user }; const actorJson = JSON.stringify(actor);

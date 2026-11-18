@@ -503,6 +503,19 @@ try {
     assert.equal(decided.length, 51);
     assert.ok(decided.every((application) => application.status === 'accepted'));
   });
+  await check('decision emails wait for an administrator and go once per decided proposal', async () => {
+    const before = await command({ command: 'staff-inspect' }, (value) => value.staff);
+    assert.equal(before.mailJobs.filter((job) => job.kind === 'decision').length, 0, 'A decision alone must not mail the speaker.');
+    await administrator.page.goto(`${origin}/admin`);
+    await administrator.page.getByRole('heading', { name: 'Decision emails', exact: true }).waitFor();
+    await text(administrator.page, '51 decided proposals have no email yet.').waitFor();
+    await button(administrator.page, 'Send decision emails').click();
+    await button(administrator.page, 'Send 51 emails').click();
+    await text(administrator.page, 'Queued 51 decision emails.').waitFor();
+    await text(administrator.page, 'Every decided proposal has its email.').waitFor();
+    const after = await command({ command: 'staff-inspect' }, (value) => value.staff);
+    assert.equal(after.mailJobs.filter((job) => job.kind === 'decision').length, 51);
+  });
   await check('staff surfaces retain private headers, keyboard focus, and responsive layouts', async () => {
     for (const [staff, path] of [[administrator.page, '/admin'], [secondReviewer.page, '/reviewer']]) {
       const response = await staff.goto(`${origin}${path}`);

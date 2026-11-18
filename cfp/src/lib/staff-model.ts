@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { applicantSettingsSchema, editionIdSchema, idSchema, presentationSchema, revisionSchema, type Application, type ApplicationStatus, type ApplicantSettings, type FieldIssue, type Presentation, type SpeakerProfile, type Versioned } from "./cfp-model.ts";
-import type { MailStatus } from "./mail-model.ts";
+import type { DecisionMailState, MailStatus } from "./mail-model.ts";
 
 export const CRITERIA = ["relevance", "originality", "depth", "clarity", "takeaways", "engagement"] as const;
 export const CRITERION_LABELS = { relevance: "Relevance", originality: "Originality", depth: "Depth", clarity: "Clarity", takeaways: "Takeaways", engagement: "Engagement" } as const;
@@ -70,10 +70,12 @@ export interface ReviewerWorkspace { editionId: string; reviewOpen: boolean; que
 export interface StaffAccess { editionId: string; roles: StaffRole[] }
 export type RecordedContact = { kind: "unavailable" } | { kind: "submitted"; email: string; recordedAt: number };
 export interface AdminProposalSummary { applicationId: string; title: string; status: ApplicationStatus; applicantId: string; applicantName: string; expenseCoverage: ApplicantSettings["companyCoverExpenses"]; submittedAt: number; applicationRevision: number; presentationRevision: number; assessmentRevision: number; ranking: RankingSummary }
-export interface AdminProposal { editionId: string; application: Application; presentationRevision: number; assessmentRevision: number; applicant: { wtsUserId: string; contact: RecordedContact }; speaker: Versioned<SpeakerProfile>; settings: Versioned<ApplicantSettings>; reviews: Array<{ value: ProposalReview; freshness: "current" | "stale"; evaluatedPresentation: Presentation }>; assignments: ProposalAssignment[]; decisions: ProposalDecision[]; weighting: WeightingSummary; ranking: RankingSummary }
+export interface AdminProposal { editionId: string; application: Application; presentationRevision: number; assessmentRevision: number; applicant: { wtsUserId: string; contact: RecordedContact }; speaker: Versioned<SpeakerProfile>; settings: Versioned<ApplicantSettings>; reviews: Array<{ value: ProposalReview; freshness: "current" | "stale"; evaluatedPresentation: Presentation }>; assignments: ProposalAssignment[]; decisions: ProposalDecision[]; weighting: WeightingSummary; ranking: RankingSummary; decisionMail: DecisionMailRecord | null }
 export const adminQuerySchema = z.strictObject({ status: z.union([statusSchema, z.literal("all")]).optional(), search: z.string().max(500).optional(), expenseCoverage: applicantSettingsSchema.shape.companyCoverExpenses.optional(), reviewState: z.enum(["all", "unreviewed", "current", "stale"]).optional(), sort: z.enum(["score", "submitted", "title", "review-count"]).optional(), page: revisionSchema.optional(), pageSize: z.number().int().min(1).max(100).optional() });
 export type AdminQuery = z.infer<typeof adminQuerySchema>;
-export interface AdminWorkspace { editionId: string; cfpGate: { open: boolean; revision: number }; reviewPolicy: EditionReviewPolicy; weighting: WeightingSummary; counts: Record<ApplicationStatus, number>; proposals: AdminProposalSummary[]; total: number; page: number; pageSize: number; mail: MailStatus }
+/** The decision email for one proposal. `status` is what the speaker was told, which can differ from the current status. */
+export interface DecisionMailRecord { status: "accepted" | "rejected"; state: DecisionMailState }
+export interface AdminWorkspace { decisionMail: { unsent: number; changed: number }; editionId: string; cfpGate: { open: boolean; revision: number }; reviewPolicy: EditionReviewPolicy; weighting: WeightingSummary; counts: Record<ApplicationStatus, number>; proposals: AdminProposalSummary[]; total: number; page: number; pageSize: number; mail: MailStatus }
 export interface StaffDirectoryEntry { wtsUserId: string; speakerName: string | null; adminGrant: EditionStaffGrant | null; reviewerGrant: EditionStaffGrant | null; activeAssignmentCount: number; reviewCount: number }
 export interface StaffDirectory { editionId: string; members: StaffDirectoryEntry[]; activeAdminCount: number }
 const assignmentChangeSchema = z.strictObject({ applicationId: idSchema, reviewerId: wtsUserIdSchema, expectedRevision: counterSchema, active: z.boolean() });
@@ -86,6 +88,7 @@ export const staffCommandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("set-review-policy"), requestId: idSchema, expectedRevision: revisionSchema, reviewOpen: z.boolean(), dailyReport: dailyReportPolicySchema }),
   z.strictObject({ kind: z.literal("set-cfp-gate"), requestId: idSchema, expectedRevision: revisionSchema, open: z.boolean() }),
   z.strictObject({ kind: z.literal("decide-proposals"), requestId: idSchema, expectedWeightingRevision: counterSchema, status: statusSchema, targets: z.array(targetSchema).min(1).max(100).refine((rows) => new Set(rows.map((r) => r.applicationId)).size === rows.length, "Duplicate decision targets are invalid.") }),
+  z.strictObject({ kind: z.literal("send-decision-emails"), requestId: idSchema }),
 ]);
 export type StaffCommand = z.infer<typeof staffCommandSchema>;
 export type SaveReviewCommand = Extract<StaffCommand, { kind: "save-review" }>;
@@ -105,8 +108,9 @@ export const staffCommandResultSchemas = {
   "set-review-policy": editionReviewPolicySchema,
   "set-cfp-gate": z.strictObject({ editionId: editionIdSchema, open: z.boolean(), revision: revisionSchema }),
   "decide-proposals": z.array(proposalDecisionSchema).max(100),
+  "send-decision-emails": z.strictObject({ queued: counterSchema, withoutAddress: counterSchema }),
 };
-export interface StaffCommandResults { "save-review": OwnReview; "save-weight-vote": CriterionWeightVote; "set-grant": { grant: EditionStaffGrant; revokedAssignmentCount: number }; "set-assignments": ProposalAssignment[]; "set-review-policy": EditionReviewPolicy; "set-cfp-gate": { editionId: string; open: boolean; revision: number }; "decide-proposals": ProposalDecision[] }
+export interface StaffCommandResults { "save-review": OwnReview; "save-weight-vote": CriterionWeightVote; "set-grant": { grant: EditionStaffGrant; revokedAssignmentCount: number }; "set-assignments": ProposalAssignment[]; "set-review-policy": EditionReviewPolicy; "set-cfp-gate": { editionId: string; open: boolean; revision: number }; "decide-proposals": ProposalDecision[]; "send-decision-emails": { queued: number; withoutAddress: number } }
 export interface StaffMutationReceipt<K extends StaffCommand["kind"]> { requestId: string; kind: K; committedAt: number; replayed: boolean; result: StaffCommandResults[K] }
 export const nextReviewQuerySchema = z.strictObject({ excludeApplicationId: idSchema.optional() });
 export type StaffErrorCode = "unauthenticated" | "forbidden" | "not_found" | "invalid_fields" | "conflict" | "cfp_closed" | "review_closed" | "finalized" | "last_admin" | "policy_locked" | "unavailable";
