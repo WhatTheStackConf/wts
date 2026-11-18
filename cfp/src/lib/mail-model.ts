@@ -55,7 +55,9 @@ const delivery = {
 export const mailPayloadSchema = z.discriminatedUnion("kind", [
   z.strictObject({ ...delivery, kind: z.literal("submission"), editionId: editionIdSchema, draftId: idSchema, title: z.string().max(50_000), receipt: submissionReceiptSchema, cfpUrl: z.string().max(2000).refine((value) => /^\/applications\/[0-9a-f-]+$/.test(value) || z.url().safeParse(value).success) }),
   z.strictObject({ ...delivery, kind: z.literal("daily"), snapshot: dailySnapshotSchema }),
+  z.strictObject({ ...delivery, kind: z.literal("decision"), editionId: editionIdSchema, applicationId: idSchema, decisionId: idSchema, status: z.enum(["accepted", "rejected"]), title: z.string().max(50_000), cfpUrl: z.string().max(2000) }),
 ]);
+export type DecisionMailState = "queued" | "leased" | "retrying" | "sent" | "failed" | "suspended";
 export type MailPayload = z.infer<typeof mailPayloadSchema>;
 export function mailIdentity(logicalKey: string): { jobId: string; messageId: string } {
   const jobId = createHash("sha256").update(logicalKey).digest("hex");
@@ -91,12 +93,19 @@ function validateDailySource(db: DatabaseSync, row: Row, snapshot: DailySnapshot
   const report = db.prepare("SELECT snapshot_json FROM daily_cfp_reports WHERE edition_id=? AND report_date=?").get(snapshot.editionId, snapshot.reportDate);
   if (!report || JSON.stringify(dailySnapshotSchema.parse(JSON.parse(String(report.snapshot_json)))) !== JSON.stringify(snapshot)) throw new Error("The report delivery snapshot is inconsistent.");
 }
+function validateDecisionSource(db: DatabaseSync, row: Row, payload: Extract<MailPayload, { kind: "decision" }>): void {
+  if (row.logical_key !== `decision:${payload.editionId}:${payload.applicationId}` || row.edition_id !== payload.editionId || row.application_id !== payload.applicationId || row.draft_id !== null || row.report_date !== null) throw new Error("The decision mail source is inconsistent.");
+  const owner = db.prepare("SELECT wts_user_id FROM applications WHERE edition_id=? AND application_id=?").get(payload.editionId, payload.applicationId);
+  const decision = db.prepare("SELECT decision_json FROM proposal_decisions WHERE decision_id=? AND edition_id=? AND application_id=?").get(payload.decisionId, payload.editionId, payload.applicationId);
+  if (!owner || owner.wts_user_id !== row.recipient_id || !decision || JSON.parse(String(decision.decision_json)).status !== payload.status) throw new Error("The decision mail record is inconsistent.");
+}
 function validateMailJob(db: DatabaseSync, row: Row): void {
   const payload = mailPayloadSchema.parse(JSON.parse(String(row.payload_json)));
   const identity = mailIdentity(String(row.logical_key));
   if (row.job_id !== identity.jobId || row.message_id !== identity.messageId || row.kind !== payload.kind) throw new Error("The mail job identity is inconsistent.");
   validateJobLifecycle(row);
   if (payload.kind === "submission") validateSubmissionSource(db, row, payload);
+  else if (payload.kind === "decision") validateDecisionSource(db, row, payload);
   else validateDailySource(db, row, payload.snapshot);
 }
 export function validateMailDatabase(db: DatabaseSync): void {

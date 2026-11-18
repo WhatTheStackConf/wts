@@ -6,6 +6,8 @@ import type SMTPTransport from "nodemailer/lib/smtp-transport/index.js";
 import { z } from "zod";
 import { editionIdSchema, idSchema, submissionReceiptSchema } from "../lib/cfp-model.ts";
 import { dailySnapshotSchema, mailAddressSchema, mailIdentity, mailPayloadSchema, mailRecipientSchema, reportDateSchema, type DailySnapshot, type MailPayload, type MailStatus, type MailTickResult, type SubmissionMailInput } from "../lib/mail-model.ts";
+import { decisionMail, submissionMail } from "../lib/mail-copy.ts";
+import type { DecisionMailRecord } from "../lib/staff-model.ts";
 import { openCfpDatabase } from "./storage.ts";
 
 const DAY = 86_400_000;
@@ -63,27 +65,65 @@ function configuration(): MailConfiguration {
 function eligible(db: DatabaseSync, editionId: string, recipientId: string): boolean {
   return !!db.prepare("SELECT 1 FROM edition_staff_grants WHERE edition_id=? AND wts_user_id=? AND role='admin' AND state='active'").get(editionId, recipientId);
 }
-function insertJob(db: DatabaseSync, logicalKey: string, editionId: string, recipientId: string, payload: MailPayload, createdAt: number, draftId: string | null, reportDate: string | null): void {
+interface JobSource { draftId?: string; reportDate?: string; applicationId?: string }
+function insertJob(db: DatabaseSync, logicalKey: string, editionId: string, recipientId: string, payload: MailPayload, createdAt: number, source: JobSource): void {
   mailPayloadSchema.parse(payload);
   const identity = mailIdentity(logicalKey);
-  db.prepare("INSERT INTO cfp_mail_jobs(job_id,logical_key,edition_id,kind,draft_id,report_date,recipient_id,payload_json,message_id,state,next_attempt_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,'queued',?,?,?) ON CONFLICT(logical_key) DO NOTHING")
-    .run(identity.jobId, logicalKey, editionId, payload.kind, draftId, reportDate, recipientId, JSON.stringify(payload), identity.messageId, createdAt, createdAt, createdAt);
+  db.prepare("INSERT INTO cfp_mail_jobs(job_id,logical_key,edition_id,kind,draft_id,report_date,application_id,recipient_id,payload_json,message_id,state,next_attempt_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,'queued',?,?,?) ON CONFLICT(logical_key) DO NOTHING")
+    .run(identity.jobId, logicalKey, editionId, payload.kind, source.draftId ?? null, source.reportDate ?? null, source.applicationId ?? null, recipientId, JSON.stringify(payload), identity.messageId, createdAt, createdAt, createdAt);
+}
+// Speaker mail links to the proposal page. Without a valid CFP_ORIGIN, keep the exact path.
+function proposalUrl(applicationId: string): string {
+  const path = `/applications/${applicationId}`;
+  try {
+    const origin = new URL(process.env.CFP_ORIGIN ?? "");
+    if (["http:", "https:"].includes(origin.protocol) && !origin.username && !origin.password) return new URL(path, origin.origin).href;
+  } catch { /* An invalid origin falls through to the path. */ }
+  return path;
 }
 export function enqueueSubmissionConfirmation(db: DatabaseSync, input: SubmissionMailInput): void {
   editionIdSchema.parse(input.editionId); idSchema.parse(input.draftId); submissionReceiptSchema.parse(input.receipt);
-  const path = `/applications/${input.receipt.applicationId}`;
-  let cfpUrl = path;
-  try {
-    const origin = new URL(process.env.CFP_ORIGIN ?? "");
-    if (["http:", "https:"].includes(origin.protocol) && !origin.username && !origin.password) cfpUrl = new URL(path, origin.origin).href;
-  } catch { /* Without an origin, retain the exact CFP application path. */ }
-  const payload: MailPayload = {
-    kind: "submission", editionId: input.editionId, draftId: input.draftId, receipt: input.receipt, title: input.title, cfpUrl,
-    to: input.account.email,
-    subject: `WTS ${input.editionId} CFP submission ${input.receipt.operation}`,
-    text: `Your WTS ${input.editionId} CFP submission was ${input.receipt.operation}.\n\nTitle: ${input.title}\nApplication: ${input.receipt.applicationId}\nCommitted version: ${input.receipt.applicationRevision}\nCommitted at: ${new Date(input.receipt.committedAt).toISOString()}\nCFP: ${cfpUrl}\n`,
-  };
-  insertJob(db, `submission:${input.editionId}:${input.draftId}`, input.editionId, input.account.wtsUserId, payload, input.receipt.committedAt, input.draftId, null);
+  const cfpUrl = proposalUrl(input.receipt.applicationId);
+  const copy = submissionMail({ editionId: input.editionId, title: input.title, link: cfpUrl, operation: input.receipt.operation });
+  const payload: MailPayload = { kind: "submission", editionId: input.editionId, draftId: input.draftId, receipt: input.receipt, title: input.title, cfpUrl, to: input.account.email, ...copy };
+  insertJob(db, `submission:${input.editionId}:${input.draftId}`, input.editionId, input.account.wtsUserId, payload, input.receipt.committedAt, { draftId: input.draftId });
+}
+export interface DecisionMailQueueResult { queued: number; withoutAddress: number }
+// Queue one decision email for each accepted or rejected proposal that has none yet. A proposal gets one
+// decision email ever: a later change is flagged on the admin page instead (see decisionMailSummary).
+export function enqueueDecisionEmails(db: DatabaseSync, editionId: string, now: number): DecisionMailQueueResult {
+  editionIdSchema.parse(editionId);
+  const result: DecisionMailQueueResult = { queued: 0, withoutAddress: 0 };
+  const rows = db.prepare(`SELECT a.application_id, a.status, a.wts_user_id, a.presentation_json, v.submission_email, d.decision_id
+    FROM applications a
+    JOIN proposal_staff_state st ON st.edition_id=a.edition_id AND st.application_id=a.application_id
+    JOIN application_presentation_versions v ON v.edition_id=a.edition_id AND v.application_id=a.application_id AND v.presentation_revision=st.current_presentation_revision
+    JOIN proposal_decisions d ON d.edition_id=a.edition_id AND d.application_id=a.application_id AND json_extract(d.decision_json,'$.applicationRevisionAfter')=a.revision
+    WHERE a.edition_id=? AND a.status IN ('accepted','rejected')
+      AND NOT EXISTS (SELECT 1 FROM cfp_mail_jobs j WHERE j.kind='decision' AND j.application_id=a.application_id)
+    ORDER BY a.submitted_at, a.application_id`).all(editionId);
+  for (const row of rows) {
+    if (row.submission_email === null) { result.withoutAddress++; continue; }
+    const applicationId = idSchema.parse(row.application_id); const status = z.enum(["accepted", "rejected"]).parse(row.status);
+    const title = z.object({ title: z.string() }).parse(JSON.parse(String(row.presentation_json))).title; const cfpUrl = proposalUrl(applicationId);
+    const payload: MailPayload = { kind: "decision", editionId, applicationId, decisionId: idSchema.parse(row.decision_id), status, title, cfpUrl, to: mailAddressSchema.parse(row.submission_email), ...decisionMail({ editionId, title, link: cfpUrl, status }) };
+    insertJob(db, `decision:${editionId}:${applicationId}`, editionId, String(row.wts_user_id), payload, now, { applicationId });
+    result.queued++;
+  }
+  return result;
+}
+export function decisionMailFor(db: DatabaseSync, editionId: string, applicationId: string): DecisionMailRecord | null {
+  const row = db.prepare("SELECT state, payload_json FROM cfp_mail_jobs WHERE kind='decision' AND edition_id=? AND application_id=?").get(editionId, applicationId);
+  if (!row) return null;
+  const payload = mailPayloadSchema.parse(JSON.parse(String(row.payload_json)));
+  if (payload.kind !== "decision") throw new Error("The decision mail job has another payload.");
+  return { status: payload.status, state: z.enum(["queued", "leased", "retrying", "sent", "failed", "suspended"]).parse(row.state) };
+}
+// unsent: decided proposals with no decision email. changed: the status moved after the email was queued.
+export function decisionMailSummary(db: DatabaseSync, editionId: string): { unsent: number; changed: number } {
+  const unsent = db.prepare("SELECT count(*) AS count FROM applications a WHERE a.edition_id=? AND a.status IN ('accepted','rejected') AND NOT EXISTS (SELECT 1 FROM cfp_mail_jobs j WHERE j.kind='decision' AND j.application_id=a.application_id)").get(editionId)?.count;
+  const changed = db.prepare("SELECT count(*) AS count FROM cfp_mail_jobs j JOIN applications a ON a.application_id=j.application_id WHERE j.kind='decision' AND j.edition_id=? AND json_extract(j.payload_json,'$.status')<>a.status").get(editionId)?.count;
+  return { unsent: z.number().int().nonnegative().parse(unsent), changed: z.number().int().nonnegative().parse(changed) };
 }
 export function getMailStatus(db: DatabaseSync, editionId: string): MailStatus {
   editionIdSchema.parse(editionId);
@@ -136,7 +176,7 @@ function createReport(db: DatabaseSync, editionId: string, periodStart: number, 
   const text = reportText(snapshot);
   for (const recipient of config.recipients) {
     if (!eligible(db, editionId, recipient.wtsUserId)) continue;
-    insertJob(db, `daily:${editionId}:${reportDate}:${recipient.wtsUserId}`, editionId, recipient.wtsUserId, { kind: "daily", snapshot, to: recipient.email, subject: `WTS ${editionId} CFP daily report ${reportDate} UTC`, text }, now, null, reportDate);
+    insertJob(db, `daily:${editionId}:${reportDate}:${recipient.wtsUserId}`, editionId, recipient.wtsUserId, { kind: "daily", snapshot, to: recipient.email, subject: `WTS ${editionId} CFP daily report ${reportDate} UTC`, text }, now, { reportDate });
   }
 }
 function createEditionReports(db: DatabaseSync, policy: Record<string, SQLOutputValue>, now: number, config: MailConfiguration): number {
@@ -181,7 +221,7 @@ function claim(db: DatabaseSync, now: number): ClaimedJob | null {
 }
 function canDispatch(db: DatabaseSync, job: ClaimedJob, config: MailConfiguration): boolean {
   if (config.smtp?.loopbackTest && !testAddress.test(job.payload.to)) return false;
-  if (job.payload.kind === "submission") return true;
+  if (job.payload.kind !== "daily") return true;
   return config.recipients.some((recipient) => recipient.wtsUserId === job.recipientId && recipient.email === job.payload.to) && eligible(db, job.editionId, job.recipientId);
 }
 type SmtpSettings = NonNullable<MailConfiguration["smtp"]>;

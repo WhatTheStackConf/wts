@@ -6,11 +6,12 @@ import { z } from "zod";
 import { migration as initialMigration } from "../../migrations/001-initial.ts";
 import { migration as staffMigration } from "../../migrations/002-staff.ts";
 import { migration as mailMigration } from "../../migrations/003-mail.ts";
+import { migration as decisionMailMigration } from "../../migrations/004-decision-mail.ts";
 import { applicantSettingsSchema, commitWitnessSchema, draftPurposeSchema, editionIdSchema, idSchema, presentationSchema, speakerProfileSchema, submissionReceiptSchema } from "../lib/cfp-model.ts";
 import { changeActorSchema, criterionWeightsSchema, dailyReportPolicySchema, editionStaffGrantSchema, proposalAssignmentSchema, proposalDecisionSchema, reviewScoresSchema, staffCommandResultSchemas, staffCommandSchema, wtsUserIdSchema } from "../lib/staff-model.ts";
 import { suspendMailForRestore, validateMailDatabase } from "../lib/mail-model.ts";
 
-const migrations = [initialMigration, staffMigration, mailMigration].map((item) => ({ ...item, checksum: sha256(item.sql) }));
+const migrations = [initialMigration, staffMigration, mailMigration, decisionMailMigration].map((item) => ({ ...item, checksum: sha256(item.sql) }));
 function sha256(bytes: string | Uint8Array): string { return createHash("sha256").update(bytes).digest("hex"); }
 function directory(dataDir?: string): string {
   const value = dataDir ?? process.env.CFP_DATA_DIR;
@@ -260,7 +261,7 @@ function syncDirectory(path: string): void {
   const fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY);
   try { fsyncSync(fd); } finally { closeSync(fd); }
 }
-const manifestSchema = z.strictObject({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]), databaseSha256: z.string().regex(/^[a-f0-9]{64}$/) });
+const manifestSchema = z.strictObject({ schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), databaseSha256: z.string().regex(/^[a-f0-9]{64}$/) });
 export async function backup(destination: string, dataDir?: string): Promise<void> {
   const target = resolve(destination);
   const db = openCfpDatabase(dataDir);
@@ -277,7 +278,7 @@ export async function backup(destination: string, dataDir?: string): Promise<voi
     finally { snapshot.close(); }
     const fd = openSync(path, constants.O_RDONLY);
     try { fsyncSync(fd); } finally { closeSync(fd); }
-    durableWrite(join(target, "manifest.json"), Buffer.from(JSON.stringify({ schemaVersion: 3, databaseSha256: sha256(readFileSync(path)) })));
+    durableWrite(join(target, "manifest.json"), Buffer.from(JSON.stringify({ schemaVersion: migrations.length, databaseSha256: sha256(readFileSync(path)) })));
     syncDirectory(target); syncDirectory(dirname(target));
   } catch (error) { if (created) rmSync(target, { recursive: true }); throw error; }
   finally { db.close(); }

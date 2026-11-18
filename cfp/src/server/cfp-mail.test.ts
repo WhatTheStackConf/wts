@@ -10,7 +10,7 @@ import { mailIdentity, suspendMailForRestore, validateMailDatabase } from "../li
 import { getWorkspace, saveApplicant, saveDraft, startDraft, submitDraft } from "./applicants.ts";
 import { getMailStatus, resumeRestoredMail, runMailTick } from "./cfp-mail.ts";
 import { initializeEdition, openCfpDatabase, setCfpOpen } from "./storage.ts";
-import { bootstrapAdmin, executeStaffCommand, getAdminProposal, getReviewerProposal } from "./staff.ts";
+import { bootstrapAdmin, executeStaffCommand, getAdminProposal, getAdminWorkspace, getReviewerProposal } from "./staff.ts";
 
 const alice: VerifiedCfpAccount = {
   wtsUserId: "mail-alice", email: "alice@example.test", emailVerified: true, accountUrl: "https://identity.example.test/account",
@@ -19,6 +19,21 @@ const alice: VerifiedCfpAccount = {
 const day = 86_400_000;
 const now = Date.parse("2027-02-05T09:00:00Z");
 type SinkMode = "accept" | "transient" | "permanent" | "lost-ack";
+// The sink keeps decoded text: unfolded headers, decoded subject words, and a decoded quoted-printable body.
+function qp(text: string): string {
+  const bytes: number[] = []; const encoder = new TextEncoder();
+  for (let index = 0; index < text.length; index++) {
+    const hex = text[index] === "=" ? /^[0-9A-F]{2}/i.exec(text.slice(index + 1)) : null;
+    if (hex) { bytes.push(Number.parseInt(hex[0], 16)); index += 2; } else bytes.push(...encoder.encode(text[index]));
+  }
+  return new TextDecoder().decode(Uint8Array.from(bytes));
+}
+function decodeMessage(raw: string): string {
+  const split = raw.indexOf("\r\n\r\n");
+  const headers = raw.slice(0, split).replace(/\r\n[ \t]+/g, " ").replace(/=\?UTF-8\?Q\?([^?]*)\?=/gi, (_, word: string) => qp(word.replace(/_/g, " ")));
+  const body = raw.slice(split + 4);
+  return `${headers}\r\n\r\n${/Content-Transfer-Encoding: quoted-printable/i.test(headers) ? qp(body.replace(/=\r\n/g, "")) : body}`;
+}
 async function fixture(t: TestContext) {
   const root = mkdtempSync(join(tmpdir(), "wts-cfp-mail-"));
   const messages: string[] = [];
@@ -34,7 +49,7 @@ async function fixture(t: TestContext) {
       sink.onDelivery?.();
       if (sink.mode === "transient") socket.write("451 Temporary refusal\r\n");
       else if (sink.mode === "permanent") socket.write("550 Permanent refusal\r\n");
-      else { messages.push(message); if (sink.mode === "lost-ack") socket.destroy(); else socket.write("250 Accepted\r\n"); }
+      else { messages.push(decodeMessage(message)); if (sink.mode === "lost-ack") socket.destroy(); else socket.write("250 Accepted\r\n"); }
       message = "";
     };
     const receiveData = (line: string) => {
@@ -398,4 +413,69 @@ test("daily retry retains its original snapshot after later application inventor
   assert.doesNotMatch(report, /Not in the earlier inventory/);
   const db = openCfpDatabase(root);
   try { validateMailDatabase(db); } finally { db.close(); }
+});
+
+function makeAdmin(root: string) {
+  getWorkspace(admin);
+  const db = openCfpDatabase(root);
+  try { db.prepare("INSERT INTO oidc_bindings VALUES (?,?,?,?)").run("https://identity.example.test", "mail-admin-subject", admin.wtsUserId, Date.now()); } finally { db.close(); }
+  bootstrapAdmin("2027", admin.wtsUserId, root);
+}
+function decide(applicationId: string, selectedStatus: "accepted" | "rejected" | "pending") {
+  const detail = getAdminProposal(admin, applicationId);
+  executeStaffCommand(admin, { kind: "decide-proposals", requestId: randomUUID(), expectedWeightingRevision: detail.weighting.revision, status: selectedStatus, targets: [{ applicationId, expectedApplicationRevision: detail.application.revision, expectedPresentationRevision: detail.presentationRevision, expectedAssessmentRevision: detail.assessmentRevision }] });
+}
+function sendDecisions() {
+  return executeStaffCommand(admin, { kind: "send-decision-emails", requestId: randomUUID() }).result;
+}
+
+test("decision emails wait for the send step and go once per decided proposal", async (t) => {
+  const { root, sink } = await fixture(t);
+  makeAdmin(root);
+  const accepted = submit("Accepted talk").receipt.applicationId;
+  const rejected = submit("Rejected talk").receipt.applicationId;
+  const pending = submit("Pending talk").receipt.applicationId;
+  decide(accepted, "accepted"); decide(rejected, "rejected"); decide(pending, "accepted"); decide(pending, "pending");
+  assert.equal((await runMailTick(now, root)).sent, 3, "Only the three confirmations go out before the send step.");
+  assert.deepEqual(getAdminWorkspace(admin).decisionMail, { unsent: 2, changed: 0 });
+  assert.equal(getAdminProposal(admin, accepted).decisionMail, null);
+
+  assert.deepEqual(sendDecisions(), { queued: 2, withoutAddress: 0 });
+  assert.equal((await runMailTick(now + 1, root)).sent, 2);
+  const yes = sink.messages.find((message) => message.includes("Accepted talk") && /You're in/.test(message)) ?? "";
+  const no = sink.messages.find((message) => message.includes("Rejected talk") && /Subject: About/.test(message)) ?? "";
+  assert.match(yes, /To: alice@example.test/); assert.match(yes, /we picked "Accepted talk" for WhatTheStack 2027/);
+  assert.ok(yes.includes(`https://cfp.example.test/applications/${accepted}`));
+  assert.match(no, /We didn't pick it for the lineup this time/);
+  assert.ok(!sink.messages.some((message) => message.includes("Pending talk") && /You're in|Subject: About/.test(message)));
+
+  assert.deepEqual(sendDecisions(), { queued: 0, withoutAddress: 0 });
+  assert.deepEqual(getAdminProposal(admin, accepted).decisionMail, { status: "accepted", state: "sent" });
+  assert.deepEqual(getAdminWorkspace(admin).decisionMail, { unsent: 0, changed: 0 });
+});
+
+test("a decision that changes after its email is flagged, not mailed again", async (t) => {
+  const { root, sink } = await fixture(t);
+  makeAdmin(root);
+  const id = submit("Changed talk").receipt.applicationId;
+  decide(id, "accepted"); sendDecisions(); await runMailTick(now, root);
+  decide(id, "rejected");
+  assert.deepEqual(sendDecisions(), { queued: 0, withoutAddress: 0 });
+  assert.deepEqual(getAdminWorkspace(admin).decisionMail, { unsent: 0, changed: 1 });
+  assert.deepEqual(getAdminProposal(admin, id).decisionMail, { status: "accepted", state: "sent" });
+  assert.equal(sink.messages.filter((message) => /Subject: About/.test(message)).length, 0);
+  decide(id, "pending");
+  assert.deepEqual(getAdminWorkspace(admin).decisionMail, { unsent: 0, changed: 1 });
+});
+
+test("a decision email goes to the address of the latest submission", async (t) => {
+  const { root, sink } = await fixture(t);
+  makeAdmin(root);
+  const first = submit("Address talk");
+  submit("Address talk edited", { kind: "edit", applicationId: first.receipt.applicationId, expectedRevision: 1 }, { ...alice, email: "moved@example.test" });
+  decide(first.receipt.applicationId, "accepted"); sendDecisions();
+  await runMailTick(now, root);
+  const mail = sink.messages.find((message) => /You're in/.test(message)) ?? "";
+  assert.match(mail, /To: moved@example.test/); assert.match(mail, /Address talk edited/);
+  const db = openCfpDatabase(root); try { validateMailDatabase(db); } finally { db.close(); }
 });

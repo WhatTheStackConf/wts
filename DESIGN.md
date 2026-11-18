@@ -327,6 +327,9 @@ Empty states, retry controls, and server-enforced permissions remain part of eac
 - Speaker: when the name and bio are saved, the form opens at Talk with a "Speaking as" row. The speaker can go back to About you at any time.
 - Speaker: the travel question shows in every proposal with the saved answer filled in. The answer saves to the profile.
 - A button that acts as a text link uses `.link-button`, which has the same dotted underline as copy links.
+- Admin: a decision stays private until an organizer uses "Send decision emails" on the proposal list. Each proposal gets one decision email, sent to the address of its latest submission.
+- Admin: when a decision changes after its email, no new email goes out. The proposal page and the list show the mismatch, and the organizers contact the speaker.
+- Speaker email copy lives in `cfp/src/lib/mail-copy.ts`. It uses the WTS voice: plain, honest, "we", with no IDs or revision numbers.
 
 ## Blog
 

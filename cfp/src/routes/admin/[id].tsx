@@ -2,7 +2,7 @@ import { createSignal, For, onSettled, Show, Switch, Match } from "solid-js";
 import { useParams } from "@solidjs/router";
 import { executeStaffCommand, getAdminProposal, getStaffDirectory } from "~/lib/staff-actions";
 import { CRITERIA, CRITERION_LABELS } from "~/lib/staff-model";
-import type { AdminProposal, DecideProposalsCommand, StaffDirectory } from "~/lib/staff-model";
+import type { AdminProposal, DecideProposalsCommand, DecisionMailRecord, StaffDirectory } from "~/lib/staff-model";
 import { AdminError, AdminLoading, AdminSection, AdminStatus, STATUS_LABELS, reviewSummary, useAdminRequest } from "~/components/admin/AdminUI";
 
 const PROTECTED_FAILURES = ["forbidden", "unauthenticated", "unavailable"];
@@ -30,15 +30,27 @@ interface DecisionPanelProps {
   onDecide: (status: "accepted" | "rejected" | "pending") => void;
 }
 
+// What the speaker heard. "Not selected" is the word the speaker email uses for a rejection.
+const TOLD_LABELS = { accepted: "Accepted", rejected: "Not selected" } as const;
+const MAIL_STATE_LABELS: Record<DecisionMailRecord["state"], string> = { queued: "queued", leased: "sending", retrying: "retrying", sent: "sent", failed: "did not send", suspended: "on hold" };
+
 function DecisionPanel(props: DecisionPanelProps) {
   const status = () => props.proposal.application.status;
   const score = () => props.proposal.ranking.averageWeightedScore;
+  const told = () => props.proposal.decisionMail;
+  const speakerEmail = () => {
+    const record = told();
+    if (record) return `${TOLD_LABELS[record.status]}, ${MAIL_STATE_LABELS[record.state]}`;
+    return status() === "pending" ? "Nothing sent" : "Not sent yet";
+  };
   return <section class="surface cfp-stack decision-panel" aria-labelledby="decision-title">
     <div class="surface-title"><div><h2 id="decision-title">Decision</h2><p>The score uses reviews of the current version only.</p></div><AdminStatus state={status()} label={STATUS_LABELS[status()] ?? status()} /></div>
     <dl class="decision-facts">
       <div><dt>Score</dt><dd class="numeric">{score() === null ? "Not scored" : score()!.toFixed(2)}</dd></div>
       <div><dt>Reviews</dt><dd>{reviewSummary(props.proposal.ranking)}</dd></div>
+      <div><dt>Speaker email</dt><dd>{speakerEmail()}</dd></div>
     </dl>
+    <Show when={told() && told()!.status !== status()}><p class="alert" role="status">The speaker's email says {TOLD_LABELS[told()!.status]}, but the decision is now {STATUS_LABELS[status()] ?? status()}. We do not email the change. Contact the speaker yourself.</p></Show>
     <div class="row">
       <For each={DECISIONS.filter(([value]) => value !== status() && (value !== "pending" || status() !== "pending"))}>{([value, label]) =>
         <button type="button" class={value === "accepted" ? "button" : value === "rejected" ? "button button-danger" : "button button-secondary"} disabled={props.busy} onClick={() => props.onDecide(value)}>{label}</button>}</For>

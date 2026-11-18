@@ -28,6 +28,38 @@ function EditionState(props: EditionStateProps) {
   </div>;
 }
 
+interface DecisionEmailsProps {
+  summary: AdminWorkspace["decisionMail"];
+  busy: boolean;
+  message: string;
+  onSend: () => void;
+}
+
+// Decisions stay private until an organizer sends them. Each proposal gets one decision email.
+function DecisionEmails(props: DecisionEmailsProps) {
+  const [confirming, setConfirming] = createSignal(false);
+  const emails = () => `${props.summary.unsent} ${props.summary.unsent === 1 ? "email" : "emails"}`;
+  return <section class="surface cfp-stack decision-mail" aria-labelledby="decision-mail-title">
+    <div class="surface-title"><div><h2 id="decision-mail-title">Decision emails</h2><p>Speakers hear nothing about accept or reject until you send these.</p></div></div>
+    <Show when={props.summary.unsent > 0} fallback={<p>Every decided proposal has its email.</p>}>
+      <Show when={confirming()} fallback={<div class="row">
+        <p>{props.summary.unsent} decided {props.summary.unsent === 1 ? "proposal has" : "proposals have"} no email yet.</p>
+        <button class="button" type="button" disabled={props.busy} onClick={() => setConfirming(true)}>Send decision emails</button>
+      </div>}>
+        <div class="cfp-stack decision-confirm" role="group" aria-label="Confirm decision emails">
+          <p><strong>Send {emails()}?</strong> Speakers see the decision right away, and you cannot take an email back. A later change sends no new email.</p>
+          <div class="row">
+            <button class="button" type="button" disabled={props.busy} onClick={() => { setConfirming(false); props.onSend(); }}>{props.busy ? "Sending…" : `Send ${emails()}`}</button>
+            <button class="button button-secondary" type="button" onClick={() => setConfirming(false)}>Cancel</button>
+          </div>
+        </div>
+      </Show>
+    </Show>
+    <Show when={props.message}><p class="alert" role="status">{props.message}</p></Show>
+    <Show when={props.summary.changed > 0}><p class="alert" role="status">{props.summary.changed} {props.summary.changed === 1 ? "decision no longer matches its" : "decisions no longer match their"} email. We do not email the change. Open each proposal and contact the speaker yourself.</p></Show>
+  </section>;
+}
+
 interface ProposalFiltersProps {
   query: AdminQuery;
   onChange: (patch: Partial<AdminQuery>) => void;
@@ -71,8 +103,10 @@ export default function AdminWorkspacePage() {
   const [confirming, setConfirming] = createSignal<"accepted" | "rejected" | "pending">();
   const request = useAdminRequest();
 
+  const [sentMessage, setSentMessage] = createSignal("");
   const load = async (requestedQuery = query()): Promise<boolean> => {
     setLoading(true);
+    setSentMessage("");
     const result = await request.run(() => getAdminWorkspace(requestedQuery));
     let loaded = false;
     if (result?.ok) {
@@ -121,6 +155,22 @@ export default function AdminWorkspacePage() {
       setSelected([]);
     }
     setBusy(false);
+  };
+
+  // One request ID per send attempt, so a retry after a lost response cannot queue twice.
+  const [pendingSend, setPendingSend] = createSignal<string>();
+  const sendDecisionEmails = async () => {
+    if (busy()) return;
+    const requestId = pendingSend() ?? crypto.randomUUID();
+    setPendingSend(requestId);
+    setBusy(true);
+    const result = await request.run(() => executeStaffCommand({ kind: "send-decision-emails", requestId }));
+    setBusy(false);
+    if (!result?.ok) { if (result && result.error.code !== "unavailable") setPendingSend(undefined); return; }
+    setPendingSend(undefined);
+    const { queued, withoutAddress } = result.value.result;
+    const missing = withoutAddress ? ` ${withoutAddress} ${withoutAddress === 1 ? "proposal has" : "proposals have"} no recorded email address.` : "";
+    if (await load()) setSentMessage(`Queued ${queued} decision ${queued === 1 ? "email" : "emails"}.${missing}`);
   };
 
   const decide = async (status: "accepted" | "rejected" | "pending") => {
@@ -178,6 +228,7 @@ export default function AdminWorkspacePage() {
       <Match when={request.error()}>{(failure) => <Switch fallback={<>
         <AdminError state={FAILURE_STATES.get(failure().code) ?? "unavailable"} message={failure().message} onRetry={() => void load()} />
         <Show when={pendingDecision() && failure().code === "unavailable"}><button class="button" type="button" disabled={busy()} onClick={() => void submitDecision(pendingDecision()!)}>Retry the exact decision request</button></Show>
+        <Show when={pendingSend() && failure().code === "unavailable"}><button class="button" type="button" disabled={busy()} onClick={() => void sendDecisionEmails()}>Retry sending decision emails</button></Show>
       </>}>
         <Match when={failure().code === "unauthenticated"}><AdminError state="unauthenticated" message={failure().message} /></Match>
         <Match when={failure().code === "forbidden"}><AdminError state="denied" message="Your edition administrator access is not active. Protected CFP data is hidden." /></Match>
@@ -185,6 +236,9 @@ export default function AdminWorkspacePage() {
       <Match when={workspace()}>
         <div class="cfp-stack">
           <EditionState workspace={workspace()!} />
+          <Show when={workspace()!.counts.accepted + workspace()!.counts.rejected > 0}>
+            <DecisionEmails summary={workspace()!.decisionMail} busy={busy()} message={sentMessage()} onSend={() => void sendDecisionEmails()} />
+          </Show>
 
           <AdminSection title="Talk proposals">
             <div class="status-tabs" role="group" aria-label="Status">

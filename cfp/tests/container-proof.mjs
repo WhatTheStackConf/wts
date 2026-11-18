@@ -594,7 +594,7 @@ async function prove() {
     const db = openCfpDatabase();
     try {
       check('The packaged CLI upgrades a known schema-one backup without historical mail or grants', () => {
-        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);
+        assert.equal(db.prepare('PRAGMA user_version').get().user_version, 4);
         assert.equal(db.prepare('SELECT count(*) AS count FROM edition_staff_grants').get().count, 0);
         assert.equal(db.prepare('SELECT count(*) AS count FROM cfp_mail_jobs').get().count, 0);
         assert.equal(db.prepare('SELECT count(*) AS count FROM application_presentation_versions').get().count, 1);
@@ -641,7 +641,7 @@ async function prove() {
     const bytes = readFileSync(root + '/cfp.sqlite');
     const manifest = JSON.parse(readFileSync(root + '/manifest.json', 'utf8'));
     check('Online backup writes a matching SHA-256 manifest and no SQLite sidecars', () => {
-      assert.deepEqual(manifest, { schemaVersion: 3, databaseSha256: createHash('sha256').update(bytes).digest('hex') });
+      assert.deepEqual(manifest, { schemaVersion: 4, databaseSha256: createHash('sha256').update(bytes).digest('hex') });
       for (const suffix of ['-wal', '-shm', '-journal']) assert.equal(existsSync(root + '/cfp.sqlite' + suffix), false);
     }, { schemaVersion: manifest.schemaVersion, checksumMatches: true, sidecars: 0 });
   `, { imports: "import { readFileSync, existsSync } from 'node:fs'; import { createHash } from 'node:crypto';" });
