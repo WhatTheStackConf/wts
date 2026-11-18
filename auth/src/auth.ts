@@ -9,7 +9,7 @@ import nodemailer from "nodemailer";
 import { Pool } from "pg";
 import { z } from "zod";
 import { createHash, timingSafeEqual } from "node:crypto";
-import type { Config } from "./config.js";
+import { isLoopback, type Config } from "./config.js";
 import { profileFields, readProfile } from "./profile.js";
 
 export const oauthScopes = ["openid", "profile", "email", "wts.profile"];
@@ -143,6 +143,8 @@ export function createRuntime(config: Config): Runtime {
         clientPrivileges: () => false,
         resourcePrivileges: () => false,
         validateRedirectUri: (uri, registered) => registered.includes(uri),
+        // better-auth 1.7.25 refuses http callbacks for web clients. Keep the loopback rehearsal working outside production.
+        allowInsecureRedirectUri: (url) => !config.production && isLoopback(url.hostname),
         storeClientSecret: {
           hash: hashClientSecret,
           verify: async (secret, hash) => {

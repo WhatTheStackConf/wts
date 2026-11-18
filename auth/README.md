@@ -1,6 +1,6 @@
 # WTS identity service
 
-The Better Auth 1.7.7 service at `https://auth.wts.sh` uses PostgreSQL 18.3.
+The Better Auth 1.7.25 service at `https://auth.wts.sh` uses PostgreSQL 18.3.
 It shares the WTS pnpm workspace, not application databases, permissions, conference records, or PocketBase rules.
 See [the project brief](../docs/plans/wts-shared-identity-project-brief.md) for consumer migration gates.
 Its [permissions section](../docs/plans/wts-shared-identity-project-brief.md#permissions) defines the agreed authorization design.
