@@ -13,7 +13,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/applications": "Your proposals",
   "/apply": "Proposal draft",
   "/profile": "Speaker profile",
-  "/settings": "Applicant settings",
   "/reviewer": "Reviewer queue",
   "/admin": "CFP administration",
   "/admin/staff": "Staff and gates",
@@ -115,7 +114,7 @@ function ApplicantShell(props: ParentProps) {
       </button>
       <nav ref={(element) => { panel = element; }} id="primary-nav" class="primary-nav" data-open={navigationOpen() ? "true" : undefined} aria-label="Main navigation" onClick={(event) => { if ((event.target as Element).closest("a")) closeNavigation(false); }}>
         <a href="/applications" aria-current={ariaCurrent(location.pathname.startsWith("/applications") || location.pathname.startsWith("/apply/"))}>Proposals</a>
-        <Show when={account()}><a href="/profile" aria-current={ariaCurrent(location.pathname === "/profile")}>Profile</a><a href="/settings" aria-current={ariaCurrent(location.pathname === "/settings")}>Settings</a></Show>
+        <Show when={account()}><a href="/profile" aria-current={ariaCurrent(location.pathname === "/profile")}>Profile</a></Show>
         <Show when={staffAccess()?.roles.includes("reviewer")}><a href="/reviewer" aria-current={ariaCurrent(location.pathname.startsWith("/reviewer"))}>Review</a></Show>
         <Show when={staffAccess()?.roles.includes("admin")}><a href="/admin" aria-current={ariaCurrent(location.pathname.startsWith("/admin"))}>Admin</a></Show>
         {/* Phones: the identity action closes the panel as a full-width plate. Hidden at 768px and wider. */}

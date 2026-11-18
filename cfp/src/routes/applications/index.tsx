@@ -51,11 +51,11 @@ export default function Applications() {
       <Match when={error()}>{(current) => <><ErrorNotice message={current().message} issues={current().issues} onRetry={() => void load()} /><Show when={current().code === "unauthenticated"}><a class="button" href="/auth/login?returnTo=%2Fapplications" rel="external">Sign in to continue</a></Show></>}</Match>
       <Match when={workspace()}>
         <section class="surface cfp-stack" aria-labelledby="application-actions-title">
-          <div class="surface-title"><div><h2 id="application-actions-title">Start a proposal</h2><p>{cfpOpen() ? "Start a new talk proposal. Your speaker profile fills in for you." : "The CFP is closed. You can still read your applications and update your profile or settings."}</p></div>
+          <div class="surface-title"><div><h2 id="application-actions-title">Start a proposal</h2><p>{cfpOpen() ? "Start a new talk proposal. Your speaker profile fills in for you." : "The CFP is closed. You can still read your proposals and update your profile."}</p></div>
             <span class="cfp-status" data-state={cfpOpen() ? "active" : "closed"}>{cfpOpen() ? "Open" : "Closed"}</span>
           </div>
           <Show when={cfpOpen()}><button type="button" class="button" disabled={busy()} onClick={() => void begin({ kind: "new" })}>{busy() ? "Creating draft…" : "New proposal"}</button></Show>
-          <div class="row"><a href="/profile">Edit speaker profile</a><a href="/settings">Edit applicant settings</a></div>
+          <div class="row"><a href="/profile">Edit your profile</a></div>
         </section>
         <section class="surface cfp-stack" aria-labelledby="draft-list-title">
           <div class="surface-title"><div><h2 id="draft-list-title">Active drafts</h2><p>Drafts save each time you go to the next step.</p></div></div>

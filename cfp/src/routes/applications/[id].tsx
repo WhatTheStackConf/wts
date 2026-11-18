@@ -77,8 +77,7 @@ export default function ApplicationDetails() {
         <Show when={!view()!.cfpOpen}><p class="muted">Submissions are closed. You can read this proposal, but you cannot edit it.</p></Show>
       </section>
       <article class="surface cfp-stack" aria-label="Your proposal details">
-        <Section title="Speaker profile"><SpeakerSummary speaker={view()!.speaker.value} email={view()!.email} /></Section>
-        <Section title="Settings"><SettingsSummary settings={view()!.settings.value} /></Section>
+        <Section title="About you"><SpeakerSummary speaker={view()!.speaker.value} email={view()!.email} /><SettingsSummary settings={view()!.settings.value} /></Section>
         <Section title="Talk"><PresentationSummary presentation={view()!.application.presentation} /></Section>
       </article>
     </Show>

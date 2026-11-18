@@ -97,15 +97,11 @@ try {
     await targetPage.locator('#proposal-tech').fill(`Synthetic technical requirements ${suffix}.`);
   }
   async function finishSteps(targetPage, suffix, first = false) {
-    await button(targetPage, 'Next: Experience').click();
+    await button(targetPage, 'Next: Experience and travel').click();
     if (!first) assert.equal(await targetPage.locator('#previous-presentation').inputValue(), '');
     await targetPage.locator('#previous-presentation').fill(`Synthetic previous presentation ${suffix}.`);
-    await button(targetPage, 'Next: Expenses').click();
     if (first) await targetPage.getByRole('radio', { name: 'No', exact: true }).check();
-    else {
-      assert.equal(await targetPage.getByRole('radio').count(), 0);
-      await targetPage.getByRole('link', { name: 'Edit applicant settings', exact: true }).waitFor();
-    }
+    else assert.equal(await targetPage.getByRole('radio', { name: 'No', exact: true }).isChecked(), true, 'The saved travel answer must fill in.');
     if (!first) {
       assert.equal(await targetPage.locator('#organizer-notes').inputValue(), '');
       assert.equal(await targetPage.locator('#additional-info').inputValue(), '');
@@ -161,14 +157,14 @@ try {
   await check('first application saves reusable speaker data and every presentation field', async () => {
     await signIn(page);
     await button(page, 'New proposal').click();
-    await button(page, 'Continue').click();
+    await page.getByRole('heading', { name: 'About you', exact: true }).waitFor();
     await page.locator('#app-name').fill('Synthetic saved CFP speaker');
     await page.locator('#app-bio').fill('Synthetic reusable speaker biography.');
     await page.locator('#app-affiliation').fill('Synthetic organization');
     await page.locator('#app-social').fill('https://example.test/synthetic-speaker');
     await page.locator('#app-talks').fill('Synthetic reusable speaking history.');
     await page.locator('#app-contact').fill('Email');
-    await button(page, 'Next: Proposal').click();
+    await button(page, 'Next: Talk').click();
     await proposal(page, 'Synthetic first presentation', 'one');
     await finishSteps(page, 'one', true);
     firstApplication = await receipt(page);
@@ -178,7 +174,7 @@ try {
     await page.goto(`${origin}/applications`);
     await button(page, 'New proposal').click();
     await text(page, 'Synthetic saved CFP speaker').waitFor();
-    await button(page, 'Continue').click();
+    await page.getByRole('heading', { name: 'Talk', exact: true }).waitFor();
     assert.equal(await page.locator('#app-name').count(), 0);
     for (const selector of ['#proposal-title', '#proposal-tech']) assert.equal(await page.locator(selector).inputValue(), '');
     for (const name of ['Abstract', 'Key takeaways']) assert.equal((await page.getByRole('textbox', { name, exact: true }).innerText()).trim(), '');
@@ -190,16 +186,14 @@ try {
     assert.equal(inspected.applications.length, 2);
     assert.equal(inspected.profiles.length, 1);
   });
-  await check('profile and settings updates remain shared without changing submitted presentations', async () => {
-    await page.goto(`${origin}/profile`);
-    await page.locator('#profile-name').fill('Synthetic updated CFP speaker');
-    await button(page, 'Save profile').click();
-    await text(page, 'Your speaker profile is saved.').waitFor();
+  await check('profile updates remain shared without changing submitted presentations', async () => {
     await page.goto(`${origin}/settings`);
+    await page.waitForURL(`${origin}/profile`);
+    await page.locator('#profile-name').fill('Synthetic updated CFP speaker');
     await page.locator('#contact-method').fill('Signal');
     await page.getByRole('radio', { name: 'Other', exact: true }).check();
-    await button(page, 'Save settings').click();
-    await text(page, 'Your applicant settings are saved.').waitFor();
+    await button(page, 'Save profile').click();
+    await text(page, 'Your speaker profile is saved.').waitFor();
     for (const [path, title] of [[firstApplication, 'Synthetic first presentation'], [secondApplication, 'Synthetic second presentation']]) {
       await page.goto(`${origin}${path}`);
       await page.getByRole('heading', { name: title, exact: true }).waitFor();
@@ -211,9 +205,8 @@ try {
   await check('pending edits stay private and stale or cross-origin writes fail', async () => {
     await page.goto(`${origin}${firstApplication}`);
     await button(page, 'Edit proposal').click();
-    await button(page, 'Continue').waitFor();
+    await page.locator('#proposal-title').waitFor();
     const editPath = new URL(page.url()).pathname;
-    await button(page, 'Continue').click();
     await page.locator('#proposal-title').fill('Synthetic edited presentation');
     const capture = page.waitForRequest((request) => request.url() === `${origin}/_server` && request.method() === 'POST');
     await button(page, 'Save draft').click();
@@ -239,10 +232,8 @@ try {
     await page.goto(`${origin}${firstApplication}`);
     await page.getByRole('heading', { name: 'Synthetic first presentation', exact: true }).waitFor();
     await page.goto(`${origin}${editPath}`);
-    await button(page, 'Continue').click();
     assert.equal(await page.locator('#proposal-title').inputValue(), 'Synthetic edited presentation');
-    await button(page, 'Next: Experience').click();
-    await button(page, 'Next: Expenses').click();
+    await button(page, 'Next: Experience and travel').click();
     await button(page, 'Review proposal').click();
     assert.equal(await receipt(page, 'Submit changes'), firstApplication);
     await page.goto(`${origin}${firstApplication}`);
@@ -413,10 +404,8 @@ try {
   await check('confirmed presentation edits preserve evaluated content and exclude stale review scores', async () => {
     await page.goto(`${origin}${firstApplication}`);
     await button(page, 'Edit proposal').click();
-    await button(page, 'Continue').click();
     await page.getByRole('textbox', { name: 'Abstract', exact: true }).fill('Synthetic changed abstract for current review.');
-    await button(page, 'Next: Experience').click();
-    await button(page, 'Next: Expenses').click();
+    await button(page, 'Next: Experience and travel').click();
     await button(page, 'Review proposal').click();
     assert.equal(await receipt(page, 'Submit changes'), firstApplication);
     await reviewer.page.goto(`${origin}/reviewer/${firstApplication.split('/').at(-1)}`);
@@ -534,16 +523,15 @@ try {
   await check('finalized edit recovery opens the target and Reuse copies an independent draft', async () => {
     await page.goto(`${origin}${secondApplication}`);
     await button(page, 'Edit proposal').click();
-    await button(page, 'Continue').click();
+    await page.locator('#proposal-title').waitFor();
     await command({ command: 'finalize', applicationId: secondApplication.split('/').at(-1) }, (value) => value.finalized);
     await button(page, 'Save draft').click();
     const recovery = page.getByRole('link', { name: 'Open the proposal to reuse it in a new draft.', exact: true });
     assert.equal(await recovery.getAttribute('href'), secondApplication);
     await recovery.click();
     await button(page, 'Reuse in a new proposal').click();
-    await button(page, 'Continue').waitFor();
+    await page.locator('#proposal-title').waitFor();
     reuseDraft = new URL(page.url()).pathname;
-    await button(page, 'Continue').click();
     assert.equal(await page.locator('#proposal-title').inputValue(), 'Synthetic second presentation');
     await page.locator('#proposal-title').fill('Synthetic independent reused presentation');
     await button(page, 'Save draft').click();

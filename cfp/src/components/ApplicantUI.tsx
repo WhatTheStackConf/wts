@@ -26,14 +26,14 @@ function Value(props: { label: string; value: string | null | undefined; wide?: 
 export function SpeakerSummary(props: { speaker: SpeakerProfile; email: string; editHref?: string }) {
   return <div class="cfp-stack">
     <dl class="read-only-summary"><Value label="Full name" value={props.speaker.fullName} /><Value label="Email" value={props.email} /><Value label="Affiliation" value={props.speaker.affiliation} /><Value label="Short bio" value={props.speaker.bio} wide /><Value label="Social links" value={props.speaker.socialHandles.join("\n")} wide /><Value label="Previous talks" value={props.speaker.previousTalks} wide /></dl>
-    <Show when={props.editHref}><a class="inline-link" href={props.editHref!}>Edit speaker profile</a></Show>
+    <Show when={props.editHref}><a class="inline-link" href={props.editHref!}>Edit your profile</a></Show>
   </div>;
 }
 
 export function SettingsSummary(props: { settings: ApplicantSettings; editHref?: string }) {
   return <div class="cfp-stack">
     <dl class="read-only-summary"><Value label="Preferred contact method" value={props.settings.preferredContactMethod} /><Value label="Company covers travel or accommodation" value={props.settings.companyCoverExpenses} /></dl>
-    <Show when={props.editHref}><a class="inline-link" href={props.editHref!}>Edit applicant settings</a></Show>
+    <Show when={props.editHref}><a class="inline-link" href={props.editHref!}>Edit your profile</a></Show>
   </div>;
 }
 

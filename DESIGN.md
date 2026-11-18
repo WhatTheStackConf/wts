@@ -305,7 +305,8 @@ The band shows still streaks, corner marks, a label row, and a StarzoomShavian t
 The CFP landing shows the live submission status beside the next applicant action, as glass over the lower band.
 The CFP header collapses navigation below 1024 pixels.
 Its menu exposes the current page and closes after a route change.
-Speaker profile fields form two groups: speaker details and links with speaking experience. A labeled rule separates the groups.
+Speaker profile fields form three groups: speaker details, links with speaking experience, and contact and travel. A labeled rule separates the groups.
+The profile page holds every reusable speaker field. `/settings` sends the speaker to `/profile`.
 Staff routes use the paper ground, a StarzoomShavian title, hairline panels, and underline tabs.
 Staff filters use a compact grid.
 Staff tables have hairline rules and uppercase headers, with no zebra stripes.
@@ -322,6 +323,10 @@ Empty states, retry controls, and server-enforced permissions remain part of eac
 - Reviewer: score on a 1 to 5 scale of 48px cells, with anchors at 1, 3, and 5. "Save and next" is the primary action.
 - The criterion definitions live in `CRITERION_HINTS` in `cfp/src/lib/staff-model.ts`. The CFP home page and the reviewer form use the same text.
 - On phones, admin table rows become stacked cards with labels.
+- Speaker: the proposal form has four steps: About you, Talk, Experience and travel, and Review.
+- Speaker: when the name and bio are saved, the form opens at Talk with a "Speaking as" row. The speaker can go back to About you at any time.
+- Speaker: the travel question shows in every proposal with the saved answer filled in. The answer saves to the profile.
+- A button that acts as a text link uses `.link-button`, which has the same dotted underline as copy links.
 
 ## Blog
 
