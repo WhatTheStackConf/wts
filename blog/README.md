@@ -185,7 +185,7 @@ Use [EmDash site transfer](https://docs.emdashcms.com/guides/site-transfer/) for
 
 ### Current Coolify deployment
 
-The blog deployed on 2026-09-30. The current release deployed on 2026-11-15. The existing WTS application and local account remain unchanged.
+The blog deployed on 2026-09-30. The current release deployed on 2026-11-18. The existing WTS application and local account remain unchanged.
 
 | Setting | Value |
 | --- | --- |
@@ -194,9 +194,9 @@ The blog deployed on 2026-09-30. The current release deployed on 2026-11-15. The
 | Project / environment | WTS / production |
 | Server | `hetzner-one` |
 | Service UUID | `ejzjdlbdeatc5po2ndzncgqb` |
-| Image | `wts-blog:20261115-399ee84` |
-| Server source | `/opt/wts-blog/releases/20261115-399ee84` |
-| Previous image (rollback) | `wts-blog:20261113-65214fe` |
+| Image | `wts-blog:20261118-3935a7f` |
+| Server source | `/opt/wts-blog/releases/20261118-3935a7f` |
+| Previous image (rollback) | `wts-blog:20261117-cac3227` |
 | Sessions | `SESSIONS_DIRECTORY=/app/data/sessions` |
 | Persistent volume | `ejzjdlbdeatc5po2ndzncgqb_blog-data` |
 | Volume mount | `/app/data` |
@@ -278,6 +278,10 @@ The first 2026-11-13 release created `/app/data/backups/before-release-20261113-
 The second 2026-11-13 release, with the light theme, created `/app/data/backups/before-release-20261113-65214fe.db` the same way.
 
 The 2026-11-15 release, with the phone layout, created `/app/data/backups/before-release-20261115-399ee84.db` the same way.
+
+The 2026-11-17 release, with the band alignment, created `/app/data/backups/before-release-20261117-cac3227.db` the same way.
+
+The 2026-11-18 release, with EmDash 1.5.0, created `/app/data/backups/before-release-20261118-deps.db` the same way. EmDash applied migrations 090 to 097 when the release started. To roll back, restore this backup together with the previous image.
 
 ## EmDash references
 
