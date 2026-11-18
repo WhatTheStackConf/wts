@@ -25,20 +25,11 @@ minimumReleaseAgeExclude:
   - baseline-browser-mapping@2.11.20
   - emdash
   - '@emdash-cms/*'
-  - '@better-auth/core@1.7.7'
-  - '@better-auth/drizzle-adapter@1.7.7'
-  - '@better-auth/kysely-adapter@1.7.7'
-  - '@better-auth/memory-adapter@1.7.7'
-  - '@better-auth/mongo-adapter@1.7.7'
-  - '@better-auth/oauth-provider@1.7.7'
-  - '@better-auth/prisma-adapter@1.7.7'
-  - '@better-auth/telemetry@1.7.7'
-  - better-auth@1.7.7
 overrides:
   '@babel/core': 7.29.6
   '@mapbox/node-pre-gyp>tar': 7.5.16
   'brace-expansion@>=5.0.0 <5.0.6': 5.0.6
-  prosemirror-model: 1.25.11
+  prosemirror-model: 1.25.13
   '@modelcontextprotocol/sdk@<1.32.0': 1.32.2
   'fflate@<0.7.5': 0.7.5
   'postcss-selector-parser@<6.1.5': 6.1.6
@@ -48,8 +39,8 @@ overrides:
   'zod@>=4.0.0 <4.6.6': 4.6.7
   vite@*: 'catalog:'
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@1.6.0
-  vite-plus: 1.6.0
+  vite: npm:@voidzero-dev/vite-plus-core@8.3.8000
+  vite-plus: 1.7.0
 peerDependencyRules:
   allowAny:
     - vite

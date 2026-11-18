@@ -24,17 +24,17 @@
     "import:dates": "node scripts/restore-publication-dates.mjs"
   },
   "dependencies": {
-    "@astrojs/node": "^11.1.7",
-    "@astrojs/react": "^6.0.5",
-    "astro": "^7.3.2",
-    "emdash": "^1.0.1",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
+    "@astrojs/node": "^11.1.13",
+    "@astrojs/react": "^7.1.9",
+    "astro": "^7.4.12",
+    "emdash": "^1.5.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "sanitize-html": "2.18.2",
     "sharp": "0.35.5"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.10",
+    "@astrojs/check": "^0.9.12",
     "gray-matter": "^4.0.3",
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",

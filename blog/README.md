@@ -1,6 +1,6 @@
 # WTS Blog
 
-The WhatTheStack blog uses EmDash 1.0.1 and Astro server rendering. Its canonical URL is `https://blog.wts.sh`.
+The WhatTheStack blog uses EmDash 1.5.0 and Astro server rendering. Its canonical URL is `https://blog.wts.sh`.
 
 This project uses the approved WTS 2027 public theme. The reading surface has warm-ivory pages, a light glass header, a sky band at altitude 2, dark-cyan links, and self-hosted WTS fonts. The project does not announce unconfirmed 2027 event details.
 

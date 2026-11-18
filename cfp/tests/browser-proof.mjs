@@ -74,9 +74,11 @@ try {
   const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
   page.setDefaultTimeout(20_000);
+  // Solid 2 server functions post to /_server/<function id>.
+  const isServerCall = (url) => url.startsWith(`${origin}/_server/`);
   const rpcHeaders = [];
   page.on('response', (response) => {
-    if (response.url() === `${origin}/_server`) rpcHeaders.push(response.headers());
+    if (isServerCall(response.url())) rpcHeaders.push(response.headers());
   });
   async function signIn(targetPage, email = importedEmail, password = importedPassword, returnTo = '/applications') {
     await targetPage.goto(`${origin}/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
@@ -130,10 +132,10 @@ try {
     for (const name of ['cookie', 'host', 'content-length']) delete headers[name];
     const body = JSON.parse(request.postData());
     change(body[0]);
-    return context.request.post(`${origin}/_server`, { headers, data: JSON.stringify(body) });
+    return context.request.post(request.url(), { headers, data: JSON.stringify(body) });
   }
   function staffMutation(staff, kind) {
-    return staff.waitForRequest((request) => request.url() === `${origin}/_server` && request.method() === 'POST' && request.postData()?.includes(kind));
+    return staff.waitForRequest((request) => isServerCall(request.url()) && request.method() === 'POST' && request.postData()?.includes(kind));
   }
   async function criterion(staff, prefix, value) {
     for (const name of ['relevance', 'originality', 'depth', 'clarity', 'takeaways', 'engagement']) {
@@ -208,7 +210,7 @@ try {
     await page.locator('#proposal-title').waitFor();
     const editPath = new URL(page.url()).pathname;
     await page.locator('#proposal-title').fill('Synthetic edited presentation');
-    const capture = page.waitForRequest((request) => request.url() === `${origin}/_server` && request.method() === 'POST');
+    const capture = page.waitForRequest((request) => isServerCall(request.url()) && request.method() === 'POST');
     await button(page, 'Save draft').click();
     const request = await capture;
     await text(page, 'Draft saved to your account.').waitFor();
@@ -216,7 +218,7 @@ try {
     delete headers.cookie;
     const body = JSON.parse(request.postData());
     body[0].presentation.title = 'Rejected stale presentation';
-    const stale = await context.request.post(`${origin}/_server`, { headers, data: JSON.stringify(body) });
+    const stale = await context.request.post(request.url(), { headers, data: JSON.stringify(body) });
     assert.equal(stale.status(), 200, 'The same-origin stale request must reach the domain guard.');
     assert.match(await stale.text(), /conflict/);
     assert.equal(stale.headers()['cache-control'], 'private, no-store');
@@ -224,7 +226,7 @@ try {
       const deniedHeaders = { ...headers };
       if (value === undefined) delete deniedHeaders.origin;
       else deniedHeaders.origin = value;
-      const denied = await context.request.post(`${origin}/_server`, { headers: deniedHeaders, data: JSON.stringify(body) });
+      const denied = await context.request.post(request.url(), { headers: deniedHeaders, data: JSON.stringify(body) });
       if (denied.status() === 200) assert.match(await denied.text(), /forbidden/);
       else assert.equal(denied.status(), 403);
       assert.equal(denied.headers()['cache-control'], 'private, no-store');
@@ -290,7 +292,7 @@ try {
     }
     const responses = [];
     const capture = (response) => {
-      if (response.url() === `${origin}/_server`) responses.push(response.text());
+      if (isServerCall(response.url())) responses.push(response.text());
     };
     reviewer.page.on('response', capture);
     await reviewer.page.goto(`${origin}/reviewer/${firstApplication.split('/').at(-1)}`);

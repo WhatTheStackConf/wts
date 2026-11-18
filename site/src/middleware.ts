@@ -1,13 +1,14 @@
 import { createAPIHandler } from "filesystem-routing/api";
 import routes from "virtual:file-routes";
-import { getRequestEvent } from "@solidjs/web";
+import type { StartMiddleware, StartRequestEvent } from "@solidjs/vite-plugin";
 import { Router } from "~/router";
 import { rejectPublicMcpCredentials } from "~/lib/mcp-public-http";
 
 async function stripAnonymousCredentials(
-  request: Request,
-  next: (request?: Request) => Promise<Response>,
+  event: StartRequestEvent,
+  next: () => Promise<Response>,
 ) {
+  const { request } = event;
   const pathname = new URL(request.url).pathname;
   const publicMcp = /^\/api\/mcp\/public\/?$/.test(pathname);
   if (publicMcp) {
@@ -29,17 +30,16 @@ function requestsMissingPage(request: Request, pathname: string): boolean {
 }
 
 async function preserveDeclaredStatus(
-  request: Request,
-  next: (request?: Request) => Promise<Response>,
+  event: StartRequestEvent,
+  next: () => Promise<Response>,
 ) {
+  const { request } = event;
   const pathname = new URL(request.url).pathname;
   if (/^\/(?:api|media|auth)(?:\/|$)/.test(pathname) ||
       ["/readyz", "/login", "/register", "/forgot-password"].includes(pathname.replace(/\/$/, ""))) return next();
-  const missingPage = requestsMissingPage(request, pathname);
-  const event = getRequestEvent();
-  if (missingPage && event) event.response.status = 404;
+  if (requestsMissingPage(request, pathname)) event.response.status = 404;
   const response = await next();
-  const declaredStatus = event?.response.status;
+  const declaredStatus = event.response.status;
   if (!declaredStatus || declaredStatus === response.status) return response;
   return new Response(response.body, {
     status: declaredStatus,
@@ -48,11 +48,11 @@ async function preserveDeclaredStatus(
 }
 
 async function protectAccountResponse(
-  request: Request,
-  next: (request?: Request) => Promise<Response>,
+  event: StartRequestEvent,
+  next: () => Promise<Response>,
 ) {
   const response = await next();
-  const pathname = new URL(request.url).pathname;
+  const pathname = new URL(event.request.url).pathname;
   if (/^\/(?:user|auth)(?:\/|$)/.test(pathname) ||
     ["/login", "/register", "/forgot-password"].includes(pathname.replace(/\/$/, ""))) {
     response.headers.set("Cache-Control", "private, no-store");
@@ -63,4 +63,5 @@ async function protectAccountResponse(
   return response;
 }
 
-export default [stripAnonymousCredentials, protectAccountResponse, preserveDeclaredStatus, createAPIHandler(routes)];
+const middleware: StartMiddleware[] = [stripAnonymousCredentials, protectAccountResponse, preserveDeclaredStatus, createAPIHandler(routes)];
+export default middleware;
