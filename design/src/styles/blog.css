@@ -1,4 +1,5 @@
 /* The blog global stylesheets in the order blog/src/layouts/Base.astro imports them. */
+@import "./blog-base.css";
 @import "../../../blog/src/styles/tokens.css";
 @import "../../../blog/src/styles/theme.css";
 @import "../../../blog/src/styles/chrome.css";

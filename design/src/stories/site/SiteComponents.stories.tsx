@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
+import { AccountProfile } from "../../../../site/src/components/AccountProfile";
 import { AccountLoading, AccountSheet, AccountSignIn, AccountUnavailable } from "../../../../site/src/components/AccountSheet";
 import NewsletterPopup from "../../../../site/src/components/NewsletterPopup";
 import { PublicFooter } from "../../../../site/src/components/PublicFooter";
@@ -6,6 +7,18 @@ import { PublicHeader } from "../../../../site/src/components/PublicHeader";
 import { SupportBand } from "../../../../site/src/components/PublicPageShell";
 import { SkopjeSkyline } from "../../../../site/src/components/landing/SkopjeSkyline";
 import { SiteSurface } from "../../surfaces";
+// Route and scene CSS: the /user routes and LaunchScene import these themselves.
+import "../../../../site/src/styles/account.css";
+import "../../../../site/src/styles/launch-scene.css";
+
+type Account = Parameters<typeof AccountProfile>[0]["account"];
+const SAMPLE_ACCOUNT: Account = {
+  wtsUserId: "sample-user-01",
+  editionId: "2027",
+  isAdmin: false,
+  accountUrl: "https://auth.wts.sh/account",
+  profile: { version: 1, wtsUserId: "sample-user-01", name: "Ana Petrova", avatarUrl: null, preferredLanguage: "en", username: "ana", emailVisibility: false, revision: 1 },
+};
 
 const meta = { title: "Site/Components", parameters: { app: "site" } } satisfies Meta;
 export default meta;
@@ -21,6 +34,17 @@ export const HeaderPhone: Story = {
   render: Header.render,
   globals: { viewport: { value: "mobile2" } },
   parameters: { viewport: { options: { mobile2: { name: "Phone 390", styles: { width: "390px", height: "760px" } } } } },
+};
+
+export const HeaderPhoneMenu: Story = {
+  name: "Header, phone menu open",
+  render: Header.render,
+  globals: HeaderPhone.globals,
+  parameters: HeaderPhone.parameters,
+  play: async ({ canvasElement }) => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    canvasElement.querySelector<HTMLButtonElement>(".orbit-menu-toggle")?.click();
+  },
 };
 
 export const HeaderNight: Story = {
@@ -41,25 +65,54 @@ export const BandLost: Story = {
   render: () => <SiteSurface><SupportBand altitude={2} label="WTS 2027 · 404" variant="lost"><h1 class="support-band-title">This page isn't here.</h1><nav class="support-actions" aria-label="Not found navigation"><a href="/">Home</a><a href="/#archive">Past editions</a></nav></SupportBand></SiteSurface>,
 };
 
+/** /user signed in. Every account page is one ALT 0 sheet with a datum row and one hairline panel. */
 export const Account: Story = {
-  render: () => <SiteSurface><AccountSheet headingId="sb-account" title="Your WTS account"><AccountSignIn headingId="sb-account" /></AccountSheet></SiteSurface>,
+  render: () => <SiteSurface><AccountSheet headingId="sb-account" title="Your account"><p>Signed in as Ana Petrova.</p><div class="account-actions"><a class="btn btn-primary" href="#">View your profile</a></div></AccountSheet></SiteSurface>,
 };
 
-export const AccountStates: Story = {
-  name: "Account, loading and unavailable",
-  render: () => <SiteSurface><AccountSheet headingId="sb-account-states" title="Your WTS account"><AccountLoading label="Loading your account" /><AccountUnavailable onRetry={() => undefined} /></AccountSheet></SiteSurface>,
+export const AccountProfilePage: Story = {
+  name: "Account, profile",
+  render: () => <SiteSurface><AccountProfile account={SAMPLE_ACCOUNT} /></SiteSurface>,
+};
+
+export const AccountSignedOut: Story = {
+  name: "Account, signed out",
+  render: () => <SiteSurface><AccountSignIn headingId="sb-sign-in" /></SiteSurface>,
+};
+
+export const AccountLoadingState: Story = {
+  name: "Account, loading",
+  render: () => <SiteSurface><AccountLoading label="Loading your account..." /></SiteSurface>,
+};
+
+export const AccountUnavailableState: Story = {
+  name: "Account, unavailable",
+  render: () => <SiteSurface><AccountUnavailable onRetry={() => undefined} /></SiteSurface>,
 };
 
 /** The dialog opens through the same "wts:open-newsletter" event the page uses. */
 export const Newsletter: Story = {
-  render: () => <SiteSurface><div style={{ height: "60vh" }} /><NewsletterPopup /></SiteSurface>,
+  render: () => <div class="supporting-shell"><main class="support-main" id="main-content"><div style={{ height: "60vh" }} /></main><NewsletterPopup /></div>,
   play: async () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     window.dispatchEvent(new CustomEvent("wts:open-newsletter"));
   },
 };
 
-/** Hairline elevation of four Skopje buildings plus the future city layer. Motion stops under reduced motion. */
+/** The static countdown frame of the landing: sky, clouds, the Skopje skyline and the ground datum.
+ * The landing paints WebGL over this frame. Motion stops under reduced motion. */
 export const Skyline: Story = {
-  render: () => <div class="launch-scene" style={{ position: "relative", height: "420px", color: "var(--color-orbit-ink)", background: "var(--alt-0)", overflow: "hidden" }}><div style={{ position: "absolute", inset: "auto 0 0 0" }}><SkopjeSkyline /></div></div>,
+  name: "Launch countdown, static",
+  render: () => <div class="launch-scene" data-mode="static" style={{ position: "relative", height: "100vh" }}>
+    <div class="launch-scene__frame">
+      <div class="launch-scene__sky" />
+      <div class="launch-scene__clouds"><span class="launch-scene__cloud launch-scene__cloud--cirrus" /><span class="launch-scene__cloud launch-scene__cloud--far" /><span class="launch-scene__cloud launch-scene__cloud--near" /></div>
+      <div class="launch-scene__ground">
+        <span class="launch-scene__cloud launch-scene__cloud--bank" />
+        <SkopjeSkyline class="launch-scene__skyline" />
+        <span class="launch-scene__ground-line" />
+        <span class="launch-scene__datum">Skopje ▽ +240 m</span>
+      </div>
+    </div>
+  </div>,
 };

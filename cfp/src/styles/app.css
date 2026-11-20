@@ -313,6 +313,13 @@ h4 {
   align-items: center;
 }
 
+/* Inside a sentence the link stays on the text line. WCAG 2.5.8 exempts inline links,
+ * and a 44px box pushed the text below the status square of an alert. */
+:is(p, li) > .inline-link {
+  display: inline;
+  min-height: 0;
+}
+
 /* ----------------------------------------------------------------- shell */
 .cfp-app {
   display: flex;
@@ -1658,6 +1665,10 @@ textarea.control {
   position: relative;
   isolation: isolate;
   display: grid;
+  /* DaisyUI .alert flows columns. A notice stacks message, field list and action. */
+  grid-auto-flow: row;
+  grid-template-columns: minmax(0, 1fr);
+  text-align: start;
   align-items: start;
   justify-items: start;
   gap: 0.75rem;
@@ -1711,6 +1722,7 @@ textarea.control {
 .error-list {
   margin: 0;
   padding-left: 1.25rem;
+  list-style: square;
 }
 
 .empty-state {

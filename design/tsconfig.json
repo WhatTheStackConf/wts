@@ -11,7 +11,7 @@
     ],
     "paths": {
       "~/lib/account-model": [
-        "../cfp/src/lib/account-model"
+        "./src/types/account-model"
       ],
       "~/*": [
         "../site/src/*",

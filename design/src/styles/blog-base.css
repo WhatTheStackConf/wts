@@ -1,0 +1,72 @@
+/* Copy of the <style is:global> block in blog/src/layouts/Base.astro. Change both together.
+ * Storybook has no Astro renderer, so this base layer does not load on its own. */
+/*
+ * Layer order: "base" sits below the unlayered theme.css and chrome.css,
+ * so those always win regardless of bundle order.
+ */
+@layer base;
+
+@layer base {
+	*:where(:not([class*="emdash"]):not([class*="ec-"])),
+	*:where(:not([class*="emdash"]):not([class*="ec-"]))::before,
+	*:where(:not([class*="emdash"]):not([class*="ec-"]))::after {
+		box-sizing: border-box;
+	}
+
+	body,
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6,
+	p,
+	ul,
+	ol,
+	figure,
+	blockquote,
+	dl,
+	dd {
+		margin: 0;
+	}
+
+	ul,
+	ol {
+		padding: 0;
+	}
+
+	body {
+		font-family: var(--font-body);
+		font-size: var(--font-size-base);
+		line-height: var(--leading-relaxed);
+		color: var(--color-text);
+		background: var(--color-bg);
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+		min-height: 100vh;
+	}
+
+	a:where(:not([class*="emdash"]):not([class*="ec-"])) {
+		color: var(--color-brand);
+		text-decoration: none;
+		transition: color var(--transition-fast);
+	}
+
+	img {
+		max-width: 100%;
+		height: auto;
+		display: block;
+	}
+
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		font-family: var(--font-heading);
+		line-height: var(--leading-tight);
+		font-weight: var(--font-weight-heading);
+		letter-spacing: var(--tracking-snug);
+	}
+}

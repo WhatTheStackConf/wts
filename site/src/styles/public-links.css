@@ -98,9 +98,16 @@
   clip-path: var(--ctl-plate);
 }
 
-:is(.orbit-nav-cta, .orbit-button):disabled {
+/* Disabled plates turn to surface with muted text, as in the kit. DaisyUI .btn:disabled
+ * sets its own fill, border and text colour, so they are set again here for .btn plates. */
+:is(.orbit-nav-cta, .orbit-button, .newsletter-submit, .supporting-shell .support-main .btn-primary):is(:disabled, [aria-disabled="true"]) {
   --ctl-fill: var(--color-orbit-surface);
+  --ctl-ink: var(--color-orbit-muted);
+  border-color: transparent;
+  background-color: transparent;
+  box-shadow: none;
   color: var(--color-orbit-muted);
+  -webkit-text-fill-color: var(--color-orbit-muted);
   cursor: not-allowed;
 }
 

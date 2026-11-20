@@ -34,7 +34,7 @@ export const Fields: Story = {
 };
 
 export const Notices: Story = {
-  render: () => <CfpSurface staff><div class="sb-page">
+  render: () => <CfpSurface><div class="sb-page">
     <h1>Notices</h1>
     <p>Notices are quiet. Mail appears only as a failure alert.</p>
     <div class="cfp-stack" style={{ "max-width": "46rem" }}>

@@ -26,20 +26,20 @@ const story = (n: number): Story => {
 
 export const Plate = story(1);
 export const Frame = story(2);
-export const IconButton = story(3);
+export const IconButton: Story = { ...story(3), name: "Icon button" };
 export const Links = story(4);
 export const Fields = story(5);
 export const Choices = story(6);
 export const Fieldset = story(7);
 export const Tabs = story(8);
 export const Stepper = story(9);
-export const ChipsAndTags = story(10);
+export const ChipsAndTags: Story = { ...story(10), name: "Chips and tags" };
 export const Notice = story(11);
 export const Table = story(12);
 export const Pagination = story(13);
 export const Disclosure = story(14);
 export const Menu = story(15);
-export const TooltipAndKbd = story(16);
+export const TooltipAndKbd: Story = { ...story(16), name: "Tooltip and kbd" };
 export const Progress = story(17);
-export const SkipLink = story(18);
+export const SkipLink: Story = { ...story(18), name: "Skip link" };
 export const Dialog = story(19);

@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
 import type { StorybookConfig } from "storybook-solidjs-vite";
+
+const managerHeadExtra = readFileSync(new URL("./manager-head.html", import.meta.url), "utf8");
 
 const config: StorybookConfig = {
   framework: { name: "storybook-solidjs-vite", options: { docgen: false } },
@@ -10,6 +13,9 @@ const config: StorybookConfig = {
     { from: "../../auth/public", to: "/assets" },
   ],
   core: { disableTelemetry: true },
+  /* Stories take no args, so the args panels stay empty. Paper is the only page background. */
+  features: { controls: false, actions: false, interactions: false, backgrounds: false },
+  managerHead: (head) => `${head ?? ""}${managerHeadExtra}`,
 };
 
 export default config;
