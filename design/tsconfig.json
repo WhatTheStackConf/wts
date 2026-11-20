@@ -1,0 +1,27 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "@solidjs/web",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": [
+      "node",
+      "vite/client"
+    ],
+    "paths": {
+      "~/lib/account-model": [
+        "../cfp/src/lib/account-model"
+      ],
+      "~/*": [
+        "../site/src/*",
+        "../cfp/src/*"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    ".storybook",
+    "vite.config.ts"
+  ]
+}

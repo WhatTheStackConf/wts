@@ -1,0 +1,4 @@
+/* The CFP app stylesheet, as cfp/src/App.tsx imports it. */
+@import "../../../cfp/src/styles/app.css";
+@source "../../../cfp/src";
+@source "../stories/cfp";

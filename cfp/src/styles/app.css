@@ -3,7 +3,7 @@
  * Applicant routes sit at ALT 3 of the altitude ramp: a still sky band under a light glass header.
  * Staff routes sit on paper with no band. Panels are hairlines with corner marks. Radius is 0.
  *
- * Controls use the WTS 2027 flight kit (UI_Moodboard/source/flight-kit/flight-kit.css), copied onto
+ * Controls use the WTS 2027 flight kit (design/src/flight-kit/flight-kit.css), copied onto
  * this app's own selectors. Plates and frames cut the top-right and bottom-left corners on
  * pseudo-elements, so the 3px amber focus outline stays a full rectangle. Hover and focus print a
  * 3px dot screen, press prints 2px, and the dots always move away from the text colour.

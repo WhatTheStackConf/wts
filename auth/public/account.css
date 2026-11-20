@@ -2,7 +2,7 @@
  * Paper ground, light glass header, one narrow form column without an outer card.
  * Palette values are copied from site/tokens.css (orbit tokens). Keep them in sync.
  *
- * Controls use the WTS 2027 flight kit (UI_Moodboard/source/flight-kit/flight-kit.css),
+ * Controls use the WTS 2027 flight kit (design/src/flight-kit/flight-kit.css),
  * copied onto the existing selectors. Invariants:
  *   - Square corners. Plates and frames cut the top-right and bottom-left corners.
  *   - Fills and frames live on ::before/::after or background layers, never clip-path on a

@@ -1,0 +1,38 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Introduction" />
+
+# WTS 2027 design system
+
+This Storybook shows the design system of the four 2027 apps: site, CFP, auth and blog. The 2026 app is not part of it.
+
+## What you see here
+
+- **Foundations** show the orbit tokens, the altitude ramp, type, motion and the canonical flight kit.
+- **Site** and **CFP** show the real Solid components of those apps, with each app's own CSS.
+- **Auth** shows the real page HTML that the auth server renders.
+- **Blog** shows the blog's global controls. Storybook has no Astro renderer.
+
+Each story loads only the stylesheet of its own app, because each app has its own DaisyUI theme.
+
+## Rules that every app obeys
+
+- Light theme: warm ivory paper, ink text, and one accent spent on actions and state.
+- Navy appears only at orbit on the landing page.
+- StarzoomShavian for page titles. Space Grotesk for all other text.
+- Square corners. Plates and frames cut the top-right and bottom-left corners.
+- One 3px amber focus outline. Hover and focus print a dot screen that never lowers contrast.
+- Motion moves in steps on a 100 BPM clock. Reduced motion keeps every end state.
+- Status never uses color alone.
+
+The full rules are in `DESIGN.md` at the repository root. When a rule here and `DESIGN.md` differ, `DESIGN.md` is correct.
+
+## Change the system
+
+Each app keeps its own copy of the orbit tokens and the control recipes. Change these copies together:
+
+- Tokens: `site/tokens.css`, `blog/tokens.css`, the token block in `cfp/src/styles/app.css`, and the variables in `auth/public/account.css`.
+- Controls: `site/src/styles/public-links.css` and `newsletter.css`, `auth/public/account.css`, `blog/src/styles/controls.css`, `cfp/src/styles/app.css`.
+- The reference recipes: `design/src/flight-kit/flight-kit.css`.
+
+Run Storybook with `pnpm --filter @wts/design storybook`.

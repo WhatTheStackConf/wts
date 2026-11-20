@@ -3,6 +3,7 @@ packages:
   - blog
   - site
   - cfp
+  - design
 injectWorkspacePackages: true
 resolvePeersFromWorkspaceRoot: false
 dedupePeerDependents: false

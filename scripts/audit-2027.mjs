@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-export const APPS_2027 = ["auth", "blog", "cfp", "site"];
+export const APPS_2027 = ["auth", "blog", "cfp", "design", "site"];
 const SEVERE = new Set(["high", "critical"]);
 
 // Accept an advisory only when no patched release exists. Each entry expires, and then the advisory blocks again.

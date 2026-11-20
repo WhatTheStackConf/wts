@@ -1,4 +1,4 @@
-# Verification for the 2027 apps: site, cfp, auth, and blog.
+# Verification for the 2027 apps: site, cfp, auth, and blog, plus the design Storybook.
 # The 2026 root app deploys from security/wts2026-runtime-20261025 and keeps
 # its own suites in verification.yml on master.
 name: Verification 2027
@@ -20,7 +20,7 @@ concurrency:
 env:
   # Match the node:24.22.1 base image of the 2027 Dockerfiles.
   NODE_VERSION: 24.22.1
-  APPS: --filter @wts/site --filter @wts/cfp --filter @wts/auth --filter @wts/blog
+  APPS: --filter @wts/site --filter @wts/cfp --filter @wts/auth --filter @wts/blog --filter @wts/design
 
 jobs:
   quality:
@@ -97,7 +97,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [site, cfp, auth, blog]
+        app: [site, cfp, auth, blog, design]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Coolify builds these Dockerfiles from the repository root.
