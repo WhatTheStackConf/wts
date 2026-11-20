@@ -115,9 +115,20 @@ The `/` landing page is the launch. Supporting pages use the light shell below. 
 - Keep feedback invitations, the protected speaker guide, mission redemption, and private operational routes. MC question queues use `/mc?session=<slug>`.
 - Remove navigation and admin preview links to retired pages. Keep the historical edition link at `https://2026.wts.sh`.
 
+## Storybook — WTS 2027
+
+The `design/` workspace package (`@wts/design`) is a Storybook of the 2027 design system. It is published at `https://design.wts.sh`.
+
+- Run it locally with `pnpm --filter @wts/design storybook` on port 6007.
+- Stories render the real code. Site and CFP stories mount the real Solid components. Auth stories render the real `renderPage()` HTML. Blog stories use the blog's global CSS with markup from its templates, because Storybook has no Astro renderer.
+- Each story sets `parameters.app` to `site`, `cfp`, `auth`, or `blog`. The preview loads only that app's CSS, because each app has its own DaisyUI theme.
+- Both Solid apps use the `~` alias. `design/vite.config.ts` resolves it from the importing file's app.
+- Add a story when you add a shared component or control. The CI quality matrix builds Storybook, and a broken story fails the build.
+- Stories use invented sample data. Never put real speaker or attendee data in a story.
+
 ## Flight controls — WTS 2027
 
-All 2027 apps (site, auth, blog, cfp) use one control language. The reference recipes are in `flight-kit.css`, with a specimen page. Each app copies the recipes onto its own class names: `site/src/styles/public-links.css`, `auth/public/account.css`, `blog/src/styles/controls.css`, and `cfp/src/styles/app.css`. Change these copies together.
+All 2027 apps (site, auth, blog, cfp) use one control language. The reference recipes are in `design/src/flight-kit/flight-kit.css`, and the Storybook "Foundations/Flight kit" pages show each family. Each app copies the recipes onto its own class names: `site/src/styles/public-links.css`, `auth/public/account.css`, `blog/src/styles/controls.css`, and `cfp/src/styles/app.css`. Change these copies together.
 
 - Primary actions are notched plates. The top-right and bottom-left corners have a 9px cut. Small items such as tags and pagination use a 6px cut.
 - Secondary actions, icon buttons, tags, and pagination are 1px notched frames. A pressed tool (`aria-pressed="true"`) and the current page become plates.

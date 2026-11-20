@@ -1,0 +1,2 @@
+/* auth serves this file as a static stylesheet. Its fonts load from /assets/fonts. */
+@import "../../../auth/public/account.css";

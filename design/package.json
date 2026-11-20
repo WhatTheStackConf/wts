@@ -1,0 +1,31 @@
+{
+  "name": "@wts/design",
+  "private": true,
+  "type": "module",
+  "description": "Storybook for the WTS 2027 design system. It renders the real CSS and components of site, cfp, auth and blog.",
+  "engines": { "node": ">=24.15.0" },
+  "scripts": {
+    "storybook": "storybook dev --port 6007 --host 127.0.0.1 --no-open",
+    "build": "storybook build --quiet --output-dir storybook-static",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test server.test.mjs"
+  },
+  "devDependencies": {
+    "@solidjs/meta": "^2.0.0",
+    "@solidjs/router": "^2.0.0",
+    "@solidjs/vite-plugin": "^3.0.0",
+    "@solidjs/web": "^2.0.0",
+    "@storybook/addon-a11y": "10.6.7",
+    "@storybook/addon-docs": "10.6.7",
+    "@tailwindcss/typography": "^0.5.20",
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/node": "^24.19.2",
+    "daisyui": "^5.8.1",
+    "solid-js": "^2.0.0",
+    "storybook": "10.6.7",
+    "storybook-solidjs-vite": "10.7.4",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "catalog:"
+  }
+}

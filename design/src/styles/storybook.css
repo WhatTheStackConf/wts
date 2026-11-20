@@ -1,0 +1,32 @@
+/* Every app paints paper behind its pages. The site DaisyUI base theme is dark, so set it here. */
+:root:root, :root:root body { background: var(--color-orbit-paper); color: var(--color-orbit-ink); }
+/* Layout for specimen pages only. It never styles app components. */
+.sb-page { box-sizing: border-box; max-width: 1320px; margin: 0 auto; padding: 2rem 1.5rem 4rem; color: var(--color-orbit-ink); font-family: var(--font-orbit-body); }
+.sb-page h1 { margin: 0 0 0.5rem; font-family: var(--font-orbit-display); font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; }
+.sb-page > p { max-width: 68ch; margin: 0 0 2rem; color: var(--color-orbit-muted); }
+.sb-specimen { display: grid; grid-template-columns: minmax(10rem, 16rem) minmax(0, 1fr); gap: 1.5rem; padding: 1.25rem 0; border-top: 1px solid var(--color-orbit-hair); }
+.sb-specimen-label { display: grid; gap: 0.25rem; align-content: start; font-size: 0.8125rem; }
+.sb-specimen-label span { color: var(--color-orbit-muted); }
+.sb-specimen-body { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; min-width: 0; }
+.sb-swatch { display: grid; gap: 0.375rem; width: 9.5rem; font-size: 0.75rem; }
+.sb-swatch-chip { height: 4rem; border: 1px solid var(--color-orbit-hair-strong); }
+.sb-swatch code { overflow-wrap: anywhere; color: var(--color-orbit-muted); font-size: 0.6875rem; }
+.sb-ramp { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); width: 100%; border: 1px solid var(--color-orbit-hair-strong); }
+.sb-ramp > div { display: grid; align-content: end; gap: 0.25rem; min-height: 9rem; padding: 0.625rem; font-size: 0.75rem; }
+.sb-ramp > div[data-dark] { color: var(--color-orbit-paper); }
+.sb-beat { width: 3rem; height: 3rem; background: var(--color-orbit-accent); }
+@media (prefers-reduced-motion: no-preference) {
+  .sb-beat { animation: sb-pulse var(--sb-dur) steps(2, jump-none) infinite alternate; }
+  @keyframes sb-pulse { to { opacity: 0.25; } }
+}
+@media (max-width: 720px) { .sb-specimen { grid-template-columns: minmax(0, 1fr); } .sb-ramp { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Specimen layout from the original flight-kit page. */
+.sp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+.sp-night { padding: 1.25rem; background: var(--launch-sky-night); }
+.sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 1.25rem 1.5rem; align-items: start; }
+.sp-grid label:not(.fk-choice) { display: grid; }
+.sp-wide { grid-column: 1 / -1; }
+.sp-stack { display: grid; gap: 0.75rem; max-width: 40rem; }
+.sp-copy { max-width: 60ch; margin: 0; }
+.sp-dialog-title { margin: 0 0 0.5rem; font: 400 2rem/1 var(--font-orbit-display); }
+.sb-kit { display: grid; gap: 1rem; }
