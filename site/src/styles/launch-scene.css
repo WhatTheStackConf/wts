@@ -325,6 +325,21 @@
   }
 }
 
+/* Very short phones: the ground is on its 3rem floor, so the skyline itself must be lower.
+ * 200vw instead of 230vw makes the drawing 13% lower. The lockup is also 12px higher. */
+@media (max-width: 767px) and (max-height: 600px) {
+  .launch-scene {
+    --launch-skyline-width: 200vw;
+    --launch-hero-end: 468px;
+  }
+}
+
+@media (min-width: 390px) and (max-width: 767px) and (max-height: 600px) {
+  .launch-scene {
+    --launch-hero-end: 428px;
+  }
+}
+
 /* Cloud drift on the bar clock. Nearer planes move faster. */
 @media (prefers-reduced-motion: no-preference) {
   .launch-scene__cloud--cirrus::before {
