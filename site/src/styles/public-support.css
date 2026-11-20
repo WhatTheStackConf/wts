@@ -313,11 +313,24 @@ body:has(:is(.landing-2027, .supporting-shell)) {
 .support-prose .prose > h3::before {
   color: var(--color-orbit-muted);
   content: counter(support-section, decimal-leading-zero);
+  content: counter(support-section, decimal-leading-zero) / "";
   font-size: 0.8125rem;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.14em;
 }
-.support-prose .prose > h3[data-index]::before { content: attr(data-index); }
+.support-prose .prose > h3[data-index]::before {
+  content: attr(data-index);
+  content: attr(data-index) / "";
+}
+/* Screen readers announce this copy of the section number. The counter above is decorative. */
+.support-prose .support-index {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .support-prose .prose > h4 {
   margin: 1.5rem 0 0.5rem;
   font-family: var(--font-orbit-body);

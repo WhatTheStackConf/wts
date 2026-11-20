@@ -201,21 +201,33 @@ const publishDate = publishedTime?.slice(0, 10) ?? null;
 		display: none;
 	}
 
-	/* One column: the table of contents gives way to the reading column, as before. */
+	/* One column: the table of contents moves above the reading column as a collapsed panel.
+	 * Sidebar widgets stay hidden, as before. A post with no headings hides the whole sidebar. */
 	@media (max-width: 1100px) {
 		.article-grid,
 		.article-grid:not(:has(.article-hero)) {
 			grid-template-areas:
 				"cover"
+				"toc"
 				"content";
 			grid-template-columns: minmax(0, 46rem);
 		}
 
 		.article-grid:not(:has(.article-hero)) {
-			grid-template-areas: "content";
+			grid-template-areas:
+				"toc"
+				"content";
 		}
 
-		.article-sidebar {
+		.sidebar-sticky {
+			position: static;
+		}
+
+		.sidebar-widgets {
+			display: none;
+		}
+
+		.article-sidebar:not(:has(.toc:not([hidden]))) {
 			display: none;
 		}
 	}

@@ -17,10 +17,12 @@ const sectionNumber = /^(\d+)\.\s+/;
 // The band renders the page title, so the Markdown h1 would repeat it.
 const BandTitle = () => null;
 
+// The section number moves into a decorative CSS counter. A visually hidden copy keeps it in the heading's accessible name.
 function SectionHeading(props: { children?: JSX.Element }) {
     const match = () => (typeof props.children === "string" ? sectionNumber.exec(props.children) : null);
     return (
         <h3 data-index={match()?.[1].padStart(2, "0")}>
+            <Show when={match()}>{(found) => <span class="support-index">{`${found()[1]}. `}</span>}</Show>
             {match() ? (props.children as string).slice(match()![0].length) : props.children}
         </h3>
     );

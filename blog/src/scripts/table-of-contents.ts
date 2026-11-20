@@ -78,3 +78,24 @@ export function buildToc(): void {
 	if (CSS.supports("scroll-target-group: auto")) syncNative(list, links);
 	else observeHeadings(list, links, headings);
 }
+
+const WIDE = "(min-width: 1101px)";
+
+/**
+ * Below 1101px the list sits above the post in a collapsed disclosure.
+ * Wide screens keep it open, because the sidebar has no summary to toggle it.
+ * A tap on a section link closes the disclosure, so the jump shows the section.
+ */
+export function setupTocDisclosure(): void {
+	const details = document.querySelector<HTMLDetailsElement>(".toc-details");
+	if (!details) return;
+	const wide = window.matchMedia(WIDE);
+	const apply = () => {
+		details.open = wide.matches;
+	};
+	apply();
+	wide.addEventListener("change", apply);
+	details.addEventListener("click", (event) => {
+		if (!wide.matches && (event.target as Element).closest(LINK_SELECTOR)) details.open = false;
+	});
+}

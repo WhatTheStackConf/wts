@@ -965,6 +965,14 @@ body:has(.landing-2027) {
   }
 }
 
+/* Very short phones (320x568): the lockup sits another 0.75rem higher.
+ * launch-scene.css lowers --launch-hero-end by the same 12px and narrows the skyline. */
+@media (max-width: 767px) and (max-height: 600px) {
+  .landing-2027 {
+    --orbit-brand-top: calc(var(--orbit-cover-compact) + clamp(3rem, 10vw, 4rem));
+  }
+}
+
 @supports (animation-timeline: scroll()) and (animation-range: 0% 100%) {
   @media (max-width: 767px) and (prefers-reduced-motion: no-preference) {
     .orbit-cover-stage > .orbit-header .orbit-nav {
@@ -1158,6 +1166,28 @@ body:has(.landing-2027) {
 
   .orbit-signup-cta p {
     font-size: 0.95rem;
+  }
+}
+
+/* Short phones: header, signup panel and footer must fit one window at maximum scroll.
+ * At 375x667 the default spacing needs 664px, so only the panel spacing shrinks. */
+@media (max-width: 767px) and (max-height: 700px) {
+  .orbit-signup {
+    --orbit-signup-gap: 0.75rem;
+  }
+
+  .orbit-signup-panel {
+    padding: 1rem 1rem 0.875rem;
+  }
+
+  .orbit-signup-label {
+    margin-bottom: 0.5rem;
+  }
+
+  .orbit-signup-cta {
+    row-gap: 0.75rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
   }
 }
 

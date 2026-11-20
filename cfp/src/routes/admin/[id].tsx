@@ -174,7 +174,7 @@ export default function AdminProposalPage() {
     <div class="wide"><dt>Abstract</dt><dd><div class="rich-html" innerHTML={value.abstract || "<p>Not provided</p>"} /></dd></div>
     <div class="wide"><dt>Key takeaways</dt><dd><div class="rich-html" innerHTML={value.keyTakeaways || "<p>Not provided</p>"} /></dd></div>
     <div class="wide"><dt>Technical requirements</dt><dd>{value.technicalRequirements || "Not provided"}</dd></div>
-    <div class="wide"><dt>Previous presentation</dt><dd>{value.previousPresentation || "Not provided"}</dd></div>
+    <div class="wide"><dt>Given this talk before</dt><dd>{value.previousPresentation || "Not provided"}</dd></div>
     <div class="wide"><dt>Organizer notes</dt><dd>{value.organizerNotes || "Not provided"}</dd></div>
     <div class="wide"><dt>Additional information</dt><dd>{value.additionalInfo || "Not provided"}</dd></div>
   </dl>;

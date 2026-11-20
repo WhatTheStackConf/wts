@@ -45,27 +45,53 @@ Use existing OKLCH tokens in `src/styles/app.css` and DaisyUI theme tokens befor
 
 ## Public Landing Variant — WTS 2027
 
-The `/` landing page is the approved, unchanged public design. Retained legal pages, public not-found responses, authentication/recovery/verification, and basic-profile routes use the compact supporting-page shell below. Private operational screens keep the established dark theme.
+The `/` landing page is the launch. Supporting pages use the light shell below. Private operational screens keep the established dark theme.
 
-- Direction: hopeful space exploration with restrained cyberpunk character. One full-width starry navy cover unites navigation, original hero copy, and the planetary scene. The measured `.launch-scene` host owns its opaque navy sky, nebula, and stars. Cyan-blue atmosphere and daylight remain inside the curved planet, whose lower body fades smoothly into warm-ivory paper. Preserve the original WTS logo artwork and derive the palette from it, used provisionally until a 2027 logo is supplied.
-- Starfield: header, hero, and static navigation share one cover-wide scale and origin so the star pattern does not restart beneath the header. Preserve the independent subtle twinkles and the scene's lower fade.
-- Preserve the logo artwork. Use its cyan family for readable actions, with small warm accents and warm ivory rather than pure-white light surfaces; do not carry over neon glows or gradient text. The hero/header foreground is warm ivory over navy; navigation actions use bright cyan with dark ink.
-- Keep self-hosted StarzoomShavian for display and Space Grotesk for body/UI. Headings stay upright; practical information stays readable.
-- Composition: foreground hero copy over a full-width planetary horizon, conference/community introduction, explicitly dated previous editions, and a statement footer. The scene belongs to the hero's background rather than a separate illustration column. Avoid fake cockpit controls, telemetry, and invented metrics.
-- Primary action: conference updates through the existing Listmonk newsletter integration. The light dialog uses native modal focus management and retains pending/error/success states.
-- Use an icon-only DaisyUI ghost button in the newsletter dialog's top-right corner. Keep its 48px target, accessible close label, visible focus, and neutral hover fill. Reserve heading space without a separate close-button row.
-- Shared interactions live in `src/styles/public-links.css`. Public buttons use flat cyan or ivory surfaces without resting shadows. Arrows inherit the text color and have no background, divider, circle, or separate pressed surface.
-- Navigation, inline actions, edition rows, and footer links share underline feedback and visible keyboard focus. Fine-pointer hover brightens cyan buttons but preserves ivory buttons. Reduced motion removes arrow travel. Footer links retain 44×44px minimum targets.
-- All edition rows use the same padding and background. The year, description, and outbound arrow align across editions.
-- Content: 2027 date, location, venue, programme, speakers, partners, and prices are not confirmed. Do not reuse 2026 facts as 2027 announcements.
-- Implementation: homepage styles and uniquely named tokens in `tokens.css`. The unified cover uses a 90px desktop / 116px mobile compact header. In browsers supporting native scroll timelines when motion is allowed, the server-rendered resting navigation is already centered immediately beneath the 2027 lockup, with the same CSS geometry used after hydration; it travels right/up into the compact header opposite the brand, reversing on scroll-up. Unsupported browsers and reduced-motion use a readable, fixed compact-header navigation fallback while the centered lockup remains visible below it. The expanded height is measured from the rendered header and hero after fonts settle, then reserved in flow so the rest of the page does not jump. A compact navy starfield plane belongs to the cover header row; the measured `.launch-scene` host owns the opaque navy sky and the self-hosted static 1200×720 WebP nebula on its own CSS background plane at 0.43 opacity with `cover` sizing and the existing crop. Header and cover continue to share the inherited `--launch-starfield` treatment.
-- Cover transition: `Landing2027.tsx` measures expanded cover and compact brand/navigation geometry on mount, after `document.fonts.ready`, on resize, and when reduced-motion preference changes. It reserves the expanded height and enables the morph only when `CSS.supports` confirms `animation-timeline: scroll()` and `animation-range: 0% 100%` while motion is allowed. CSS custom properties define the expanded logo/year sizes and shared resting navigation position; hydration reads that same computed navigation top to calculate travel. One accessible header home link holds the hero lockup—LogoSolo, the full WhatTheStack wordmark at every width, and 2027 below it. The native root scroll timeline moves that same brand left while the single navigation group—The gathering, Past editions, and Get updates—travels right/up from centered beneath 2027 into the compact header; horizontal arrival completes by 60%, vertical travel finishes at the compact alignment, and all movement reverses naturally with scroll position.
-- Accessibility: keyboard-visible focus, native form validation, reduced-motion support, and responsive verification at 320, 375, 414, and 768 CSS pixels plus desktop widths through 1920 CSS pixels. Maintain high-contrast ivory foreground and cyan-on-navy actions across the dark upper hero; preserve the horizon composition without horizontal overflow.
-- Hero motion: a massive, full-bleed upper hemisphere spans the full host width, with only its curved limb visible. Desktop geometry is normalized ellipse center `(0.5, 1.22)`, radii `(0.66, 0.48)`, crest near 74% height and side crossings near 91%; mobile keeps the crest at 74% with center `(0.5, 0.90)` and radii `(0.66, 0.16)` to avoid a tall, mountain-like arc. Its lower body eases from cyan through the shared pale-cyan mist into warm-ivory paper; softly layered cloud bands sit within the lower atmosphere, with no complete globe or Saturn-like orbit. A broader layered cyan/ivory rim carries a smooth traveling light highlight while the curve remains fixed. The hero contains no floating WTS logo or separate logo stage.
-- Rendering policy: useful static SSR horizon, starfield, nebula, and cloud artwork first; defer the separate WebGL rim-energy enhancement until load, visibility, and idle time allow it. Initial reduced-motion or data-saving preferences skip both the renderer import and GPU initialization. Target 30 draws/sec on desktop and 24 for small viewports; cap DPR at 1.25 and the backing buffer at 600,000 pixels. Stop work offscreen and while the document is hidden; pause CSS star-twinkle timelines in place while inactive, and disable them when reduced motion is preferred. Reduced-motion changes also stop renderer motion. Route disposal releases the context.
-- Motion control decision: the user explicitly requested no visible pause button for this decorative background. Follow reduced-motion preferences instead. Do not treat this preference-only design as a blanket claim of [WCAG 2.2.2 conformance](https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html); the criterion requires a usable mechanism to pause, stop, or hide continuous nonessential motion.
-- Failure policy: unavailable WebGL or context loss leaves the original static composition intact. Animation must never gate readable content, navigation, or newsletter signup.
-- Dependencies: the launch renderer is project-owned WebGL with native browser scheduling, not a general-purpose 3D/motion engine. Kiro informed the horizon/depth direction only; its media and implementation are not copied.
+- Direction: "Section through the sky, from Skopje". The reader sits in the vehicle, so the viewport is the window. No rocket, plume, gantry, or drawn trajectory appears. The background carries all motion.
+- Story: a page scroll is one climb from the ground in Skopje to orbit. The sky goes from warm ivory paper through cyan to navy. Navy appears only at orbit.
+- Stations: page blocks carry `data-launch-station`. The hero is countdown (▽ +240 m), the about heading is liftoff (▽ ≈1 km), and the about copy is max-Q (▽ ≈12 km).
+- More stations: the past editions are MECO (▽ ≈50 km), the signup is second burn (▽ 100 km), and the signup action is orbit (▽ ≈400 km). Datums show real values only.
+- A station starts when its top crosses 40% of the viewport height. `reachableTops()` in `launch-model.ts` pulls low station tops up, so the reader can reach orbit at maximum scroll.
+- Preserve the original WTS logo artwork and derive the palette from it. Keep self-hosted StarzoomShavian for display and Space Grotesk for body text. Do not use neon glow or gradient text.
+- Content: the 2027 date, location, venue, programme, speakers, partners, and prices are not confirmed. Do not reuse 2026 facts as 2027 announcements. Avoid fake cockpit controls, telemetry, and invented metrics.
+- Primary action: conference updates through the existing Listmonk newsletter dialog. The dialog uses native modal focus management and keeps its pending, error, and success states.
+
+### Scene layers
+
+- `LaunchScene.tsx` is one fixed full-viewport layer behind the whole page. Whole-document scroll progress drives it. The scene smooths the flight value itself, because the renderer applies no smoothing.
+- Layer order from back to front: the static CSS sky, the opaque WebGL canvas, the nebula veils and cloud planes, then the DOM Skopje skyline. The opaque building fills hide the shader behind them.
+- `launch-model.ts` is a pure model. `launchState(flight)` returns the uniforms for the sky altitude, horizon, ground, cloud rush, cloud floor, low clouds, nebula, shake, and night.
+- `launch-renderer.ts` reads its palette from computed CSS (`--alt-0` to `--alt-7`, the orbit tokens, and `--launch-cyan`). The shader has no hard-coded colours.
+- The skyline (`SkopjeSkyline.tsx`) is a hairline elevation in two planes. The far row holds the Goce Delčev dormitory and the MRT Center. The near row holds the Post Office, the GTC, and the City Wall.
+- The future city layer (`skyline-future.tsx`) adds a maglev viaduct with a train, air taxis on dotted lanes, solar roofs, trees, and mast beacons. Do not add a launch tower or gantry.
+- Countdown clouds and the upper-sky nebula are ordered-dither masks from `site/scripts/generate-cloud-masks.py` (seed 2027). They exist in every render mode. The `lowClouds` and `nebula` model channels fade them.
+- On phones, the CSS ground line sets the countdown horizon through `--launch-ground-level`. `LaunchScene` reads that line and gives it to the model, so CSS stays the single source.
+
+### Motion
+
+- Motion follows a 100 BPM bar clock: a 600ms beat for reveals, a 150ms eighth note for staggers and state, and a 2.4s bar for loops.
+- Liftoff and max-Q get a small background shake of about 1.5px. The shake moves only the scene.
+- HUD boot: content blocks with `data-hud` open from a centre hairline and type in their real text. `hud-boot.ts` starts each block once it is in view. The hero stays static.
+- Dither and glitch: the sky uses an ordered Bayer dot screen. Glitch hits are rare and subtle: 120ms long, every 6 to 14 bars, as thin row shifts with no colour split.
+- Hero-to-header change: the brand and navigation dissolve in place through 16 Bayer mask steps, then resolve in the header. They do not travel. The `2027` year stays at 26px at every width.
+- The header is light glass over the sky and changes to night glass at orbit through `data-sky="night"`.
+- The scroll-driven change runs only when `CSS.supports` confirms `animation-timeline: scroll()` and motion is allowed. Other browsers show the compact header from the start.
+
+### Rendering policy
+
+- Paint a static CSS countdown sky first. The first WebGL frame must match it, with no flash. Load the renderer on idle.
+- Skip WebGL for reduced motion, data saving, or missing WebGL. These modes get a per-section altitude gradient sky.
+- Draw at most 30 frames per second on desktop and 24 on small viewports. Cap the device pixel ratio at 1.25 and the backing buffer at 600,000 pixels.
+- Stop work offscreen and while the document is hidden. Context loss leaves the static composition. Animation must never block content, navigation, or newsletter signup.
+- Reduced motion keeps every end state: no drift, no shake, no glitch, and no HUD boot. Text shows at once.
+
+### Readability
+
+- Every content block after the hero sits on a light glass panel with ink text. The signup panel is night glass with paper text. These panels keep text contrast at 4.5:1 or more over any sky.
+- The signup ending centres between the header and the footer at maximum scroll. `Landing2027.tsx` publishes the footer height as `--orbit-footer-height`.
+- Verify at 320, 360, 375, 390, 414, and 768 CSS pixels, and at desktop widths through 1920. Check contrast at each station, in reduced motion, and without WebGL.
+- Motion control decision: the user asked for no visible pause button. Reduced-motion preferences control the motion. This is not a claim of [WCAG 2.2.2 conformance](https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html), which needs a usable pause, stop, or hide mechanism.
+- Dependencies: the launch renderer is project-owned WebGL with native browser scheduling. Do not add a general-purpose 3D or motion engine.
 
 ## Supporting Public Pages — WTS 2027
 
@@ -73,7 +99,7 @@ The `/` landing page is the approved, unchanged public design. Retained legal pa
 
 - The public header uses the same `PublicHeader` component on the landing and supporting pages. Supporting pages place the compact header inside a full-width sticky `.support-header` wrapper. Keep the header visible during scrolling without adding a hero transition.
 
-- Use the shared `--orbit-header-height`: 90px on desktop and 116px below 768px. Keep landing-only geometry scoped to `.orbit-cover-stage`. Production navigation retains route stylesheets, so verify landing-to-legal navigation as well as direct page loads.
+- Use the shared `--orbit-header-height`: 90px on desktop and 64px below 768px. Below 768px the navigation moves into a Menu panel. Keep landing-only geometry scoped to `.orbit-cover-stage`. Production navigation keeps route stylesheets, so verify landing-to-legal navigation as well as direct page loads.
 - The header glass blurs the page behind it. If the browser has no `backdrop-filter`, the header uses a paper-tinted solid fill. Keep the native scrollbar separate, with a visible muted thumb over the light page background.
 - Keep the logo and navigation centered in the 1320px header content area.
 - Reading surfaces use warm-ivory public tokens, ink text, and Space Grotesk for body text and prose headings. Footer layout comes from `public-support.css` on both the landing and supporting pages.
@@ -342,5 +368,6 @@ On a post, the band holds the title, excerpt, and a meta strip with author, date
 Cards and the featured post use hairline panels with square corners. Corner marks show on hover and keyboard focus.
 The posts index is a list of rows with a date column.
 The table of contents uses a left hairline with an accent marker on the current item. It keeps `aria-current` in sync.
+At 1100px and below, the table of contents sits above the post text as a collapsed hairline panel with a 48px "On this page" summary. A tap on a section link closes the panel. The `h2` stays outside `<details>`, because Chromium removes a heading inside `<summary>` from the accessibility tree.
 Prose uses Space Grotesk headings, a line length of about 70 characters, accent links, and hairline tables.
 The footer uses the site footer layout with the blog's own links.

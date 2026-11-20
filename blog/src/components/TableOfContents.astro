@@ -1,13 +1,18 @@
 <nav class="toc" aria-labelledby="toc-title">
+	<!-- The heading stays outside <details>: Chromium drops a heading inside <summary> from the accessibility tree. -->
 	<h2 class="toc-title" id="toc-title">On this page</h2>
-	<div class="toc-content" id="toc-content">
-		<!-- Populated by JS -->
-	</div>
+	<details class="toc-details">
+		<summary class="toc-summary">On this page</summary>
+		<div class="toc-content" id="toc-content">
+			<!-- Populated by JS -->
+		</div>
+	</details>
 </nav>
 
 <script>
-	import { buildToc } from "../scripts/table-of-contents";
+	import { buildToc, setupTocDisclosure } from "../scripts/table-of-contents";
 
+	setupTocDisclosure();
 	buildToc();
 </script>
 
@@ -28,6 +33,11 @@
 		line-height: 1.4;
 		letter-spacing: 0.16em;
 		text-transform: uppercase;
+	}
+
+	/* Wide screens: the sidebar shows the heading, and the script keeps the disclosure open. */
+	.toc-summary {
+		display: none;
 	}
 
 	.toc-content :global(.toc-list) {
@@ -121,6 +131,78 @@
 	@media (forced-colors: active) {
 		.toc-content :global(.toc-link)::before {
 			background: Highlight;
+		}
+	}
+
+	/*
+	 * One column: the list sits above the post in a hairline panel, collapsed behind a 48px summary row.
+	 * The summary carries the label, so the heading is visually hidden but stays a landmark heading.
+	 */
+	@media (max-width: 1100px) {
+		.toc {
+			padding-left: 0;
+			border: 1px solid var(--color-orbit-hair-strong);
+		}
+
+		.toc-title {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+
+		.toc-summary {
+			display: flex;
+			min-height: 48px;
+			align-items: center;
+			justify-content: space-between;
+			gap: 1rem;
+			padding: 0 1rem;
+			color: var(--color-orbit-accent);
+			font-size: 0.75rem;
+			font-weight: 600;
+			letter-spacing: 0.16em;
+			text-transform: uppercase;
+			list-style: none;
+			cursor: pointer;
+		}
+
+		.toc-summary::-webkit-details-marker {
+			display: none;
+		}
+
+		.toc-summary::after {
+			color: var(--color-orbit-ink);
+			content: "+";
+			content: "+" / "";
+			font-size: 1.25rem;
+			font-weight: 400;
+			letter-spacing: 0;
+		}
+
+		.toc-details[open] .toc-summary::after {
+			content: "\2212";
+			content: "\2212" / "";
+		}
+
+		.toc-content {
+			margin: 0 1rem 0.75rem;
+			padding-left: 1rem;
+			border-left: 1px solid var(--color-orbit-hair-strong);
+		}
+
+		.toc-content :global(.toc-list) {
+			margin: 0;
+		}
+
+		.toc-content :global(.toc-link) {
+			display: flex;
+			min-height: 44px;
+			align-items: center;
+			padding-block: 0.5rem;
+			font-size: 0.9375rem;
 		}
 	}
 </style>
