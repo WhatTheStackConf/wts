@@ -1680,7 +1680,10 @@ textarea.control {
   z-index: -1;
   inset: 0;
   border: 1px solid var(--ctl-line);
-  background: color-mix(in oklab, var(--notice-led) 6%, var(--color-orbit-paper));
+  background:
+    linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 100% 0 / var(--ctl-notch) var(--ctl-notch) no-repeat border-box,
+    linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 0 100% / var(--ctl-notch) var(--ctl-notch) no-repeat border-box,
+    color-mix(in oklab, var(--notice-led) 6%, var(--color-orbit-paper));
   clip-path: var(--ctl-plate);
   content: "";
 }

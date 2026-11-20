@@ -767,7 +767,8 @@ a.fk-tag:is(:hover, :focus-visible) {
   outline-offset: -1px;
 }
 
-/* 12 · Notice: a notched hairline frame with a status square. No coloured side stripe. */
+/* 12 · Notice: a notched hairline frame with a status square. No coloured side stripe.
+ * The clip cuts the border at the two notches, so two background layers draw the diagonals. */
 .fk-notice {
   --notice-led: var(--fk-info);
   --ctl-line: color-mix(in oklch, var(--notice-led) 60%, var(--color-orbit-ink));
@@ -783,7 +784,10 @@ a.fk-tag:is(:hover, :focus-visible) {
   z-index: -1;
   inset: 0;
   border: 1px solid var(--ctl-line);
-  background: color-mix(in oklch, var(--notice-led) 6%, var(--color-orbit-paper));
+  background:
+    linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 100% 0 / var(--ctl-notch) var(--ctl-notch) no-repeat border-box,
+    linear-gradient(to bottom left, transparent calc(50% - 0.5px), var(--ctl-line) 0 calc(50% + 0.5px), transparent 0) 0 100% / var(--ctl-notch) var(--ctl-notch) no-repeat border-box,
+    color-mix(in oklch, var(--notice-led) 6%, var(--color-orbit-paper));
   clip-path: var(--ctl-plate);
   content: "";
 }
