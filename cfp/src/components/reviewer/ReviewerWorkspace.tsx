@@ -167,7 +167,7 @@ export default function ReviewerWorkspace() {
           <form class="form" onSubmit={(event) => void saveWeights(event)}>
             <fieldset class="reviewer-weights"><legend class="legend">Criterion weights</legend>
               <For each={CRITERIA}>{(criterion) => <div class="field"><label for={`weight-${criterion}`}>{CRITERION_LABELS[criterion]} <span class="hint-inline">1–6</span></label>
-                <select id={`weight-${criterion}`} name={`weight-${criterion}`} class="control select" required value={weights()[criterion] ?? ""} disabled={!workspace()!.reviewOpen || saving()} onChange={(event) => updateWeight(criterion, event.currentTarget.value)}>
+                <select id={`weight-${criterion}`} name={`weight-${criterion}`} class="control" required value={weights()[criterion] ?? ""} disabled={!workspace()!.reviewOpen || saving()} onChange={(event) => updateWeight(criterion, event.currentTarget.value)}>
                   <option value="">Select weight</option>
                   <For each={[1, 2, 3, 4, 5, 6]}>{(value) => <option value={value}>{value}</option>}</For>
                 </select>
