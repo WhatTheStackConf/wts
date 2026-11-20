@@ -22,7 +22,7 @@ test('every page state renders the light glass header with the wordmark and 2027
   for (const state of states) {
     const html = renderPage(state);
     assert.match(html, /<header class="support-header">/, state.kind);
-    assert.match(html, /<span class="brand-name">WhatTheStack<\/span><span class="brand-year">2027<\/span>/, state.kind);
+    assert.match(html, /<span class="brand-name">WhatTheStack<\/span> <span class="brand-year">2027<\/span>/, state.kind);
     assert.equal((html.match(/<h1>/g) ?? []).length, 1, state.kind);
     assert.doesNotMatch(html, /WTS account<\/span>/, state.kind);
   }

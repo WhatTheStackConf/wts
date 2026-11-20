@@ -338,15 +338,15 @@ body:has(:is(.landing-2027, .supporting-shell)) {
   font-weight: 600;
   line-height: 1.35;
 }
+/* Copy links follow the kit: a dotted rule at rest, 2px on hover and focus, solid on press. */
 .support-prose .prose a {
   color: var(--color-orbit-accent);
-  text-decoration: underline;
-  text-decoration-color: color-mix(in oklch, var(--color-orbit-accent) 40%, transparent);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 0.2em;
-  transition: text-decoration-color var(--dur-orbit-fast) var(--ease-orbit-out);
+  font-weight: 600;
+  text-decoration: underline dotted 1px;
+  text-underline-offset: 0.25em;
 }
-.support-prose .prose a:is(:hover, :focus-visible) { text-decoration-color: currentColor; }
+.support-prose .prose a:is(:hover, :focus-visible) { color: color-mix(in oklch, var(--color-orbit-accent), var(--color-orbit-ink) 30%); text-decoration-thickness: 2px; }
+.support-prose .prose a:active { text-decoration-style: solid; }
 .support-panel { padding: clamp(1.25rem, 3vw, 1.75rem); }
 @media (max-width: 767px) {
   .supporting-shell { --support-content-width: calc(100% - 2rem); --support-index-width: 2.75rem; }
@@ -401,7 +401,8 @@ body:has(:is(.landing-2027, .supporting-shell)) {
   background: transparent !important;
   color: var(--color-orbit-ink) !important;
 }
-.supporting-shell .support-main .btn:disabled {
+/* Primary plates are disabled in public-links.css, as the kit does it. */
+.supporting-shell .support-main .btn:not(.btn-primary):disabled {
   border-color: var(--color-orbit-rule) !important;
   background: var(--color-orbit-surface) !important;
   color: var(--color-orbit-muted) !important;

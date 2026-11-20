@@ -125,6 +125,12 @@ The `design/` workspace package (`@wts/design`) is a Storybook of the 2027 desig
 - Both Solid apps use the `~` alias. `design/vite.config.ts` resolves it from the importing file's app.
 - Add a story when you add a shared component or control. The CI quality matrix builds Storybook, and a broken story fails the build.
 - Stories use invented sample data. Never put real speaker or attendee data in a story.
+- The Storybook frame uses the orbit theme in `design/.storybook/theme.ts`: paper, ink, the dark accent, and Space Grotesk. The hex values copy `site/tokens.css`. Change them together.
+- The preview puts the app CSS first in `<head>`, as production does. CSS that a component imports loads after it.
+- A story that is not a whole app page starts with an `.sb-page` title and a one-line note. CFP specimen pages sit on the CFP content column.
+- Route CSS loads in the story file, as the route imports it. For example, the account stories import `site/src/styles/account.css`.
+- `design/src/styles/blog-base.css` copies the global `<style>` block of `blog/src/layouts/Base.astro`. Change both together.
+- The preview answers every request to Listmonk with a local 200. The newsletter story shows the real form, and Storybook never subscribes anyone.
 
 ## Flight controls — WTS 2027
 
@@ -132,6 +138,8 @@ All 2027 apps (site, auth, blog, cfp) use one control language. The reference re
 
 - Primary actions are notched plates. The top-right and bottom-left corners have a 9px cut. Small items such as tags and pagination use a 6px cut.
 - Secondary actions, icon buttons, tags, and pagination are 1px notched frames. A pressed tool (`aria-pressed="true"`) and the current page become plates.
+- A disabled plate is a surface plate with muted text. It keeps its notch and has no border and no opacity change.
+- Copy links in prose have a dotted 1px rule at rest, a 2px rule on hover and focus, and a solid rule on press. Inline links inside a sentence stay on the text line.
 - Danger actions, such as revoke and reject, use the error-red plate.
 - Draw fills and frames on `::before`, `::after`, or background layers. Declare `--ctl-plate` on each control. Never put `clip-path` on a focusable element, because it clips the focus outline.
 - Hover and focus print a 3px dot screen. Press makes it 2px. The dots always move away from the text color, so a state never lowers text contrast.

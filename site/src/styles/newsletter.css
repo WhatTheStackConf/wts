@@ -226,7 +226,7 @@
   cursor: pointer;
 }
 
-.newsletter-submit:disabled,
+/* The disabled submit is a surface plate (public-links.css), so it needs no opacity. */
 .newsletter-close:disabled,
 .newsletter-field input:disabled {
   cursor: not-allowed;

@@ -31,3 +31,12 @@ export function Specimen(props: { label: string; note?: string; children: JSX.El
     <div class="sb-specimen-body">{props.children}</div>
   </div>;
 }
+
+/** A titled specimen page. Every story that is not a whole app page uses it, so all of them start the same way. */
+export function SbPage(props: { title: string; note?: string; children: JSX.Element }) {
+  return <div class="sb-page">
+    <h1>{props.title}</h1>
+    {props.note ? <p>{props.note}</p> : null}
+    {props.children}
+  </div>;
+}

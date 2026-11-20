@@ -28,4 +28,7 @@ function appAlias(): Plugin {
 export default defineConfig({
   plugins: [appAlias(), tailwindcss(), solid({ ssr: false, extensions: [".jsx", ".tsx"] })],
   resolve: { dedupe: ["solid-js", "@solidjs/web", "@solidjs/router", "@solidjs/meta"] },
+  // The newsletter shows its normal form only with a list ID. .storybook/preview.tsx stops every
+  // request to Listmonk, so this ID never reaches the real service.
+  define: { "import.meta.env.VITE_LISTMONK_LIST_ID": JSON.stringify("storybook") },
 });
