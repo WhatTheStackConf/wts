@@ -443,7 +443,8 @@ body:has(.landing-2027) {
   position: relative;
   z-index: 2;
   width: min(100%, 1120px);
-  padding: 12rem 0 2rem;
+  /* 11rem: the lede sits 1.5rem under Get updates, so the readout row fits above the skyline. */
+  padding: 11rem 0 2rem;
   text-align: center;
 }
 
@@ -485,7 +486,7 @@ body:has(.landing-2027) {
 }
 
 .orbit-pending {
-  margin: 1.75rem 0 0;
+  margin: 1.25rem 0 0;
   color: var(--color-orbit-ink);
   font-size: 0.6875rem;
   letter-spacing: 0.075em;

@@ -1,0 +1,151 @@
+/* Hero readout: the launch board (2027 · Skopje) and the T-minus counter.
+ * Paper tiles with hairline frames, ink characters and square corners, like the flight kit.
+ * Both play once on load in stepped sixteenths. Reduced motion shows the end state at once. */
+
+.orbit-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem 1.25rem;
+  margin: 1.25rem 0 0;
+}
+
+.launch-board,
+.launch-tminus {
+  --readout-tile: color-mix(in oklab, var(--color-orbit-paper), white 45%);
+  margin: 0;
+  color: var(--color-orbit-ink);
+  font: 700 1rem/1 var(--font-orbit-body);
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+
+.launch-board {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem 0.5rem;
+}
+
+.launch-board-word {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.launch-board-word + .launch-board-word::before {
+  margin-inline-end: 0.375rem;
+  color: var(--color-orbit-muted);
+  content: "·" / "";
+}
+
+.launch-board-tile {
+  position: relative;
+  display: inline-grid;
+  width: 1.35em;
+  height: 1.8em;
+  border: 1px solid var(--color-orbit-hair-strong);
+  background: var(--readout-tile);
+}
+
+/* The flap split: a hairline across the middle of every tile. */
+.launch-board-tile::after {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--color-orbit-hair);
+  content: "";
+}
+
+.launch-board-half {
+  display: grid;
+  grid-area: 1 / 1;
+  place-items: center;
+}
+
+.launch-board-half--top {
+  clip-path: inset(0 0 50% 0);
+}
+
+.launch-board-half--bottom {
+  clip-path: inset(50% 0 0 0);
+}
+
+/* The server renders the real words. With scripts and motion, the tiles wait blank for the first flap. */
+@media (prefers-reduced-motion: no-preference) and (scripting: enabled) {
+  .launch-board[data-board="idle"] .launch-board-half {
+    visibility: hidden;
+  }
+}
+
+.launch-tminus-readout {
+  display: inline-flex;
+  align-items: center;
+  height: 1.8em;
+  padding-inline: 0.5em;
+  border: 1px solid var(--color-orbit-hair-strong);
+  background: var(--readout-tile);
+}
+
+.launch-tminus-prefix {
+  margin-inline-end: 0.15em;
+}
+
+.launch-tminus-drum {
+  display: inline-block;
+  height: 1em;
+  overflow: clip;
+}
+
+.launch-tminus-strip {
+  display: flex;
+  flex-direction: column;
+  translate: 0 calc(var(--digit) * -1em);
+}
+
+.launch-tminus-strip > span {
+  height: 1em;
+  line-height: 1;
+}
+
+.launch-tminus-unit {
+  margin-inline-start: 0.5em;
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+}
+
+/* Each drum rolls up from 0 in one sixteenth per digit. A 0 drum has no roll. */
+@media (prefers-reduced-motion: no-preference) {
+  .launch-tminus-strip {
+    animation: launch-tminus-roll calc(var(--digit) * 75ms) steps(var(--digit), end) backwards;
+  }
+
+  @keyframes launch-tminus-roll {
+    from {
+      translate: 0 0;
+    }
+  }
+}
+
+/* Short phones have no room above the skyline, so the readout row stays out.
+ * launch-scene.css sizes the ground for the row only on taller phones. */
+@media (max-width: 767px) and (max-height: 700px) {
+  .orbit-readout {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .orbit-readout {
+    margin-top: 1.2rem;
+  }
+
+  .launch-board,
+  .launch-tminus {
+    font-size: 0.9375rem;
+  }
+}

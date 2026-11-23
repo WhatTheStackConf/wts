@@ -1,6 +1,6 @@
 /* HUD boot · the copy powers on like an instrument readout as each block climbs into the window.
  * Clock: 100 BPM, one step = an eighth (150 ms). A panel frame opens from a hairline, its corner
- * marks lock on, then the lines come up in order: labels type, headings flicker, text scans in.
+ * marks lock on, then the lines come up in order: labels type, headings decrypt, text scans in.
  * Only real copy animates. Nothing is hidden before hud-boot.ts sets data-hud-boot="ready", and
  * reduced motion never hides anything. Fill mode is backwards so no clip stays on focus rings.
  */
@@ -65,10 +65,9 @@
     animation: hud-scan calc(var(--hud-step) * 2) steps(9, end) var(--hud-at) backwards;
   }
 
-  .landing-2027[data-hud-boot="ready"] [data-hud][data-hud-state="on"] [data-hud-line="flicker"] {
-    animation:
-      hud-scan var(--hud-step) steps(3, end) var(--hud-at) backwards,
-      hud-flicker calc(var(--hud-step) * 3) steps(1, end) var(--hud-at) backwards;
+  /* Headings open in one eighth, then hud-decrypt.ts resolves their letters from glyphs over one beat. */
+  .landing-2027[data-hud-boot="ready"] [data-hud][data-hud-state="on"] [data-hud-line="decrypt"] {
+    animation: hud-scan var(--hud-step) steps(3, end) var(--hud-at) backwards;
   }
 
   /* The edition axis draws upward, segment by segment, as its rows come up. */
@@ -121,41 +120,6 @@
     }
   }
 
-  @keyframes hud-flicker {
-    from {
-      opacity: 0.85;
-      translate: -3px 0;
-    }
-
-    14% {
-      opacity: 0.15;
-      translate: 0 0;
-    }
-
-    28% {
-      opacity: 1;
-    }
-
-    /* One glitch slice: a band of the heading slips sideways for a frame or two. */
-    44% {
-      opacity: 1;
-      translate: 2px 0;
-      clip-path: inset(46% -1em 40% 0);
-    }
-
-    58% {
-      opacity: 0.4;
-      translate: 2px 0;
-      clip-path: inset(-1em -1em -1em 0);
-    }
-
-    60%,
-    to {
-      opacity: 1;
-      translate: 0 0;
-    }
-  }
-
   @keyframes hud-dither {
     from {
       background-image: var(--hud-dither-dense);
@@ -179,4 +143,32 @@
       transform: scaleY(1);
     }
   }
+}
+
+/* HudText: the screen-reader copy, and the letter spans that hud-decrypt.ts paints over. */
+.hud-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.hud-word {
+  white-space: nowrap;
+}
+
+/* A glyph covers the real letter. The letter keeps its width, so the line never reflows. */
+.hud-ch[data-glyph] {
+  position: relative;
+  -webkit-text-fill-color: transparent;
+}
+
+.hud-ch[data-glyph]::before {
+  position: absolute;
+  inset: 0;
+  content: attr(data-glyph);
+  -webkit-text-fill-color: currentColor;
+  text-align: center;
 }

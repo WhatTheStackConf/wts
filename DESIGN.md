@@ -72,6 +72,10 @@ The `/` landing page is the launch. Supporting pages use the light shell below. 
 - Motion follows a 100 BPM bar clock: a 600ms beat for reveals, a 150ms eighth note for staggers and state, and a 2.4s bar for loops.
 - Liftoff and max-Q get a small background shake of about 1.5px. The shake moves only the scene.
 - HUD boot: content blocks with `data-hud` open from a centre hairline and type in their real text. `hud-boot.ts` starts each block once it is in view. The hero stays static.
+- Decrypted headings: section titles and edition years resolve from random glyphs over one beat during the HUD boot. `HudText` keeps the real letters in the DOM and gives screen readers one plain string. `hud-decrypt.ts` paints glyphs over the letters, so layout never reflows.
+- Hero readout: the launch board flaps once on load to confirmed facts only, now `2027 · Skopje`. Add the date and the venue only after they are announced. Phones shorter than 700px do not show the readout, because it does not fit above the skyline.
+- T-minus counter: it shows days to the conference in the conference time zone. It renders only when `content/conference-guide.json` announces the date. Each digit drum rolls once, in stepped sixteenths.
+- These three effects take their ideas from Solid Bits (`DecryptedText`, `SplitFlapText`, `Counter`), but the code is our own. The originals fail the complexity gate, and their license forbids redistribution. Do not copy Solid Bits source into this repository.
 - Dither and glitch: the sky uses an ordered Bayer dot screen. Glitch hits are rare and subtle: 120ms long, every 6 to 14 bars, as thin row shifts with no colour split.
 - Hero-to-header change: the brand and navigation dissolve in place through 16 Bayer mask steps, then resolve in the header. They do not travel. The `2027` year stays at 26px at every width.
 - The header is light glass over the sky and changes to night glass at orbit through `data-sky="night"`.

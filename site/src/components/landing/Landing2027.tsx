@@ -7,12 +7,16 @@ import { PublicHeader } from "~/components/PublicHeader";
 import { PublicFooter } from "~/components/PublicFooter";
 import LaunchScene, { type LaunchSceneMode } from "~/components/landing/LaunchScene";
 import { bootHud } from "~/components/landing/hud-boot";
+import { HudText } from "~/components/landing/HudText";
+import { LaunchBoard } from "~/components/landing/LaunchBoard";
+import { TMinus } from "~/components/landing/TMinus";
 import "~/styles/landing-2027.css";
 import "~/styles/landing-hud.css";
+import "~/styles/landing-instruments.css";
 import { PublicPageMetadata } from "~/components/PublicPageMetadata";
 
 
-import { publicEditionName } from "~/lib/conference-guide-content";
+import { conferenceLocalDate, conferenceTimeZone, publicEditionName } from "~/lib/conference-guide-content";
 const pastEditions = [
   {
     year: "2026",
@@ -196,6 +200,11 @@ export const Landing2027 = () => {
                 build to how it ships.
               </p>
 
+              <div class="orbit-readout">
+                <LaunchBoard words={["2027", "Skopje"]} label="WTS 2027, Skopje" />
+                <TMinus localDate={conferenceLocalDate} timeZone={conferenceTimeZone ?? "Europe/Skopje"} label={publicEditionName} />
+              </div>
+
               <p class="orbit-pending">We're working on WTS 2027. Dates and details to follow.</p>
             </div>
             <div class="orbit-hero-foot" aria-hidden="true"><span>The tech side of product.</span><span>WTS / 2027</span></div>
@@ -209,7 +218,7 @@ export const Landing2027 = () => {
           <div class="orbit-section-heading" data-launch-station="liftoff">
             <div class="orbit-section-title" id="about" data-hud>
               <span class="orbit-section-mark" aria-hidden="true" data-hud-line="type">WTS—</span>
-              <h2 id="about-title" data-hud-line="flicker" style={{ "--hud-i": "1" }}>What's in your stack now?</h2>
+              <h2 id="about-title" data-hud-line="decrypt" style={{ "--hud-i": "1" }}><HudText lines={["What's in your stack now?"]} /></h2>
             </div>
           </div>
           <div class="orbit-about-copy orbit-panel" data-launch-station="max-q" data-hud>
@@ -233,7 +242,7 @@ export const Landing2027 = () => {
           <div class="orbit-archive-sheet orbit-panel" data-hud>
             <div class="orbit-archive-heading">
               <p class="orbit-archive-label" data-hud-line="type">Past editions</p>
-              <h2 id="archive-title" data-hud-line="flicker" style={{ "--hud-i": "1" }}>The story<br />so far.</h2>
+              <h2 id="archive-title" data-hud-line="decrypt" style={{ "--hud-i": "1" }}><HudText lines={["The story", "so far."]} /></h2>
               <p data-hud-line style={{ "--hud-i": "2" }}>Three editions, built by the community. The talks and the speakers from each one.</p>
             </div>
             <div class="orbit-editions">
@@ -249,7 +258,7 @@ export const Landing2027 = () => {
                     style={{ "--hud-i": edition.hudLine }}
                   >
                     <span class="orbit-edition-mark" aria-hidden="true">{edition.mark}</span>
-                    <span class="orbit-edition-year">{edition.year}</span>
+                    <span class="orbit-edition-year"><HudText lines={[edition.year]} /></span>
                     <span class="orbit-edition-content">
                       <strong>{edition.label}</strong>
                       <span>{edition.description}</span>
@@ -267,7 +276,7 @@ export const Landing2027 = () => {
         <section class="orbit-signup" aria-labelledby="signup-title" data-launch-station="second-burn">
           <div class="orbit-signup-panel orbit-panel" data-hud>
             <p class="orbit-signup-label" data-hud-line="type">WTS 2027 updates</p>
-            <h2 id="signup-title" data-hud-line="flicker" style={{ "--hud-i": "1" }}>See you at<br />the next one.</h2>
+            <h2 id="signup-title" data-hud-line="decrypt" style={{ "--hud-i": "1" }}><HudText lines={["See you at", "the next one."]} /></h2>
             <div class="orbit-signup-cta" data-launch-station="orbit" data-hud-line style={{ "--hud-i": "2" }}>
               <p>We'll email you when there's news about dates, speakers, and tickets.</p>
               <button class="orbit-button" type="button" onClick={openNewsletter}>

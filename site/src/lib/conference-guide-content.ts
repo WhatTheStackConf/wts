@@ -15,6 +15,10 @@ export function announcedConferenceTimeZone(content: ConferenceGuide): string | 
 }
 
 export const conferenceTimeZone = announcedConferenceTimeZone(conferenceGuide);
+/** The conference day (YYYY-MM-DD) once content/conference-guide.json announces it. */
+export const conferenceLocalDate = conferenceGuide.event.date.status === "announced"
+  ? conferenceGuide.event.date.localDate
+  : undefined;
 export const conferenceLocation = conferenceGuide.event.location.status === "announced"
   && conferenceGuide.event.location.city && conferenceGuide.event.location.country
   ? `${conferenceGuide.event.location.city}, ${conferenceGuide.event.location.country}`
