@@ -246,7 +246,8 @@
    */
   .launch-scene {
     --launch-skyline-width: 230vw;
-    --launch-hero-end: 520px;
+    /* +46px for the hero readout row (landing-instruments.css). */
+    --launch-hero-end: 566px;
     --launch-ground-level: clamp(
       3rem,
       100% - var(--launch-overscan) - var(--launch-hero-end) - 1.5rem - var(--launch-skyline-width) * 0.145,
@@ -308,7 +309,7 @@
 /* From 390px the hero lede wraps to three lines, so the hero text ends higher. */
 @media (min-width: 390px) and (max-width: 767px) {
   .launch-scene {
-    --launch-hero-end: 480px;
+    --launch-hero-end: 526px;
   }
 }
 

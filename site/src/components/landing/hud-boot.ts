@@ -1,6 +1,8 @@
 /* HUD boot: each [data-hud] block powers on when it climbs into the window. landing-hud.css plays
  * the boot. Without this module, or with reduced motion, every block stays visible. */
 
+import { decryptBlock } from "~/components/landing/hud-decrypt";
+
 export type HudState = "on" | "off";
 
 export interface HudEntry {
@@ -21,7 +23,10 @@ export function bootHud(root: HTMLElement): () => void {
   const observer = new IntersectionObserver((entries) => {
     for (const entry of entries) {
       const state = hudTransition({ isIntersecting: entry.isIntersecting, top: entry.boundingClientRect.top, viewportHeight: window.innerHeight });
-      if (state) (entry.target as HTMLElement).dataset.hudState = state;
+      const block = entry.target as HTMLElement;
+      if (!state || block.dataset.hudState === state) continue;
+      block.dataset.hudState = state;
+      decryptBlock(block, state === "on");
     }
   }, { rootMargin: "0px 0px -12% 0px" });
 
